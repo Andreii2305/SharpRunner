@@ -1,0 +1,101 @@
+.section {
+  position: relative;
+  padding: 3rem 2rem 10rem 2rem;
+  text-align: center;
+  overflow: hidden;
+}
+.background {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    overflow: hidden;
+
+    background: radial-gradient(circle at 10% 80%, rgb(0, 198, 167, 0.5), transparent 50%),
+              radial-gradient(circle at 90% 20%, rgb(255, 179, 71, 0.5) , transparent 50%);
+    filter: blur(10px);
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 4rem;
+  color: #2E353A;
+}
+
+.stepsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6rem;
+  position: relative;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+/* Step card */
+.step {
+  width: 280px;
+  text-align: center;
+  position: relative;
+}
+
+.step1 {
+  margin-right: auto; 
+}
+
+.step2 {
+  margin-left: auto; 
+}
+
+.step3 {
+    margin-top: 2rem;
+  margin-left: auto;
+  margin-right: auto; 
+}
+
+.step img {
+  width: 150px;
+  height: auto;
+  margin-bottom: 1rem;
+}
+
+.step h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.3rem;
+}
+
+.step p {
+  font-size: 0.9rem;
+  color: #444;
+}
+
+/* Connector lines */
+.lineConnector1 {
+  position: absolute;
+  width: 550px;
+  height: auto;
+  z-index: -1;
+}
+.lineConnector2 {
+  position: absolute;
+  width: 300px;
+  height: auto;
+  z-index: -1;
+}
+
+.lineConnector1 {
+  top: 8%;
+  left: 28%;
+  transform: rotate(10deg);
+}
+
+.lineConnector2 {
+  top: 48%;
+  right: 25%;
+  transform: rotate(-10deg);
+}

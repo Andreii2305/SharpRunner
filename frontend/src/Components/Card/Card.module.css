@@ -1,0 +1,47 @@
+
+
+/* Basic card layout so the component is visible */
+.Cards {
+    width: 320px;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #fff;
+    box-shadow: 5px 6px 18px hsla(0, 0%, 0%, 0.25);
+    margin: 1rem auto;
+    min-height: 400px;
+    display: flex;
+}
+
+.featureTop {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+.cardImage {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    padding: 1.25rem;
+}
+
+.cardDescription {
+    padding: 1rem;
+    background-color: hsla(210, 1%, 72%, 0.50);
+    width: 100%;
+    box-sizing: border-box;  /* Include padding in width calculation */
+    margin-top: auto;
+}
+
+.cardDescription h3 {
+    margin: 0 0 0.5rem;
+    font-size: 1.1rem;
+}
+
+.cardDescription p {
+    margin: 0;
+    color: #000;
+    font-size: 0.95rem;
+}

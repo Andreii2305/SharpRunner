@@ -1,0 +1,87 @@
+
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 2rem;
+    background-color: #fffcf93d;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000; 
+    backdrop-filter: blur(8px); /* Optional: makes background slightly blurred */
+    -webkit-backdrop-filter: blur(8px); /* For Safari support */
+}
+.navbar a {
+    font-weight: 600;
+    color: #26547c; 
+    text-decoration: none;
+    margin: 0 1rem;
+}
+
+.rightNav a{
+    font-weight: bold;
+    font-size: 14px;
+    color: #494949;
+}
+
+
+/* .navbar button {
+    border: none;
+    outline: none;
+    padding: 10pt 20pt;
+    font-weight: 600;
+    border-radius: 15px;
+    font-size: 12px;
+    background-color: #26547c;
+    color: #FFFCF9;
+} */
+
+/* Layout helpers for header */
+.leftNav a {
+    margin: 0; /* left logo shouldn't get the anchor's horizontal margin */
+    font-size: 16px;
+}
+
+.rightNav {
+    display: flex;
+    align-items: center;
+    justify-content: center; /* vertically center button + avatar */
+    gap: 12px; /* space between button and avatar */
+}
+
+.rightNav a {
+    display: inline-flex;
+    align-items: center;
+}
+
+.rightNav button {
+    margin: 0; /* remove extra anchor/button spacing */
+}
+
+/* Remove any box-shadow-based focus the browser may apply */
+/* .navbar button:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+
+.navbar button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(38,84,124,0.18);
+} */
+.navbar img {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background-color: #8DA4B8;
+    padding: 5px;
+}
+
+.greetings{
+    font-weight: 600;
+    color: #26547c;
+}

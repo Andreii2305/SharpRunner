@@ -1,0 +1,55 @@
+.sidebar {
+  width: 70px;
+  background: #fffcf9;
+  padding: 2rem 3rem 0 0;
+  transition: width 0.3s ease;
+  overflow: hidden; /* important */
+  margin-top: 4.8rem;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+}
+
+.sidebar:hover {
+  width: 220px;
+}
+
+.link{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;      
+  width: 100%;         
+  padding: 10px;
+  border-radius: 12px;
+}
+
+/* Menu item layout */
+.sidebar ul li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  margin: 24px 0;
+  cursor: pointer;
+  border-radius: 12px;
+  transition: background 0.2s;
+}
+
+
+.sidebar ul li:hover .link {
+  background: #f3f3f3;
+}
+
+/* Hide labels while collapsed */
+.sidebar .label {
+  opacity: 0;
+  pointer-events: auto;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+}
+
+/* Show labels when expanded */
+.sidebar:hover .label {
+  opacity: 1;
+  pointer-events: auto;
+}

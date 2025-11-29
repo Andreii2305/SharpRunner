@@ -1,5 +1,6 @@
 {
   "name": "javacademy-first-version",
+  "homepage": "https://andreii2305.github.io/SharpRunner/",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -17,6 +18,7 @@
     "@mui/styled-engine-sc": "^7.3.5",
     "@ramonak/react-progress-bar": "^5.4.0",
     "express": "^5.1.0",
+    "gh-pages": "^6.3.0",
     "react": "^19.1.1",
     "react-circular-progressbar": "^2.2.0",
     "react-dom": "^19.1.1",

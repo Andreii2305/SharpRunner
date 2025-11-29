@@ -76,6 +76,8 @@
 .lessonBar{
     display: flex;
     flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
     background: #F9FAFB;
     padding: 0 18px;
     border-radius: 12px;
@@ -87,4 +89,16 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+}
+
+.button{
+    width: 4rem;
+    height: 4rem;
+    border-radius: 50%;
+    background: #26547c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    cursor: pointer;
 }

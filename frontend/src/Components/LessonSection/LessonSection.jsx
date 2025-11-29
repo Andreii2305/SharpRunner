@@ -3,8 +3,19 @@ import Sidebar from "../SideBar/Sidebar.jsx";
 import Header from "../Header/Header.jsx";
 import Button from "../Button/Button.jsx";
 import ProgressBar from "../ProgressBarComponent/ProgressBarComponent.jsx";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import LockOutlineIcon from "@mui/icons-material/LockOutline";
+import { useNavigate } from "react-router-dom";
 
 function LessonSection() {
+  const navigate = useNavigate();
+
+  const lockedLesson = () => {
+    alert(
+      "This lesson is still on locked! Finish the current lesson to unlock this."
+    );
+  };
+
   return (
     <div className={styles.lessonPage}>
       <Header pageType="primary" userName="Andres" />
@@ -35,7 +46,12 @@ function LessonSection() {
                   <ProgressBar progress={75} />
                 </div>
               </div>
-              <div className={styles.button}></div>
+              <button
+                onClick={() => navigate("/dashboard")}
+                className={styles.button}
+              >
+                <PlayArrowIcon sx={{ fontSize: 60, color: "white" }} />
+              </button>
             </div>
             <div className={styles.lessonBar}>
               <div className={styles.infos}>
@@ -46,10 +62,12 @@ function LessonSection() {
                 </p>
                 <div className={styles.progress}>
                   <p>Progress</p>
-                  <ProgressBar progress={75} />
+                  <ProgressBar progress={0} />
                 </div>
               </div>
-              <div className={styles.button}></div>
+              <button onClick={lockedLesson} className={styles.button}>
+                <LockOutlineIcon sx={{ fontSize: 30, color: "white" }} />
+              </button>
             </div>
             <div className={styles.lessonBar}>
               <div className={styles.infos}>
@@ -60,10 +78,12 @@ function LessonSection() {
                 </p>
                 <div className={styles.progress}>
                   <p>Progress</p>
-                  <ProgressBar progress={75} />
+                  <ProgressBar progress={0} />
                 </div>
               </div>
-              <div className={styles.button}></div>
+              <button onClick={lockedLesson} className={styles.button}>
+                <LockOutlineIcon sx={{ fontSize: 30, color: "white" }} />
+              </button>
             </div>
             <div className={styles.lessonBar}>
               <div className={styles.infos}>
@@ -74,10 +94,12 @@ function LessonSection() {
                 </p>
                 <div className={styles.progress}>
                   <p>Progress</p>
-                  <ProgressBar progress={75} />
+                  <ProgressBar progress={0} />
                 </div>
               </div>
-              <div className={styles.button}></div>
+              <button onClick={lockedLesson} className={styles.button}>
+                <LockOutlineIcon sx={{ fontSize: 30, color: "white" }} />
+              </button>
             </div>
           </div>
         </section>

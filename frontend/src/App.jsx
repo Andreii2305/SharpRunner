@@ -7,7 +7,7 @@ import LessonSection from "./Components/LessonSection/LessonSection.jsx";
 
 function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/SharpRunner">
       {/* <Header /> */}
       <Routes>
         <Route path="/" element={<LandingPage />} />

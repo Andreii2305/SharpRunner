@@ -29,7 +29,7 @@ function Dashboard() {
   return (
     <>
       <div className={styles.dashboardPage}>
-        <Header pageType="dashboard" userName="Andres" />
+        <Header pageType="primary" userName="Andres" />
         <div className={styles.dashboardContainer}>
           <Sidebar variant="active" />
           <section className={styles.dashboard}>

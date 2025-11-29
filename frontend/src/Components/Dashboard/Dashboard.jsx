@@ -2,6 +2,9 @@ import styles from "./Dashboard.module.css";
 import Header from "../Header/Header.jsx";
 import Button from "../Button/Button.jsx";
 import Achievements from "../Achievements/Achivements.jsx";
+import LoopMasterBadge from "../../assets/Loop-Master.svg";
+import SyntaxExpertBadge from "../../assets/Syntax-Expert.svg";
+import QuickCoderBadge from "../../assets/Quick-Coder.svg";
 import CircularProgressBar from "../CircularProgressBar/CircularProgressBar.jsx";
 import ProgressBarComponent from "../ProgressBarComponent/ProgressBarComponent.jsx";
 import Sidebar from "../SideBar/Sidebar.jsx";
@@ -11,18 +14,9 @@ function Dashboard() {
 
   // This could come from an API or user data in a real application
   const achievements = [
-    {
-      title: "Loop Master",
-      badgeSrc: "/src/assets/Loop-Master.svg",
-    },
-    {
-      title: "Syntax Expert",
-      badgeSrc: "/src/assets/Syntax-Expert.svg",
-    },
-    {
-      title: "Quick Coder",
-      badgeSrc: "/src/assets/Quick-Coder.svg",
-    },
+    { title: "Loop Master", badgeSrc: LoopMasterBadge },
+    { title: "Syntax Expert", badgeSrc: SyntaxExpertBadge },
+    { title: "Quick Coder", badgeSrc: QuickCoderBadge },
   ];
 
   // Try different container approach to solve dashboard bug.

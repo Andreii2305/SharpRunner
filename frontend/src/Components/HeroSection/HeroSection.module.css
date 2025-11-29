@@ -4,10 +4,12 @@
     align-items: center;
     justify-content: center;
     margin-top: 10rem;
+    padding: 0 1rem;
 }
 
 .heroSection h1{
-    width: 630px;
+    width: 90%;
+    max-width: 630px;
     font-size: 48px;
     color: #000000;
     text-align: center;
@@ -23,7 +25,8 @@
 }
 
 .heroSection p {
-    width: 630px;  
+    max-width: 630px;  
+    width: 90%;
     text-align: center;
     color: #666;  
     font-size: 18px;
@@ -37,11 +40,46 @@
     margin-bottom: -100px;
     position: relative; 
     z-index: 2;
+    flex-wrap: wrap;
+    justify-content: center;
 }
 
 .heroSection img {
     margin-top: 0.1rem;
-    width: 900px;
+    max-width: 900px;
+    width: 100%;
     height: auto;
     pointer-events: none;
+}
+
+@media (max-width: 768px) {
+    .heroSection{
+        margin-top: 7rem; 
+    }
+    .heroSection h1{
+        font-size: 32px; /* Smaller font size */
+    }
+    .heroSection p {
+        font-size: 16px; /* Smaller font size */
+    }
+    .heroSection img {
+        width: 95%; /* Make the image a little bigger on tablets */
+    }
+}
+
+@media (max-width: 480px) { /* Mobile */
+    .heroSection{
+        margin-top: 3rem;
+    }
+    .heroSection h1{
+        font-size: 24px;
+        width: 100%; /* Use full width for title */
+    }
+    .heroSection p {
+        width: 100%; /* Use full width for paragraph */
+    }
+
+    .heroSection img{
+        margin-top: 3rem;
+    }
 }

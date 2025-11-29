@@ -4,7 +4,8 @@
     justify-content: center;
     gap: auto;
     background-color: #fffcf9;
-    margin: 1.5rem 15rem;
+    padding: 1.5rem 3rem;
+    border-top: 1px solid #eee;
 }
 
 .footer .copyRight {
@@ -18,14 +19,35 @@
 
 .footer .rightContainer{
     display: flex;
-    gap: 12rem;
+    gap: 4rem;
     margin-left: auto;
     padding: 0;
     margin: 0;
 }
 
+.footerInfo, .socials {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.footerInfo h5, .socials h5 {
+    font-size: 1rem;
+    color: #26547c;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
 .footerLists p{
     cursor: pointer;
+    font-size: 0.9rem;
+    color: #494949;
+    margin: 0.2rem 0;
+    transition: color 0.2s;
+}
+
+.footerLists p:hover {
+    color: #000;
 }
 
 .socialsLists{
@@ -44,4 +66,55 @@
     width: 32px;
     height: 32px;
     color: #26547c;
+    transition: color 0.2s;
+}
+
+.socialsLists svg:hover {
+    color: #06D6A0; 
+}
+
+@media (max-width: 768px) {
+    .footer {
+        padding: 1.5rem 2rem; 
+    }
+    .footer .rightContainer{
+        gap: 2rem; 
+    }
+}
+
+/* Mobile View (up to 640px) */
+@media (max-width: 640px) {
+    .footer {
+        flex-direction: column; /* Stack main footer content vertically (Copyright + Right Container) */
+        padding: 1.5rem 1rem; 
+        align-items: center; /* Center everything */
+        text-align: center;
+    }
+
+    .footer .copyRight {
+        order: 2; /* Move copyright to the bottom */
+        text-align: center;
+        padding-top: 2rem; 
+        width: 100%;
+    }
+
+    .footer .rightContainer{
+        order: 1; /* Move right content to the top */
+        flex-direction: column; /* Stack info and socials vertically */
+        gap: 3rem; 
+        width: 100%;
+        align-items: center;
+    }
+
+    /* Center the list content */
+    .footerLists {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    /* Center the social icons */
+    .socialsLists {
+        justify-content: center;
+    }
 }

@@ -1,5 +1,3 @@
-
-
 .navbar {
     display: flex;
     justify-content: space-between;
@@ -28,18 +26,6 @@
     color: #494949;
 }
 
-
-/* .navbar button {
-    border: none;
-    outline: none;
-    padding: 10pt 20pt;
-    font-weight: 600;
-    border-radius: 15px;
-    font-size: 12px;
-    background-color: #26547c;
-    color: #FFFCF9;
-} */
-
 /* Layout helpers for header */
 .leftNav a {
     margin: 0; /* left logo shouldn't get the anchor's horizontal margin */
@@ -53,35 +39,63 @@
     gap: 12px; /* space between button and avatar */
 }
 
+.rightNav > div{
+    display: flex;
+    align-items: center;
+}
+
 .rightNav a {
     display: inline-flex;
     align-items: center;
 }
 
-.rightNav button {
-    margin: 0; /* remove extra anchor/button spacing */
-}
 
-/* Remove any box-shadow-based focus the browser may apply */
-/* .navbar button:focus {
-    outline: none;
-    box-shadow: none;
-}
-
-
-.navbar button:focus-visible {
-    outline: none;
-    box-shadow: 0 0 0 4px rgba(38,84,124,0.18);
-} */
 .navbar img {
-    width: 64px;
-    height: 64px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
     background-color: #8DA4B8;
-    padding: 5px;
+    padding: 3px;
 }
 
 .greetings{
     font-weight: 600;
     color: #26547c;
+}
+
+
+@media (max-width: 1024px) { /* Tablets and smaller laptops */
+    .navbar {
+        padding: 0.5rem 1.5rem;
+    }
+    .rightNav a {
+        margin: 0 0.6rem; /* Slightly reduce space between links */
+    }
+}
+
+@media (max-width: 768px) { /* Mobile devices and large tablets */
+    .navbar {
+        padding: 0.5rem 1rem;
+    }
+    
+    /* Hide the navigation links (Home, Features, How It Works, About Us) */
+    .rightNav > div {
+        display: none; 
+    }
+    
+    /* Hide the 'Join Room' button */
+    /* This targets the <Button> component which renders as <button> */
+    .rightNav button { 
+        display: none;
+    }
+
+    /* Adjust greetings text size */
+    .greetings {
+        font-size: 14px;
+    }
+    
+    /* Ensure the left logo is still legible */
+    .leftNav a {
+        font-size: 16px;
+    }
 }

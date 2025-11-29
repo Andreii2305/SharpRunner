@@ -10,6 +10,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.2s ease-in-out;
 }
 
 .primary {
@@ -41,4 +42,24 @@
 .button:focus-visible {
     outline: none;
     box-shadow: 0 0 0 4px rgba(38,84,124,0.18);
+}
+
+
+@media (max-width: 768px) { /* Tablet and smaller */
+    .button {
+        /* Increase padding/size slightly for easier tapping */
+        padding: 18px 24px; 
+        font-size: 14px; /* Slightly larger font */
+    }
+}
+
+@media (max-width: 480px) { /* Mobile phones */
+    /* Ensure a minimum tap area (Google recommends at least 48x48dp) */
+    .button {
+        width: 80%; /* Make buttons full width in stacked mobile layouts */
+        display: flex; /* Ensure full width applies */
+        padding: 18px 0; /* Vertical padding, horizontal padding handled by width */
+        font-size: 14px;
+        margin-top: 5px; /* Add small margin to separate stacked buttons */
+    }
 }

@@ -45,3 +45,20 @@
     color: #000;
     font-size: 0.95rem;
 }
+
+@media (max-width: 1024px) { /* Large tablets and small laptops */
+    .Cards {
+        /* Allow cards to use more space */
+        width: 45%; 
+        min-height: 350px;
+    }
+}
+
+@media (max-width: 768px) { /* Tablet and smaller */
+    .Cards {
+        /* Full width for stacking */
+        width: 80%; 
+        max-width: 400px; 
+        margin: 1rem auto; /* Re-center the card */
+    }
+}

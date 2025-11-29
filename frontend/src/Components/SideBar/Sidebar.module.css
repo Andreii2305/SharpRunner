@@ -6,6 +6,9 @@
   overflow: hidden; /* important */
   margin-top: 4.8rem;
   box-shadow: 0 8px 30px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 4.8rem; 
+  height: auto;
 }
 
 .sidebar:hover {

@@ -28,7 +28,7 @@ function Header({ pageType, userName }) {
         </div>
       )}
 
-      {pageType === "dashboard" && (
+      {pageType === "primary" && (
         <div className={styles.rightNav}>
           <span className={styles.greetings}>Welcome Back, {userName}!</span>
           <a href="#">

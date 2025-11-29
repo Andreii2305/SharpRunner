@@ -31,7 +31,7 @@ function Sidebar() {
           </Link>
         </li>
         <li>
-          <Link to="/lesson" className={styles.link}>
+          <Link to="/leaderboards" className={styles.link}>
             <span className={styles.icon}>
               <LeaderboardOutlinedIcon />
             </span>
@@ -39,7 +39,7 @@ function Sidebar() {
           </Link>
         </li>
         <li>
-          <Link to="/lesson" className={styles.link}>
+          <Link to="/Map" className={styles.link}>
             <span className={styles.icon}>
               <MapOutlinedIcon />
             </span>

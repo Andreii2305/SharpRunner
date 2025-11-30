@@ -73,4 +73,4 @@ SHarpRunner is currently being develop by: - Andrei Jay Amoroto
 
 Initial Prototype
 
-![SharpRunner](frontend\public\sharprunner.png)
+![SharpRunner](frontend/public/sharprunner.png)

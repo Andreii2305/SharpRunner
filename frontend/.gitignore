@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# env
+.env
+backend/.env
+
+# node
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# logs
+npm-debug.log*
+

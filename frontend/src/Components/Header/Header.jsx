@@ -2,10 +2,13 @@ import styles from "./Header.module.css";
 import avatar from "../../assets/avatar.png";
 import Button from "../Button/Button.jsx";
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 function Header({ pageType, userName }) {
+  const navigate = useNavigate();
+
   const handleClick = () => {
-    alert("Join Room button clicked");
+    navigate("/login");
   };
 
   return (
@@ -21,7 +24,7 @@ function Header({ pageType, userName }) {
             <a href="#howItWorks">How It Works?</a>
             <Link to="/AboutUs">About Us</Link>
           </div>
-          <Button label="Join Room" onClick={handleClick} />
+          <Button label="Join Room" onClick={() => navigate("/login")} />
           <a href="#">
             <img src={avatar} alt="avatar" />
           </a>

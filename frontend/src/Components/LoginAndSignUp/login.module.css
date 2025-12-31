@@ -1,0 +1,181 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap');
+
+/* Main Container */
+.loginContainer {
+  min-height: 100vh;
+  background-color: #fcfbf7; /* Light beige/cream background from image */
+  font-family: 'Montserrat', sans-serif;
+  padding: 40px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+/* Brand Top Left */
+.brandLogo {
+  position: absolute;
+  top: 40px;
+  left: 60px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #26547c; /* Navy blue brand color */
+}
+
+.brandLogoLink {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Centered Content Wrapper */
+.loginContent {
+  margin-top: 10rem;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* Headers */
+.welcomeText {
+  font-size: 3.5rem;
+  color: #26547c;
+  font-weight: 700;
+  margin-bottom: 0;
+}
+
+.subHeader {
+  font-size: 3rem;
+  font-weight: 300;
+  color: #333;
+  margin-top: 0;
+  margin-bottom: 2rem;
+}
+
+/* Separators (Lines with text) */
+.separator, .socialSeparator {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #888;
+  font-size: 0.8rem;
+  margin: 2rem 0;
+}
+
+.separator::before, .separator::after,
+.socialSeparator::before, .socialSeparator::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #ccc;
+}
+
+.separator span, .socialSeparator span {
+  padding: 0 10px;
+}
+
+/* Inputs */
+.inputGroup {
+  margin-bottom: 1.5rem;
+}
+
+.inputGroup input {
+  width: 100%;
+  padding: 15px;
+  background-color: #e8ecef; /* Light gray input background */
+  border: 1px solid transparent;
+  border-bottom: 2px solid #cbd5e0;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  outline: none;
+  color: #555;
+}
+
+.inputGroup input:focus {
+  border-bottom-color: #26547c;
+}
+
+/* Login Button */
+.loginBtn {
+  width: 100%;
+  padding: 15px;
+  background-color: #26547c; /* Dark blue button */
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.3s;
+  margin-top: 10px;
+}
+
+.loginBtn:hover {
+  background-color: #1a3b5c;
+}
+
+/* Footer Links */
+.formFooter {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 15px;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.forgotLink, .signup-text a {
+  color: #26547c;
+  text-decoration: none;
+}
+
+/* Social Icons */
+.socialIcons {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.socialBtn {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: none;
+  background-color: #26547c;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.socialBtn:hover {
+  transform: scale(1.1);
+}
+
+.google {
+  background-color: #26547c; /* Google red */
+}
+
+.facebook {
+  background-color: #26547c; /* Facebook blue */
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 600px) {
+  .brandLogo {
+    position: static;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  .loginContent{
+    margin-top: 1rem;
+  }
+  
+  .loginContainer {
+    padding: 20px;
+  }
+}

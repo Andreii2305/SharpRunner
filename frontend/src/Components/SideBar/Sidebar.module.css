@@ -1,14 +1,17 @@
 .sidebar {
   width: 70px;
   background: #fffcf9;
-  padding: 2rem 3rem 0 0;
+  padding: .5rem 3rem 0 0;
   transition: width 0.3s ease;
   overflow: hidden; /* important */
-  margin-top: 4.8rem;
+  /* margin-top: 4.8rem; */
   box-shadow: 0 8px 30px rgba(0,0,0,0.1);
   position: sticky;
-  top: 4.8rem; 
+  top: 4.8rem;
   height: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .sidebar:hover {
@@ -55,4 +58,12 @@
 .sidebar:hover .label {
   opacity: 1;
   pointer-events: auto;
+}
+
+.sidebar img{
+  width: 24px;
+}
+
+.sidebar img .logo{
+  border-radius: 20px;
 }

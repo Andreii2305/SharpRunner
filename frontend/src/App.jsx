@@ -4,6 +4,8 @@ import Sidebar from "./Components/SideBar/Sidebar.jsx";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Header from "./Components/Header/Header.jsx";
 import LessonSection from "./Components/LessonSection/LessonSection.jsx";
+import LoginPage from "./Components/LogInPage/Login.jsx";
+import SignUp from "./Components/Registration/SignUp.jsx";
 
 function App() {
   return (
@@ -13,6 +15,8 @@ function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/lesson" element={<LessonSection />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUp />} />
       </Routes>
     </BrowserRouter>
   );

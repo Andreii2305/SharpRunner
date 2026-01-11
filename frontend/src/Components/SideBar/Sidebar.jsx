@@ -50,7 +50,7 @@ function Sidebar() {
           </Link>
         </li>
         <li>
-          <Link to="/Map" className={styles.link}>
+          <Link to="/map" className={styles.link}>
             <span className={styles.icon}>
               <MapOutlinedIcon />
             </span>

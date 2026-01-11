@@ -12,6 +12,10 @@ function HeroSection() {
     alert("Join Room via Code clicked!");
   };
 
+  const dashboardClick = () => {
+    navigate("/dashboard");
+  };
+
   return (
     <div id="heroSection" className={styles.heroSection}>
       <Background />
@@ -28,7 +32,7 @@ function HeroSection() {
         <Button
           label="Open Dashboard"
           variant="outline"
-          onClick={() => navigate("/dashboard")}
+          onClick={dashboardClick}
         />
         <Button
           label="Join Room via Code"

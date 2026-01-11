@@ -13,6 +13,27 @@
     transition: all 0.2s ease-in-out;
 }
 
+/* sizes */
+.sm {
+  padding: 6px 24px;
+  font-size: 12px;
+  border-radius: 8px;
+}
+
+.md {
+  padding: 12px 20px;
+  font-size: 13px;
+  border-radius: 12px;
+}
+
+.lg {
+  padding: 16px 28px;
+  font-size: 14px;
+  border-radius: 16px;
+}
+
+
+
 .primary {
   background-color: #26547c;
   color: white;

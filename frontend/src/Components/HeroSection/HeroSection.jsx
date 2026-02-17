@@ -22,7 +22,7 @@ function HeroSection() {
       <h1>
         A <span className={styles.green}>Fun</span> and{" "}
         <span className={styles.green}>Interactive</span> way to{" "}
-        <span className={styles.blue}>Learn</span> Java Programming
+        <span className={styles.blue}>Learn</span> C# Programming
       </h1>
       <p>
         Gamify your coding journey through interactive lessons, code challenges,

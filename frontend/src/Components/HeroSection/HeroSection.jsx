@@ -3,13 +3,29 @@ import typingBro from "../../assets/typing-bro-1.svg";
 import Button from "../Button/Button.jsx";
 import Background from "./BackgroundEffect.jsx";
 import { useNavigate } from "react-router-dom";
+import { clearToken, isAuthenticated } from "../../utils/auth";
 
 function HeroSection() {
   const navigate = useNavigate();
+  const loggedIn = isAuthenticated();
 
-  const handleClick1 = () => {
+  const handleDashboardClick = () => {
+    if (loggedIn) {
+      navigate("/dashboard");
+      return;
+    }
+
+    navigate("/login");
+  };
+
+  const handleJoinRoomClick = () => {
     // Add your logic here for "Join Room via Code"
     alert("Join Room via Code clicked!");
+  };
+
+  const handleLogout = () => {
+    clearToken();
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -28,13 +44,17 @@ function HeroSection() {
         <Button
           label="Open Dashboard"
           variant="outline"
-          onClick={() => navigate("/dashboard")}
+          onClick={handleDashboardClick}
         />
-        <Button
-          label="Join Room via Code"
-          variant="primary"
-          onClick={handleClick1}
-        />
+        {loggedIn ? (
+          <Button label="Logout" variant="primary" onClick={handleLogout} />
+        ) : (
+          <Button
+            label="Join Room via Code"
+            variant="primary"
+            onClick={handleJoinRoomClick}
+          />
+        )}
       </div>
       <img src={typingBro} alt="typing-bro" />
     </div>

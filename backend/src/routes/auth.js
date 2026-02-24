@@ -1,22 +1,41 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { Op } = require("sequelize");
+const { Op, col, fn, where } = require("sequelize");
 const User = require("../models/User");
+
+const normalizeString = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+const normalizeEmail = (value) =>
+  normalizeString(value).toLowerCase();
+
+const createAuthToken = (userId) =>
+  jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
 router.post("/login", async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const identifier =
+      normalizeString(req.body.identifier) ||
+      normalizeString(req.body.email) ||
+      normalizeString(req.body.username);
+    const password = normalizeString(req.body.password);
 
     if (!identifier || !password) {
       return res.status(400).json({ message: "Missing fields" });
     }
 
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Auth is not configured" });
+    }
+
+    const normalizedIdentifier = identifier.toLowerCase();
+
     const user = await User.findOne({
       where: {
         [Op.or]: [
-          { email: identifier },
-          { username: identifier }
+          where(fn("lower", col("email")), normalizedIdentifier),
+          where(fn("lower", col("username")), normalizedIdentifier)
         ]
       }
     });
@@ -30,11 +49,7 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
-      { id: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    const token = createAuthToken(user.id);
 
     res.json({
       token,
@@ -53,9 +68,12 @@ router.post("/login", async (req, res) => {
 
 router.post("/register", async (req, res) => {
   try {
-    const { firstName, lastName, username, email, password } = req.body;
+    const firstName = normalizeString(req.body.firstName);
+    const lastName = normalizeString(req.body.lastName);
+    const username = normalizeString(req.body.username);
+    const email = normalizeEmail(req.body.email);
+    const password = normalizeString(req.body.password);
 
-    // 1. Validate input
     if (!firstName || !lastName || !username || !email || !password) {
       return res.status(400).json({
         message: "All fields are required"
@@ -68,10 +86,16 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // 2. Check if user already exists
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Auth is not configured" });
+    }
+
     const existingUser = await User.findOne({
       where: {
-        [Op.or]: [{ email }, { username }]
+        [Op.or]: [
+          where(fn("lower", col("email")), email),
+          where(fn("lower", col("username")), username.toLowerCase())
+        ]
       }
     });
 
@@ -81,10 +105,8 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // 3. Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4. Create user
     const user = await User.create({
       firstName,
       lastName,
@@ -93,12 +115,7 @@ router.post("/register", async (req, res) => {
       password: hashedPassword
     });
 
-    // 5. Auto-login
-    const token = jwt.sign(
-      { id: user.id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1h" }
-    );
+    const token = createAuthToken(user.id);
 
     res.status(201).json({
       message: "Registration successful",

@@ -58,10 +58,159 @@
   width: 100%;
   aspect-ratio: 16 / 9;
   max-height: 61vh;
+  position: relative;
+  overflow: hidden;
   /* background-color: #25af6a;  */
   border-radius: 12px;
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
   color: white;
+}
+
+.storyOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  background: rgba(8, 17, 40, 0.38);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 20px;
+}
+
+.storyContainer {
+  width: min(840px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.storyChapter {
+  align-self: flex-start;
+  background: rgba(11, 31, 58, 0.86);
+  color: #dbeafe;
+  border: 1px solid rgba(148, 180, 220, 0.55);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  padding: 5px 10px;
+}
+
+.dialogueBox {
+  position: relative;
+  min-height: 162px;
+  border-radius: 10px;
+  border: 1px solid rgba(130, 152, 182, 0.8);
+  background: rgba(34, 34, 48, 0.9);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22);
+  overflow: hidden;
+}
+
+.dialogueBoxSkin {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  image-rendering: pixelated;
+  opacity: 0.13;
+  pointer-events: none;
+}
+
+.portraitContainer {
+  position: absolute;
+  left: 14px;
+  top: 16px;
+  width: 64px;
+  height: 64px;
+}
+
+.portraitFrame {
+  width: 64px;
+  height: 64px;
+  image-rendering: pixelated;
+}
+
+.portraitFace {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 64px;
+  height: 64px;
+  image-rendering: pixelated;
+}
+
+.nameTag {
+  position: absolute;
+  top: 14px;
+  left: 92px;
+  min-width: 140px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+}
+
+.nameTagSkin {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  image-rendering: pixelated;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.nameTag span {
+  position: relative;
+  z-index: 1;
+  color: #f8fafc;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.dialogueTextBlock {
+  position: relative;
+  margin-left: 92px;
+  margin-right: 140px;
+  margin-top: 50px;
+  min-height: 70px;
+}
+
+.dialogueLine {
+  margin: 0 0 6px 0;
+  color: #e2e8f0;
+  font-size: 0.98rem;
+  line-height: 1.3;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.dialogueAccent {
+  color: #ef4444;
+}
+
+.dialogueGoal {
+  color: #fcd34d;
+}
+
+.storyAction {
+  position: absolute;
+  right: 16px;
+  bottom: 18px;
+}
+
+.dialogueCursor {
+  width: 18px;
+  height: 18px;
+  image-rendering: pixelated;
+  opacity: 0.8;
+}
+
+.dialogueButtonWrap {
+  position: absolute;
+  right: 16px;
+  top: 16px;
 }
 
 .infoCards {
@@ -120,6 +269,24 @@
   border-top: 1px solid #e2e8f0;
   display: flex;
   justify-content: flex-end;
+}
+
+.resultBanner {
+  padding: 10px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 0.9rem;
+}
+
+.resultSuccess {
+  background: #ecfdf5;
+  color: #166534;
+}
+
+.resultError {
+  background: #fef2f2;
+  color: #991b1b;
 }
 
 .btnRun {

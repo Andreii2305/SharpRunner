@@ -1,19 +1,217 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
 import { useNavigate } from "react-router-dom";
 import Game from "./Game.jsx";
+import {
+  gameEvents,
+  LEVEL_ONE_CODE_EVALUATED,
+  LEVEL_ONE_OUTCOME,
+} from "./gameEvents";
+
+const LEVEL_ONE_GOAL_DECLARATIONS = [
+  {
+    name: "heroName",
+    allowedTypes: new Set(["string"]),
+    requiredValue: '"Kai"',
+  },
+  {
+    name: "action",
+    allowedTypes: new Set(["string"]),
+    requiredValue: '"walk"',
+  },
+];
+
+const LEVEL_ONE_GOAL_BY_NAME = new Map(
+  LEVEL_ONE_GOAL_DECLARATIONS.map((goal) => [goal.name, goal]),
+);
+
+const DECLARATION_REGEX =
+  /\b(int|double|float|decimal|bool|string|String|char|long|short|byte|var)\s+([A-Za-z_]\w*)\s*(?:=\s*([^;]+))?\s*;/g;
+
+const COMMENT_REGEX = /\/\/.*$|\/\*[\s\S]*?\*\//gm;
+
+const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
+
+const validateLevelOneCode = (sourceCode) => {
+  const codeWithoutComments = stripComments(sourceCode);
+  const declarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
+  const matchedGoals = new Set();
+
+  for (const declaration of declarations) {
+    const [, type, variableName, assignmentValue] = declaration;
+    const goal = LEVEL_ONE_GOAL_BY_NAME.get(variableName);
+
+    if (!goal) {
+      return {
+        isCorrect: false,
+        message: `Unexpected variable "${variableName}". Only heroName and action are allowed in Level 1.`,
+      };
+    }
+
+    if (matchedGoals.has(variableName)) {
+      return {
+        isCorrect: false,
+        message: `Variable "${variableName}" is declared more than once.`,
+      };
+    }
+
+    if (!goal.allowedTypes.has(type)) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must use type string.`,
+      };
+    }
+
+    if (!assignmentValue || assignmentValue.trim() === "") {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must be initialized with ${goal.requiredValue}.`,
+      };
+    }
+
+    if (assignmentValue.trim() !== goal.requiredValue) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must be exactly ${goal.requiredValue}.`,
+      };
+    }
+
+    matchedGoals.add(variableName);
+  }
+
+  for (const goal of LEVEL_ONE_GOAL_DECLARATIONS) {
+    if (!matchedGoals.has(goal.name)) {
+      return {
+        isCorrect: false,
+        message: `Missing goal declaration: string ${goal.name} = ${goal.requiredValue};`,
+      };
+    }
+  }
+
+  if (declarations.length !== LEVEL_ONE_GOAL_DECLARATIONS.length) {
+    return {
+      isCorrect: false,
+      message: "Only the exact goal declarations are accepted for this level.",
+    };
+  }
+
+  return {
+    isCorrect: true,
+    message: "Exact goal declarations found. Character is moving to the gate.",
+  };
+};
 
 const LevelOne = () => {
   const navigate = useNavigate();
+  const [showStoryIntro, setShowStoryIntro] = useState(true);
+  const [dialogueStep, setDialogueStep] = useState(0);
 
   const [code, setCode] = useState(
-    "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // code here\n    }\n  }\n}"
+    "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare Variable Here\n\n    }\n  }\n}",
   );
+  const [result, setResult] = useState({
+    type: "idle",
+    message: "Declare at least one variable, then click Run.",
+  });
+
+  useEffect(() => {
+    const handleOutcome = ({ status, message }) => {
+      if (status === "success") {
+        setResult({
+          type: "success",
+          message:
+            message ?? "Great job. Gate opened and level objective completed.",
+        });
+        return;
+      }
+
+      setResult({
+        type: "error",
+        message:
+          message ??
+          "You failed. Add a valid C# variable declaration and retry.",
+      });
+    };
+
+    gameEvents.on(LEVEL_ONE_OUTCOME, handleOutcome);
+
+    return () => {
+      gameEvents.off(LEVEL_ONE_OUTCOME, handleOutcome);
+    };
+  }, []);
+
+  const resultClassName = useMemo(() => {
+    if (result.type === "success") {
+      return `${styles.resultBanner} ${styles.resultSuccess}`;
+    }
+
+    if (result.type === "error") {
+      return `${styles.resultBanner} ${styles.resultError}`;
+    }
+
+    return styles.resultBanner;
+  }, [result.type]);
 
   const exitButton = () => {
     navigate("/dashboard");
+  };
+
+  const runLevelCheck = () => {
+    const sourceCode = code ?? "";
+    const validation = validateLevelOneCode(sourceCode);
+    const { isCorrect, message } = validation;
+
+    gameEvents.emit(LEVEL_ONE_CODE_EVALUATED, { isCorrect });
+
+    setResult({
+      type: isCorrect ? "success" : "error",
+      message,
+    });
+  };
+
+  const uiAssetBase = `${import.meta.env.BASE_URL}game/assets/ui/dialogue`;
+
+  const storyIntro = [
+    {
+      speaker: "King Kai",
+      lines: [
+        { text: "I am the King kai.", tone: "normal" },
+        { text: "No one is cooler than me.", tone: "accent" },
+      ],
+    },
+    {
+      speaker: "King Kai",
+      lines: [
+        { text: "This gate obeys only exact declarations.", tone: "normal" },
+        {
+          text: 'Use: string heroName = "Kai"; and string action = "walk";',
+          tone: "goal",
+        },
+      ],
+    },
+    {
+      speaker: "Green King",
+      lines: [
+        {
+          text: "Write the code correctly and begin your journey.",
+          tone: "normal",
+        },
+      ],
+    },
+  ];
+
+  const activeDialogue = storyIntro[dialogueStep];
+  const isLastDialogue = dialogueStep === storyIntro.length - 1;
+
+  const nextDialogue = () => {
+    if (isLastDialogue) {
+      setShowStoryIntro(false);
+      return;
+    }
+
+    setDialogueStep((current) => current + 1);
   };
 
   return (
@@ -31,6 +229,79 @@ const LevelOne = () => {
         <div className={styles.upperRow}>
           <div id="phaser-canvas-root" className={styles.phaserCanvasRoot}>
             <Game />
+            {showStoryIntro && (
+              <div className={styles.storyOverlay}>
+                <div className={styles.storyContainer}>
+                  <div className={styles.storyChapter}>
+                    Chapter 1: The Awakening
+                  </div>
+
+                  <div className={styles.dialogueBox}>
+                    <img
+                      src={`${uiAssetBase}/dialogue_box.png`}
+                      alt=""
+                      className={styles.dialogueBoxSkin}
+                    />
+
+                    <div className={styles.portraitContainer}>
+                      <img
+                        src={`${uiAssetBase}/portrait_frame.png`}
+                        alt=""
+                        className={styles.portraitFrame}
+                      />
+                      <img
+                        src={`${uiAssetBase}/portrait_player_main.png`}
+                        alt="Green King portrait"
+                        className={styles.portraitFace}
+                      />
+                    </div>
+
+                    <div className={styles.nameTag}>
+                      <img
+                        src={`${uiAssetBase}/name_box.png`}
+                        alt=""
+                        className={styles.nameTagSkin}
+                      />
+                      <span>{activeDialogue.speaker}</span>
+                    </div>
+
+                    <div className={styles.dialogueTextBlock}>
+                      {activeDialogue.lines.map((line) => (
+                        <p
+                          key={line.text}
+                          className={`${styles.dialogueLine} ${
+                            line.tone === "accent"
+                              ? styles.dialogueAccent
+                              : line.tone === "goal"
+                                ? styles.dialogueGoal
+                                : ""
+                          }`}
+                        >
+                          {line.text}
+                        </p>
+                      ))}
+                    </div>
+
+                    <div className={styles.storyAction}>
+                      <img
+                        src={`${uiAssetBase}/dialogue_finished_icon.png`}
+                        alt=""
+                        className={styles.dialogueCursor}
+                      />
+                    </div>
+
+                    <div className={styles.dialogueButtonWrap}>
+                      <Button
+                        label={isLastDialogue ? "Start Level" : "Next"}
+                        variant="primary"
+                        size="sm"
+                        onClick={nextDialogue}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className={styles.editorPanel}>
@@ -38,7 +309,12 @@ const LevelOne = () => {
               <span>
                 <b>C#</b>
               </span>
-              <Button label="Submit" variant="primary" size="sm" />
+              <Button
+                label="Submit"
+                variant="primary"
+                size="sm"
+                onClick={runLevelCheck}
+              />
             </div>
             <div style={{ flexGrow: 1 }}>
               <Editor
@@ -46,13 +322,19 @@ const LevelOne = () => {
                 theme="light"
                 defaultLanguage="csharp"
                 value={code}
-                onChange={(val) => setCode(val)}
+                onChange={(val) => setCode(val ?? "")}
                 options={{ minimap: { enabled: false }, fontSize: 14 }}
               />
             </div>
             <div className={styles.editorFooter}>
-              <Button label="Run" variant="outline" size="sm" />
+              <Button
+                label="Run"
+                variant="outline"
+                size="sm"
+                onClick={runLevelCheck}
+              />
             </div>
+            <div className={resultClassName}>{result.message}</div>
           </div>
         </div>
 
@@ -61,24 +343,26 @@ const LevelOne = () => {
           <section className={styles.card}>
             <h3>Goal</h3>
             <p>
-              Open the gate by declaring and initializing the correct variables.
+              Declare exactly the two goal variables to move your character and
+              open the gate.
             </p>
             <h3>Instruction</h3>
             <ul>
-              <li>The ancient gate before you is sealed by code.</li>
               <li>
-                To unlock it, declare a variable named <b>key</b>.
+                Use exactly: <b>string heroName = "Kai";</b>
               </li>
+              <li>
+                Then add: <b>string action = "walk";</b>
+              </li>
+              <li>Any other variable declaration will fail this level.</li>
             </ul>
           </section>
 
           <section className={styles.card}>
             <h3>Declaring Variables</h3>
             <p>
-              Lorem ipsum dolor sit amet consectetur adipisicing elit. Non
-              molestiae repellat rem, quibusdam sed consequuntur odio atque
-              blanditiis ad assumenda fugit voluptas impedit labore deserunt
-              adipisci nobis. Repellat, sint asperiores.
+              For Level 1, the checker is strict and goal-based. It only accepts
+              the exact declarations required by the mission.
             </p>
           </section>
         </div>

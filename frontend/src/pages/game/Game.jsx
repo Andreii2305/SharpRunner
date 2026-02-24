@@ -11,6 +11,14 @@ export default function Game() {
     game = new Phaser.Game({
       type: Phaser.AUTO,
       parent: "phaser-canvas-root",
+      pixelArt: true,
+      physics: {
+        default: "arcade",
+        arcade: {
+          gravity: { y: 0 },
+          debug: false,
+        },
+      },
 
       scale: {
         mode: Phaser.Scale.RESIZE,

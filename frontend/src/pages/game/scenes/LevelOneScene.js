@@ -9,6 +9,14 @@ const PLAYER_SCALE = 2;
 const PLAYER_GRAVITY = 1100;
 const PLAYER_WALK_SPEED = 140;
 const GOAL_PADDING = 96;
+const PORTAL_SCALE = 1.5;
+const PORTAL_ANIMATION_KEY = "portal-spin";
+const PORTAL_FRAME_WIDTH = 32;
+const PORTAL_FRAME_HEIGHT = 32;
+const PORTAL_TARGET_OFFSET_X = 8;
+const PORTAL_REACH_DISTANCE_X = 46;
+const PORTAL_REACH_DISTANCE_Y = 40;
+const TELEPORT_DURATION_MS = 540;
 
 const ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -45,6 +53,12 @@ export default class LevelOneScene extends Phaser.Scene {
       "player_sheet_blue",
       "/SharpRunner/game/assets/characters/players/char_blue.png",
       { frameWidth: 56, frameHeight: 56 }
+    );
+
+    this.load.spritesheet(
+      "portal_sheet",
+      "/SharpRunner/game/assets/tiles/Dimensional_Portal.png",
+      { frameWidth: PORTAL_FRAME_WIDTH, frameHeight: PORTAL_FRAME_HEIGHT }
     );
   }
 
@@ -96,9 +110,12 @@ export default class LevelOneScene extends Phaser.Scene {
     );
 
     const spawnPoint = this.resolveSpawnPoint(map, offsetY);
+    const portalPoint = this.resolvePortalPoint(map, offsetY);
     this.spawnPoint = spawnPoint;
-    this.goalX = map.widthInPixels - GOAL_PADDING;
+    this.portalPoint = portalPoint;
+    this.goalX = portalPoint.x;
     this.createPlayerAnimations();
+    this.createPortalAnimations();
 
     this.player = this.physics.add.sprite(
       spawnPoint.x,
@@ -110,6 +127,12 @@ export default class LevelOneScene extends Phaser.Scene {
     this.player.setDepth(1);
     this.player.setCollideWorldBounds(true);
     this.player.setGravityY(PLAYER_GRAVITY);
+
+    this.portal = this.add.sprite(portalPoint.x, portalPoint.y, "portal_sheet");
+    this.portal.setOrigin(0.5, 1);
+    this.portal.setScale(PORTAL_SCALE);
+    this.portal.setDepth(1.8);
+    this.portal.play(PORTAL_ANIMATION_KEY);
 
     ["Ground", "Platforms"].forEach((layerName) => {
       const layer = layersByName[layerName];
@@ -124,6 +147,7 @@ export default class LevelOneScene extends Phaser.Scene {
     this.isDead = false;
     this.isDowned = false;
     this.failureTimer = null;
+    this.teleporting = false;
 
     this.player.on(
       Phaser.Animations.Events.ANIMATION_COMPLETE,
@@ -155,10 +179,15 @@ export default class LevelOneScene extends Phaser.Scene {
 
       this.playAnimation("player-run");
 
-      if (this.player.x >= this.goalX) {
-        this.finishSuccessSequence();
+      if (this.hasReachedPortal()) {
+        this.beginTeleportSequence();
       }
 
+      return;
+    }
+
+    if (this.sequenceMode === "teleporting") {
+      this.player.setVelocity(0, 0);
       return;
     }
 
@@ -193,6 +222,20 @@ export default class LevelOneScene extends Phaser.Scene {
     });
   }
 
+  createPortalAnimations() {
+    if (this.anims.exists(PORTAL_ANIMATION_KEY)) return;
+
+    this.anims.create({
+      key: PORTAL_ANIMATION_KEY,
+      frames: this.anims.generateFrameNumbers("portal_sheet", {
+        start: 0,
+        end: 5,
+      }),
+      frameRate: 10,
+      repeat: -1,
+    });
+  }
+
   resolveSpawnPoint(map, offsetY) {
     const objectLayer = map.getObjectLayer("Objects");
     let spawnPoint = null;
@@ -209,6 +252,26 @@ export default class LevelOneScene extends Phaser.Scene {
 
     console.warn("player_spawn not found, using fallback spawn");
     return { x: 1000, y: offsetY + map.heightInPixels - 50 };
+  }
+
+  resolvePortalPoint(map, offsetY) {
+    const objectLayer = map.getObjectLayer("Objects");
+    let portalPoint = null;
+
+    if (objectLayer) {
+      objectLayer.objects.forEach((obj) => {
+        if (obj.name === "portal_spawn" || obj.name === "gate_spawn") {
+          portalPoint = { x: obj.x, y: obj.y + offsetY };
+        }
+      });
+    }
+
+    if (portalPoint) return portalPoint;
+
+    return {
+      x: map.widthInPixels - GOAL_PADDING,
+      y: this.spawnPoint ? this.spawnPoint.y : offsetY + map.heightInPixels - 50,
+    };
   }
 
   playAnimation(key) {
@@ -240,9 +303,14 @@ export default class LevelOneScene extends Phaser.Scene {
     this.isDead = false;
     this.player.setVelocity(0, 0);
     this.isDowned = false;
+    this.teleporting = false;
 
+    this.tweens.killTweensOf(this.player);
+    this.player.body.enable = true;
     this.player.setGravityY(PLAYER_GRAVITY);
     this.player.setFlipX(false);
+    this.player.setAlpha(1);
+    this.player.setScale(PLAYER_SCALE);
     this.player.setPosition(this.spawnPoint.x, this.spawnPoint.y);
     this.player.body.reset(this.spawnPoint.x, this.spawnPoint.y);
     this.playAnimation("player-idle");
@@ -254,15 +322,45 @@ export default class LevelOneScene extends Phaser.Scene {
     this.playAnimation("player-run");
   }
 
-  finishSuccessSequence() {
-    this.sequenceMode = "idle";
+  beginTeleportSequence() {
+    if (this.teleporting) return;
+
+    this.teleporting = true;
+    this.sequenceMode = "teleporting";
     this.player.setVelocityX(0);
     this.playAnimation("player-idle");
+    this.player.body.enable = false;
+    this.player.x = this.portalPoint.x - PORTAL_TARGET_OFFSET_X;
+    this.player.y = this.portalPoint.y;
+
+    this.tweens.add({
+      targets: this.player,
+      alpha: 0,
+      scaleX: PLAYER_SCALE * 0.15,
+      scaleY: PLAYER_SCALE * 0.15,
+      duration: TELEPORT_DURATION_MS,
+      ease: "Sine.easeIn",
+      onComplete: () => this.finishSuccessSequence(),
+    });
+  }
+
+  finishSuccessSequence() {
+    this.sequenceMode = "idle";
 
     gameEvents.emit(LEVEL_ONE_OUTCOME, {
       status: "success",
-      message: "Gate opened. Level 1 cleared.",
+      message: "Portal reached. Level 1 cleared. Proceeding to next level...",
+      shouldProceed: true,
     });
+  }
+
+  hasReachedPortal() {
+    if (!this.player || !this.portalPoint) return false;
+
+    const deltaX = Math.abs(this.player.x - this.portalPoint.x);
+    const deltaY = Math.abs(this.player.y - this.portalPoint.y);
+
+    return deltaX <= PORTAL_REACH_DISTANCE_X && deltaY <= PORTAL_REACH_DISTANCE_Y;
   }
 
   startFailureSequence() {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
@@ -9,6 +9,10 @@ import {
   LEVEL_ONE_CODE_EVALUATED,
   LEVEL_ONE_OUTCOME,
 } from "./gameEvents";
+
+const DIALOGUE_TYPING_SPEED_MS = 24;
+const NEXT_LEVEL_ROUTE = "/lesson";
+const NEXT_LEVEL_DELAY_MS = 1200;
 
 const LEVEL_ONE_GOAL_DECLARATIONS = [
   {
@@ -105,25 +109,38 @@ const validateLevelOneCode = (sourceCode) => {
 
 const LevelOne = () => {
   const navigate = useNavigate();
+  const nextLevelTimerRef = useRef(null);
   const [showStoryIntro, setShowStoryIntro] = useState(true);
   const [dialogueStep, setDialogueStep] = useState(0);
 
   const [code, setCode] = useState(
     "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare Variable Here\n\n    }\n  }\n}",
   );
+  const [typedCharacters, setTypedCharacters] = useState(0);
   const [result, setResult] = useState({
     type: "idle",
     message: "Declare at least one variable, then click Run.",
   });
 
   useEffect(() => {
-    const handleOutcome = ({ status, message }) => {
+    const handleOutcome = ({ status, message, shouldProceed }) => {
       if (status === "success") {
         setResult({
           type: "success",
           message:
             message ?? "Great job. Gate opened and level objective completed.",
         });
+
+        if (shouldProceed) {
+          if (nextLevelTimerRef.current) {
+            window.clearTimeout(nextLevelTimerRef.current);
+          }
+
+          nextLevelTimerRef.current = window.setTimeout(() => {
+            navigate(NEXT_LEVEL_ROUTE);
+          }, NEXT_LEVEL_DELAY_MS);
+        }
+
         return;
       }
 
@@ -139,8 +156,13 @@ const LevelOne = () => {
 
     return () => {
       gameEvents.off(LEVEL_ONE_OUTCOME, handleOutcome);
+
+      if (nextLevelTimerRef.current) {
+        window.clearTimeout(nextLevelTimerRef.current);
+        nextLevelTimerRef.current = null;
+      }
     };
-  }, []);
+  }, [navigate]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -159,6 +181,11 @@ const LevelOne = () => {
   };
 
   const runLevelCheck = () => {
+    if (nextLevelTimerRef.current) {
+      window.clearTimeout(nextLevelTimerRef.current);
+      nextLevelTimerRef.current = null;
+    }
+
     const sourceCode = code ?? "";
     const validation = validateLevelOneCode(sourceCode);
     const { isCorrect, message } = validation;
@@ -204,8 +231,51 @@ const LevelOne = () => {
 
   const activeDialogue = storyIntro[dialogueStep];
   const isLastDialogue = dialogueStep === storyIntro.length - 1;
+  const totalStepCharacters = activeDialogue.lines.reduce(
+    (sum, line) => sum + line.text.length,
+    0,
+  );
+  const isTyping = typedCharacters < totalStepCharacters;
+
+  const displayedLines = useMemo(() => {
+    let remaining = typedCharacters;
+
+    return activeDialogue.lines.map((line) => {
+      if (remaining <= 0) {
+        return { ...line, visibleText: "" };
+      }
+
+      const visibleText = line.text.slice(0, remaining);
+      remaining -= line.text.length;
+      return { ...line, visibleText };
+    });
+  }, [activeDialogue, typedCharacters]);
+
+  useEffect(() => {
+    setTypedCharacters(0);
+  }, [dialogueStep]);
+
+  useEffect(() => {
+    if (!showStoryIntro) return undefined;
+    if (typedCharacters >= totalStepCharacters) return undefined;
+
+    const timer = window.setTimeout(() => {
+      setTypedCharacters((current) =>
+        Math.min(current + 1, totalStepCharacters),
+      );
+    }, DIALOGUE_TYPING_SPEED_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [showStoryIntro, typedCharacters, totalStepCharacters]);
 
   const nextDialogue = () => {
+    if (isTyping) {
+      setTypedCharacters(totalStepCharacters);
+      return;
+    }
+
     if (isLastDialogue) {
       setShowStoryIntro(false);
       return;
@@ -266,7 +336,7 @@ const LevelOne = () => {
                     </div>
 
                     <div className={styles.dialogueTextBlock}>
-                      {activeDialogue.lines.map((line) => (
+                      {displayedLines.map((line) => (
                         <p
                           key={line.text}
                           className={`${styles.dialogueLine} ${
@@ -277,9 +347,10 @@ const LevelOne = () => {
                                 : ""
                           }`}
                         >
-                          {line.text}
+                          {line.visibleText}
                         </p>
                       ))}
+                      {isTyping && <span className={styles.typingCaret}>_</span>}
                     </div>
 
                     <div className={styles.storyAction}>
@@ -291,11 +362,17 @@ const LevelOne = () => {
                     </div>
 
                     <div className={styles.dialogueButtonWrap}>
-                      <Button
-                        label={isLastDialogue ? "Start Level" : "Next"}
-                        variant="primary"
-                        size="sm"
-                        onClick={nextDialogue}
+                    <Button
+                      label={
+                        isTyping
+                          ? "Skip"
+                          : isLastDialogue
+                            ? "Start Level"
+                            : "Next"
+                      }
+                      variant="primary"
+                      size="sm"
+                      onClick={nextDialogue}
                       />
                     </div>
                   </div>

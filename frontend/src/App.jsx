@@ -5,10 +5,15 @@ import LessonSection from "./Components/LessonSection/LessonSection.jsx";
 import LoginPage from "./Components/LogInPage/Login.jsx";
 import SignUp from "./Components/Registration/SignUp.jsx";
 import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute.jsx";
+import GamePage from "./pages/game/GamePage.jsx";
+
+const routerBase = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL.slice(0, -1)
+  : import.meta.env.BASE_URL;
 
 function App() {
   return (
-    <BrowserRouter basename="/SharpRunner">
+    <BrowserRouter basename={routerBase}>
       {/* <Header /> */}
       <Routes>
         <Route path="/" element={<LandingPage />} />

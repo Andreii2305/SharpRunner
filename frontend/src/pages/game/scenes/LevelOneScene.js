@@ -17,6 +17,7 @@ const PORTAL_TARGET_OFFSET_X = 8;
 const PORTAL_REACH_DISTANCE_X = 46;
 const PORTAL_REACH_DISTANCE_Y = 40;
 const TELEPORT_DURATION_MS = 540;
+const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 
 const ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -32,32 +33,26 @@ export default class LevelOneScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image(
-      "level1_bg",
-      "/SharpRunner/game/assets/backgrounds/level1_bg.png"
-    );
+    this.load.image("level1_bg", `${ASSET_BASE}/backgrounds/level1_bg.png`);
 
     this.load.image(
       "greenzone_tiles",
-      "/SharpRunner/game/assets/tiles/greenzone_tileset.png"
+      `${ASSET_BASE}/tiles/greenzone_tileset.png`
     );
 
-    this.load.image("decor_tiles", "/SharpRunner/game/assets/tiles/Objects.png");
+    this.load.image("decor_tiles", `${ASSET_BASE}/tiles/Objects.png`);
 
-    this.load.tilemapTiledJSON(
-      "level1",
-      "/SharpRunner/game/assets/maps/level1.tmj"
-    );
+    this.load.tilemapTiledJSON("level1", `${ASSET_BASE}/maps/level1.tmj`);
 
     this.load.spritesheet(
       "player_sheet_blue",
-      "/SharpRunner/game/assets/characters/players/char_blue.png",
+      `${ASSET_BASE}/characters/players/char_blue.png`,
       { frameWidth: 56, frameHeight: 56 }
     );
 
     this.load.spritesheet(
       "portal_sheet",
-      "/SharpRunner/game/assets/tiles/Dimensional_Portal.png",
+      `${ASSET_BASE}/tiles/Dimensional_Portal.png`,
       { frameWidth: PORTAL_FRAME_WIDTH, frameHeight: PORTAL_FRAME_HEIGHT }
     );
   }

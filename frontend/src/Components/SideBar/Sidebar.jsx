@@ -1,21 +1,18 @@
 import styles from "./Sidebar.module.css";
 import DashboardOutlined from "@mui/icons-material/DashboardOutlined";
+import DashboardFilled from "@mui/icons-material/Dashboard";
 import LibraryBooksOutlinedIcon from "@mui/icons-material/LibraryBooksOutlined";
+import LibraryBooksFilled from "@mui/icons-material/LibraryBooks";
 import LeaderboardOutlinedIcon from "@mui/icons-material/LeaderboardOutlined";
+import LeaderboardFilled from "@mui/icons-material/Leaderboard";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
+import MapOutFilled from "@mui/icons-material/Map";
 import Logout from "@mui/icons-material/LogoutOutlined";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import avatar from "../../assets/avatar.png";
-import { clearToken } from "../../utils/auth";
+import Logo from "../../assets/SharpRunner.png";
 
 function Sidebar() {
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    clearToken();
-    navigate("/login", { replace: true });
-  };
-
   return (
     <aside className={styles.sidebar}>
       <ul>
@@ -72,12 +69,12 @@ function Sidebar() {
           </Link>
         </li>
         <li>
-          <button type="button" className={styles.linkButton} onClick={handleLogout}>
+          <Link className={styles.link}>
             <span className={styles.icon}>
               <Logout />
             </span>
             <span className={styles.label}>Logout</span>
-          </button>
+          </Link>
         </li>
       </ul>
     </aside>

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import styles from "./login.module.css";
 import { FaGoogle, FaFacebookF } from "react-icons/fa";
 import { Link } from "react-router-dom";
@@ -30,7 +30,7 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
               type="text"
               name="firstName"
               placeholder="Firstname"
-              value={formData.firstName}
+              value={formData.firstname}
               onChange={handleChange}
             />
           </div>
@@ -39,7 +39,7 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
               type="text"
               name="lastName"
               placeholder="Lastname"
-              value={formData.lastName}
+              value={formData.lastname}
               onChange={handleChange}
             />
           </div>

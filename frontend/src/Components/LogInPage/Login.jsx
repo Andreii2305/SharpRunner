@@ -1,21 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
 import LoginComp from "../LoginAndSignUp/LoginComp.jsx";
-import { isAuthenticated, setToken } from "../../utils/auth";
 
 const Login = () => {
-  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     identifier: "",
     password: "",
   });
-
-  useEffect(() => {
-    if (isAuthenticated()) {
-      navigate("/dashboard", { replace: true });
-    }
-  }, [navigate]);
 
   const handleChange = (e) => {
     setFormData({
@@ -33,8 +24,8 @@ const Login = () => {
         formData
       );
 
-      setToken(res.data.token);
-      navigate("/dashboard", { replace: true });
+      localStorage.setItem("token", res.data.token);
+      alert("Login successful");
     } catch (err) {
       alert(err.response?.data?.message || "Login failed");
     }

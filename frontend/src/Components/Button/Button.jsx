@@ -1,16 +1,10 @@
 import styles from "./Button.module.css";
 
-function Button({
-  label,
-  variant = "primary",
-  onClick,
-  type = "button",
-  size = "md",
-}) {
+function Button({ label, variant = "primary", onClick, type = "button" }) {
   return (
     <button
       type={type}
-      className={`${styles.button} ${styles[variant]} ${styles[size]}`}
+      className={`${styles.button} ${styles[variant]}`}
       onClick={onClick}
     >
       {label}

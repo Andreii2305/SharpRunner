@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LessonSection from "./Components/LessonSection/LessonSection.jsx";
 import LoginPage from "./Components/LogInPage/Login.jsx";
 import SignUp from "./Components/Registration/SignUp.jsx";
-import GamePage from "./pages/game/GamePage.jsx";
 import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute.jsx";
 
 function App() {
@@ -24,14 +23,6 @@ function App() {
         <Route path="/lesson" element={<LessonSection />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUp />} />
-        <Route
-          path="/map"
-          element={
-            <ProtectedRoute>
-              <GamePage />
-            </ProtectedRoute>
-          }
-        />
       </Routes>
     </BrowserRouter>
   );

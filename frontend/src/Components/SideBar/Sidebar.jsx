@@ -53,7 +53,7 @@ function Sidebar() {
           </Link>
         </li>
         <li>
-          <Link to="/map" className={styles.link}>
+          <Link to="/Map" className={styles.link}>
             <span className={styles.icon}>
               <MapOutlinedIcon />
             </span>
@@ -72,11 +72,7 @@ function Sidebar() {
           </Link>
         </li>
         <li>
-          <button
-            type="button"
-            className={styles.linkButton}
-            onClick={handleLogout}
-          >
+          <button type="button" className={styles.linkButton} onClick={handleLogout}>
             <span className={styles.icon}>
               <Logout />
             </span>

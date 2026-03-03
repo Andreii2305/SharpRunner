@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import SignUpComp from "../LoginAndSignUp/SignUpComp.jsx";
-import { isAuthenticated, setToken } from "../../utils/auth";
+import { isAuthenticated, setToken, setUser } from "../../utils/auth";
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -43,6 +43,7 @@ const SignUp = () => {
       });
 
       setToken(res.data.token);
+      setUser(res.data.user);
       navigate("/dashboard", { replace: true });
     } catch (err) {
       alert(err.response?.data?.message || "Registration failed");

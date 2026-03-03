@@ -24,7 +24,11 @@ function Header({ pageType, userName }) {
             <a href="#howItWorks">How It Works?</a>
             <Link to="/AboutUs">About Us</Link>
           </div>
-          <Button label="Join Room" onClick={() => navigate("/login")} />
+          <Button
+            label="Join Room"
+            size="sm"
+            onClick={() => navigate("/login")}
+          />
           <a href="#">
             <img src={avatar} alt="avatar" />
           </a>

@@ -5,6 +5,7 @@ import LessonSection from "./Components/LessonSection/LessonSection.jsx";
 import LoginPage from "./Components/LogInPage/Login.jsx";
 import SignUp from "./Components/Registration/SignUp.jsx";
 import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute.jsx";
+import Game from "./pages/game/GamePage.jsx";
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         />
         <Route path="/lesson" element={<LessonSection />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/Map" element={<Game />} />
         <Route path="/signup" element={<SignUp />} />
       </Routes>
     </BrowserRouter>

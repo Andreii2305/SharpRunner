@@ -34,7 +34,7 @@ function HeroSection() {
       <h1>
         A <span className={styles.green}>Fun</span> and{" "}
         <span className={styles.green}>Interactive</span> way to{" "}
-        <span className={styles.blue}>Learn</span> Java Programming
+        <span className={styles.blue}>Learn</span> C# Programming
       </h1>
       <p>
         Gamify your coding journey through interactive lessons, code challenges,
@@ -44,14 +44,21 @@ function HeroSection() {
         <Button
           label="Open Dashboard"
           variant="outline"
+          size="lg"
           onClick={handleDashboardClick}
         />
         {loggedIn ? (
-          <Button label="Logout" variant="primary" onClick={handleLogout} />
+          <Button
+            label="Logout"
+            variant="primary"
+            size="lg"
+            onClick={handleLogout}
+          />
         ) : (
           <Button
             label="Join Room via Code"
             variant="primary"
+            size="lg"
             onClick={handleJoinRoomClick}
           />
         )}

@@ -35,6 +35,7 @@ function Dashboard() {
             <Button
               label="Continue Game"
               variant="primary"
+              size="md"
               onClick={() => alert("Continue to Game")}
             />
           </div>

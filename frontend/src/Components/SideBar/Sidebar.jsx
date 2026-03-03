@@ -6,10 +6,12 @@ import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 import Logout from "@mui/icons-material/LogoutOutlined";
 import { Link, useNavigate } from "react-router-dom";
 import avatar from "../../assets/avatar.png";
-import { clearToken } from "../../utils/auth";
+import { clearToken, getUser } from "../../utils/auth";
 
 function Sidebar() {
   const navigate = useNavigate();
+  const user = getUser();
+  const accountLabel = user?.username || "Account";
 
   const handleLogout = () => {
     clearToken();
@@ -68,7 +70,7 @@ function Sidebar() {
             <span className={styles.icon}>
               <img src={avatar} alt="account" />
             </span>
-            <span className={styles.label}>Account</span>
+            <span className={styles.label}>{accountLabel}</span>
           </Link>
         </li>
         <li>

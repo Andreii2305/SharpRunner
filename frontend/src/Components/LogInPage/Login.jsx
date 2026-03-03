@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import LoginComp from "../LoginAndSignUp/LoginComp.jsx";
-import { isAuthenticated, setToken } from "../../utils/auth";
+import { isAuthenticated, setToken, setUser } from "../../utils/auth";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -34,6 +34,7 @@ const Login = () => {
       );
 
       setToken(res.data.token);
+      setUser(res.data.user);
       navigate("/dashboard", { replace: true });
     } catch (err) {
       alert(err.response?.data?.message || "Login failed");

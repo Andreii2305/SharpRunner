@@ -1,5 +1,9 @@
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+
+export const buildApiUrl = (path) => `${API_BASE_URL}${path}`;
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 
@@ -32,6 +36,17 @@ export const setUser = (user) => {
 export const clearToken = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+};
+
+export const getAuthHeaders = () => {
+  const token = getToken();
+  if (!token) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
 };
 
 const decodeJwtPayload = (token) => {

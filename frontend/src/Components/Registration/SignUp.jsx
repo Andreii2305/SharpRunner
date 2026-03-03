@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import SignUpComp from "../LoginAndSignUp/SignUpComp.jsx";
-import { isAuthenticated, setToken, setUser } from "../../utils/auth";
+import {
+  buildApiUrl,
+  isAuthenticated,
+  setToken,
+  setUser,
+} from "../../utils/auth";
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -34,7 +39,7 @@ const SignUp = () => {
     }
 
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/register", {
+      const res = await axios.post(buildApiUrl("/api/auth/register"), {
         firstName: formData.firstName,
         lastName: formData.lastName,
         username: formData.username,

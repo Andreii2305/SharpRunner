@@ -1,0 +1,106 @@
+const router = require("express").Router();
+const UserProgress = require("../models/UserProgress");
+const authMiddleware = require("../middleware/authMiddleware");
+const {
+  ensureProgressRowsForUser,
+  buildProgressSummary,
+  DEFAULT_LEVEL_PROGRESS,
+} = require("../services/progressService");
+
+const LEVEL_KEYS = new Set(DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey));
+
+const normalizeLevelKey = (value) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const parseProgressValue = (value) => {
+  if (value === undefined) {
+    return { hasValue: false, value: null };
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return { hasValue: true, error: "progressPercent must be a number" };
+  }
+
+  if (parsed < 0 || parsed > 100) {
+    return {
+      hasValue: true,
+      error: "progressPercent must be between 0 and 100",
+    };
+  }
+
+  return {
+    hasValue: true,
+    value: Math.round(parsed),
+  };
+};
+
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const rows = await ensureProgressRowsForUser(req.userId);
+    return res.json(buildProgressSummary(rows));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/level/:levelKey", authMiddleware, async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    const progressInput = parseProgressValue(body.progressPercent);
+    if (progressInput.error) {
+      return res.status(400).json({ message: progressInput.error });
+    }
+
+    if (
+      body.isCompleted !== undefined &&
+      typeof body.isCompleted !== "boolean"
+    ) {
+      return res.status(400).json({ message: "isCompleted must be a boolean" });
+    }
+
+    await ensureProgressRowsForUser(req.userId);
+
+    const levelRow = await UserProgress.findOne({
+      where: {
+        userId: req.userId,
+        levelKey,
+      },
+    });
+
+    if (!levelRow) {
+      return res.status(404).json({ message: "Progress row not found" });
+    }
+
+    const newProgress = progressInput.hasValue
+      ? progressInput.value
+      : levelRow.progressPercent;
+    const completedFromBody = body.isCompleted;
+    const isCompleted =
+      typeof completedFromBody === "boolean"
+        ? completedFromBody || newProgress === 100
+        : levelRow.isCompleted || newProgress === 100;
+
+    levelRow.progressPercent = isCompleted ? 100 : newProgress;
+    levelRow.isCompleted = isCompleted;
+    levelRow.completedAt = isCompleted
+      ? levelRow.completedAt ?? new Date()
+      : null;
+
+    await levelRow.save();
+
+    const rows = await ensureProgressRowsForUser(req.userId);
+    return res.json(buildProgressSummary(rows));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+module.exports = router;

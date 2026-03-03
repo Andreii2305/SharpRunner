@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
+import axios from "axios";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
 import { useNavigate } from "react-router-dom";
@@ -9,10 +10,12 @@ import {
   LEVEL_ONE_CODE_EVALUATED,
   LEVEL_ONE_OUTCOME,
 } from "./gameEvents";
+import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const NEXT_LEVEL_ROUTE = "/lesson";
 const NEXT_LEVEL_DELAY_MS = 1200;
+const LEVEL_ONE_PROGRESS_KEY = "variables-and-data-types-level-1";
 
 const LEVEL_ONE_GOAL_DECLARATIONS = [
   {
@@ -122,6 +125,23 @@ const LevelOne = () => {
     message: "Declare at least one variable, then click Run.",
   });
 
+  const markLevelOneAsCompleted = useCallback(async () => {
+    try {
+      await axios.put(
+        buildApiUrl(`/api/progress/level/${LEVEL_ONE_PROGRESS_KEY}`),
+        {
+          progressPercent: 100,
+          isCompleted: true,
+        },
+        {
+          headers: getAuthHeaders(),
+        },
+      );
+    } catch (error) {
+      console.error("Failed to save progress for level 1", error);
+    }
+  }, []);
+
   useEffect(() => {
     const handleOutcome = ({ status, message, shouldProceed }) => {
       if (status === "success") {
@@ -132,6 +152,8 @@ const LevelOne = () => {
         });
 
         if (shouldProceed) {
+          markLevelOneAsCompleted();
+
           if (nextLevelTimerRef.current) {
             window.clearTimeout(nextLevelTimerRef.current);
           }
@@ -162,7 +184,7 @@ const LevelOne = () => {
         nextLevelTimerRef.current = null;
       }
     };
-  }, [navigate]);
+  }, [navigate, markLevelOneAsCompleted]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {

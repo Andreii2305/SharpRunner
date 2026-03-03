@@ -2,7 +2,12 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import LoginComp from "../LoginAndSignUp/LoginComp.jsx";
-import { isAuthenticated, setToken, setUser } from "../../utils/auth";
+import {
+  buildApiUrl,
+  isAuthenticated,
+  setToken,
+  setUser,
+} from "../../utils/auth";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -29,7 +34,7 @@ const Login = () => {
 
     try {
       const res = await axios.post(
-        "http://localhost:5000/api/auth/login",
+        buildApiUrl("/api/auth/login"),
         formData
       );
 

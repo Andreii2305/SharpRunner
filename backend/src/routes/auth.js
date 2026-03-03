@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Op, col, fn, where } = require("sequelize");
 const User = require("../models/User");
+const { ensureProgressRowsForUser } = require("../services/progressService");
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -50,6 +51,7 @@ router.post("/login", async (req, res) => {
     }
 
     const token = createAuthToken(user.id);
+    await ensureProgressRowsForUser(user.id);
 
     res.json({
       token,
@@ -114,6 +116,7 @@ router.post("/register", async (req, res) => {
       email,
       password: hashedPassword
     });
+    await ensureProgressRowsForUser(user.id);
 
     const token = createAuthToken(user.id);
 

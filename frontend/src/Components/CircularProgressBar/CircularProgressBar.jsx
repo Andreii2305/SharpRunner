@@ -1,10 +1,18 @@
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
-import React, { useState, useEffect, use } from "react";
+import React, { useState, useEffect } from "react";
 
-function CircularProgressBar({ percentage }) {
+function CircularProgressBar({
+  percentage,
+  strokeWidth = 10,
+  showText = true,
+  pathColor = "#8DA4B8",
+  trailColor = "#D9D9D9",
+  textColor = "#26547C",
+  className = "",
+}) {
   const [progress, setProgress] = useState(0);
-  const target = percentage;
+  const target = Math.max(0, Math.min(100, Number(percentage) || 0));
 
   useEffect(() => {
     let current = 0;
@@ -20,15 +28,15 @@ function CircularProgressBar({ percentage }) {
     return () => clearInterval(timer);
   }, [target]);
   return (
-    <div>
+    <div className={className}>
       <CircularProgressbar
         value={progress}
-        text={`${progress}%`}
-        strokeWidth={10}
+        text={showText ? `${progress}%` : ""}
+        strokeWidth={strokeWidth}
         styles={buildStyles({
-          textColor: "#26547C",
-          pathColor: "#8DA4B8",
-          trailColor: "#D9D9D9",
+          textColor,
+          pathColor,
+          trailColor,
           pathTransitionDuration: 0.15,
         })}
       />

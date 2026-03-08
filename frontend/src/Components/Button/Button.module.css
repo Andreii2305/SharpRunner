@@ -64,6 +64,11 @@
     box-shadow: 0 0 0 4px rgba(38,84,124,0.18);
 }
 
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 
 @media (max-width: 768px) { /* Tablet and smaller */
   .sm {

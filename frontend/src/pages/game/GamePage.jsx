@@ -13,7 +13,7 @@ import {
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
-const NEXT_LEVEL_ROUTE = "/lesson";
+const NEXT_LEVEL_ROUTE = "/Map";
 const NEXT_LEVEL_DELAY_MS = 1200;
 const LEVEL_ONE_PROGRESS_KEY = "variables-and-data-types-level-1";
 

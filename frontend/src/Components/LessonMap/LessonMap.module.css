@@ -1,0 +1,446 @@
+.lessonMapRoot {
+  width: 100%;
+  height: 100%;
+}
+
+.mobileNotice {
+  display: none;
+  width: 100%;
+  min-height: 360px;
+  border: 1px solid #d9dee3;
+  border-radius: 16px;
+  background: #f5f7f8;
+  color: #31444d;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 24px;
+}
+
+.mobileNotice h3 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.mobileNotice p {
+  margin: 10px 0 0;
+  max-width: 340px;
+  font-size: 0.95rem;
+}
+
+.mapLayout {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 18px;
+}
+
+.leftPanel {
+  background: #ffffff;
+  border: 1px solid #d7e0e5;
+  border-radius: 16px;
+  padding: 12px;
+  box-shadow: 0 8px 18px rgba(9, 24, 31, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.previewFrame {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #97b4ba;
+  background: #cbddde;
+  min-height: 340px;
+  max-height: 460px;
+  box-shadow: 0 8px 16px rgba(9, 24, 31, 0.08);
+}
+
+.previewImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+}
+
+.leftMiddle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.progressSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressSectionLabel {
+  font-size: 1.1rem;
+  color: #2a3942;
+  font-weight: 600;
+}
+
+.progressRing {
+  width: 132px;
+  height: 132px;
+}
+
+.progressRing :global(.CircularProgressbar-text) {
+  font-weight: 600;
+  font-size: 18px;
+}
+
+.lessonDetails {
+  border-top: 1px solid #dce5ea;
+  padding-top: 10px;
+}
+
+.lessonDetails h4 {
+  margin: 0;
+  font-size: 0.98rem;
+  color: #2a3d46;
+}
+
+.lessonDetails p {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: #667981;
+  line-height: 1.35;
+}
+
+.rightPanel {
+  background: #f5f8fa;
+  border: 1px solid #d6dfe4;
+  border-radius: 18px;
+  box-shadow: 0 10px 22px rgba(9, 24, 31, 0.07);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mapHeader {
+  border-bottom: 1px solid #d4dde2;
+  background: #fbfcfd;
+  padding: 18px 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.headerText h2 {
+  margin: 0;
+  color: #172024;
+  font-size: 1.2rem;
+  line-height: 1.1;
+  font-weight: 600;
+}
+
+.headerText p {
+  margin: 8px 0 0;
+  color: #6f7d86;
+  font-size: 0.90rem;
+  font-weight: 500;
+}
+
+.headerText span {
+  display: block;
+  margin-top: 6px;
+  color: #83919a;
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+}
+
+.headerActions {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.mapCanvas {
+  position: relative;
+  flex: 1;
+  min-height: 600px;
+  background:
+    radial-gradient(circle at 12% 5%, rgba(86, 139, 145, 0.06) 0, rgba(86, 139, 145, 0) 40%),
+    radial-gradient(circle at 95% 95%, rgba(84, 103, 136, 0.07) 0, rgba(84, 103, 136, 0) 42%),
+    #f4f8fa;
+}
+
+.stageBand {
+  position: absolute;
+  left: 2.5%;
+  width: 95%;
+  border-radius: 14px;
+  pointer-events: none;
+}
+
+.stageBandOne {
+  top: 8%;
+  height: 33%;
+  background: rgba(126, 186, 190, 0.1);
+}
+
+.stageBandTwo {
+  top: 56%;
+  height: 34%;
+  background: rgba(137, 168, 202, 0.08);
+}
+
+.stageDivider {
+  position: absolute;
+  left: 5%;
+  top: 44%;
+  width: 90%;
+  border-top: 1px dashed #becad2;
+  pointer-events: none;
+}
+
+.connectorLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.connectorPath {
+  fill: none;
+  stroke-width: 0.2;
+  stroke-dasharray: 1.1 1.15;
+  stroke-linecap: round;
+}
+
+.connectorCompleted {
+  stroke: #4ea8a2;
+}
+
+.connectorActive {
+  stroke: #7aa4b3;
+}
+
+.connectorUpcoming {
+  stroke: #9fb1bb;
+}
+
+.stageLabel {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.stageLabel h3 {
+  margin: 0;
+  color: #18262d;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.stageLabel p {
+  margin: 4px 0 0;
+  color: #60717b;
+  font-size: 0.86rem;
+  font-weight: 500;
+}
+
+.nodeSlot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.nodeSlot:disabled {
+  cursor: not-allowed;
+}
+
+.node {
+  width: 70px;
+  height: 62px;
+  border: 1px solid #8fb4b7;
+  box-shadow: 0 8px 14px rgba(21, 45, 58, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.45rem;
+  font-weight: 700;
+  transform: rotate(var(--node-rotation, 0deg));
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nodeSlot:hover .node:not(.nodeLocked) {
+  transform: rotate(var(--node-rotation, 0deg)) scale(1.03);
+}
+
+.nodeShapeA {
+  border-radius: 42% 58% 54% 46% / 44% 41% 59% 56%;
+}
+
+.nodeShapeB {
+  border-radius: 58% 42% 48% 52% / 53% 39% 61% 47%;
+}
+
+.nodeShapeC {
+  border-radius: 50% 50% 41% 59% / 39% 59% 41% 61%;
+}
+
+.nodeShapeD {
+  border-radius: 38% 62% 57% 43% / 48% 36% 64% 52%;
+}
+
+.nodeShapeE {
+  border-radius: 56% 44% 35% 65% / 43% 62% 38% 57%;
+}
+
+.nodeCompleted {
+  background: #3ca7a0;
+  border-color: #319088;
+  color: #f2fffe;
+}
+
+.nodeCurrent {
+  background: #4ecdc4;
+  border: 2px solid #3cb4ab;
+  color: #0f3f3c;
+  transform: rotate(var(--node-rotation, 0deg)) scale(1.07);
+  box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.24), 0 10px 18px rgba(20, 62, 74, 0.16);
+  animation: activePulse 1.8s ease-in-out infinite;
+}
+
+.nodeUnlocked {
+  background: #4ecdc4;
+  border-color: #44aea7;
+  color: #144846;
+  box-shadow: 0 0 0 2px rgba(78, 205, 196, 0.14), 0 8px 16px rgba(20, 62, 74, 0.13);
+}
+
+.nodeLocked {
+  background: #e6ecef;
+  border-color: #c6d2d8;
+  color: #69808c;
+  box-shadow: 0 6px 10px rgba(0, 0, 0, 0.07);
+}
+
+.nodeLocked :global(svg) {
+  opacity: 0.6;
+}
+
+.nodeTitle {
+  color: #46565e;
+  font-size: 0.84rem;
+  font-style: italic;
+  width: 136px;
+  text-align: center;
+  line-height: 1.2;
+}
+
+@keyframes activePulse {
+  0% {
+    box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.22), 0 10px 18px rgba(20, 62, 74, 0.14);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(78, 205, 196, 0.12), 0 10px 18px rgba(20, 62, 74, 0.16);
+  }
+
+  100% {
+    box-shadow: 0 0 0 4px rgba(78, 205, 196, 0.22), 0 10px 18px rgba(20, 62, 74, 0.14);
+  }
+}
+
+@media (max-width: 1200px) {
+  .mapLayout {
+    grid-template-columns: 230px minmax(0, 1fr);
+  }
+
+  .previewFrame {
+    min-height: 300px;
+    max-height: 420px;
+  }
+
+  .stageLabel h3 {
+    font-size: 1.7rem;
+  }
+
+  .node {
+    width: 64px;
+    height: 56px;
+    font-size: 1.3rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .mapLayout {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .previewFrame {
+    min-height: 260px;
+    max-height: 360px;
+  }
+
+  .mapHeader {
+    padding: 14px;
+  }
+
+  .headerText h2 {
+    font-size: 1.75rem;
+  }
+
+  .headerText p {
+    font-size: 0.94rem;
+  }
+
+  .headerText span {
+    font-size: 0.81rem;
+  }
+
+  .progressRing {
+    width: 116px;
+    height: 116px;
+  }
+
+  .progressSectionLabel {
+    font-size: 1rem;
+  }
+
+  .lessonDetails p {
+    font-size: 0.76rem;
+  }
+
+  .headerActions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .mapCanvas {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 767px) {
+  .mapLayout {
+    display: none;
+  }
+
+  .mobileNotice {
+    display: flex;
+  }
+}

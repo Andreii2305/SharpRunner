@@ -6,6 +6,7 @@ function Button({
   size = "md",
   onClick,
   type = "button",
+  disabled = false,
 }) {
   const variantClass = styles[variant] ?? styles.primary;
   const sizeClass = styles[size] ?? styles.md;
@@ -15,6 +16,7 @@ function Button({
       type={type}
       className={`${styles.button} ${variantClass} ${sizeClass}`}
       onClick={onClick}
+      disabled={disabled}
     >
       {label}
     </button>

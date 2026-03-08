@@ -1,16 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import Phaser from "phaser";
-import LevelOneScene from "./scenes/LevelOneScene";
 
-let game;
+export default function Game({ scene, sceneKey, parentId = "phaser-canvas-root" }) {
+  const gameRef = useRef(null);
 
-export default function Game() {
   useEffect(() => {
-    if (game) return;
+    if (!scene) {
+      return undefined;
+    }
 
-    game = new Phaser.Game({
+    const game = new Phaser.Game({
       type: Phaser.AUTO,
-      parent: "phaser-canvas-root",
+      parent: parentId,
       pixelArt: true,
       physics: {
         default: "arcade",
@@ -25,15 +26,18 @@ export default function Game() {
         autoCenter: Phaser.Scale.NO_CENTER,
       },
 
-      scene: [LevelOneScene],
+      scene: [scene],
       // backgroundColor: "#e9e7e7",
     });
+    gameRef.current = game;
 
     return () => {
-      game.destroy(true);
-      game = null;
+      if (gameRef.current) {
+        gameRef.current.destroy(true);
+        gameRef.current = null;
+      }
     };
-  }, []);
+  }, [scene, sceneKey, parentId]);
 
   return null;
 }

@@ -1,8 +1,8 @@
 import Phaser from "phaser";
 import {
   gameEvents,
-  LEVEL_ONE_CODE_EVALUATED,
-  LEVEL_ONE_OUTCOME,
+  GAME_LEVEL_CODE_EVALUATED,
+  GAME_LEVEL_OUTCOME,
 } from "../gameEvents";
 
 const PLAYER_SCALE = 2;
@@ -18,6 +18,7 @@ const PORTAL_REACH_DISTANCE_X = 46;
 const PORTAL_REACH_DISTANCE_Y = 40;
 const TELEPORT_DURATION_MS = 540;
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
+const LEVEL_NUMBER = 1;
 
 const ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -150,7 +151,7 @@ export default class LevelOneScene extends Phaser.Scene {
       this
     );
 
-    gameEvents.on(LEVEL_ONE_CODE_EVALUATED, this.onCodeEvaluated, this);
+    gameEvents.on(GAME_LEVEL_CODE_EVALUATED, this.onCodeEvaluated, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupScene, this);
 
     this.player.play("player-idle");
@@ -275,7 +276,8 @@ export default class LevelOneScene extends Phaser.Scene {
     this.player.play(key, true);
   }
 
-  onCodeEvaluated({ isCorrect }) {
+  onCodeEvaluated({ levelNumber, isCorrect }) {
+    if (levelNumber !== LEVEL_NUMBER) return;
     if (typeof isCorrect !== "boolean") return;
 
     this.resetAttemptState();
@@ -342,7 +344,8 @@ export default class LevelOneScene extends Phaser.Scene {
   finishSuccessSequence() {
     this.sequenceMode = "idle";
 
-    gameEvents.emit(LEVEL_ONE_OUTCOME, {
+    gameEvents.emit(GAME_LEVEL_OUTCOME, {
+      levelNumber: LEVEL_NUMBER,
       status: "success",
       message: "Portal reached. Level 1 cleared. Proceeding to next level...",
       shouldProceed: true,
@@ -377,7 +380,8 @@ export default class LevelOneScene extends Phaser.Scene {
       this.player.play("player-downed");
 
       this.failureTimer = this.time.delayedCall(450, () => {
-        gameEvents.emit(LEVEL_ONE_OUTCOME, {
+        gameEvents.emit(GAME_LEVEL_OUTCOME, {
+          levelNumber: LEVEL_NUMBER,
           status: "failure",
           message: "You failed. Declare a variable to make the hero move.",
         });
@@ -386,7 +390,7 @@ export default class LevelOneScene extends Phaser.Scene {
   }
 
   cleanupScene() {
-    gameEvents.off(LEVEL_ONE_CODE_EVALUATED, this.onCodeEvaluated, this);
+    gameEvents.off(GAME_LEVEL_CODE_EVALUATED, this.onCodeEvaluated, this);
 
     if (this.failureTimer) {
       this.failureTimer.remove(false);

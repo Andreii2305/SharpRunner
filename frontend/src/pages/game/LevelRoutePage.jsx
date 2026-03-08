@@ -2,18 +2,19 @@ import { useNavigate, useParams } from "react-router-dom";
 import Button from "../../Components/Button/Button.jsx";
 import GamePage from "./GamePage.jsx";
 import styles from "./LevelRoutePage.module.css";
+import {
+  getAvailableLevelNumbers,
+  isLevelAvailable,
+} from "./levels/levelConfigs";
 
-const AVAILABLE_LEVELS = new Set([1]);
+const AVAILABLE_LEVELS = getAvailableLevelNumbers();
 
 function LevelRoutePage() {
   const navigate = useNavigate();
   const { levelNumber } = useParams();
   const parsedLevelNumber = Number(levelNumber);
 
-  if (
-    Number.isInteger(parsedLevelNumber) &&
-    AVAILABLE_LEVELS.has(parsedLevelNumber)
-  ) {
+  if (Number.isInteger(parsedLevelNumber) && isLevelAvailable(parsedLevelNumber)) {
     return <GamePage />;
   }
 
@@ -26,8 +27,8 @@ function LevelRoutePage() {
             : "Unknown level"}
         </h1>
         <p>
-          Only Level 1 is implemented right now. You can go back to the lesson
-          map and continue from there.
+          Available level routes right now: {AVAILABLE_LEVELS.join(", ")}. Go
+          back to the lesson map and continue from there.
         </p>
 
         <div className={styles.placeholderActions}>

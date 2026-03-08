@@ -1,134 +1,72 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import axios from "axios";
+import { useNavigate, useParams } from "react-router-dom";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
-import { useNavigate } from "react-router-dom";
 import Game from "./Game.jsx";
 import {
   gameEvents,
-  LEVEL_ONE_CODE_EVALUATED,
-  LEVEL_ONE_OUTCOME,
+  GAME_LEVEL_CODE_EVALUATED,
+  GAME_LEVEL_OUTCOME,
 } from "./gameEvents";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import { getLevelConfig } from "./levels/levelConfigs";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
-const NEXT_LEVEL_ROUTE = "/Map";
-const NEXT_LEVEL_DELAY_MS = 1200;
-const LEVEL_ONE_PROGRESS_KEY = "variables-and-data-types-level-1";
 
-const LEVEL_ONE_GOAL_DECLARATIONS = [
-  {
-    name: "heroName",
-    allowedTypes: new Set(["string"]),
-    requiredValue: '"Kai"',
-  },
-  {
-    name: "action",
-    allowedTypes: new Set(["string"]),
-    requiredValue: '"walk"',
-  },
-];
+const getIdleResult = (levelConfig) => ({
+  type: "idle",
+  message:
+    levelConfig?.idleResultMessage ?? "Declare at least one variable, then click Run.",
+});
 
-const LEVEL_ONE_GOAL_BY_NAME = new Map(
-  LEVEL_ONE_GOAL_DECLARATIONS.map((goal) => [goal.name, goal]),
-);
+const hasIntroDialogue = (levelConfig) =>
+  Boolean(levelConfig?.dialogue?.intro && levelConfig.dialogue.intro.length > 0);
 
-const DECLARATION_REGEX =
-  /\b(int|double|float|decimal|bool|string|String|char|long|short|byte|var)\s+([A-Za-z_]\w*)\s*(?:=\s*([^;]+))?\s*;/g;
-
-const COMMENT_REGEX = /\/\/.*$|\/\*[\s\S]*?\*\//gm;
-
-const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
-
-const validateLevelOneCode = (sourceCode) => {
-  const codeWithoutComments = stripComments(sourceCode);
-  const declarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
-  const matchedGoals = new Set();
-
-  for (const declaration of declarations) {
-    const [, type, variableName, assignmentValue] = declaration;
-    const goal = LEVEL_ONE_GOAL_BY_NAME.get(variableName);
-
-    if (!goal) {
-      return {
-        isCorrect: false,
-        message: `Unexpected variable "${variableName}". Only heroName and action are allowed in Level 1.`,
-      };
-    }
-
-    if (matchedGoals.has(variableName)) {
-      return {
-        isCorrect: false,
-        message: `Variable "${variableName}" is declared more than once.`,
-      };
-    }
-
-    if (!goal.allowedTypes.has(type)) {
-      return {
-        isCorrect: false,
-        message: `"${variableName}" must use type string.`,
-      };
-    }
-
-    if (!assignmentValue || assignmentValue.trim() === "") {
-      return {
-        isCorrect: false,
-        message: `"${variableName}" must be initialized with ${goal.requiredValue}.`,
-      };
-    }
-
-    if (assignmentValue.trim() !== goal.requiredValue) {
-      return {
-        isCorrect: false,
-        message: `"${variableName}" must be exactly ${goal.requiredValue}.`,
-      };
-    }
-
-    matchedGoals.add(variableName);
-  }
-
-  for (const goal of LEVEL_ONE_GOAL_DECLARATIONS) {
-    if (!matchedGoals.has(goal.name)) {
-      return {
-        isCorrect: false,
-        message: `Missing goal declaration: string ${goal.name} = ${goal.requiredValue};`,
-      };
-    }
-  }
-
-  if (declarations.length !== LEVEL_ONE_GOAL_DECLARATIONS.length) {
-    return {
-      isCorrect: false,
-      message: "Only the exact goal declarations are accepted for this level.",
-    };
-  }
-
-  return {
-    isCorrect: true,
-    message: "Exact goal declarations found. Character is moving to the gate.",
-  };
-};
-
-const LevelOne = () => {
+function GamePage() {
   const navigate = useNavigate();
-  const nextLevelTimerRef = useRef(null);
-  const [showStoryIntro, setShowStoryIntro] = useState(true);
-  const [dialogueStep, setDialogueStep] = useState(0);
+  const { levelNumber } = useParams();
+  const parsedLevelNumber = Number(levelNumber);
 
-  const [code, setCode] = useState(
-    "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare Variable Here\n\n    }\n  }\n}",
+  const levelConfig = useMemo(
+    () => getLevelConfig(parsedLevelNumber),
+    [parsedLevelNumber],
   );
-  const [typedCharacters, setTypedCharacters] = useState(0);
-  const [result, setResult] = useState({
-    type: "idle",
-    message: "Declare at least one variable, then click Run.",
-  });
 
-  const markLevelOneAsCompleted = useCallback(async () => {
+  const nextLevelTimerRef = useRef(null);
+  const [showStoryIntro, setShowStoryIntro] = useState(hasIntroDialogue(levelConfig));
+  const [dialogueStep, setDialogueStep] = useState(0);
+  const [typedCharacters, setTypedCharacters] = useState(0);
+  const [code, setCode] = useState(levelConfig?.defaultCode ?? "");
+  const [result, setResult] = useState(getIdleResult(levelConfig));
+
+  const clearNextLevelTimer = useCallback(() => {
+    if (!nextLevelTimerRef.current) {
+      return;
+    }
+
+    window.clearTimeout(nextLevelTimerRef.current);
+    nextLevelTimerRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    clearNextLevelTimer();
+    setCode(levelConfig?.defaultCode ?? "");
+    setResult(getIdleResult(levelConfig));
+    setDialogueStep(0);
+    setTypedCharacters(0);
+    setShowStoryIntro(hasIntroDialogue(levelConfig));
+  }, [clearNextLevelTimer, levelConfig]);
+
+  const markLevelAsCompleted = useCallback(async () => {
+    if (!levelConfig?.progressKey) {
+      return;
+    }
+
     try {
       await axios.put(
-        buildApiUrl(`/api/progress/level/${LEVEL_ONE_PROGRESS_KEY}`),
+        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}`),
         {
           progressPercent: 100,
           isCompleted: true,
@@ -138,29 +76,33 @@ const LevelOne = () => {
         },
       );
     } catch (error) {
-      console.error("Failed to save progress for level 1", error);
+      console.error(`Failed to save progress for level ${levelConfig.levelNumber}`, error);
     }
-  }, []);
+  }, [levelConfig]);
 
   useEffect(() => {
-    const handleOutcome = ({ status, message, shouldProceed }) => {
+    if (!levelConfig) {
+      return undefined;
+    }
+
+    const handleOutcome = ({ levelNumber: outcomeLevelNumber, status, message, shouldProceed }) => {
+      if (outcomeLevelNumber !== levelConfig.levelNumber) {
+        return;
+      }
+
       if (status === "success") {
         setResult({
           type: "success",
-          message:
-            message ?? "Great job. Gate opened and level objective completed.",
+          message: message ?? levelConfig.successResultMessage,
         });
 
         if (shouldProceed) {
-          markLevelOneAsCompleted();
-
-          if (nextLevelTimerRef.current) {
-            window.clearTimeout(nextLevelTimerRef.current);
-          }
+          markLevelAsCompleted();
+          clearNextLevelTimer();
 
           nextLevelTimerRef.current = window.setTimeout(() => {
-            navigate(NEXT_LEVEL_ROUTE);
-          }, NEXT_LEVEL_DELAY_MS);
+            navigate(levelConfig.nextRoute ?? "/Map");
+          }, levelConfig.nextDelayMs ?? 1200);
         }
 
         return;
@@ -168,23 +110,17 @@ const LevelOne = () => {
 
       setResult({
         type: "error",
-        message:
-          message ??
-          "You failed. Add a valid C# variable declaration and retry.",
+        message: message ?? levelConfig.errorResultMessage,
       });
     };
 
-    gameEvents.on(LEVEL_ONE_OUTCOME, handleOutcome);
+    gameEvents.on(GAME_LEVEL_OUTCOME, handleOutcome);
 
     return () => {
-      gameEvents.off(LEVEL_ONE_OUTCOME, handleOutcome);
-
-      if (nextLevelTimerRef.current) {
-        window.clearTimeout(nextLevelTimerRef.current);
-        nextLevelTimerRef.current = null;
-      }
+      gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
+      clearNextLevelTimer();
     };
-  }, [navigate, markLevelOneAsCompleted]);
+  }, [clearNextLevelTimer, levelConfig, markLevelAsCompleted, navigate]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -198,68 +134,57 @@ const LevelOne = () => {
     return styles.resultBanner;
   }, [result.type]);
 
+  const runLevelCheck = () => {
+    if (!levelConfig?.validateCode) {
+      setResult({
+        type: "error",
+        message: "Level validator is not configured.",
+      });
+      return;
+    }
+
+    clearNextLevelTimer();
+
+    const sourceCode = code ?? "";
+    const validation = levelConfig.validateCode(sourceCode);
+
+    gameEvents.emit(GAME_LEVEL_CODE_EVALUATED, {
+      levelNumber: levelConfig.levelNumber,
+      isCorrect: validation.isCorrect,
+      sourceCode,
+    });
+
+    setResult({
+      type: validation.isCorrect ? "success" : "error",
+      message: validation.message,
+    });
+  };
+
   const exitButton = () => {
     navigate("/dashboard");
   };
 
-  const runLevelCheck = () => {
-    if (nextLevelTimerRef.current) {
-      window.clearTimeout(nextLevelTimerRef.current);
-      nextLevelTimerRef.current = null;
+  const storyIntro = levelConfig?.dialogue?.intro ?? [];
+  const activeDialogue = storyIntro[dialogueStep];
+  const isLastDialogue = storyIntro.length > 0
+    ? dialogueStep === storyIntro.length - 1
+    : true;
+
+  const totalStepCharacters = useMemo(() => {
+    if (!activeDialogue) {
+      return 0;
     }
 
-    const sourceCode = code ?? "";
-    const validation = validateLevelOneCode(sourceCode);
-    const { isCorrect, message } = validation;
+    return activeDialogue.lines.reduce((sum, line) => sum + line.text.length, 0);
+  }, [activeDialogue]);
 
-    gameEvents.emit(LEVEL_ONE_CODE_EVALUATED, { isCorrect });
-
-    setResult({
-      type: isCorrect ? "success" : "error",
-      message,
-    });
-  };
-
-  const uiAssetBase = `${import.meta.env.BASE_URL}game/assets/ui/dialogue`;
-
-  const storyIntro = [
-    {
-      speaker: "King Kai",
-      lines: [
-        { text: "I am the King kai.", tone: "normal" },
-        { text: "No one is cooler than me.", tone: "accent" },
-      ],
-    },
-    {
-      speaker: "King Kai",
-      lines: [
-        { text: "This gate obeys only exact declarations.", tone: "normal" },
-        {
-          text: 'Use: string heroName = "Kai"; and string action = "walk";',
-          tone: "goal",
-        },
-      ],
-    },
-    {
-      speaker: "Green King",
-      lines: [
-        {
-          text: "Write the code correctly and begin your journey.",
-          tone: "normal",
-        },
-      ],
-    },
-  ];
-
-  const activeDialogue = storyIntro[dialogueStep];
-  const isLastDialogue = dialogueStep === storyIntro.length - 1;
-  const totalStepCharacters = activeDialogue.lines.reduce(
-    (sum, line) => sum + line.text.length,
-    0,
-  );
-  const isTyping = typedCharacters < totalStepCharacters;
+  const isTyping = Boolean(activeDialogue) && typedCharacters < totalStepCharacters;
 
   const displayedLines = useMemo(() => {
+    if (!activeDialogue) {
+      return [];
+    }
+
     let remaining = typedCharacters;
 
     return activeDialogue.lines.map((line) => {
@@ -275,24 +200,32 @@ const LevelOne = () => {
 
   useEffect(() => {
     setTypedCharacters(0);
-  }, [dialogueStep]);
+  }, [dialogueStep, levelConfig?.levelNumber]);
 
   useEffect(() => {
-    if (!showStoryIntro) return undefined;
-    if (typedCharacters >= totalStepCharacters) return undefined;
+    if (!showStoryIntro || !activeDialogue) {
+      return undefined;
+    }
+
+    if (typedCharacters >= totalStepCharacters) {
+      return undefined;
+    }
 
     const timer = window.setTimeout(() => {
-      setTypedCharacters((current) =>
-        Math.min(current + 1, totalStepCharacters),
-      );
+      setTypedCharacters((current) => Math.min(current + 1, totalStepCharacters));
     }, DIALOGUE_TYPING_SPEED_MS);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [showStoryIntro, typedCharacters, totalStepCharacters]);
+  }, [showStoryIntro, activeDialogue, typedCharacters, totalStepCharacters]);
 
   const nextDialogue = () => {
+    if (!activeDialogue) {
+      setShowStoryIntro(false);
+      return;
+    }
+
     if (isTyping) {
       setTypedCharacters(totalStepCharacters);
       return;
@@ -306,27 +239,60 @@ const LevelOne = () => {
     setDialogueStep((current) => current + 1);
   };
 
+  if (!levelConfig) {
+    return (
+      <div className={styles.gameContainer}>
+        <header className={styles.header}>
+          <div className={styles.titleGroup}>
+            <h1>Unknown level</h1>
+            <span>This level is not configured yet.</span>
+          </div>
+          <Button
+            label="Back to Map"
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/Map")}
+          />
+        </header>
+      </div>
+    );
+  }
+
+  const uiAssetBase =
+    levelConfig.dialogue?.assetBase ?? `${import.meta.env.BASE_URL}game/assets/ui/dialogue`;
+  const portraitImage = levelConfig.dialogue?.portraitImage ?? "portrait_player_main.png";
+  const portraitAlt = levelConfig.dialogue?.portraitAlt ?? "Character portrait";
+  const goalTitle = levelConfig.goal?.title ?? "Goal";
+  const goalDescription =
+    levelConfig.goal?.description ?? "Complete this level's coding objective.";
+  const instructionTitle = levelConfig.instruction?.title ?? "Instruction";
+  const instructionItems = levelConfig.instruction?.items ?? [];
+  const lessonCardTitle = levelConfig.lessonCard?.title ?? "Lesson";
+  const lessonCardDescription = levelConfig.lessonCard?.description ?? "";
+  const chapterLabel =
+    levelConfig.chapterLabel ?? `Chapter ${levelConfig.levelNumber}`;
+
   return (
     <div className={styles.gameContainer}>
       <header className={styles.header}>
         <div className={styles.titleGroup}>
-          <h1>The Castle of Syntax</h1>
-          <span>Level 1 - The Awakening</span>
+          <h1>{levelConfig.title}</h1>
+          <span>{levelConfig.subtitle}</span>
         </div>
         <Button label="Exit" variant="outline" size="sm" onClick={exitButton} />
       </header>
 
       <main className={styles.mainLayout}>
-        {/* UPPER ROW (ORANGE): Phaser (1) + Editor (2) */}
         <div className={styles.upperRow}>
           <div id="phaser-canvas-root" className={styles.phaserCanvasRoot}>
-            <Game />
-            {showStoryIntro && (
+            <Game
+              scene={levelConfig.scene}
+              sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
+            />
+            {showStoryIntro && activeDialogue && (
               <div className={styles.storyOverlay}>
                 <div className={styles.storyContainer}>
-                  <div className={styles.storyChapter}>
-                    Chapter 1: The Awakening
-                  </div>
+                  <div className={styles.storyChapter}>{chapterLabel}</div>
 
                   <div className={styles.dialogueBox}>
                     <img
@@ -342,8 +308,8 @@ const LevelOne = () => {
                         className={styles.portraitFrame}
                       />
                       <img
-                        src={`${uiAssetBase}/portrait_player_main.png`}
-                        alt="Green King portrait"
+                        src={`${uiAssetBase}/${portraitImage}`}
+                        alt={portraitAlt}
                         className={styles.portraitFace}
                       />
                     </div>
@@ -384,17 +350,17 @@ const LevelOne = () => {
                     </div>
 
                     <div className={styles.dialogueButtonWrap}>
-                    <Button
-                      label={
-                        isTyping
-                          ? "Skip"
-                          : isLastDialogue
-                            ? "Start Level"
-                            : "Next"
-                      }
-                      variant="primary"
-                      size="sm"
-                      onClick={nextDialogue}
+                      <Button
+                        label={
+                          isTyping
+                            ? "Skip"
+                            : isLastDialogue
+                              ? "Start Level"
+                              : "Next"
+                        }
+                        variant="primary"
+                        size="sm"
+                        onClick={nextDialogue}
                       />
                     </div>
                   </div>
@@ -437,37 +403,26 @@ const LevelOne = () => {
           </div>
         </div>
 
-        {/* LOWER ROW (GREEN): Goals (1) + Lessons (2) */}
         <div className={styles.lowerRow}>
           <section className={styles.card}>
-            <h3>Goal</h3>
-            <p>
-              Declare exactly the two goal variables to move your character and
-              open the gate.
-            </p>
-            <h3>Instruction</h3>
+            <h3>{goalTitle}</h3>
+            <p>{goalDescription}</p>
+            <h3>{instructionTitle}</h3>
             <ul>
-              <li>
-                Use exactly: <b>string heroName = "Kai";</b>
-              </li>
-              <li>
-                Then add: <b>string action = "walk";</b>
-              </li>
-              <li>Any other variable declaration will fail this level.</li>
+              {instructionItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
             </ul>
           </section>
 
           <section className={styles.card}>
-            <h3>Declaring Variables</h3>
-            <p>
-              For Level 1, the checker is strict and goal-based. It only accepts
-              the exact declarations required by the mission.
-            </p>
+            <h3>{lessonCardTitle}</h3>
+            <p>{lessonCardDescription}</p>
           </section>
         </div>
       </main>
     </div>
   );
-};
+}
 
-export default LevelOne;
+export default GamePage;

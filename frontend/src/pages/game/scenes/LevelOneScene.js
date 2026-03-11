@@ -19,6 +19,9 @@ const PORTAL_REACH_DISTANCE_Y = 40;
 const TELEPORT_DURATION_MS = 540;
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const LEVEL_NUMBER = 1;
+const STEP_PIXEL_FALLBACK = 32;
+const TARGET_REACH_TOLERANCE_PX = 4;
+const NON_FATAL_FAILURE_DELAY_MS = 260;
 
 const ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -110,6 +113,14 @@ export default class LevelOneScene extends Phaser.Scene {
     this.spawnPoint = spawnPoint;
     this.portalPoint = portalPoint;
     this.goalX = portalPoint.x;
+    this.stepSizePx = map.tileWidth || STEP_PIXEL_FALLBACK;
+    this.portalTargetSteps = Math.max(
+      1,
+      Math.ceil(
+        (this.portalPoint.x - PORTAL_REACH_DISTANCE_X - this.spawnPoint.x) /
+          this.stepSizePx
+      )
+    );
     this.createPlayerAnimations();
     this.createPortalAnimations();
 
@@ -144,6 +155,9 @@ export default class LevelOneScene extends Phaser.Scene {
     this.isDowned = false;
     this.failureTimer = null;
     this.teleporting = false;
+    this.attemptSteps = 0;
+    this.movementTargetX = this.spawnPoint.x;
+    this.failureMessage = "You failed. Try a different step value.";
 
     this.player.on(
       Phaser.Animations.Events.ANIMATION_COMPLETE,
@@ -177,6 +191,25 @@ export default class LevelOneScene extends Phaser.Scene {
 
       if (this.hasReachedPortal()) {
         this.beginTeleportSequence();
+        return;
+      }
+
+      if (this.player.x >= this.movementTargetX - TARGET_REACH_TOLERANCE_PX) {
+        this.player.setVelocityX(0);
+        this.player.x = this.movementTargetX;
+
+        this.startFailureSequence(
+          `You walked ${this.attemptSteps} steps. Try int steps = ${this.portalTargetSteps}.`,
+          { useDeathAnimation: false }
+        );
+        return;
+      }
+
+      if (this.player.body.blocked.right) {
+        this.startFailureSequence(
+          `Path blocked before portal. Try int steps = ${this.portalTargetSteps}.`,
+          { useDeathAnimation: false }
+        );
       }
 
       return;
@@ -276,18 +309,25 @@ export default class LevelOneScene extends Phaser.Scene {
     this.player.play(key, true);
   }
 
-  onCodeEvaluated({ levelNumber, isCorrect }) {
+  onCodeEvaluated({ levelNumber, isCorrect, steps }) {
     if (levelNumber !== LEVEL_NUMBER) return;
     if (typeof isCorrect !== "boolean") return;
 
     this.resetAttemptState();
 
     if (isCorrect) {
-      this.startSuccessSequence();
+      if (!Number.isInteger(steps)) {
+        this.startFailureSequence("Could not read steps value. Use int steps = <number>;");
+        return;
+      }
+
+      this.startSuccessSequence(steps);
       return;
     }
 
-    this.startFailureSequence();
+    this.startFailureSequence(
+      "Invalid code. Use one declaration: int steps = <whole number>;"
+    );
   }
 
   resetAttemptState() {
@@ -310,11 +350,22 @@ export default class LevelOneScene extends Phaser.Scene {
     this.player.setScale(PLAYER_SCALE);
     this.player.setPosition(this.spawnPoint.x, this.spawnPoint.y);
     this.player.body.reset(this.spawnPoint.x, this.spawnPoint.y);
+    this.attemptSteps = 0;
+    this.movementTargetX = this.spawnPoint.x;
+    this.failureMessage = "You failed. Try a different step value.";
     this.playAnimation("player-idle");
   }
 
-  startSuccessSequence() {
+  startSuccessSequence(steps) {
+    const worldRightEdge = this.physics.world.bounds.right - 16;
+
     this.sequenceMode = "success";
+    this.attemptSteps = steps;
+    this.movementTargetX = Phaser.Math.Clamp(
+      this.spawnPoint.x + steps * this.stepSizePx,
+      this.spawnPoint.x,
+      worldRightEdge
+    );
     this.player.setGravityY(PLAYER_GRAVITY);
     this.playAnimation("player-run");
   }
@@ -361,7 +412,31 @@ export default class LevelOneScene extends Phaser.Scene {
     return deltaX <= PORTAL_REACH_DISTANCE_X && deltaY <= PORTAL_REACH_DISTANCE_Y;
   }
 
-  startFailureSequence() {
+  emitFailureOutcome() {
+    gameEvents.emit(GAME_LEVEL_OUTCOME, {
+      levelNumber: LEVEL_NUMBER,
+      status: "failure",
+      message: this.failureMessage,
+    });
+  }
+
+  startFailureSequence(message, { useDeathAnimation = true } = {}) {
+    this.failureMessage = message ?? this.failureMessage;
+
+    if (!useDeathAnimation) {
+      this.sequenceMode = "idle";
+      this.isDead = false;
+      this.isDowned = false;
+      this.player.setVelocity(0, 0);
+      this.player.setGravityY(PLAYER_GRAVITY);
+      this.playAnimation("player-idle");
+
+      this.failureTimer = this.time.delayedCall(NON_FATAL_FAILURE_DELAY_MS, () => {
+        this.emitFailureOutcome();
+      });
+      return;
+    }
+
     this.sequenceMode = "failure";
     this.startDeath();
   }
@@ -380,11 +455,7 @@ export default class LevelOneScene extends Phaser.Scene {
       this.player.play("player-downed");
 
       this.failureTimer = this.time.delayedCall(450, () => {
-        gameEvents.emit(GAME_LEVEL_OUTCOME, {
-          levelNumber: LEVEL_NUMBER,
-          status: "failure",
-          message: "You failed. Declare a variable to make the hero move.",
-        });
+        this.emitFailureOutcome();
       });
     }
   }

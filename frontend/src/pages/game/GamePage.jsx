@@ -152,6 +152,7 @@ function GamePage() {
       levelNumber: levelConfig.levelNumber,
       isCorrect: validation.isCorrect,
       sourceCode,
+      ...(validation.payload ?? {}),
     });
 
     setResult({

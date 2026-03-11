@@ -2,6 +2,7 @@ const DECLARATION_REGEX =
   /\b(int|double|float|decimal|bool|string|String|char|long|short|byte|var)\s+([A-Za-z_]\w*)\s*(?:=\s*([^;]+))?\s*;/g;
 
 const COMMENT_REGEX = /\/\/.*$|\/\*[\s\S]*?\*\//gm;
+const INTEGER_LITERAL_REGEX = /^-?\d+$/;
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
@@ -97,5 +98,76 @@ export const createExactGoalDeclarationValidator =
     return {
       isCorrect: true,
       message: successMessage,
+    };
+  };
+
+export const createSingleIntegerDeclarationValidator =
+  ({
+    variableName,
+    allowedTypes = ["int"],
+    minValue = 0,
+    maxValue = 100,
+    unexpectedVariableMessage,
+    successMessage = "Declaration accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const declarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
+    const allowedTypeSet = new Set(allowedTypes);
+
+    if (declarations.length !== 1) {
+      return {
+        isCorrect: false,
+        message: `Declare exactly one variable: int ${variableName} = <value>;`,
+      };
+    }
+
+    const [, type, name, assignmentValue] = declarations[0];
+
+    if (name !== variableName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected variable "${name}". Use only "${variableName}" in this level.`,
+      };
+    }
+
+    if (!allowedTypeSet.has(type)) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must use type int.`,
+      };
+    }
+
+    const trimmedAssignment = assignmentValue?.trim() ?? "";
+    if (!trimmedAssignment) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must be initialized with a whole number.`,
+      };
+    }
+
+    if (!INTEGER_LITERAL_REGEX.test(trimmedAssignment)) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must use an integer literal (example: 24).`,
+      };
+    }
+
+    const value = Number.parseInt(trimmedAssignment, 10);
+    if (value < minValue || value > maxValue) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must be between ${minValue} and ${maxValue}.`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        [variableName]: value,
+      },
     };
   };

@@ -1,0 +1,274 @@
+{
+  "version": 1,
+  "updatedAt": "2026-03-16",
+  "lessons": [
+    {
+      "lessonKey": "variables-and-data-types",
+      "lessonTitle": "Variables and Data Types",
+      "theme": "The Castle of Syntax",
+      "levels": [
+        {
+          "levelNumber": 1,
+          "title": "The Awakening",
+          "objective": "User declares int steps to control distance.",
+          "expectedOutput": "Hero walks toward portal. Correct distance clears the level."
+        },
+        {
+          "levelNumber": 2,
+          "title": "What Is Your Name?",
+          "objective": "User declares string myName = \"Kai\".",
+          "expectedOutput": "NPC dialogue updates with hero name and checkpoint opens."
+        },
+        {
+          "levelNumber": 3,
+          "title": "Voices of the Village",
+          "objective": "User declares required dialogue strings.",
+          "expectedOutput": "Conversation cutscene completes and route unlocks."
+        },
+        {
+          "levelNumber": 4,
+          "title": "The Coin Keeper",
+          "objective": "User declares int value for coin count.",
+          "expectedOutput": "Bridge toll is accepted and bridge appears."
+        },
+        {
+          "levelNumber": 5,
+          "title": "Potion Measure",
+          "objective": "User declares float or double value.",
+          "expectedOutput": "Potion event succeeds and obstacle clears."
+        },
+        {
+          "levelNumber": 6,
+          "title": "Rune Letter",
+          "objective": "User declares a char value for rune key.",
+          "expectedOutput": "Matching rune activates and door opens."
+        },
+        {
+          "levelNumber": 7,
+          "title": "Oath of Truth",
+          "objective": "User declares bool value for gate check.",
+          "expectedOutput": "Guard check passes or fails based on boolean."
+        },
+        {
+          "levelNumber": 8,
+          "title": "Pack the Journey",
+          "objective": "User declares mixed required types in one script.",
+          "expectedOutput": "Inventory check passes and path unlocks."
+        },
+        {
+          "levelNumber": 9,
+          "title": "Gate of Exact Declarations",
+          "objective": "User provides strict exact declarations only.",
+          "expectedOutput": "Trap corridor is disabled."
+        },
+        {
+          "levelNumber": 10,
+          "title": "Boss: Archivist of Types",
+          "objective": "User fixes corrupted type declarations.",
+          "expectedOutput": "Archive is restored and Lesson 2 unlocks."
+        }
+      ]
+    },
+    {
+      "lessonKey": "operators",
+      "lessonTitle": "Operators",
+      "theme": "The Forge of Symbols",
+      "levels": [
+        {
+          "levelNumber": 1,
+          "title": "Steps and Stones",
+          "objective": "User uses + and - to compute target steps.",
+          "expectedOutput": "Hero moves exact tiles to safe platform."
+        },
+        {
+          "levelNumber": 2,
+          "title": "Forge Multipliers",
+          "objective": "User uses *, /, and % in required expression.",
+          "expectedOutput": "Key mechanism accepts result and door opens."
+        },
+        {
+          "levelNumber": 3,
+          "title": "Order of Power",
+          "objective": "User solves precedence expression correctly.",
+          "expectedOutput": "Correct platform rises."
+        },
+        {
+          "levelNumber": 4,
+          "title": "Battle Math",
+          "objective": "User computes attack and defense formula.",
+          "expectedOutput": "Combat check passes."
+        },
+        {
+          "levelNumber": 5,
+          "title": "Experience Burst",
+          "objective": "User combines arithmetic expressions for target value.",
+          "expectedOutput": "Experience crystal charges."
+        },
+        {
+          "levelNumber": 6,
+          "title": "Eyes of Comparison",
+          "objective": "User applies ==, !=, >, < operators.",
+          "expectedOutput": "Scanner validates target object."
+        },
+        {
+          "levelNumber": 7,
+          "title": "Threshold Trial",
+          "objective": "User applies >= and <= in gate rule.",
+          "expectedOutput": "Checkpoint opens only on valid threshold."
+        },
+        {
+          "levelNumber": 8,
+          "title": "Operator Relay",
+          "objective": "User chains arithmetic and comparison operators.",
+          "expectedOutput": "Relay puzzle completes."
+        },
+        {
+          "levelNumber": 9,
+          "title": "Arena Calculator",
+          "objective": "User computes wave values under constraints.",
+          "expectedOutput": "Mini arena clears."
+        },
+        {
+          "levelNumber": 10,
+          "title": "Boss: Iron Colossus",
+          "objective": "User solves final operator logic.",
+          "expectedOutput": "Armor core collapses and Lesson 3 unlocks."
+        }
+      ]
+    },
+    {
+      "lessonKey": "conditional-statements",
+      "lessonTitle": "Conditional Statements",
+      "theme": "The Branching Keep",
+      "levels": [
+        {
+          "levelNumber": 1,
+          "title": "Two Roads",
+          "objective": "User writes basic if/else branch.",
+          "expectedOutput": "Hero takes the safe route."
+        },
+        {
+          "levelNumber": 2,
+          "title": "Night Watch",
+          "objective": "User writes guard condition check.",
+          "expectedOutput": "Guard gate opens on correct branch."
+        },
+        {
+          "levelNumber": 3,
+          "title": "Password at Dawn",
+          "objective": "User branches on input variable.",
+          "expectedOutput": "Correct phrase unlocks gate."
+        },
+        {
+          "levelNumber": 4,
+          "title": "Weight of the Bridge",
+          "objective": "User uses threshold condition.",
+          "expectedOutput": "Bridge stability event resolves."
+        },
+        {
+          "levelNumber": 5,
+          "title": "Hall of Many Doors",
+          "objective": "User uses if / else if / else.",
+          "expectedOutput": "Correct door opens."
+        },
+        {
+          "levelNumber": 6,
+          "title": "Nested Decisions",
+          "objective": "User creates nested branch logic.",
+          "expectedOutput": "Dual-condition checkpoint passes."
+        },
+        {
+          "levelNumber": 7,
+          "title": "Merchant's Deal",
+          "objective": "User chooses reward or penalty branch.",
+          "expectedOutput": "Inventory and path vary by branch."
+        },
+        {
+          "levelNumber": 8,
+          "title": "Edge of Equality",
+          "objective": "User handles equality boundary case.",
+          "expectedOutput": "Trap is avoided when boundary is met."
+        },
+        {
+          "levelNumber": 9,
+          "title": "Judgment Tower",
+          "objective": "User combines multi-condition chains.",
+          "expectedOutput": "Tower trial completes."
+        },
+        {
+          "levelNumber": 10,
+          "title": "Boss: Judge of Branches",
+          "objective": "User solves full branching script.",
+          "expectedOutput": "Boss trial clears and Lesson 4 unlocks."
+        }
+      ]
+    },
+    {
+      "lessonKey": "loops",
+      "lessonTitle": "Loops",
+      "theme": "The Spiral Citadel",
+      "levels": [
+        {
+          "levelNumber": 1,
+          "title": "March Pattern",
+          "objective": "User writes for loop for repeated movement.",
+          "expectedOutput": "Hero walks repeated fixed steps."
+        },
+        {
+          "levelNumber": 2,
+          "title": "Endless Hall",
+          "objective": "User writes while loop with valid stop condition.",
+          "expectedOutput": "Hero runs until marker is reached."
+        },
+        {
+          "levelNumber": 3,
+          "title": "Last Checkpoint",
+          "objective": "User writes do-while for at-least-once action.",
+          "expectedOutput": "Switch sequence succeeds."
+        },
+        {
+          "levelNumber": 4,
+          "title": "Crystal Collector",
+          "objective": "User loops item collection count.",
+          "expectedOutput": "Required crystals are gathered."
+        },
+        {
+          "levelNumber": 5,
+          "title": "Wave Runner",
+          "objective": "User writes nested loops.",
+          "expectedOutput": "Wave puzzle resolves."
+        },
+        {
+          "levelNumber": 6,
+          "title": "Method March",
+          "objective": "User loops predefined walk() and run() methods.",
+          "expectedOutput": "Distance matches loop execution."
+        },
+        {
+          "levelNumber": 7,
+          "title": "Directional Sprint",
+          "objective": "User passes direction argument in run().",
+          "expectedOutput": "Character path follows direction argument."
+        },
+        {
+          "levelNumber": 8,
+          "title": "Break the Trap",
+          "objective": "User uses break and continue correctly.",
+          "expectedOutput": "Hazard route is optimized safely."
+        },
+        {
+          "levelNumber": 9,
+          "title": "Efficiency Trial",
+          "objective": "User minimizes loop operations for target.",
+          "expectedOutput": "Speed challenge is cleared."
+        },
+        {
+          "levelNumber": 10,
+          "title": "Final Boss: The Null King",
+          "objective": "User combines variables, operators, conditionals, and loops.",
+          "expectedOutput": "Compiler Core is restored and ending unlocks."
+        }
+      ]
+    }
+  ]
+}

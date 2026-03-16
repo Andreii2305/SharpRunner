@@ -40,3 +40,7 @@ Last updated: 2026-03-16
 
 - Proceed with Teacher Dashboard implementation.
 - Keep leveling data model/config ready for later integration.
+- Teacher Dashboard content seed is now available in backend:
+  - Seed file: `backend/src/data/lessonContent.seed.json`
+  - API: `GET /api/lesson-content`
+  - API by lesson: `GET /api/lesson-content/:lessonKey`

@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import LoginComp from "../LoginAndSignUp/LoginComp.jsx";
 import {
   buildApiUrl,
+  getHomeRouteByRole,
+  getHomeRouteForCurrentUser,
   isAuthenticated,
   setToken,
   setUser,
@@ -18,7 +20,7 @@ const Login = () => {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate("/dashboard", { replace: true });
+      navigate(getHomeRouteForCurrentUser(), { replace: true });
     }
   }, [navigate]);
 
@@ -40,7 +42,7 @@ const Login = () => {
 
       setToken(res.data.token);
       setUser(res.data.user);
-      navigate("/dashboard", { replace: true });
+      navigate(getHomeRouteByRole(res.data.user?.role), { replace: true });
     } catch (err) {
       alert(err.response?.data?.message || "Login failed");
     }

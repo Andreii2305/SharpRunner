@@ -14,6 +14,16 @@ const normalizeEmail = (value) =>
 const createAuthToken = (userId, role = "student") =>
   jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
+const findUserByEmailOrUsername = (email, username) =>
+  User.findOne({
+    where: {
+      [Op.or]: [
+        where(fn("lower", col("email")), email),
+        where(fn("lower", col("username")), username.toLowerCase())
+      ]
+    }
+  });
+
 router.post("/login", async (req, res) => {
   try {
     const identifier =
@@ -102,14 +112,7 @@ router.post("/register", async (req, res) => {
       return res.status(500).json({ message: "Auth is not configured" });
     }
 
-    const existingUser = await User.findOne({
-      where: {
-        [Op.or]: [
-          where(fn("lower", col("email")), email),
-          where(fn("lower", col("username")), username.toLowerCase())
-        ]
-      }
-    });
+    const existingUser = await findUserByEmailOrUsername(email, username);
 
     if (existingUser) {
       return res.status(409).json({
@@ -147,6 +150,85 @@ router.post("/register", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/bootstrap-admin", async (req, res) => {
+  try {
+    const setupKey = normalizeString(req.body.setupKey);
+    const expectedSetupKey = normalizeString(process.env.ADMIN_SETUP_KEY);
+
+    if (!expectedSetupKey) {
+      return res.status(503).json({
+        message: "Admin bootstrap is disabled. Set ADMIN_SETUP_KEY to enable it.",
+      });
+    }
+
+    if (setupKey !== expectedSetupKey) {
+      return res.status(403).json({ message: "Invalid setup key" });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Auth is not configured" });
+    }
+
+    const adminCount = await User.count({ where: { role: "admin" } });
+    if (adminCount > 0) {
+      return res.status(409).json({
+        message: "An admin account already exists",
+      });
+    }
+
+    const firstName = normalizeString(req.body.firstName);
+    const lastName = normalizeString(req.body.lastName);
+    const username = normalizeString(req.body.username);
+    const email = normalizeEmail(req.body.email);
+    const password = normalizeString(req.body.password);
+
+    if (!firstName || !lastName || !username || !email || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    const existingUser = await findUserByEmailOrUsername(email, username);
+    if (existingUser) {
+      return res.status(409).json({
+        message: "Username or email already exists",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      firstName,
+      lastName,
+      username,
+      email,
+      role: "admin",
+      password: hashedPassword,
+    });
+
+    const token = createAuthToken(user.id, user.role ?? "admin");
+
+    return res.status(201).json({
+      message: "Admin account created successfully",
+      token,
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        email: user.email,
+        role: user.role ?? "admin",
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

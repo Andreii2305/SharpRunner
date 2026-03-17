@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import SignUpComp from "../LoginAndSignUp/SignUpComp.jsx";
 import {
   buildApiUrl,
+  getHomeRouteForCurrentUser,
   isAuthenticated,
   setToken,
   setUser,
@@ -22,7 +23,7 @@ const SignUp = () => {
 
   useEffect(() => {
     if (isAuthenticated()) {
-      navigate("/dashboard", { replace: true });
+      navigate(getHomeRouteForCurrentUser(), { replace: true });
     }
   }, [navigate]);
 
@@ -61,7 +62,7 @@ const SignUp = () => {
 
       setToken(res.data.token);
       setUser(res.data.user);
-      navigate("/dashboard", { replace: true });
+      navigate(getHomeRouteForCurrentUser(), { replace: true });
     } catch (err) {
       alert(err.response?.data?.message || "Registration failed");
     }

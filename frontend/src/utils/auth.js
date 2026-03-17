@@ -1,5 +1,8 @@
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
+
+const normalizeRole = (role) =>
+  typeof role === "string" ? role.trim().toLowerCase() : "";
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
@@ -32,6 +35,20 @@ export const setUser = (user) => {
 
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 };
+
+export const getUserRole = () => normalizeRole(getUser()?.role);
+
+export const getHomeRouteByRole = (role) => {
+  const normalizedRole = normalizeRole(role);
+
+  if (normalizedRole === "admin") {
+    return "/admin";
+  }
+
+  return "/dashboard";
+};
+
+export const getHomeRouteForCurrentUser = () => getHomeRouteByRole(getUserRole());
 
 export const clearToken = () => {
   localStorage.removeItem(TOKEN_KEY);

@@ -2,10 +2,13 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const { Op, col, fn, where } = require("sequelize");
 const User = require("../models/User");
+const AdminActivityLog = require("../models/AdminActivityLog");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
+const { logAdminActivity } = require("../services/adminActivityLogService");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
+const ALLOWED_STATUSES = new Set(["active", "inactive"]);
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -20,15 +23,42 @@ const sanitizeUser = (user) => ({
   username: user.username,
   email: user.email,
   role: user.role,
+  status: user.status,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
+
+const sanitizeActivityLog = (log) => ({
+  id: log.id,
+  actorUserId: log.actorUserId,
+  actorUsername: log.actorUsername,
+  targetUserId: log.targetUserId,
+  targetUsername: log.targetUsername,
+  role: log.role,
+  activity: log.activity,
+  details: log.details,
+  status: log.status,
+  createdAt: log.createdAt,
+});
+
+const getActorUsername = async (userId) => {
+  if (!Number.isInteger(userId)) {
+    return null;
+  }
+
+  const actor = await User.findByPk(userId, {
+    attributes: ["username"],
+  });
+
+  return actor?.username ?? null;
+};
 
 router.use(authMiddleware, requireRole("admin"));
 
 router.get("/users", async (req, res) => {
   try {
     const roleFilter = normalizeString(req.query.role).toLowerCase();
+    const statusFilter = normalizeString(req.query.status).toLowerCase();
     const searchText = normalizeString(req.query.search).toLowerCase();
     const whereClause = {};
 
@@ -37,6 +67,13 @@ router.get("/users", async (req, res) => {
         return res.status(400).json({ message: "Invalid role filter" });
       }
       whereClause.role = roleFilter;
+    }
+
+    if (statusFilter) {
+      if (!ALLOWED_STATUSES.has(statusFilter)) {
+        return res.status(400).json({ message: "Invalid status filter" });
+      }
+      whereClause.status = statusFilter;
     }
 
     if (searchText) {
@@ -57,6 +94,86 @@ router.get("/users", async (req, res) => {
     return res.json({
       total: users.length,
       users: users.map(sanitizeUser),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/logs", async (req, res) => {
+  try {
+    const requestedLimit = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(requestedLimit)
+      ? Math.min(Math.max(requestedLimit, 1), 100)
+      : 20;
+
+    const logs = await AdminActivityLog.findAll({
+      order: [["createdAt", "DESC"]],
+      limit,
+    });
+
+    return res.json({
+      total: logs.length,
+      logs: logs.map(sanitizeActivityLog),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.patch("/users/:id/status", async (req, res) => {
+  try {
+    const userId = Number.parseInt(req.params.id, 10);
+    const nextStatus = normalizeString(req.body.status).toLowerCase();
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+
+    if (!ALLOWED_STATUSES.has(nextStatus)) {
+      return res.status(400).json({ message: "Invalid status" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role === "admin" && nextStatus === "inactive") {
+      return res.status(400).json({
+        message: "Admin accounts cannot be set to inactive",
+      });
+    }
+
+    if (user.status === nextStatus) {
+      return res.json({
+        message: `User is already ${nextStatus}`,
+        user: sanitizeUser(user),
+      });
+    }
+
+    const previousStatus = user.status;
+    user.status = nextStatus;
+    await user.save();
+
+    const actorUsername = await getActorUsername(req.userId);
+
+    await logAdminActivity({
+      actorUserId: req.userId,
+      actorUsername,
+      role: req.userRole ?? "admin",
+      targetUserId: user.id,
+      targetUsername: user.username,
+      activity: "Updated user status",
+      details: `${user.username}: ${previousStatus} -> ${nextStatus}`,
+      status: "success",
+    });
+
+    return res.json({
+      message: "User status updated",
+      user: sanitizeUser(user),
     });
   } catch (error) {
     console.error(error);
@@ -103,7 +220,21 @@ router.post("/users/teacher", async (req, res) => {
       username,
       email,
       role: "teacher",
+      status: "active",
       password: hashedPassword,
+    });
+
+    const actorUsername = await getActorUsername(req.userId);
+
+    await logAdminActivity({
+      actorUserId: req.userId,
+      actorUsername,
+      role: req.userRole ?? "admin",
+      targetUserId: user.id,
+      targetUsername: user.username,
+      activity: "Created teacher account",
+      details: `${user.username} (${user.email})`,
+      status: "success",
     });
 
     return res.status(201).json({

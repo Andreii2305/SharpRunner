@@ -28,6 +28,14 @@ const User = sequelize.define("Users", {
       isIn: [["student", "teacher", "admin"]],
     },
   },
+  status: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "active",
+    validate: {
+      isIn: [["active", "inactive"]],
+    },
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false

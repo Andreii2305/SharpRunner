@@ -1,6 +1,5 @@
 
-
-body {
+.page {
   --color-text-normal: #595959;
   --color-secondary: #06d6a0;
   --color-accent-1: #ef476f;
@@ -28,11 +27,11 @@ body {
 }
 
 .container {
-  /* max-width: 1240px; */
-  margin: 0;
+  max-width: 1240px;
+  margin: 0 auto;
   background: var(--color-bg-soft);
   border-radius: 12px;
-  /* border: 1px solid var(--color-border-light); */
+  border: 1px solid var(--color-border-light);
   padding: 22px;
 }
 
@@ -225,7 +224,7 @@ body {
 .userHeader h2 {
   margin: 0;
   color: var(--color-primary);
-  font-size: 1.65rem;
+  font-size: 1.1rem;
 }
 
 .userHeader p {
@@ -443,6 +442,11 @@ body {
   border-color: var(--color-primary);
 }
 
+.tableActionButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .activateButton {
   color: #997114;
   border-color: var(--color-accent-2);
@@ -451,6 +455,16 @@ body {
 
 .activateButton:hover {
   border-color: #c69a2a;
+}
+
+.deactivateButton {
+  color: var(--color-accent-1);
+  border-color: var(--color-accent-1);
+  background: color-mix(in srgb, var(--color-accent-1) 10%, #ffffff);
+}
+
+.deactivateButton:hover {
+  border-color: color-mix(in srgb, var(--color-accent-1) 78%, #000000);
 }
 
 .rowCheckbox {

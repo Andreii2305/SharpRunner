@@ -60,6 +60,12 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
+    if (user.status === "inactive") {
+      return res.status(403).json({
+        message: "Your account is inactive. Please contact your administrator.",
+      });
+    }
+
     const token = createAuthToken(user.id, user.role ?? "student");
     await ensureProgressRowsForUser(user.id);
 
@@ -72,6 +78,7 @@ router.post("/login", async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role ?? "student",
+        status: user.status ?? "active",
       }
     });
 
@@ -128,6 +135,7 @@ router.post("/register", async (req, res) => {
       username,
       email,
       role: "student",
+      status: "active",
       password: hashedPassword
     });
     await ensureProgressRowsForUser(user.id);
@@ -144,6 +152,7 @@ router.post("/register", async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role ?? "student",
+        status: user.status ?? "active",
       }
     });
 
@@ -209,6 +218,7 @@ router.post("/bootstrap-admin", async (req, res) => {
       username,
       email,
       role: "admin",
+      status: "active",
       password: hashedPassword,
     });
 
@@ -224,6 +234,7 @@ router.post("/bootstrap-admin", async (req, res) => {
         username: user.username,
         email: user.email,
         role: user.role ?? "admin",
+        status: user.status ?? "active",
       },
     });
   } catch (err) {

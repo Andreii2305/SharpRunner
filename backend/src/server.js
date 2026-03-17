@@ -1,12 +1,16 @@
 require("dotenv").config();
 const app = require("./app");
 const sequelize = require("./config/database");
-const { ensureUserRoleColumn } = require("./services/userRoleSchemaService");
+const {
+  ensureUserRoleColumn,
+  ensureUserStatusColumn,
+} = require("./services/userRoleSchemaService");
 
 const startServer = async () => {
   try {
     await sequelize.sync();
     await ensureUserRoleColumn();
+    await ensureUserStatusColumn();
     console.log("Database synced");
 
     app.listen(5000, () =>

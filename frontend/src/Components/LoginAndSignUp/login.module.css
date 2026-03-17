@@ -73,6 +73,13 @@
   padding: 0 10px;
 }
 
+.signupNotice {
+  margin: -0.6rem 0 1.2rem;
+  color: #5a6572;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
 /* Inputs */
 .inputGroup {
   margin-bottom: 1.5rem;

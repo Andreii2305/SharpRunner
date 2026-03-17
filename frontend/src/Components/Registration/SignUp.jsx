@@ -33,6 +33,17 @@ const SignUp = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (
+      !formData.firstName.trim() ||
+      !formData.lastName.trim() ||
+      !formData.username.trim() ||
+      !formData.email.trim() ||
+      !formData.password
+    ) {
+      alert("Please complete all required fields");
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       alert("Passwords do not match");
       return;
@@ -45,6 +56,7 @@ const SignUp = () => {
         username: formData.username,
         email: formData.email,
         password: formData.password,
+        role: "student",
       });
 
       setToken(res.data.token);
@@ -57,7 +69,7 @@ const SignUp = () => {
 
   return (
     <SignUpComp
-      user="IT"
+      user="Student"
       formData={formData}
       handleChange={handleChange}
       handleSubmit={handleSubmit}

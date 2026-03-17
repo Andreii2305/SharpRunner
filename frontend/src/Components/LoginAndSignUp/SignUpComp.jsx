@@ -1,6 +1,5 @@
 import React from "react";
 import styles from "./login.module.css";
-import { FaGoogle, FaFacebookF } from "react-icons/fa";
 import { Link } from "react-router-dom";
 
 function SignUpComp({ user, formData, handleChange, handleSubmit }) {
@@ -20,8 +19,11 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
 
         {/* Separator */}
         <div className={styles.separator}>
-          <span>Sign Up</span>
+          <span>Student Sign Up</span>
         </div>
+        <p className={styles.signupNotice}>
+          Teacher and admin accounts are created by system administrators.
+        </p>
 
         {/* Sign Up Form */}
         <form onSubmit={handleSubmit} className={styles.loginForm}>
@@ -29,7 +31,7 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
             <input
               type="text"
               name="firstName"
-              placeholder="Firstname"
+              placeholder="First name"
               value={formData.firstName}
               onChange={handleChange}
             />
@@ -38,7 +40,7 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
             <input
               type="text"
               name="lastName"
-              placeholder="Lastname"
+              placeholder="Last name"
               value={formData.lastName}
               onChange={handleChange}
             />
@@ -67,7 +69,7 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
             <input
               type="password"
               name="password"
-              placeholder="Password"
+              placeholder="Password (min 6 characters)"
               value={formData.password}
               onChange={handleChange}
             />
@@ -93,20 +95,6 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
             </span>
           </div>
         </form>
-
-        {/* Social Login Section */}
-        <div className={styles.socialSeparator}>
-          <span>or sign up with</span>
-        </div>
-
-        <div className={styles.socialIcons}>
-          <button className={`${styles.socialBtn} ${styles.google}`}>
-            <FaGoogle />
-          </button>
-          <button className={`${styles.socialBtn} ${styles.facebook}`}>
-            <FaFacebookF />
-          </button>
-        </div>
       </div>
     </div>
   );

@@ -75,6 +75,13 @@ router.post("/register", async (req, res) => {
     const username = normalizeString(req.body.username);
     const email = normalizeEmail(req.body.email);
     const password = normalizeString(req.body.password);
+    const requestedRole = normalizeString(req.body.role).toLowerCase();
+
+    if (requestedRole && requestedRole !== "student") {
+      return res.status(403).json({
+        message: "Teacher and admin accounts can only be created by an admin",
+      });
+    }
 
     if (!firstName || !lastName || !username || !email || !password) {
       return res.status(400).json({
@@ -128,7 +135,8 @@ router.post("/register", async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         username: user.username,
-        email: user.email
+        email: user.email,
+        role: "student",
       }
     });
 

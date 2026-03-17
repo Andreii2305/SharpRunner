@@ -20,6 +20,14 @@ const User = sequelize.define("Users", {
     unique: true,
     allowNull: false
   },
+  role: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "student",
+    validate: {
+      isIn: [["student", "teacher", "admin"]],
+    },
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false

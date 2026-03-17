@@ -11,8 +11,8 @@ const normalizeString = (value) =>
 const normalizeEmail = (value) =>
   normalizeString(value).toLowerCase();
 
-const createAuthToken = (userId) =>
-  jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "1h" });
+const createAuthToken = (userId, role = "student") =>
+  jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
 router.post("/login", async (req, res) => {
   try {
@@ -50,15 +50,18 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    const token = createAuthToken(user.id);
+    const token = createAuthToken(user.id, user.role ?? "student");
     await ensureProgressRowsForUser(user.id);
 
     res.json({
       token,
       user: {
         id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
         username: user.username,
-        email: user.email
+        email: user.email,
+        role: user.role ?? "student",
       }
     });
 
@@ -121,11 +124,12 @@ router.post("/register", async (req, res) => {
       lastName,
       username,
       email,
+      role: "student",
       password: hashedPassword
     });
     await ensureProgressRowsForUser(user.id);
 
-    const token = createAuthToken(user.id);
+    const token = createAuthToken(user.id, user.role ?? "student");
 
     res.status(201).json({
       message: "Registration successful",
@@ -136,7 +140,7 @@ router.post("/register", async (req, res) => {
         lastName: user.lastName,
         username: user.username,
         email: user.email,
-        role: "student",
+        role: user.role ?? "student",
       }
     });
 

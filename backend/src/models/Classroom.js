@@ -13,7 +13,21 @@ const Classroom = sequelize.define("Classrooms", {
   section: {
     type: DataTypes.STRING,
     allowNull: false,
-    defaultValue: "General Section",
+  },
+  schoolYear: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  maxStudents: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: {
+      min: 1,
+    },
+  },
+  description: {
+    type: DataTypes.STRING,
+    allowNull: true,
   },
   classCode: {
     type: DataTypes.STRING,

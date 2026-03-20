@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const UserProgress = require("../models/UserProgress");
+const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
 const {
   ensureProgressRowsForUser,
@@ -97,6 +98,33 @@ router.put("/level/:levelKey", authMiddleware, async (req, res) => {
 
     const rows = await ensureProgressRowsForUser(req.userId);
     return res.json(buildProgressSummary(rows));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/activity", authMiddleware, async (req, res) => {
+  try {
+    const isPlayingGame = req.body?.isPlayingGame;
+    if (typeof isPlayingGame !== "boolean") {
+      return res.status(400).json({ message: "isPlayingGame must be a boolean" });
+    }
+
+    const user = await User.findByPk(req.userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.isPlayingGame = isPlayingGame;
+    user.lastGameHeartbeatAt = new Date();
+    await user.save();
+
+    return res.json({
+      message: "Activity updated",
+      isPlayingGame: user.isPlayingGame,
+      lastGameHeartbeatAt: user.lastGameHeartbeatAt,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

@@ -385,12 +385,6 @@
   color: var(--color-accent-1);
 }
 
-.success {
-  margin: 0 0 12px;
-  font-size: 0.9rem;
-  color: var(--color-secondary);
-}
-
 .modalBackdrop {
   position: fixed;
   inset: 0;
@@ -403,7 +397,7 @@
 }
 
 .modalCard {
-  width: min(420px, 100%);
+  width: min(760px, 100%);
   background: var(--color-surface);
   border: 1px solid var(--color-border-light);
   border-radius: 12px;
@@ -414,12 +408,13 @@
 .modalCard h3 {
   margin: 0 0 12px;
   color: var(--color-primary);
-  font-size: 1rem;
+  font-size: 2rem;
 }
 
 .modalForm {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .modalForm label {
@@ -432,7 +427,8 @@
   color: var(--color-text-normal);
 }
 
-.modalForm input {
+.modalForm input,
+.modalForm select {
   border: 1px solid var(--color-border-light);
   border-radius: 8px;
   background: #ffffff;
@@ -441,14 +437,16 @@
   outline: none;
 }
 
-.modalForm input:focus {
+.modalForm input:focus,
+.modalForm select:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(38, 84, 124, 0.16);
 }
 
 .modalActions {
+  grid-column: 1 / -1;
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
   margin-top: 4px;
 }
@@ -479,6 +477,32 @@
   cursor: not-allowed;
 }
 
+.successModalCard {
+  width: min(360px, 100%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(22, 36, 48, 0.18);
+  padding: 18px;
+  text-align: center;
+}
+
+.successModalCard h3 {
+  margin: 0 0 10px;
+  color: var(--color-secondary);
+  font-size: 2rem;
+}
+
+.successModalCard p {
+  margin: 0 0 8px;
+  color: var(--color-text-normal);
+}
+
+.successCode {
+  margin-bottom: 14px !important;
+  font-size: 0.95rem;
+}
+
 @media (max-width: 980px) {
   .overviewGrid,
   .insightTopRow,
@@ -493,6 +517,10 @@
 
   .classProgressWrap {
     min-width: 0;
+  }
+
+  .modalForm {
+    grid-template-columns: 1fr;
   }
 }
 

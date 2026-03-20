@@ -4,13 +4,17 @@ const sequelize = require("./config/database");
 const {
   ensureUserRoleColumn,
   ensureUserStatusColumn,
+  ensureUserActivityColumns,
 } = require("./services/userRoleSchemaService");
+const { ensureClassroomColumns } = require("./services/classroomSchemaService");
 
 const startServer = async () => {
   try {
     await sequelize.sync();
     await ensureUserRoleColumn();
     await ensureUserStatusColumn();
+    await ensureUserActivityColumns();
+    await ensureClassroomColumns();
     console.log("Database synced");
 
     app.listen(5000, () =>

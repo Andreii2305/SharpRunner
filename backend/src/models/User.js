@@ -36,6 +36,19 @@ const User = sequelize.define("Users", {
       isIn: [["active", "inactive"]],
     },
   },
+  isPlayingGame: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  lastGameHeartbeatAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  lastLoginAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: false

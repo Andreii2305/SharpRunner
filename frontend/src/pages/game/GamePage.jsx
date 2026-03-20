@@ -50,6 +50,16 @@ function GamePage() {
     nextLevelTimerRef.current = null;
   }, []);
 
+  const reportGameActivity = useCallback(async (isPlayingGame) => {
+    try {
+      await axios.post(
+        buildApiUrl("/api/progress/activity"),
+        { isPlayingGame },
+        { headers: getAuthHeaders() },
+      );
+    } catch {}
+  }, []);
+
   useEffect(() => {
     clearNextLevelTimer();
     setCode(levelConfig?.defaultCode ?? "");
@@ -58,6 +68,22 @@ function GamePage() {
     setTypedCharacters(0);
     setShowStoryIntro(hasIntroDialogue(levelConfig));
   }, [clearNextLevelTimer, levelConfig]);
+
+  useEffect(() => {
+    if (!levelConfig) {
+      return undefined;
+    }
+
+    reportGameActivity(true);
+    const heartbeatTimer = window.setInterval(() => {
+      reportGameActivity(true);
+    }, 30_000);
+
+    return () => {
+      window.clearInterval(heartbeatTimer);
+      reportGameActivity(false);
+    };
+  }, [levelConfig, reportGameActivity]);
 
   const markLevelAsCompleted = useCallback(async () => {
     if (!levelConfig?.progressKey) {

@@ -66,6 +66,10 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    user.lastLoginAt = new Date();
+    user.isPlayingGame = false;
+    await user.save();
+
     const token = createAuthToken(user.id, user.role ?? "student");
     await ensureProgressRowsForUser(user.id);
 

@@ -18,6 +18,18 @@ import {
 } from "../../utils/auth";
 import styles from "./TeacherDashboardPage.module.css";
 
+const SECTION_OPTIONS = [
+  "BSIT 1A",
+  "BSIT 1B",
+  "BSIT 1C",
+  "BSIT 1D",
+  "BSIT 1E",
+  "BSIT 2A",
+  "BSIT 2B",
+  "BSIT 3A",
+  "BSIT 4A",
+];
+
 const clampPercent = (value) => {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue)) {
@@ -53,18 +65,21 @@ function TeacherDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdClassCode, setCreatedClassCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [classroomForm, setClassroomForm] = useState({
     className: "",
     section: "",
+    schoolYear: "",
+    maxStudents: "",
+    description: "",
   });
 
   useEffect(() => {
     const fetchDashboard = async () => {
       setIsLoading(true);
       setErrorMessage("");
-      setSuccessMessage("");
 
       try {
         const response = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
@@ -100,10 +115,19 @@ function TeacherDashboardPage() {
   const onCreateClassroom = async (event) => {
     event.preventDefault();
     setErrorMessage("");
-    setSuccessMessage("");
 
     if (!classroomForm.className.trim()) {
       setErrorMessage("Class name is required.");
+      return;
+    }
+
+    if (!classroomForm.section.trim()) {
+      setErrorMessage("Section is required.");
+      return;
+    }
+
+    if (!classroomForm.schoolYear.trim()) {
+      setErrorMessage("School year is required.");
       return;
     }
 
@@ -115,15 +139,25 @@ function TeacherDashboardPage() {
         {
           className: classroomForm.className.trim(),
           section: classroomForm.section.trim(),
+          schoolYear: classroomForm.schoolYear.trim(),
+          maxStudents: classroomForm.maxStudents.trim(),
+          description: classroomForm.description.trim(),
         },
         {
           headers: getAuthHeaders(),
         }
       );
 
-      setSuccessMessage(response.data.message ?? "Classroom created successfully.");
+      setCreatedClassCode(response.data?.classroom?.classCode ?? "");
       setShowCreateClassModal(false);
-      setClassroomForm({ className: "", section: "" });
+      setShowSuccessModal(true);
+      setClassroomForm({
+        className: "",
+        section: "",
+        schoolYear: "",
+        maxStudents: "",
+        description: "",
+      });
 
       const refreshed = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
         headers: getAuthHeaders(),
@@ -183,7 +217,6 @@ function TeacherDashboardPage() {
         </header>
 
         {errorMessage && <p className={styles.error}>{errorMessage}</p>}
-        {successMessage && <p className={styles.success}>{successMessage}</p>}
 
         <section className={styles.panel}>
           <h2>Overview</h2>
@@ -264,7 +297,8 @@ function TeacherDashboardPage() {
                     <span>{item.studentCount} students</span>
                   </p>
                   <p className={styles.classMeta}>
-                    Section: {item.section || "General Section"} | Code:{" "}
+                    Section: {item.section || "General Section"} | SY:{" "}
+                    {item.schoolYear || "N/A"} | Code:{" "}
                     <strong>{item.classCode || "N/A"}</strong>
                   </p>
                 </div>
@@ -447,12 +481,48 @@ function TeacherDashboardPage() {
               </label>
               <label>
                 <span>Section</span>
-                <input
-                  type="text"
+                <select
                   name="section"
                   value={classroomForm.section}
                   onChange={onClassroomFieldChange}
-                  placeholder="e.g. BSIT 1E"
+                >
+                  <option value="">Choose section</option>
+                  {SECTION_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>School Year</span>
+                <input
+                  type="text"
+                  name="schoolYear"
+                  value={classroomForm.schoolYear}
+                  onChange={onClassroomFieldChange}
+                  placeholder="e.g. 2025-2026"
+                />
+              </label>
+              <label>
+                <span>Maximum Student (Optional)</span>
+                <input
+                  type="number"
+                  name="maxStudents"
+                  value={classroomForm.maxStudents}
+                  onChange={onClassroomFieldChange}
+                  min={1}
+                  placeholder="Max student"
+                />
+              </label>
+              <label>
+                <span>Description (Optional)</span>
+                <input
+                  type="text"
+                  name="description"
+                  value={classroomForm.description}
+                  onChange={onClassroomFieldChange}
+                  placeholder="Short description"
                 />
               </label>
 
@@ -474,6 +544,25 @@ function TeacherDashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div className={styles.modalBackdrop}>
+          <div className={styles.successModalCard}>
+            <h3>Success!</h3>
+            <p>Successfully created new Classroom!</p>
+            <p className={styles.successCode}>
+              Classroom Code: <strong>{createdClassCode || "N/A"}</strong>
+            </p>
+            <button
+              type="button"
+              className={styles.modalSubmit}
+              onClick={() => setShowSuccessModal(false)}
+            >
+              Okay
+            </button>
           </div>
         </div>
       )}

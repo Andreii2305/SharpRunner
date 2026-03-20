@@ -13,6 +13,7 @@ const DEFAULT_SECTION_NAME = "Unassigned";
 const MAX_STUDENT_ROWS = 10;
 const CLASS_CODE_LENGTH = 6;
 const CLASS_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -99,6 +100,9 @@ const sanitizeClassroom = (classroom, extra = {}) => ({
   id: classroom.id,
   className: classroom.className,
   section: classroom.section,
+  schoolYear: classroom.schoolYear,
+  maxStudents: classroom.maxStudents,
+  description: classroom.description,
   classCode: classroom.classCode,
   teacherId: classroom.teacherId,
   isActive: classroom.isActive,
@@ -119,7 +123,17 @@ const buildDashboardPayload = async (req) => {
   const scopeWhere = buildScopeWhere(req);
   const classrooms = await Classroom.findAll({
     where: scopeWhere,
-    attributes: ["id", "className", "section", "classCode", "teacherId", "createdAt"],
+    attributes: [
+      "id",
+      "className",
+      "section",
+      "schoolYear",
+      "maxStudents",
+      "description",
+      "classCode",
+      "teacherId",
+      "createdAt",
+    ],
     order: [["createdAt", "DESC"]],
   });
 
@@ -171,6 +185,8 @@ const buildDashboardPayload = async (req) => {
           "lastName",
           "username",
           "status",
+          "isPlayingGame",
+          "lastGameHeartbeatAt",
           "createdAt",
           "updatedAt",
         ],
@@ -253,6 +269,7 @@ const buildDashboardPayload = async (req) => {
 
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+  const now = Date.now();
 
   const studentPerformanceRows = validStudentIds.map((studentId) => {
     const student = studentsById.get(studentId);
@@ -271,7 +288,16 @@ const buildDashboardPayload = async (req) => {
     const lastActivityAt =
       stats.lastProgressAt ?? firstMembership?.updatedAt ?? student.updatedAt ?? student.createdAt;
     const status = normalizeString(student.status).toLowerCase() || "active";
-    const isActiveToday = status === "active" && new Date(lastActivityAt) >= todayStart;
+    const heartbeatAt = student.lastGameHeartbeatAt
+      ? new Date(student.lastGameHeartbeatAt).getTime()
+      : null;
+    const hasRecentHeartbeat =
+      Number.isFinite(heartbeatAt) && now - heartbeatAt <= ACTIVE_GAME_HEARTBEAT_WINDOW_MS;
+    const isCurrentlyPlaying = status === "active" && student.isPlayingGame && hasRecentHeartbeat;
+    const isActiveToday =
+      isCurrentlyPlaying &&
+      Number.isFinite(heartbeatAt) &&
+      heartbeatAt >= todayStart.getTime();
 
     return {
       userId: student.id,
@@ -283,10 +309,16 @@ const buildDashboardPayload = async (req) => {
       badgesCount: Math.floor(stats.completedLevels / 5),
       completedLevels: stats.completedLevels,
       status,
-      statusLabel: status === "inactive" ? "Inactive" : "Online",
+      statusLabel:
+        status === "inactive"
+          ? "Inactive"
+          : isCurrentlyPlaying
+            ? "Playing"
+            : "Online",
       lastActivityAt,
-      lastActiveLabel: formatRelativeTime(lastActivityAt),
+      lastActiveLabel: isCurrentlyPlaying ? "Playing now" : formatRelativeTime(lastActivityAt),
       isActiveToday,
+      isCurrentlyPlaying,
     };
   });
 
@@ -311,6 +343,9 @@ const buildDashboardPayload = async (req) => {
       classId: classroom.id,
       className: classroom.className,
       section: classroom.section,
+      schoolYear: classroom.schoolYear,
+      maxStudents: classroom.maxStudents,
+      description: classroom.description,
       classCode: classroom.classCode,
       studentCount: classStudentIds.length,
       averageProgressPercent,
@@ -452,11 +487,36 @@ router.get("/classrooms", async (req, res) => {
 router.post("/classrooms", async (req, res) => {
   try {
     const className = normalizeString(req.body.className);
-    const section = normalizeString(req.body.section) || "General Section";
+    const section = normalizeString(req.body.section);
+    const schoolYear = normalizeString(req.body.schoolYear);
+    const description = normalizeString(req.body.description);
+    const maxStudentsRaw = req.body.maxStudents;
+    const hasMaxStudentsValue =
+      maxStudentsRaw !== undefined && `${maxStudentsRaw}`.trim() !== "";
+    const parsedMaxStudents = hasMaxStudentsValue
+      ? Number.parseInt(maxStudentsRaw, 10)
+      : null;
     const requestedTeacherId = parseInteger(req.body.teacherId);
 
     if (!className) {
       return res.status(400).json({ message: "className is required" });
+    }
+
+    if (!section) {
+      return res.status(400).json({ message: "section is required" });
+    }
+
+    if (!schoolYear) {
+      return res.status(400).json({ message: "schoolYear is required" });
+    }
+
+    if (
+      hasMaxStudentsValue &&
+      (!Number.isInteger(parsedMaxStudents) || parsedMaxStudents <= 0)
+    ) {
+      return res.status(400).json({
+        message: "maxStudents must be a positive integer",
+      });
     }
 
     const teacherId =
@@ -478,6 +538,9 @@ router.post("/classrooms", async (req, res) => {
       teacherId,
       className,
       section,
+      schoolYear,
+      maxStudents: hasMaxStudentsValue ? parsedMaxStudents : null,
+      description: description || null,
       classCode,
       isActive: true,
     });

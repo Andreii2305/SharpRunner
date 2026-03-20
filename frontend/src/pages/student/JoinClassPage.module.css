@@ -1,0 +1,112 @@
+.page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f7fafc 0%, #eef3f8 100%);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.card {
+  width: min(460px, 100%);
+  background: #ffffff;
+  border: 1px solid #d9e1ea;
+  border-radius: 14px;
+  box-shadow: 0 16px 26px rgba(27, 50, 72, 0.12);
+  padding: 24px;
+}
+
+.badge {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #e8f2fb;
+  color: #26547c;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+}
+
+.card h1 {
+  margin: 12px 0 8px;
+  color: #1e3d5b;
+  font-size: 1.7rem;
+}
+
+.description {
+  margin: 0 0 16px;
+  color: #5f6973;
+  line-height: 1.55;
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+}
+
+.form label {
+  color: #4f5963;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.form input {
+  border: 1px solid #c3d2e0;
+  border-radius: 10px;
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 11px 12px;
+  outline: none;
+}
+
+.form input:focus {
+  border-color: #26547c;
+  box-shadow: 0 0 0 3px rgba(38, 84, 124, 0.16);
+}
+
+.form button {
+  margin-top: 4px;
+  border: 1px solid #26547c;
+  border-radius: 10px;
+  background: #26547c;
+  color: #ffffff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.form button:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.error {
+  margin: 12px 0 0;
+  color: #ef476f;
+  font-size: 0.88rem;
+}
+
+.success {
+  margin: 12px 0 0;
+  color: #06d6a0;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 14px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .card h1 {
+    font-size: 1.45rem;
+  }
+}

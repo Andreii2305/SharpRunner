@@ -9,6 +9,7 @@ import LessonMapPage from "./pages/map/LessonMapPage.jsx";
 import LevelRoutePage from "./pages/game/LevelRoutePage.jsx";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
 import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
+import JoinClassPage from "./pages/student/JoinClassPage.jsx";
 
 function App() {
   return (
@@ -19,8 +20,16 @@ function App() {
         <Route
           path="/dashboard"
           element={
-            <ProtectedRoute>
+            <ProtectedRoute requireClassMembership>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/join-class"
+          element={
+            <ProtectedRoute allowedRoles={["student"]}>
+              <JoinClassPage />
             </ProtectedRoute>
           }
         />
@@ -42,8 +51,22 @@ function App() {
         />
         <Route path="/lesson" element={<LessonSection />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/Map" element={<LessonMapPage />} />
-        <Route path="/Map/level/:levelNumber" element={<LevelRoutePage />} />
+        <Route
+          path="/Map"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <LessonMapPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/Map/level/:levelNumber"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <LevelRoutePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/signup" element={<SignUp />} />
       </Routes>
     </BrowserRouter>

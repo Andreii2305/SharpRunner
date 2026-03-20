@@ -2,6 +2,7 @@ const router = require("express").Router();
 const UserProgress = require("../models/UserProgress");
 const User = require("../models/User");
 const authMiddleware = require("../middleware/authMiddleware");
+const requireActiveClassMembership = require("../middleware/requireActiveClassMembership");
 const {
   ensureProgressRowsForUser,
   buildProgressSummary,
@@ -36,7 +37,9 @@ const parseProgressValue = (value) => {
   };
 };
 
-router.get("/me", authMiddleware, async (req, res) => {
+router.use(authMiddleware, requireActiveClassMembership);
+
+router.get("/me", async (req, res) => {
   try {
     const rows = await ensureProgressRowsForUser(req.userId);
     return res.json(buildProgressSummary(rows));
@@ -46,7 +49,7 @@ router.get("/me", authMiddleware, async (req, res) => {
   }
 });
 
-router.put("/level/:levelKey", authMiddleware, async (req, res) => {
+router.put("/level/:levelKey", async (req, res) => {
   try {
     const body = req.body ?? {};
     const levelKey = normalizeLevelKey(req.params.levelKey);
@@ -104,7 +107,7 @@ router.put("/level/:levelKey", authMiddleware, async (req, res) => {
   }
 });
 
-router.post("/activity", authMiddleware, async (req, res) => {
+router.post("/activity", async (req, res) => {
   try {
     const isPlayingGame = req.body?.isPlayingGame;
     if (typeof isPlayingGame !== "boolean") {

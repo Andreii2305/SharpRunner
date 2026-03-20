@@ -1,6 +1,8 @@
 const User = require("./User");
 const UserProgress = require("./UserProgress");
 const AdminActivityLog = require("./AdminActivityLog");
+const Classroom = require("./Classroom");
+const ClassroomMembership = require("./ClassroomMembership");
 
 User.hasMany(UserProgress, {
   foreignKey: "userId",
@@ -35,8 +37,43 @@ AdminActivityLog.belongsTo(User, {
   as: "target",
 });
 
+User.hasMany(Classroom, {
+  foreignKey: "teacherId",
+  as: "teacherClassrooms",
+  onDelete: "CASCADE",
+});
+
+Classroom.belongsTo(User, {
+  foreignKey: "teacherId",
+  as: "teacher",
+});
+
+Classroom.hasMany(ClassroomMembership, {
+  foreignKey: "classroomId",
+  as: "memberships",
+  onDelete: "CASCADE",
+});
+
+ClassroomMembership.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+});
+
+User.hasMany(ClassroomMembership, {
+  foreignKey: "studentId",
+  as: "classroomMemberships",
+  onDelete: "CASCADE",
+});
+
+ClassroomMembership.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+});
+
 module.exports = {
   User,
   UserProgress,
   AdminActivityLog,
+  Classroom,
+  ClassroomMembership,
 };

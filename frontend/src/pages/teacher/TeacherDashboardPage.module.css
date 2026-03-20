@@ -1,0 +1,514 @@
+.page {
+  --color-text-normal: #595959;
+  --color-secondary: #06d6a0;
+  --color-accent-1: #ef476f;
+  --color-accent-2: #ffd166;
+  --color-primary: #26547c;
+  --color-border-light: #d9d9d9;
+  --color-surface: #ffffff;
+  --color-background: #f7f9fb;
+  min-height: 100vh;
+  background: var(--color-background);
+  padding: 20px;
+  box-sizing: border-box;
+  color: var(--color-text-normal);
+}
+
+.container {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.topbar h1 {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 1.05rem;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navButton,
+.navActive {
+  border: none;
+  background: transparent;
+  color: var(--color-text-normal);
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.navActive {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.logoutButton {
+  border: 1px solid var(--color-border-light);
+  background: var(--color-surface);
+  color: var(--color-text-normal);
+  font-size: 0.78rem;
+  border-radius: 8px;
+  padding: 7px 10px;
+  margin-left: 8px;
+  cursor: pointer;
+}
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+  box-shadow: 0 3px 10px rgba(141, 164, 184, 0.16);
+}
+
+.panel h2 {
+  margin: 0 0 14px;
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.overviewGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.infoCard {
+  border: 1px solid #b8ccdf;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px;
+  min-height: 88px;
+}
+
+.primaryCard {
+  background: #577fa4;
+  border-color: #577fa4;
+  color: #ffffff;
+}
+
+.primaryCard .cardTitle,
+.primaryCard .cardValue {
+  color: #ffffff;
+}
+
+.cardTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.smallAction {
+  border: none;
+  border-radius: 7px;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 0.72rem;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.cardTitle {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  color: var(--color-text-normal);
+}
+
+.cardValue {
+  margin: 10px 0 0;
+  font-size: 2rem;
+  line-height: 1;
+  font-weight: 700;
+  color: #111111;
+}
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressTrack {
+  width: 100%;
+  height: 10px;
+  background: #dedede;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-secondary);
+  border-radius: 999px;
+}
+
+.classCard {
+  border: 1px solid #b8ccdf;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.classCard h3 {
+  margin: 0 0 6px;
+  color: var(--color-primary);
+  font-size: 0.95rem;
+}
+
+.classCard p {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--color-text-normal);
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.classMeta {
+  margin-top: 6px !important;
+  font-size: 0.76rem !important;
+  color: #7d8b99 !important;
+}
+
+.classProgressWrap {
+  display: grid;
+  gap: 6px;
+  min-width: 240px;
+}
+
+.classProgressWrap span {
+  font-size: 0.82rem;
+}
+
+.tableWrap {
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  overflow: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px;
+  font-size: 0.78rem;
+  color: var(--color-text-normal);
+  background: #f7f9fb;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.table td {
+  padding: 10px;
+  font-size: 0.82rem;
+  border-bottom: 1px solid #ececec;
+}
+
+.emptyRow {
+  text-align: center;
+  padding: 18px;
+  color: #8995a2;
+}
+
+.tableProgress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tableProgress span {
+  min-width: 34px;
+}
+
+.badges {
+  display: inline-flex;
+  gap: 5px;
+  color: #e0a11d;
+}
+
+.onlineText {
+  color: var(--color-secondary);
+  margin: 0;
+}
+
+.inactiveText {
+  color: var(--color-accent-1);
+  margin: 0;
+}
+
+.subStatus {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  color: #8b97a4;
+}
+
+.insightTopRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.insightCard {
+  border: 1px solid #b8ccdf;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.insightTitle {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
+.insightValue {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1f2b34;
+}
+
+.insightBottomRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.chartCard {
+  border: 1px solid #b8ccdf;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 10px;
+}
+
+.chartCard h3 {
+  margin: 0 0 10px;
+  color: var(--color-primary);
+  font-size: 0.88rem;
+}
+
+.lessonBars {
+  display: grid;
+  gap: 8px;
+}
+
+.lessonBarRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.lessonBarRow span {
+  font-size: 0.78rem;
+}
+
+.lineChartWrap {
+  display: grid;
+  gap: 8px;
+}
+
+.chartSvg {
+  width: 100%;
+  height: 190px;
+}
+
+.axisLine {
+  stroke: #8da4b8;
+  stroke-width: 1.1;
+}
+
+.gridLine {
+  stroke: #d8e1ea;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.chartPath {
+  fill: none;
+  stroke: #f08b24;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chartLabels {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.chartLabels span {
+  font-size: 0.68rem;
+  color: #7d8b99;
+  text-align: center;
+  flex: 1;
+}
+
+.feedback {
+  margin: 0;
+  color: #7a8a99;
+  font-size: 0.88rem;
+}
+
+.error {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: var(--color-accent-1);
+}
+
+.success {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  color: var(--color-secondary);
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 23, 31, 0.36);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 80;
+}
+
+.modalCard {
+  width: min(420px, 100%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-light);
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(22, 36, 48, 0.18);
+  padding: 16px;
+}
+
+.modalCard h3 {
+  margin: 0 0 12px;
+  color: var(--color-primary);
+  font-size: 1rem;
+}
+
+.modalForm {
+  display: grid;
+  gap: 10px;
+}
+
+.modalForm label {
+  display: grid;
+  gap: 4px;
+}
+
+.modalForm span {
+  font-size: 0.78rem;
+  color: var(--color-text-normal);
+}
+
+.modalForm input {
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 0.86rem;
+  padding: 9px 10px;
+  outline: none;
+}
+
+.modalForm input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(38, 84, 124, 0.16);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.modalCancel,
+.modalSubmit {
+  border-radius: 8px;
+  font-size: 0.82rem;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.modalCancel {
+  border: 1px solid var(--color-border-light);
+  background: #ffffff;
+  color: var(--color-text-normal);
+}
+
+.modalSubmit {
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary);
+  color: #ffffff;
+}
+
+.modalCancel:disabled,
+.modalSubmit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media (max-width: 980px) {
+  .overviewGrid,
+  .insightTopRow,
+  .insightBottomRow {
+    grid-template-columns: 1fr;
+  }
+
+  .classCard {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .classProgressWrap {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    padding: 12px;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .nav {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}

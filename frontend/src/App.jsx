@@ -8,6 +8,7 @@ import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute.jsx";
 import LessonMapPage from "./pages/map/LessonMapPage.jsx";
 import LevelRoutePage from "./pages/game/LevelRoutePage.jsx";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
+import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
 
 function App() {
   return (
@@ -20,6 +21,14 @@ function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/teacher"
+          element={
+            <ProtectedRoute allowedRoles={["teacher", "admin"]}>
+              <TeacherDashboardPage />
             </ProtectedRoute>
           }
         />

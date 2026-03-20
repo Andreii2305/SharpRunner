@@ -45,6 +45,10 @@ export const getHomeRouteByRole = (role) => {
     return "/admin";
   }
 
+  if (normalizedRole === "teacher") {
+    return "/teacher";
+  }
+
   return "/dashboard";
 };
 

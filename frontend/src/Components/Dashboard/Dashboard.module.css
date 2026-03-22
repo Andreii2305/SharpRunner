@@ -28,6 +28,12 @@
   overflow-y: auto;
 }
 
+.topRow {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 16px;
+}
+
 
 /* --- Top Section: Current Lesson --- */
 .currentLessonCard {
@@ -39,6 +45,17 @@
   border-radius: 12px;
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.classroomCard {
+  background: white;
+  padding: 1.25rem 1.4rem;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  display: grid;
+  align-content: flex-start;
+  gap: 8px;
 }
 
 .lessonInfo {
@@ -58,6 +75,48 @@
   margin: 0;
   font-size: 1rem;
   color: #6b7280;
+}
+
+.classroomName {
+  margin: 0;
+  color: #1f2937;
+  font-size: 1.04rem;
+  font-weight: 600;
+}
+
+.classroomMeta {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.92rem;
+}
+
+.classroomCode {
+  margin: 0;
+  color: #26547c;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.classroomCode span {
+  display: inline-block;
+  margin-left: 6px;
+  background: #ecf4fb;
+  border: 1px solid #bfd2e5;
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: #1f3f5d;
+}
+
+.classroomFallback {
+  margin: 0;
+  color: #6b7280;
+  font-size: 0.92rem;
+}
+
+.classroomError {
+  margin: 0;
+  color: #ef4444;
+  font-size: 0.84rem;
 }
 
 /* --- Middle Section: Progress + Achievements + Lessons --- */
@@ -138,4 +197,10 @@
   font-size: 1rem;
   color: #374151;
   font-weight: 500;
+}
+
+@media (max-width: 1150px) {
+  .topRow {
+    grid-template-columns: 1fr;
+  }
 }

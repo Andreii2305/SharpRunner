@@ -30,8 +30,11 @@ const FALLBACK_LESSONS = [
 function Dashboard() {
   const navigate = useNavigate();
   const [progressData, setProgressData] = useState(null);
+  const [classroomData, setClassroomData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isClassroomLoading, setIsClassroomLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [classroomLoadError, setClassroomLoadError] = useState("");
 
   const achievements = [
     { title: "Loop Master", badgeSrc: LoopMasterBadge },
@@ -42,31 +45,34 @@ function Dashboard() {
   useEffect(() => {
     let isMounted = true;
 
-    const fetchProgress = async () => {
-      try {
-        const response = await axios.get(buildApiUrl("/api/progress/me"), {
-          headers: getAuthHeaders(),
-        });
+    const fetchDashboardData = async () => {
+      const authHeaders = { headers: getAuthHeaders() };
+      const [progressResult, classroomResult] = await Promise.allSettled([
+        axios.get(buildApiUrl("/api/progress/me"), authHeaders),
+        axios.get(buildApiUrl("/api/classrooms/me"), authHeaders),
+      ]);
 
-        if (!isMounted) {
-          return;
-        }
-
-        setProgressData(response.data);
-      } catch (error) {
-        if (!isMounted) {
-          return;
-        }
-
-        setLoadError("Unable to load live progress. Showing local defaults.");
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+      if (!isMounted) {
+        return;
       }
+
+      if (progressResult.status === "fulfilled") {
+        setProgressData(progressResult.value.data);
+      } else {
+        setLoadError("Unable to load live progress. Showing local defaults.");
+      }
+
+      if (classroomResult.status === "fulfilled") {
+        setClassroomData(classroomResult.value.data);
+      } else {
+        setClassroomLoadError("Unable to load classroom info right now.");
+      }
+
+      setIsLoading(false);
+      setIsClassroomLoading(false);
     };
 
-    fetchProgress();
+    fetchDashboardData();
 
     return () => {
       isMounted = false;
@@ -85,24 +91,63 @@ function Dashboard() {
   const currentLesson =
     progressData?.summary?.currentLesson ?? FALLBACK_LESSONS[0].lessonTitle;
   const completedLessons = progressData?.summary?.completedLessons ?? 0;
+  const joinedClassroom = classroomData?.primaryClassroom ?? null;
 
   return (
     <div className={styles.dashboardContainer}>
       <Sidebar variant="active" />
       <section className={styles.dashboard}>
-        <div className={styles.currentLessonCard}>
-          <div className={styles.lessonInfo}>
-            <h4 className={styles.title}>Current Lesson</h4>
-            <p className={styles.currentLesson}>
-              {isLoading ? "Loading..." : currentLesson}
-            </p>
+        <div className={styles.topRow}>
+          <div className={styles.currentLessonCard}>
+            <div className={styles.lessonInfo}>
+              <h4 className={styles.title}>Current Lesson</h4>
+              <p className={styles.currentLesson}>
+                {isLoading ? "Loading..." : currentLesson}
+              </p>
+            </div>
+            <Button
+              label="Continue Game"
+              variant="primary"
+              size="md"
+              onClick={() => navigate("/Map")}
+            />
           </div>
-          <Button
-            label="Continue Game"
-            variant="primary"
-            size="md"
-            onClick={() => navigate("/Map")}
-          />
+
+          <div className={styles.classroomCard}>
+            {isClassroomLoading ? (
+              <p className={styles.classroomFallback}>Loading class...</p>
+            ) : joinedClassroom ? (
+              <>
+                <p className={styles.classroomName}>
+                  {joinedClassroom.className}
+                </p>
+                <p className={styles.classroomMeta}>
+                  Section: {joinedClassroom.section || "N/A"}
+                </p>
+                <p className={styles.classroomMeta}>
+                  School Year: {joinedClassroom.schoolYear || "N/A"}
+                </p>
+                {/*<p className={styles.classroomCode}>
+                  Class Code: <span>{joinedClassroom.classCode || "N/A"}</span>
+                </p>*/}
+              </>
+            ) : (
+              <>
+                <p className={styles.classroomFallback}>
+                  You are not enrolled in any class yet.
+                </p>
+                <Button
+                  label="Join Class"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate("/join-class")}
+                />
+              </>
+            )}
+            {classroomLoadError ? (
+              <p className={styles.classroomError}>{classroomLoadError}</p>
+            ) : null}
+          </div>
         </div>
         <div className={styles.progressSection}>
           <div className={styles.progressContainer}>
@@ -137,7 +182,10 @@ function Dashboard() {
               {loadError && <p className={styles.lesson}>{loadError}</p>}
               <div className={styles.lessons}>
                 {lessons.map((lesson) => (
-                  <div key={lesson.lessonKey} className={styles.lessonContainer}>
+                  <div
+                    key={lesson.lessonKey}
+                    className={styles.lessonContainer}
+                  >
                     <p className={styles.lesson}>{lesson.lessonTitle}</p>
                     <ProgressBarComponent progress={lesson.progressPercent} />
                   </div>

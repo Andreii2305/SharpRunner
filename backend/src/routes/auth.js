@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Op, col, fn, where } = require("sequelize");
 const User = require("../models/User");
+const AdminInvite = require("../models/AdminInvite");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 
 const normalizeString = (value) =>
@@ -10,6 +11,9 @@ const normalizeString = (value) =>
 
 const normalizeEmail = (value) =>
   normalizeString(value).toLowerCase();
+
+const normalizeInviteCode = (value) =>
+  normalizeString(value).toUpperCase().replace(/\s+/g, "");
 
 const createAuthToken = (userId, role = "student") =>
   jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
@@ -163,6 +167,96 @@ router.post("/register", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/register-admin-invite", async (req, res) => {
+  try {
+    const firstName = normalizeString(req.body.firstName);
+    const lastName = normalizeString(req.body.lastName);
+    const username = normalizeString(req.body.username);
+    const email = normalizeEmail(req.body.email);
+    const password = normalizeString(req.body.password);
+    const inviteCode = normalizeInviteCode(req.body.inviteCode);
+
+    if (!firstName || !lastName || !username || !email || !password || !inviteCode) {
+      return res.status(400).json({
+        message: "firstName, lastName, username, email, password, and inviteCode are required",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: "Auth is not configured" });
+    }
+
+    const invite = await AdminInvite.findOne({
+      where: { inviteCode },
+    });
+
+    if (!invite) {
+      return res.status(404).json({ message: "Invalid invite code" });
+    }
+
+    if (invite.usedAt) {
+      return res.status(409).json({ message: "Invite code has already been used" });
+    }
+
+    if (new Date(invite.expiresAt).getTime() <= Date.now()) {
+      return res.status(410).json({ message: "Invite code has expired" });
+    }
+
+    if (invite.invitedEmail && invite.invitedEmail !== email) {
+      return res.status(403).json({
+        message: "This invite code is restricted to a different email",
+      });
+    }
+
+    const existingUser = await findUserByEmailOrUsername(email, username);
+    if (existingUser) {
+      return res.status(409).json({
+        message: "Username or email already exists",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({
+      firstName,
+      lastName,
+      username,
+      email,
+      role: "admin",
+      status: "active",
+      password: hashedPassword,
+    });
+
+    invite.usedAt = new Date();
+    invite.usedByUserId = user.id;
+    await invite.save();
+
+    const token = createAuthToken(user.id, user.role ?? "admin");
+
+    return res.status(201).json({
+      message: "Admin account created successfully from invite",
+      token,
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        email: user.email,
+        role: user.role ?? "admin",
+        status: user.status ?? "active",
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

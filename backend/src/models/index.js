@@ -1,6 +1,7 @@
 const User = require("./User");
 const UserProgress = require("./UserProgress");
 const AdminActivityLog = require("./AdminActivityLog");
+const AdminInvite = require("./AdminInvite");
 const Classroom = require("./Classroom");
 const ClassroomMembership = require("./ClassroomMembership");
 
@@ -35,6 +36,17 @@ AdminActivityLog.belongsTo(User, {
 AdminActivityLog.belongsTo(User, {
   foreignKey: "targetUserId",
   as: "target",
+});
+
+User.hasMany(AdminInvite, {
+  foreignKey: "usedByUserId",
+  as: "usedAdminInvites",
+  onDelete: "SET NULL",
+});
+
+AdminInvite.belongsTo(User, {
+  foreignKey: "usedByUserId",
+  as: "usedBy",
 });
 
 User.hasMany(Classroom, {
@@ -74,6 +86,7 @@ module.exports = {
   User,
   UserProgress,
   AdminActivityLog,
+  AdminInvite,
   Classroom,
   ClassroomMembership,
 };

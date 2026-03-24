@@ -10,6 +10,8 @@ import LevelRoutePage from "./pages/game/LevelRoutePage.jsx";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
 import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
 import JoinClassPage from "./pages/student/JoinClassPage.jsx";
+import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
+import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
 
 function App() {
   return (
@@ -51,6 +53,8 @@ function App() {
         />
         <Route path="/lesson" element={<LessonSection />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/developer" element={<DeveloperPage />} />
+        <Route path="/admin-invite" element={<AdminInviteRegisterPage />} />
         <Route
           path="/Map"
           element={

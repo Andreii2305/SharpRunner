@@ -9,6 +9,8 @@ import {
   gameEvents,
   GAME_LEVEL_CODE_EVALUATED,
   GAME_LEVEL_OUTCOME,
+  GAME_LEVEL_DIALOGUE_TRIGGERED,
+  GAME_LEVEL_DIALOGUE_CLOSED,
 } from "./gameEvents";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { getLevelConfig } from "./levels/levelConfigs";
@@ -24,6 +26,21 @@ const getIdleResult = (levelConfig) => ({
 const hasIntroDialogue = (levelConfig) =>
   Boolean(levelConfig?.dialogue?.intro && levelConfig.dialogue.intro.length > 0);
 
+const shouldStartWithDialogue = (levelConfig) => {
+  if (!hasIntroDialogue(levelConfig)) {
+    return false;
+  }
+
+  if (typeof levelConfig?.startWithDialogue === "boolean") {
+    return levelConfig.startWithDialogue;
+  }
+
+  return true;
+};
+
+const isCodeLockedByDialogue = (levelConfig) =>
+  Boolean(levelConfig?.lockCodeUntilDialogueDone && hasIntroDialogue(levelConfig));
+
 function GamePage() {
   const navigate = useNavigate();
   const { levelNumber } = useParams();
@@ -35,9 +52,10 @@ function GamePage() {
   );
 
   const nextLevelTimerRef = useRef(null);
-  const [showStoryIntro, setShowStoryIntro] = useState(hasIntroDialogue(levelConfig));
+  const [showStoryIntro, setShowStoryIntro] = useState(shouldStartWithDialogue(levelConfig));
   const [dialogueStep, setDialogueStep] = useState(0);
   const [typedCharacters, setTypedCharacters] = useState(0);
+  const [isCodeLocked, setIsCodeLocked] = useState(isCodeLockedByDialogue(levelConfig));
   const [code, setCode] = useState(levelConfig?.defaultCode ?? "");
   const [result, setResult] = useState(getIdleResult(levelConfig));
 
@@ -66,8 +84,36 @@ function GamePage() {
     setResult(getIdleResult(levelConfig));
     setDialogueStep(0);
     setTypedCharacters(0);
-    setShowStoryIntro(hasIntroDialogue(levelConfig));
+    setShowStoryIntro(shouldStartWithDialogue(levelConfig));
+    setIsCodeLocked(isCodeLockedByDialogue(levelConfig));
   }, [clearNextLevelTimer, levelConfig]);
+
+  useEffect(() => {
+    if (!levelConfig) {
+      return undefined;
+    }
+
+    const handleDialogueTriggered = ({ levelNumber: dialogueLevelNumber }) => {
+      if (dialogueLevelNumber !== levelConfig.levelNumber) {
+        return;
+      }
+
+      if (!hasIntroDialogue(levelConfig)) {
+        setIsCodeLocked(false);
+        return;
+      }
+
+      setDialogueStep(0);
+      setTypedCharacters(0);
+      setShowStoryIntro(true);
+    };
+
+    gameEvents.on(GAME_LEVEL_DIALOGUE_TRIGGERED, handleDialogueTriggered);
+
+    return () => {
+      gameEvents.off(GAME_LEVEL_DIALOGUE_TRIGGERED, handleDialogueTriggered);
+    };
+  }, [levelConfig]);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -161,6 +207,14 @@ function GamePage() {
   }, [result.type]);
 
   const runLevelCheck = () => {
+    if (isCodeLocked) {
+      setResult({
+        type: "error",
+        message: "Reach the NPC and finish the dialogue first.",
+      });
+      return;
+    }
+
     if (!levelConfig?.validateCode) {
       setResult({
         type: "error",
@@ -260,6 +314,12 @@ function GamePage() {
 
     if (isLastDialogue) {
       setShowStoryIntro(false);
+      setIsCodeLocked(false);
+      if (levelConfig) {
+        gameEvents.emit(GAME_LEVEL_DIALOGUE_CLOSED, {
+          levelNumber: levelConfig.levelNumber,
+        });
+      }
       return;
     }
 
@@ -415,7 +475,11 @@ function GamePage() {
                 defaultLanguage="csharp"
                 value={code}
                 onChange={(val) => setCode(val ?? "")}
-                options={{ minimap: { enabled: false }, fontSize: 14 }}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 14,
+                  readOnly: isCodeLocked,
+                }}
               />
             </div>
             <div className={styles.editorFooter}>

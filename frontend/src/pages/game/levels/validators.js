@@ -3,8 +3,19 @@ const DECLARATION_REGEX =
 
 const COMMENT_REGEX = /\/\/.*$|\/\*[\s\S]*?\*\//gm;
 const INTEGER_LITERAL_REGEX = /^-?\d+$/;
+const QUOTED_STRING_REGEX = /^"(.*)"$/s;
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
+
+const parseDeclarationValue = (valueExpression) => {
+  const trimmed = (valueExpression ?? "").trim();
+  const stringMatch = trimmed.match(QUOTED_STRING_REGEX);
+  if (stringMatch) {
+    return stringMatch[1];
+  }
+
+  return trimmed;
+};
 
 const normalizeGoals = (goals) =>
   goals.map((goal) => ({
@@ -33,6 +44,7 @@ export const createExactGoalDeclarationValidator =
     const codeWithoutComments = stripComments(sourceCode ?? "");
     const declarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
     const matchedGoals = new Set();
+    const goalValues = {};
 
     for (const declaration of declarations) {
       const [, type, variableName, assignmentValue] = declaration;
@@ -77,6 +89,7 @@ export const createExactGoalDeclarationValidator =
       }
 
       matchedGoals.add(variableName);
+      goalValues[variableName] = parseDeclarationValue(assignmentValue);
     }
 
     for (const goal of normalizedGoals) {
@@ -98,6 +111,9 @@ export const createExactGoalDeclarationValidator =
     return {
       isCorrect: true,
       message: successMessage,
+      payload: {
+        goalValues,
+      },
     };
   };
 

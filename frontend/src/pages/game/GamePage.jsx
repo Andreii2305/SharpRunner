@@ -26,6 +26,8 @@ const getIdleResult = (levelConfig) => ({
 const hasIntroDialogue = (levelConfig) =>
   Boolean(levelConfig?.dialogue?.intro && levelConfig.dialogue.intro.length > 0);
 
+const getDefaultDialogueScript = (levelConfig) => levelConfig?.dialogue?.intro ?? [];
+
 const shouldStartWithDialogue = (levelConfig) => {
   if (!hasIntroDialogue(levelConfig)) {
     return false;
@@ -52,6 +54,8 @@ function GamePage() {
   );
 
   const nextLevelTimerRef = useRef(null);
+  const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
+  const [activeDialogueId, setActiveDialogueId] = useState(null);
   const [showStoryIntro, setShowStoryIntro] = useState(shouldStartWithDialogue(levelConfig));
   const [dialogueStep, setDialogueStep] = useState(0);
   const [typedCharacters, setTypedCharacters] = useState(0);
@@ -80,6 +84,8 @@ function GamePage() {
 
   useEffect(() => {
     clearNextLevelTimer();
+    setDialogueScript(getDefaultDialogueScript(levelConfig));
+    setActiveDialogueId(null);
     setCode(levelConfig?.defaultCode ?? "");
     setResult(getIdleResult(levelConfig));
     setDialogueStep(0);
@@ -93,18 +99,32 @@ function GamePage() {
       return undefined;
     }
 
-    const handleDialogueTriggered = ({ levelNumber: dialogueLevelNumber }) => {
+    const handleDialogueTriggered = (payload = {}) => {
+      const {
+        levelNumber: dialogueLevelNumber,
+        dialogueId = null,
+        dialogueSteps = null,
+      } = payload;
+
       if (dialogueLevelNumber !== levelConfig.levelNumber) {
         return;
       }
 
-      if (!hasIntroDialogue(levelConfig)) {
+      const nextDialogueScript =
+        Array.isArray(dialogueSteps) && dialogueSteps.length > 0
+          ? dialogueSteps
+          : getDefaultDialogueScript(levelConfig);
+
+      if (!nextDialogueScript.length) {
         setIsCodeLocked(false);
         return;
       }
 
+      setDialogueScript(nextDialogueScript);
+      setActiveDialogueId(dialogueId);
       setDialogueStep(0);
       setTypedCharacters(0);
+      setIsCodeLocked(true);
       setShowStoryIntro(true);
     };
 
@@ -245,10 +265,9 @@ function GamePage() {
     navigate("/dashboard");
   };
 
-  const storyIntro = levelConfig?.dialogue?.intro ?? [];
-  const activeDialogue = storyIntro[dialogueStep];
-  const isLastDialogue = storyIntro.length > 0
-    ? dialogueStep === storyIntro.length - 1
+  const activeDialogue = dialogueScript[dialogueStep];
+  const isLastDialogue = dialogueScript.length > 0
+    ? dialogueStep === dialogueScript.length - 1
     : true;
 
   const totalStepCharacters = useMemo(() => {
@@ -318,8 +337,10 @@ function GamePage() {
       if (levelConfig) {
         gameEvents.emit(GAME_LEVEL_DIALOGUE_CLOSED, {
           levelNumber: levelConfig.levelNumber,
+          dialogueId: activeDialogueId,
         });
       }
+      setActiveDialogueId(null);
       return;
     }
 
@@ -347,8 +368,14 @@ function GamePage() {
 
   const uiAssetBase =
     levelConfig.dialogue?.assetBase ?? `${import.meta.env.BASE_URL}game/assets/ui/dialogue`;
-  const portraitImage = levelConfig.dialogue?.portraitImage ?? "portrait_player_main.png";
-  const portraitAlt = levelConfig.dialogue?.portraitAlt ?? "Character portrait";
+  const portraitImage =
+    activeDialogue?.portraitImage ??
+    levelConfig.dialogue?.portraitImage ??
+    "portrait_player_main.png";
+  const portraitAlt =
+    activeDialogue?.portraitAlt ??
+    levelConfig.dialogue?.portraitAlt ??
+    "Character portrait";
   const goalTitle = levelConfig.goal?.title ?? "Goal";
   const goalDescription =
     levelConfig.goal?.description ?? "Complete this level's coding objective.";

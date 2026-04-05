@@ -26,6 +26,8 @@ const INTRO_PORTAL_FADE_DURATION_MS = 360;
 const NON_FATAL_FAILURE_DELAY_MS = 260;
 const SUCCESS_HOLD_DELAY_MS = 420;
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
+const INTRO_DIALOGUE_ID = "level2-intro";
+const SUCCESS_DIALOGUE_ID = "level2-name-intro";
 
 const ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -39,6 +41,9 @@ export default class LevelTwoScene extends Phaser.Scene {
   constructor() {
     super("LevelTwoScene");
   }
+
+  //Note: No gate yet, hanap pa ng gate na asset para at ilagay sa map
+  //Gate will open after Name is declared and when gatekeeper let character passed
 
   preload() {
     this.load.image("level2_bg", `${ASSET_BASE}/backgrounds/level1_bg.png`);
@@ -187,6 +192,8 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.introComplete = false;
     this.dialogueRequested = false;
     this.dialogueClosed = false;
+    this.awaitingSuccessDialogueClose = false;
+    this.introducedName = "Kai";
     this.successTargetX = this.npcPoint.x;
     this.approachTargetX = this.npcPoint.x - NPC_APPROACH_OFFSET_X;
     this.failureMessage = "You failed. Declare the exact variable for this level.";
@@ -365,16 +372,8 @@ export default class LevelTwoScene extends Phaser.Scene {
         this.player.x = this.successTargetX;
         this.player.setFlipX(false);
         this.playAnimation("player-idle");
-        this.sequenceMode = "awaitingCode";
-
-        this.time.delayedCall(SUCCESS_HOLD_DELAY_MS, () => {
-          gameEvents.emit(GAME_LEVEL_OUTCOME, {
-            levelNumber: LEVEL_NUMBER,
-            status: "success",
-            message: 'Correct. NPC accepted: "Kai". Level 2 cleared.',
-            shouldProceed: true,
-          });
-        });
+        this.sequenceMode = "awaitingSuccessDialogue";
+        this.triggerSuccessDialogue();
       }
 
       return;
@@ -531,7 +530,8 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.resetAttemptState();
 
     if (payload.isCorrect) {
-      this.startSuccessSequence();
+      const introducedName = payload?.goalValues?.myName ?? "Kai";
+      this.startSuccessSequence(introducedName);
       return;
     }
 
@@ -566,11 +566,13 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.playAnimation("player-idle");
   }
 
-  startSuccessSequence() {
+  startSuccessSequence(introducedName) {
     const minX = this.physics.world.bounds.x + 16;
     const maxX = this.physics.world.bounds.right - 16;
 
     this.sequenceMode = "success";
+    this.awaitingSuccessDialogueClose = false;
+    this.introducedName = introducedName || "Kai";
     this.successTargetX = Phaser.Math.Clamp(
       this.npcPoint.x - 18,
       minX,
@@ -588,11 +590,63 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.dialogueRequested = true;
     gameEvents.emit(GAME_LEVEL_DIALOGUE_TRIGGERED, {
       levelNumber: LEVEL_NUMBER,
+      dialogueId: INTRO_DIALOGUE_ID,
     });
   }
 
-  onDialogueClosed({ levelNumber }) {
+  triggerSuccessDialogue() {
+    if (this.awaitingSuccessDialogueClose) {
+      return;
+    }
+
+    const safeName = `${this.introducedName ?? "Kai"}`.trim() || "Kai";
+    this.awaitingSuccessDialogueClose = true;
+
+    gameEvents.emit(GAME_LEVEL_DIALOGUE_TRIGGERED, {
+      levelNumber: LEVEL_NUMBER,
+      dialogueId: SUCCESS_DIALOGUE_ID,
+      dialogueSteps: [
+        {
+          speaker: "King Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "King Kai portrait",
+          lines: [
+            { text: `My name is ${safeName}.`, tone: "normal" },
+            { text: "I am ready for the next challenge.", tone: "accent" },
+          ],
+        },
+        {
+          speaker: "Gatekeeper",
+          portraitImage: "gatekeeper_portrait.png",
+          portraitAlt: "Gatekeeper portrait",
+          lines: [
+            { text: `Welcome, ${safeName}. You may pass.`, tone: "normal" },
+          ],
+        },
+      ],
+    });
+  }
+
+  onDialogueClosed({ levelNumber, dialogueId } = {}) {
     if (levelNumber !== LEVEL_NUMBER) {
+      return;
+    }
+
+    if (dialogueId === SUCCESS_DIALOGUE_ID && this.awaitingSuccessDialogueClose) {
+      this.awaitingSuccessDialogueClose = false;
+      this.sequenceMode = "awaitingCode";
+      this.time.delayedCall(SUCCESS_HOLD_DELAY_MS, () => {
+        gameEvents.emit(GAME_LEVEL_OUTCOME, {
+          levelNumber: LEVEL_NUMBER,
+          status: "success",
+          message: `Correct. "My name is ${this.introducedName}". Level 2 cleared.`,
+          shouldProceed: true,
+        });
+      });
+      return;
+    }
+
+    if (dialogueId !== INTRO_DIALOGUE_ID && dialogueId !== null) {
       return;
     }
 

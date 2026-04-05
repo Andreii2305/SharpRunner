@@ -130,16 +130,20 @@ const LEVEL_CONFIG_BY_NUMBER = {
     dialogue: {
       assetBase: DIALOGUE_ASSET_BASE,
       portraitImage: "portrait_player_main.png",
-      portraitAlt: "Green King portrait",
+      portraitAlt: "King Kai portrait",
       intro: [
         {
           speaker: "Gatekeeper",
+          portraitImage: "gatekeeper_portrait.png",
+          portraitAlt: "Gatekeeper portrait",
           lines: [
             { text: "Traveler, name yourself before entering.", tone: "normal" },
           ],
         },
         {
           speaker: "King Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "King Kai portrait",
           lines: [
             { text: 'Declare exactly: string myName = "Kai";', tone: "goal" },
             { text: "Then press Run so I can introduce myself.", tone: "normal" },

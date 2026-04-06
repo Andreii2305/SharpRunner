@@ -14,6 +14,7 @@ app.use("/api/lesson-content", require("./routes/lessonContent"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/teacher", require("./routes/teacher"));
 app.use("/api/classrooms", require("./routes/classrooms"));
+app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/developer", require("./routes/developer"));
 
 module.exports = app;

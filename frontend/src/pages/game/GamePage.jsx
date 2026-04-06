@@ -54,6 +54,7 @@ function GamePage() {
   );
 
   const nextLevelTimerRef = useRef(null);
+  const completionRequestRef = useRef(null);
   const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
   const [activeDialogueId, setActiveDialogueId] = useState(null);
   const [showStoryIntro, setShowStoryIntro] = useState(shouldStartWithDialogue(levelConfig));
@@ -84,6 +85,7 @@ function GamePage() {
 
   useEffect(() => {
     clearNextLevelTimer();
+    completionRequestRef.current = null;
     setDialogueScript(getDefaultDialogueScript(levelConfig));
     setActiveDialogueId(null);
     setCode(levelConfig?.defaultCode ?? "");
@@ -153,23 +155,33 @@ function GamePage() {
 
   const markLevelAsCompleted = useCallback(async () => {
     if (!levelConfig?.progressKey) {
-      return;
+      return false;
     }
 
-    try {
-      await axios.put(
-        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}`),
-        {
-          progressPercent: 100,
-          isCompleted: true,
-        },
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-    } catch (error) {
-      console.error(`Failed to save progress for level ${levelConfig.levelNumber}`, error);
+    if (!completionRequestRef.current) {
+      completionRequestRef.current = axios
+        .put(
+          buildApiUrl(`/api/progress/level/${levelConfig.progressKey}`),
+          {
+            progressPercent: 100,
+            isCompleted: true,
+          },
+          {
+            headers: getAuthHeaders(),
+          },
+        )
+        .then(() => true)
+        .catch((error) => {
+          console.error(
+            `Failed to save progress for level ${levelConfig.levelNumber}`,
+            error,
+          );
+          completionRequestRef.current = null;
+          return false;
+        });
     }
+
+    return completionRequestRef.current;
   }, [levelConfig]);
 
   useEffect(() => {
@@ -189,12 +201,22 @@ function GamePage() {
         });
 
         if (shouldProceed) {
-          markLevelAsCompleted();
-          clearNextLevelTimer();
+          void (async () => {
+            const didSaveProgress = await markLevelAsCompleted();
+            if (!didSaveProgress) {
+              setResult({
+                type: "error",
+                message:
+                  "Level cleared, but progress could not be saved. Stay on this page and try again.",
+              });
+              return;
+            }
 
-          nextLevelTimerRef.current = window.setTimeout(() => {
-            navigate(levelConfig.nextRoute ?? "/Map");
-          }, levelConfig.nextDelayMs ?? 1200);
+            clearNextLevelTimer();
+            nextLevelTimerRef.current = window.setTimeout(() => {
+              navigate(levelConfig.nextRoute ?? "/Map");
+            }, levelConfig.nextDelayMs ?? 1200);
+          })();
         }
 
         return;

@@ -8,6 +8,10 @@ const {
   buildProgressSummary,
   DEFAULT_LEVEL_PROGRESS,
 } = require("../services/progressService");
+const {
+  findPrimaryActiveMembership,
+  buildClassroomLeaderboard,
+} = require("../services/studentClassService");
 
 const LEVEL_KEYS = new Set(DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey));
 
@@ -39,10 +43,28 @@ const parseProgressValue = (value) => {
 
 router.use(authMiddleware, requireActiveClassMembership);
 
+const buildProgressPayloadForUser = async (userId) => {
+  const rows = await ensureProgressRowsForUser(userId);
+  let classRank = null;
+  let classSize = null;
+
+  const primaryMembership = await findPrimaryActiveMembership(userId);
+  if (primaryMembership) {
+    const leaderboardData = await buildClassroomLeaderboard({
+      classroomId: primaryMembership.classroomId,
+      currentUserId: userId,
+      limit: null,
+    });
+    classRank = leaderboardData.currentUserRank;
+    classSize = leaderboardData.classSize;
+  }
+
+  return buildProgressSummary(rows, { classRank, classSize });
+};
+
 router.get("/me", async (req, res) => {
   try {
-    const rows = await ensureProgressRowsForUser(req.userId);
-    return res.json(buildProgressSummary(rows));
+    return res.json(await buildProgressPayloadForUser(req.userId));
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -99,8 +121,7 @@ router.put("/level/:levelKey", async (req, res) => {
 
     await levelRow.save();
 
-    const rows = await ensureProgressRowsForUser(req.userId);
-    return res.json(buildProgressSummary(rows));
+    return res.json(await buildProgressPayloadForUser(req.userId));
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

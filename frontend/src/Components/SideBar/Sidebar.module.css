@@ -1,85 +1,234 @@
+/* ─────────────────────────────────────────
+   Sidebar.module.css
+   SharpRunner — collapsible sidebar
+───────────────────────────────────────── */
+
 .sidebar {
-  width: 70px;
-  background: #fffcf9;
-  padding: .5rem 3rem 0 0;
-  transition: width 0.3s ease;
-  overflow: hidden; /* important */
-  /* margin-top: 4.8rem; */
-  box-shadow: 0 8px 30px rgba(0,0,0,0.1);
-  position: sticky;
-  top: 4.8rem;
-  height: auto;
+  width: 64px;
+  background: #ffffff;
+  border-right: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  padding: 0;
+  transition: width 0.25s ease;
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
 }
 
 .sidebar:hover {
   width: 220px;
 }
 
-.link{
+/* ── Brand ── */
+.brand {
+  padding: 16px 12px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  flex-shrink: 0;
+}
+
+.brandLink {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   text-decoration: none;
-  color: inherit;      
-  width: 100%;         
-  padding: 10px;
-  border-radius: 12px;
-}
-
-.linkButton {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px;
-  border: none;
-  border-radius: 12px;
-  background: transparent;
   color: inherit;
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
+  border-radius: 10px;
+  padding: 6px 8px;
+  transition: background 0.15s;
 }
 
-/* Menu item layout */
-.sidebar ul li {
+.brandLink:hover {
+  background: #f4f6f9;
+}
+
+.brandIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #26547c;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px;
-  margin: 24px 0;
-  cursor: pointer;
-  border-radius: 12px;
-  transition: background 0.2s;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: -0.02em;
 }
 
-
-.sidebar ul li:hover .link,
-.sidebar ul li:hover .linkButton {
-  background: #f3f3f3;
-}
-
-/* Hide labels while collapsed */
-.sidebar .label {
-  opacity: 0;
-  pointer-events: auto;
+.brandName {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e3a5f;
   white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  letter-spacing: -0.01em;
+}
+
+.sidebar:hover .brandName {
+  opacity: 1;
+}
+
+/* ── Nav ── */
+.nav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 8px;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #6b7280;
+  position: relative;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.navItem:hover {
+  background: #f4f6f9;
+  color: #1e3a5f;
+}
+
+.navActive {
+  background: #eef4fb;
+  color: #26547c;
+}
+
+.navActive:hover {
+  background: #e0ecf7;
+}
+
+.navIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.navLabel {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar:hover .navLabel {
+  opacity: 1;
+}
+
+/* Active left indicator strip */
+.activeIndicator {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  background: #26547c;
+  border-radius: 0 3px 3px 0;
+}
+
+/* ── Bottom section ── */
+.bottom {
+  border-top: 1px solid #f3f4f6;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: default;
+  overflow: hidden;
+}
+
+.accountAv {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e8f0fb;
+  color: #26547c;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0.03em;
+}
+
+.accountInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-/* Show labels when expanded */
-.sidebar:hover .label {
+.sidebar:hover .accountInfo {
   opacity: 1;
-  pointer-events: auto;
 }
 
-.sidebar img{
-  width: 24px;
+.accountName {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e3a5f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.sidebar img .logo{
-  border-radius: 20px;
+.accountRole {
+  font-size: 10px;
+  color: #9ca3af;
+  text-transform: capitalize;
+}
+
+.logoutBtn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  color: #9ca3af;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.logoutBtn:hover {
+  background: #fef2f2;
+  color: #ef4444;
 }

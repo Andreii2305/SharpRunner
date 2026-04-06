@@ -1,87 +1,100 @@
 import styles from "./Sidebar.module.css";
-import DashboardOutlined from "@mui/icons-material/DashboardOutlined";
+import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
 import LibraryBooksOutlinedIcon from "@mui/icons-material/LibraryBooksOutlined";
 import LeaderboardOutlinedIcon from "@mui/icons-material/LeaderboardOutlined";
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
-import Logout from "@mui/icons-material/LogoutOutlined";
-import { Link, useNavigate } from "react-router-dom";
-import avatar from "../../assets/avatar.png";
+import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
+import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { clearToken, getUser } from "../../utils/auth";
+
+const NAV_ITEMS = [
+  { to: "/dashboard", Icon: DashboardOutlinedIcon, label: "Dashboard" },
+  { to: "/lesson", Icon: LibraryBooksOutlinedIcon, label: "Lessons" },
+  { to: "/leaderboards", Icon: LeaderboardOutlinedIcon, label: "Leaderboard" },
+  { to: "/Map", Icon: MapOutlinedIcon, label: "Map" },
+];
+
+function initials(name = "") {
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 function Sidebar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const user = getUser();
-  const accountLabel = user?.username || "Account";
+
+  const displayName = user?.firstName
+    ? `${user.firstName} ${user.lastName ?? ""}`.trim()
+    : (user?.username ?? "Account");
 
   const handleLogout = () => {
     clearToken();
     navigate("/login", { replace: true });
   };
 
+  const isActive = (to) =>
+    to === "/Map"
+      ? location.pathname.startsWith("/Map")
+      : location.pathname === to;
+
   return (
     <aside className={styles.sidebar}>
-      <ul>
-        <li>
-          <Link to="/" className={styles.link}>
-            {/* <span className={`${styles.icon} ${styles.logo}`}>
-              <img src={Logo} alt="SharpRunner-Logo" />
-            </span> */}
-            <span className={styles.label}>SharpRunner</span>
-          </Link>
-        </li>
-        <li>
-          <Link to="/dashboard" className={styles.link}>
-            <span className={styles.icon}>
-              <DashboardOutlined sx={{ color: "#26547c" }} />
-            </span>
+      {/* ── Brand ── */}
+      <div className={styles.brand}>
+        <Link to="/" className={styles.brandLink}>
+          <div className={styles.brandIcon}>S</div>
+          <span className={styles.brandName}>SharpRunner</span>
+        </Link>
+      </div>
 
-            <span className={styles.label}>Dashboard</span>
-          </Link>
-        </li>
-        <li>
-          <Link to="/lesson" className={styles.link}>
-            <span className={styles.icon}>
-              <LibraryBooksOutlinedIcon />
+      {/* ── Nav ── */}
+      <nav className={styles.nav}>
+        {NAV_ITEMS.map(({ to, Icon, label }) => (
+          <Link
+            key={to}
+            to={to}
+            className={`${styles.navItem} ${isActive(to) ? styles.navActive : ""}`}
+          >
+            <span className={styles.navIcon}>
+              <Icon sx={{ fontSize: 20 }} />
             </span>
-            <span className={styles.label}>Lesson</span>
+            <span className={styles.navLabel}>{label}</span>
+            {isActive(to) && <span className={styles.activeIndicator} />}
           </Link>
-        </li>
-        <li>
-          <Link to="/leaderboards" className={styles.link}>
-            <span className={styles.icon}>
-              <LeaderboardOutlinedIcon />
-            </span>
-            <span className={styles.label}>Leaderboards</span>
-          </Link>
-        </li>
-        <li>
-          <Link to="/Map" className={styles.link}>
-            <span className={styles.icon}>
-              <MapOutlinedIcon />
-            </span>
-            <span className={styles.label}>Map</span>
-          </Link>
-        </li>
-      </ul>
+        ))}
+      </nav>
 
-      <ul>
-        <li>
-          <Link className={styles.link}>
-            <span className={styles.icon}>
-              <img src={avatar} alt="account" />
-            </span>
-            <span className={styles.label}>{accountLabel}</span>
-          </Link>
-        </li>
-        <li>
-          <button type="button" className={styles.linkButton} onClick={handleLogout}>
-            <span className={styles.icon}>
-              <Logout />
-            </span>
-            <span className={styles.label}>Logout</span>
-          </button>
-        </li>
-      </ul>
+      {/* ── Bottom: account + logout ── */}
+      <div className={styles.bottom}>
+        <div className={styles.accountRow}>
+          <div className={styles.accountAv}>
+            {initials(displayName) || (
+              <AccountCircleOutlinedIcon sx={{ fontSize: 18 }} />
+            )}
+          </div>
+          <div className={styles.accountInfo}>
+            <div className={styles.accountName}>{displayName}</div>
+            <div className={styles.accountRole}>{user?.role ?? "student"}</div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={styles.logoutBtn}
+          onClick={handleLogout}
+          aria-label="Logout"
+        >
+          <span className={styles.navIcon}>
+            <LogoutOutlinedIcon sx={{ fontSize: 20 }} />
+          </span>
+          <span className={styles.navLabel}>Logout</span>
+        </button>
+      </div>
     </aside>
   );
 }

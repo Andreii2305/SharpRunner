@@ -4,6 +4,11 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const Classroom = require("../models/Classroom");
 const ClassroomMembership = require("../models/ClassroomMembership");
+const {
+  formatDisplayName,
+  findPrimaryActiveMembership,
+  buildClassroomLeaderboard,
+} = require("../services/studentClassService");
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -64,6 +69,85 @@ router.get("/me", async (req, res) => {
       classrooms,
       primaryClassroom: classrooms[0] ?? null,
     });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/leaderboard", async (req, res) => {
+  try {
+    const primaryMembership = await findPrimaryActiveMembership(req.userId);
+    if (!primaryMembership) {
+      return res.json({
+        classroomId: null,
+        classSize: 0,
+        currentUserRank: null,
+        leaderboard: [],
+      });
+    }
+
+    const leaderboardData = await buildClassroomLeaderboard({
+      classroomId: primaryMembership.classroomId,
+      currentUserId: req.userId,
+      limit: null,
+    });
+
+    return res.json({
+      classroomId: primaryMembership.classroomId,
+      classSize: leaderboardData.classSize,
+      currentUserRank: leaderboardData.currentUserRank,
+      leaderboard: leaderboardData.leaderboard.map((entry) => ({
+        rank: entry.rank,
+        userId: entry.userId,
+        name: entry.name,
+        username: entry.username,
+        xp: entry.xp,
+        levelsCleared: entry.levelsCleared,
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/announcements", async (req, res) => {
+  try {
+    const primaryMembership = await findPrimaryActiveMembership(req.userId, {
+      includeTeacher: true,
+    });
+    if (!primaryMembership?.classroom) {
+      return res.json({ announcements: [] });
+    }
+
+    const classroom = primaryMembership.classroom;
+    const teacherName = classroom.teacher
+      ? formatDisplayName(classroom.teacher)
+      : "Teacher";
+    const joinedAtIso =
+      primaryMembership.joinedAt != null
+        ? new Date(primaryMembership.joinedAt).toISOString()
+        : new Date().toISOString();
+
+    const announcements = [
+      {
+        id: `welcome-${classroom.id}-${req.userId}`,
+        message: `Welcome to ${classroom.className} (${classroom.section}). Continue your levels to climb the class leaderboard.`,
+        teacherName,
+        isRead: false,
+        createdAt: joinedAtIso,
+      },
+      {
+        id: `school-year-${classroom.id}`,
+        message: `School year ${classroom.schoolYear} is active. Keep your weekly progress updated.`,
+        teacherName,
+        isRead: false,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+
+    return res.json({ announcements });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

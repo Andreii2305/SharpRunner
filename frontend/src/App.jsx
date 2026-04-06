@@ -1,5 +1,4 @@
 import LandingPage from "./Components/LandingPage/LandingPage.jsx";
-import Dashboard from "./Components/Dashboard/Dashboard.jsx";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LessonSection from "./Components/LessonSection/LessonSection.jsx";
 import LoginPage from "./Components/LogInPage/Login.jsx";
@@ -10,28 +9,40 @@ import LevelRoutePage from "./pages/game/LevelRoutePage.jsx";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
 import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
 import JoinClassPage from "./pages/student/JoinClassPage.jsx";
+import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
+import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx"; // ← new
 import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
 
 function App() {
   return (
     <BrowserRouter basename="/SharpRunner">
-      {/* <Header /> */}
       <Routes>
         <Route path="/" element={<LandingPage />} />
+
+        {/* Student dashboard — now lives in pages/student/ */}
         <Route
           path="/dashboard"
           element={
             <ProtectedRoute requireClassMembership>
-              <Dashboard />
+              <StudentDashboardPage />
             </ProtectedRoute>
           }
         />
+
         <Route
           path="/join-class"
           element={
             <ProtectedRoute allowedRoles={["student"]}>
               <JoinClassPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/leaderboards"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <StudentLeaderboardPage />
             </ProtectedRoute>
           }
         />

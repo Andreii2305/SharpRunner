@@ -9,6 +9,8 @@ import {
   FiBookOpen,
   FiClock,
   FiGrid,
+  FiMessageSquare,
+  FiSend,
   FiUsers,
 } from "react-icons/fi";
 import {
@@ -59,15 +61,36 @@ const buildChartPath = (series, width = 360, height = 160) => {
     .join(" ");
 };
 
+const formatDateTime = (value) => {
+  if (!value) {
+    return "Just now";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "Just now";
+  }
+
+  return parsed.toLocaleString();
+};
+
 function TeacherDashboardPage() {
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(true);
   const [isCreatingClass, setIsCreatingClass] = useState(false);
+  const [isPostingAnnouncement, setIsPostingAnnouncement] = useState(false);
   const [showCreateClassModal, setShowCreateClassModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [createdClassCode, setCreatedClassCode] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [announcementError, setAnnouncementError] = useState("");
+  const [announcementSuccess, setAnnouncementSuccess] = useState("");
+  const [announcementData, setAnnouncementData] = useState({
+    classrooms: [],
+    announcements: [],
+  });
   const [classroomForm, setClassroomForm] = useState({
     className: "",
     section: "",
@@ -75,6 +98,71 @@ function TeacherDashboardPage() {
     maxStudents: "",
     description: "",
   });
+  const [announcementForm, setAnnouncementForm] = useState({
+    classroomId: "",
+    message: "",
+  });
+
+  const fetchAnnouncementData = async () => {
+    setIsLoadingAnnouncements(true);
+    setAnnouncementError("");
+
+    const applyAnnouncementPayload = (payload) => {
+      const safePayload = payload ?? { classrooms: [], announcements: [] };
+      setAnnouncementData(safePayload);
+      setAnnouncementForm((current) => ({
+        ...current,
+        classroomId: current.classroomId || `${safePayload.classrooms?.[0]?.id ?? ""}`,
+      }));
+    };
+
+    try {
+      const announcementsUrl = buildApiUrl("/api/teacher/announcements");
+      const response = await axios.get(announcementsUrl, {
+        headers: getAuthHeaders(),
+        params: { _ts: Date.now() },
+      });
+      applyAnnouncementPayload(response.data);
+    } catch (error) {
+      const announcementsUrl = buildApiUrl("/api/teacher/announcements");
+      const statusCode = error.response?.status ?? null;
+      const backendMessage = error.response?.data?.message;
+
+      // Retry once with a stronger cache-bust in case the browser cached an old 404.
+      if (statusCode === 404) {
+        try {
+          const retryResponse = await axios.get(announcementsUrl, {
+            headers: {
+              ...getAuthHeaders(),
+              "Cache-Control": "no-cache",
+              Pragma: "no-cache",
+            },
+            params: {
+              _ts: Date.now(),
+              _retry: "1",
+            },
+          });
+          applyAnnouncementPayload(retryResponse.data);
+          return;
+        } catch (retryError) {
+          const retryStatus = retryError.response?.status ?? 404;
+          const retryMessage = retryError.response?.data?.message;
+          setAnnouncementError(
+            retryMessage ??
+              `Failed to load announcements (${retryStatus}) from ${announcementsUrl}.`
+          );
+          return;
+        }
+      }
+
+      setAnnouncementError(
+        backendMessage ??
+          `Failed to load announcements (${statusCode ?? "unknown"}) from ${announcementsUrl}.`
+      );
+    } finally {
+      setIsLoadingAnnouncements(false);
+    }
+  };
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -97,6 +185,7 @@ function TeacherDashboardPage() {
     };
 
     fetchDashboard();
+    fetchAnnouncementData();
   }, []);
 
   const onSignOut = () => {
@@ -107,6 +196,14 @@ function TeacherDashboardPage() {
   const onClassroomFieldChange = (event) => {
     const { name, value } = event.target;
     setClassroomForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  };
+
+  const onAnnouncementFieldChange = (event) => {
+    const { name, value } = event.target;
+    setAnnouncementForm((current) => ({
       ...current,
       [name]: value,
     }));
@@ -163,12 +260,60 @@ function TeacherDashboardPage() {
         headers: getAuthHeaders(),
       });
       setDashboardData(refreshed.data);
+      await fetchAnnouncementData();
     } catch (error) {
       setErrorMessage(
         error.response?.data?.message ?? "Failed to create classroom."
       );
     } finally {
       setIsCreatingClass(false);
+    }
+  };
+
+  const onPostAnnouncement = async (event) => {
+    event.preventDefault();
+    setAnnouncementError("");
+    setAnnouncementSuccess("");
+
+    const classroomId = Number.parseInt(announcementForm.classroomId, 10);
+    const message = announcementForm.message.trim();
+
+    if (!Number.isInteger(classroomId) || classroomId <= 0) {
+      setAnnouncementError("Please select a classroom.");
+      return;
+    }
+
+    if (!message) {
+      setAnnouncementError("Announcement message is required.");
+      return;
+    }
+
+    setIsPostingAnnouncement(true);
+    try {
+      await axios.post(
+        buildApiUrl("/api/teacher/announcements"),
+        {
+          classroomId,
+          message,
+        },
+        { headers: getAuthHeaders() }
+      );
+
+      setAnnouncementSuccess("Announcement posted to student dashboard.");
+      setAnnouncementForm((current) => ({
+        ...current,
+        message: "",
+      }));
+      await fetchAnnouncementData();
+    } catch (error) {
+      const isRouteMissing = error.response?.status === 404;
+      setAnnouncementError(
+        isRouteMissing
+          ? "Announcement API not found (POST /api/teacher/announcements). Restart backend from the latest code."
+          : error.response?.data?.message ?? "Failed to post announcement."
+      );
+    } finally {
+      setIsPostingAnnouncement(false);
     }
   };
 
@@ -190,6 +335,18 @@ function TeacherDashboardPage() {
 
   const chartSeries = lessonInsights.difficultyByLesson ?? [];
   const chartPath = useMemo(() => buildChartPath(chartSeries), [chartSeries]);
+  const fallbackClassroomsFromDashboard = (classPerformance ?? []).map((item) => ({
+    id: item.classId,
+    className: item.className,
+    section: item.section ?? "General",
+    schoolYear: item.schoolYear ?? "",
+    classCode: item.classCode ?? "",
+  }));
+  const teacherClassrooms =
+    (announcementData.classrooms ?? []).length > 0
+      ? announcementData.classrooms
+      : fallbackClassroomsFromDashboard;
+  const teacherAnnouncements = announcementData.announcements ?? [];
 
   return (
     <div className={styles.page}>
@@ -459,6 +616,96 @@ function TeacherDashboardPage() {
                   ))}
                 </div>
               </div>
+            </article>
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <h2>Class Announcements</h2>
+
+          <div className={styles.announcementGrid}>
+            <article className={styles.announcementComposer}>
+              <p className={styles.announcementHint}>
+                <FiMessageSquare size={14} />
+                <span>
+                  Post reminders, deadlines, or guidance. Students can view this in
+                  their dashboard announcement tab.
+                </span>
+              </p>
+
+              {announcementError && (
+                <p className={styles.announcementError}>{announcementError}</p>
+              )}
+              {announcementSuccess && (
+                <p className={styles.announcementSuccess}>{announcementSuccess}</p>
+              )}
+
+              <form onSubmit={onPostAnnouncement} className={styles.announcementForm}>
+                <label>
+                  <span>Classroom</span>
+                  <select
+                    name="classroomId"
+                    value={announcementForm.classroomId}
+                    onChange={onAnnouncementFieldChange}
+                    disabled={teacherClassrooms.length === 0 || isPostingAnnouncement}
+                  >
+                    <option value="">Choose classroom</option>
+                    {teacherClassrooms.map((classroom) => (
+                      <option key={classroom.id} value={classroom.id}>
+                        {classroom.className} - {classroom.section}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Announcement message</span>
+                  <textarea
+                    name="message"
+                    value={announcementForm.message}
+                    onChange={onAnnouncementFieldChange}
+                    rows={4}
+                    maxLength={1000}
+                    placeholder="Type your announcement for students..."
+                    disabled={isPostingAnnouncement}
+                  />
+                </label>
+
+                <div className={styles.announcementActions}>
+                  <span>{announcementForm.message.length}/1000</span>
+                  <button
+                    type="submit"
+                    className={styles.announcementSubmit}
+                    disabled={isPostingAnnouncement || teacherClassrooms.length === 0}
+                  >
+                    <FiSend size={13} />
+                    <span>{isPostingAnnouncement ? "Posting..." : "Post Announcement"}</span>
+                  </button>
+                </div>
+              </form>
+            </article>
+
+            <article className={styles.announcementFeed}>
+              <h3>Recent announcements</h3>
+              {isLoadingAnnouncements ? (
+                <p className={styles.feedback}>Loading announcements...</p>
+              ) : teacherAnnouncements.length === 0 ? (
+                <p className={styles.feedback}>No announcements posted yet.</p>
+              ) : (
+                <div className={styles.announcementList}>
+                  {teacherAnnouncements.map((item) => (
+                    <div key={item.id} className={styles.announcementItem}>
+                      <div className={styles.announcementItemHeader}>
+                        <span className={styles.announcementClassTag}>
+                          {item.className} - {item.section}
+                        </span>
+                        <span>{formatDateTime(item.createdAt)}</span>
+                      </div>
+                      <p>{item.message}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </article>
           </div>
         </section>

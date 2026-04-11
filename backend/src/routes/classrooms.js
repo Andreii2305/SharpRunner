@@ -4,6 +4,9 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const Classroom = require("../models/Classroom");
 const ClassroomMembership = require("../models/ClassroomMembership");
+const ClassroomAnnouncement = require("../models/ClassroomAnnouncement");
+const ClassroomAnnouncementView = require("../models/ClassroomAnnouncementView");
+const User = require("../models/User");
 const {
   formatDisplayName,
   findPrimaryActiveMembership,
@@ -125,29 +128,104 @@ router.get("/announcements", async (req, res) => {
     const teacherName = classroom.teacher
       ? formatDisplayName(classroom.teacher)
       : "Teacher";
-    const joinedAtIso =
-      primaryMembership.joinedAt != null
-        ? new Date(primaryMembership.joinedAt).toISOString()
-        : new Date().toISOString();
+    const announcementRows = await ClassroomAnnouncement.findAll({
+      where: {
+        classroomId: classroom.id,
+        isActive: true,
+      },
+      attributes: ["id", "teacherId", "message", "createdAt"],
+      include: [
+        {
+          model: User,
+          as: "teacher",
+          required: false,
+          attributes: ["id", "firstName", "lastName", "username"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: 50,
+    });
 
-    const announcements = [
-      {
-        id: `welcome-${classroom.id}-${req.userId}`,
-        message: `Welcome to ${classroom.className} (${classroom.section}). Continue your levels to climb the class leaderboard.`,
-        teacherName,
-        isRead: false,
-        createdAt: joinedAtIso,
+    if (announcementRows.length === 0) {
+      return res.json({ announcements: [] });
+    }
+
+    const announcementIds = announcementRows.map((announcement) => announcement.id);
+    const viewRows = await ClassroomAnnouncementView.findAll({
+      where: {
+        studentId: req.userId,
+        announcementId: { [Op.in]: announcementIds },
       },
-      {
-        id: `school-year-${classroom.id}`,
-        message: `School year ${classroom.schoolYear} is active. Keep your weekly progress updated.`,
-        teacherName,
-        isRead: false,
-        createdAt: new Date().toISOString(),
-      },
-    ];
+      attributes: ["announcementId"],
+    });
+    const viewedAnnouncementIdSet = new Set(
+      viewRows.map((row) => row.announcementId)
+    );
+
+    const announcements = announcementRows.map((announcement) => ({
+      id: announcement.id,
+      message: announcement.message,
+      teacherName: announcement.teacher
+        ? formatDisplayName(announcement.teacher)
+        : teacherName,
+      isRead: viewedAnnouncementIdSet.has(announcement.id),
+      createdAt: announcement.createdAt,
+    }));
 
     return res.json({ announcements });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/announcements/:announcementId/viewed", async (req, res) => {
+  try {
+    const announcementId = Number.parseInt(req.params.announcementId, 10);
+    if (!Number.isInteger(announcementId) || announcementId <= 0) {
+      return res.status(400).json({ message: "Invalid announcement id" });
+    }
+
+    const announcement = await ClassroomAnnouncement.findByPk(announcementId, {
+      attributes: ["id", "classroomId", "isActive"],
+    });
+
+    if (!announcement || !announcement.isActive) {
+      return res.status(404).json({ message: "Announcement not found" });
+    }
+
+    const membership = await ClassroomMembership.findOne({
+      where: {
+        classroomId: announcement.classroomId,
+        studentId: req.userId,
+        status: "active",
+      },
+      attributes: ["id"],
+    });
+
+    if (!membership) {
+      return res.status(403).json({ message: "Access denied for this announcement" });
+    }
+
+    const [viewRow, wasCreated] = await ClassroomAnnouncementView.findOrCreate({
+      where: {
+        announcementId: announcement.id,
+        studentId: req.userId,
+      },
+      defaults: {
+        viewedAt: new Date(),
+      },
+    });
+
+    if (!wasCreated) {
+      viewRow.viewedAt = new Date();
+      await viewRow.save();
+    }
+
+    return res.json({
+      message: "Announcement marked as viewed",
+      announcementId: announcement.id,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

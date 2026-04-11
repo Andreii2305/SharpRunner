@@ -4,6 +4,9 @@ const AdminActivityLog = require("./AdminActivityLog");
 const AdminInvite = require("./AdminInvite");
 const Classroom = require("./Classroom");
 const ClassroomMembership = require("./ClassroomMembership");
+const ClassroomAnnouncement = require("./ClassroomAnnouncement");
+const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
+const UserNotificationView = require("./UserNotificationView");
 
 User.hasMany(UserProgress, {
   foreignKey: "userId",
@@ -82,6 +85,61 @@ ClassroomMembership.belongsTo(User, {
   as: "student",
 });
 
+Classroom.hasMany(ClassroomAnnouncement, {
+  foreignKey: "classroomId",
+  as: "announcements",
+  onDelete: "CASCADE",
+});
+
+ClassroomAnnouncement.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+});
+
+User.hasMany(ClassroomAnnouncement, {
+  foreignKey: "teacherId",
+  as: "postedAnnouncements",
+  onDelete: "CASCADE",
+});
+
+ClassroomAnnouncement.belongsTo(User, {
+  foreignKey: "teacherId",
+  as: "teacher",
+});
+
+ClassroomAnnouncement.hasMany(ClassroomAnnouncementView, {
+  foreignKey: "announcementId",
+  as: "views",
+  onDelete: "CASCADE",
+});
+
+ClassroomAnnouncementView.belongsTo(ClassroomAnnouncement, {
+  foreignKey: "announcementId",
+  as: "announcement",
+});
+
+User.hasMany(ClassroomAnnouncementView, {
+  foreignKey: "studentId",
+  as: "announcementViews",
+  onDelete: "CASCADE",
+});
+
+ClassroomAnnouncementView.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+});
+
+User.hasMany(UserNotificationView, {
+  foreignKey: "userId",
+  as: "notificationViews",
+  onDelete: "CASCADE",
+});
+
+UserNotificationView.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
+
 module.exports = {
   User,
   UserProgress,
@@ -89,4 +147,7 @@ module.exports = {
   AdminInvite,
   Classroom,
   ClassroomMembership,
+  ClassroomAnnouncement,
+  ClassroomAnnouncementView,
+  UserNotificationView,
 };

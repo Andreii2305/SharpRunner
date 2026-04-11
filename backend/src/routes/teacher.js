@@ -4,6 +4,7 @@ const User = require("../models/User");
 const UserProgress = require("../models/UserProgress");
 const Classroom = require("../models/Classroom");
 const ClassroomMembership = require("../models/ClassroomMembership");
+const ClassroomAnnouncement = require("../models/ClassroomAnnouncement");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const { LESSON_DEFINITIONS } = require("../constants/progressDefaults");
@@ -14,6 +15,7 @@ const MAX_STUDENT_ROWS = 10;
 const CLASS_CODE_LENGTH = 6;
 const CLASS_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
+const MAX_ANNOUNCEMENT_LENGTH = 1000;
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -110,6 +112,15 @@ const sanitizeClassroom = (classroom, extra = {}) => ({
   updatedAt: classroom.updatedAt,
   ...extra,
 });
+
+const formatTeacherName = (user) => {
+  if (!user) {
+    return "Teacher";
+  }
+
+  const fullName = `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+  return fullName || user.username || "Teacher";
+};
 
 const buildDefaultLessonStats = () =>
   LESSON_DEFINITIONS.map((lesson) => ({
@@ -637,6 +648,137 @@ router.post("/classrooms/:classroomId/students", async (req, res) => {
       message: "Students added to classroom",
       activatedCount,
       totalMatchedStudents: students.length,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/announcements", async (req, res) => {
+  try {
+    const scopeWhere = buildScopeWhere(req);
+    const classrooms = await Classroom.findAll({
+      where: {
+        ...scopeWhere,
+        isActive: true,
+      },
+      attributes: ["id", "className", "section", "schoolYear", "classCode"],
+      order: [
+        ["className", "ASC"],
+        ["section", "ASC"],
+      ],
+    });
+
+    if (classrooms.length === 0) {
+      return res.json({
+        classrooms: [],
+        announcements: [],
+      });
+    }
+
+    const classroomIds = classrooms.map((classroom) => classroom.id);
+    const announcementRows = await ClassroomAnnouncement.findAll({
+      where: {
+        classroomId: { [Op.in]: classroomIds },
+        isActive: true,
+      },
+      attributes: ["id", "classroomId", "teacherId", "message", "createdAt"],
+      include: [
+        {
+          model: Classroom,
+          as: "classroom",
+          required: true,
+          attributes: ["id", "className", "section"],
+        },
+        {
+          model: User,
+          as: "teacher",
+          required: false,
+          attributes: ["id", "firstName", "lastName", "username"],
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      limit: 100,
+    });
+
+    return res.json({
+      classrooms: classrooms.map((classroom) => ({
+        id: classroom.id,
+        className: classroom.className,
+        section: classroom.section,
+        schoolYear: classroom.schoolYear,
+        classCode: classroom.classCode,
+      })),
+      announcements: announcementRows.map((announcement) => ({
+        id: announcement.id,
+        classroomId: announcement.classroomId,
+        className: announcement.classroom?.className ?? "Classroom",
+        section: announcement.classroom?.section ?? "",
+        message: announcement.message,
+        createdAt: announcement.createdAt,
+        teacherName: formatTeacherName(announcement.teacher),
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/announcements", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.body.classroomId);
+    const message = normalizeString(req.body.message);
+
+    if (!classroomId) {
+      return res.status(400).json({ message: "classroomId is required" });
+    }
+
+    if (!message) {
+      return res.status(400).json({ message: "message is required" });
+    }
+
+    if (message.length > MAX_ANNOUNCEMENT_LENGTH) {
+      return res.status(400).json({
+        message: `message must not exceed ${MAX_ANNOUNCEMENT_LENGTH} characters`,
+      });
+    }
+
+    const classroom = await Classroom.findByPk(classroomId, {
+      attributes: ["id", "teacherId", "className", "section", "isActive"],
+    });
+
+    if (!classroom || !classroom.isActive) {
+      return res.status(404).json({ message: "Classroom not found" });
+    }
+
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "You are not allowed to post to this classroom" });
+    }
+
+    const announcement = await ClassroomAnnouncement.create({
+      classroomId: classroom.id,
+      teacherId: req.userId,
+      message,
+      isActive: true,
+    });
+
+    const actor = await User.findByPk(req.userId, {
+      attributes: ["id", "firstName", "lastName", "username"],
+    });
+
+    return res.status(201).json({
+      message: "Announcement posted",
+      announcement: {
+        id: announcement.id,
+        classroomId: announcement.classroomId,
+        className: classroom.className,
+        section: classroom.section,
+        message: announcement.message,
+        createdAt: announcement.createdAt,
+        teacherName: formatTeacherName(actor),
+      },
     });
   } catch (error) {
     console.error(error);

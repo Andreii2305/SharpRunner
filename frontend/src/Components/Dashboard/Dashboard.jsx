@@ -243,6 +243,9 @@ function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [activeTab, setActiveTab] = useState("announcements");
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+  const [announcementActionError, setAnnouncementActionError] = useState("");
+  const [notificationActionError, setNotificationActionError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -285,6 +288,87 @@ function StudentDashboardPage() {
       isMounted = false;
     };
   }, []);
+
+  const markAnnouncementAsViewed = async (announcement) => {
+    if (!announcement?.id || announcement.isRead) {
+      return;
+    }
+
+    const announcementId = Number.parseInt(announcement.id, 10);
+
+    setAnnouncements((current) =>
+      current.map((item) =>
+        item.id === announcement.id ? { ...item, isRead: true } : item
+      )
+    );
+
+    // Backward compatibility for legacy synthetic announcements
+    // that used non-numeric ids before DB-backed announcements.
+    if (!Number.isInteger(announcementId) || announcementId <= 0) {
+      return;
+    }
+
+    try {
+      await axios.post(
+        buildApiUrl(`/api/classrooms/announcements/${announcementId}/viewed`),
+        {},
+        { headers: getAuthHeaders() }
+      );
+    } catch (error) {
+      setAnnouncements((current) =>
+        current.map((item) =>
+          item.id === announcement.id ? { ...item, isRead: false } : item
+        )
+      );
+      setAnnouncementActionError(
+        error.response?.data?.message ??
+          "Failed to mark announcement as viewed. Please try again."
+      );
+    }
+  };
+
+  const onAnnouncementOpen = async (announcement) => {
+    setSelectedAnnouncement(announcement);
+    setAnnouncementActionError("");
+    await markAnnouncementAsViewed(announcement);
+  };
+
+  const markNotificationAsViewed = async (notification) => {
+    if (!notification?.id || notification.isRead) {
+      return;
+    }
+
+    const encodedNotificationId = encodeURIComponent(String(notification.id));
+
+    setNotifications((current) =>
+      current.map((item) =>
+        item.id === notification.id ? { ...item, isRead: true } : item
+      )
+    );
+
+    try {
+      await axios.post(
+        buildApiUrl(`/api/notifications/${encodedNotificationId}/viewed`),
+        {},
+        { headers: getAuthHeaders() }
+      );
+    } catch (error) {
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === notification.id ? { ...item, isRead: false } : item
+        )
+      );
+      setNotificationActionError(
+        error.response?.data?.message ??
+          "Failed to mark notification as viewed. Please try again."
+      );
+    }
+  };
+
+  const onNotificationOpen = async (notification) => {
+    setNotificationActionError("");
+    await markNotificationAsViewed(notification);
+  };
 
   /* ── Derived values ── */
   const lessons = useMemo(
@@ -731,7 +815,12 @@ function StudentDashboardPage() {
                   <div className={styles.emptyText}>No announcements yet.</div>
                 ) : (
                   announcements.slice(0, 5).map((ann, i) => (
-                    <div key={ann.id ?? i} className={styles.notifItem}>
+                    <button
+                      type="button"
+                      key={ann.id ?? i}
+                      className={`${styles.notifItem} ${styles.notifButton}`}
+                      onClick={() => onAnnouncementOpen(ann)}
+                    >
                       <div
                         className={`${styles.notifDot} ${ann.isRead ? styles.notifDotRead : ""}`}
                       />
@@ -742,7 +831,7 @@ function StudentDashboardPage() {
                           {timeAgo(ann.createdAt) || ann.timeAgo}
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))
                 )
               ) : isLoading ? (
@@ -751,7 +840,12 @@ function StudentDashboardPage() {
                 <div className={styles.emptyText}>No notifications yet.</div>
               ) : (
                 notifications.slice(0, 5).map((notif, i) => (
-                  <div key={notif.id ?? i} className={styles.notifItem}>
+                  <button
+                    type="button"
+                    key={notif.id ?? i}
+                    className={`${styles.notifItem} ${styles.notifButton}`}
+                    onClick={() => onNotificationOpen(notif)}
+                  >
                     <div
                       className={`${styles.notifDot} ${notif.isRead ? styles.notifDotRead : ""}`}
                     />
@@ -761,13 +855,51 @@ function StudentDashboardPage() {
                         {timeAgo(notif.createdAt) || notif.timeAgo}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
+            {announcementActionError && (
+              <p className={styles.notifError}>{announcementActionError}</p>
+            )}
+            {notificationActionError && (
+              <p className={styles.notifError}>{notificationActionError}</p>
+            )}
           </div>
         </div>
       </main>
+
+      {selectedAnnouncement && (
+        <div
+          className={styles.announcementModalBackdrop}
+          onClick={() => setSelectedAnnouncement(null)}
+        >
+          <div
+            className={styles.announcementModalCard}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.announcementModalHeader}>
+              <h3>Announcement</h3>
+              <button
+                type="button"
+                className={styles.announcementModalClose}
+                onClick={() => setSelectedAnnouncement(null)}
+              >
+                Close
+              </button>
+            </div>
+            <p className={styles.announcementModalMessage}>
+              {selectedAnnouncement.message}
+            </p>
+            <p className={styles.announcementModalMeta}>
+              {selectedAnnouncement.teacherName ?? "Teacher"} ·{" "}
+              {selectedAnnouncement.createdAt
+                ? new Date(selectedAnnouncement.createdAt).toLocaleString()
+                : "Just now"}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

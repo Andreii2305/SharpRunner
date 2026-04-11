@@ -60,6 +60,7 @@ const LEVEL_BACKGROUND_BY_NUMBER = {
   1: "game/assets/backgrounds/level1_bg.png",
   2: "game/assets/backgrounds/level1_bg.png",
 };
+const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
 function initials(name = "") {
@@ -87,6 +88,26 @@ function parseLevelNumberFromLabel(label = "") {
 
   const parsed = Number.parseInt(match[match.length - 1], 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseAnnouncementPayload(rawMessage = "") {
+  const text = String(rawMessage ?? "").trim();
+  const [firstLine = "", ...restLines] = text.split(/\r?\n/);
+  const hasHeader = firstLine
+    .toUpperCase()
+    .startsWith(ANNOUNCEMENT_HEADER_PREFIX);
+
+  if (!hasHeader) {
+    return {
+      header: "Announcement",
+      body: text,
+    };
+  }
+
+  return {
+    header: firstLine.slice(ANNOUNCEMENT_HEADER_PREFIX.length).trim() || "Announcement",
+    body: restLines.join("\n").trim(),
+  };
 }
 
 /* ─── Sub-components ──────────────────────────────────────────── */
@@ -821,16 +842,30 @@ function StudentDashboardPage() {
                       className={`${styles.notifItem} ${styles.notifButton}`}
                       onClick={() => onAnnouncementOpen(ann)}
                     >
-                      <div
-                        className={`${styles.notifDot} ${ann.isRead ? styles.notifDotRead : ""}`}
-                      />
-                      <div>
-                        <div className={styles.notifText}>{ann.message}</div>
-                        <div className={styles.notifMeta}>
-                          {ann.teacherName ?? "Teacher"} &nbsp;·&nbsp;{" "}
-                          {timeAgo(ann.createdAt) || ann.timeAgo}
-                        </div>
-                      </div>
+                      {(() => {
+                        const parsedAnnouncement = parseAnnouncementPayload(ann.message);
+                        return (
+                          <>
+                            <div
+                              className={`${styles.notifDot} ${ann.isRead ? styles.notifDotRead : ""}`}
+                            />
+                            <div>
+                              <div className={styles.notifText}>
+                                <span className={styles.announcementInlineTitle}>
+                                  {parsedAnnouncement.header}
+                                </span>
+                                {parsedAnnouncement.body
+                                  ? ` - ${parsedAnnouncement.body}`
+                                  : ""}
+                              </div>
+                              <div className={styles.notifMeta}>
+                                {ann.teacherName ?? "Teacher"} &nbsp;·&nbsp;{" "}
+                                {timeAgo(ann.createdAt) || ann.timeAgo}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </button>
                   ))
                 )
@@ -870,6 +905,11 @@ function StudentDashboardPage() {
       </main>
 
       {selectedAnnouncement && (
+        (() => {
+          const parsedAnnouncement = parseAnnouncementPayload(
+            selectedAnnouncement.message
+          );
+          return (
         <div
           className={styles.announcementModalBackdrop}
           onClick={() => setSelectedAnnouncement(null)}
@@ -879,7 +919,7 @@ function StudentDashboardPage() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className={styles.announcementModalHeader}>
-              <h3>Announcement</h3>
+              <h3>{parsedAnnouncement.header}</h3>
               <button
                 type="button"
                 className={styles.announcementModalClose}
@@ -889,7 +929,7 @@ function StudentDashboardPage() {
               </button>
             </div>
             <p className={styles.announcementModalMessage}>
-              {selectedAnnouncement.message}
+              {parsedAnnouncement.body}
             </p>
             <p className={styles.announcementModalMeta}>
               {selectedAnnouncement.teacherName ?? "Teacher"} ·{" "}
@@ -899,6 +939,8 @@ function StudentDashboardPage() {
             </p>
           </div>
         </div>
+          );
+        })()
       )}
     </div>
   );

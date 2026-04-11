@@ -553,6 +553,7 @@
   color: var(--color-text-normal);
 }
 
+.announcementForm input,
 .announcementForm select,
 .announcementForm textarea {
   border: 1px solid var(--color-border-light);
@@ -564,6 +565,7 @@
   color: #30363b;
 }
 
+.announcementForm input:focus,
 .announcementForm select:focus,
 .announcementForm textarea:focus {
   border-color: var(--color-primary);
@@ -653,6 +655,13 @@
   color: #2d3640;
   line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.announcementItemTitle {
+  margin: 0 0 6px;
+  color: #234f78;
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 @media (max-width: 980px) {

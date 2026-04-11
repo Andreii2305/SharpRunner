@@ -31,6 +31,7 @@ const SECTION_OPTIONS = [
   "BSIT 3A",
   "BSIT 4A",
 ];
+const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
 
 const clampPercent = (value) => {
   const numericValue = Number(value);
@@ -74,6 +75,32 @@ const formatDateTime = (value) => {
   return parsed.toLocaleString();
 };
 
+const buildAnnouncementPayload = (header, message) => {
+  const safeHeader = `${header ?? ""}`.trim();
+  const safeMessage = `${message ?? ""}`.trim();
+  return `${ANNOUNCEMENT_HEADER_PREFIX} ${safeHeader}\n${safeMessage}`;
+};
+
+const parseAnnouncementPayload = (rawMessage) => {
+  const text = `${rawMessage ?? ""}`.trim();
+  const [firstLine = "", ...restLines] = text.split(/\r?\n/);
+  const hasHeader = firstLine
+    .toUpperCase()
+    .startsWith(ANNOUNCEMENT_HEADER_PREFIX);
+
+  if (!hasHeader) {
+    return {
+      header: "Announcement",
+      body: text,
+    };
+  }
+
+  return {
+    header: firstLine.slice(ANNOUNCEMENT_HEADER_PREFIX.length).trim() || "Announcement",
+    body: restLines.join("\n").trim(),
+  };
+};
+
 function TeacherDashboardPage() {
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
@@ -100,6 +127,7 @@ function TeacherDashboardPage() {
   });
   const [announcementForm, setAnnouncementForm] = useState({
     classroomId: "",
+    header: "",
     message: "",
   });
 
@@ -276,10 +304,16 @@ function TeacherDashboardPage() {
     setAnnouncementSuccess("");
 
     const classroomId = Number.parseInt(announcementForm.classroomId, 10);
+    const header = announcementForm.header.trim();
     const message = announcementForm.message.trim();
 
     if (!Number.isInteger(classroomId) || classroomId <= 0) {
       setAnnouncementError("Please select a classroom.");
+      return;
+    }
+
+    if (!header) {
+      setAnnouncementError("Announcement header is required.");
       return;
     }
 
@@ -294,7 +328,7 @@ function TeacherDashboardPage() {
         buildApiUrl("/api/teacher/announcements"),
         {
           classroomId,
-          message,
+          message: buildAnnouncementPayload(header, message),
         },
         { headers: getAuthHeaders() }
       );
@@ -302,6 +336,7 @@ function TeacherDashboardPage() {
       setAnnouncementSuccess("Announcement posted to student dashboard.");
       setAnnouncementForm((current) => ({
         ...current,
+        header: "",
         message: "",
       }));
       await fetchAnnouncementData();
@@ -374,6 +409,116 @@ function TeacherDashboardPage() {
         </header>
 
         {errorMessage && <p className={styles.error}>{errorMessage}</p>}
+
+        <section className={styles.panel}>
+          <h2>Class Announcements</h2>
+
+          <div className={styles.announcementGrid}>
+            <article className={styles.announcementComposer}>
+              <p className={styles.announcementHint}>
+                <FiMessageSquare size={14} />
+                <span>
+                  Post reminders, deadlines, or guidance. Students can view this in
+                  their dashboard announcement tab.
+                </span>
+              </p>
+
+              {announcementError && (
+                <p className={styles.announcementError}>{announcementError}</p>
+              )}
+              {announcementSuccess && (
+                <p className={styles.announcementSuccess}>{announcementSuccess}</p>
+              )}
+
+              <form onSubmit={onPostAnnouncement} className={styles.announcementForm}>
+                <label>
+                  <span>Classroom</span>
+                  <select
+                    name="classroomId"
+                    value={announcementForm.classroomId}
+                    onChange={onAnnouncementFieldChange}
+                    disabled={teacherClassrooms.length === 0 || isPostingAnnouncement}
+                  >
+                    <option value="">Choose classroom</option>
+                    {teacherClassrooms.map((classroom) => (
+                      <option key={classroom.id} value={classroom.id}>
+                        {classroom.className} - {classroom.section}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Announcement Header</span>
+                  <input
+                    type="text"
+                    name="header"
+                    value={announcementForm.header}
+                    onChange={onAnnouncementFieldChange}
+                    placeholder="Example: Quiz Reminder"
+                    maxLength={80}
+                    disabled={isPostingAnnouncement}
+                  />
+                </label>
+
+                <label>
+                  <span>Announcement message</span>
+                  <textarea
+                    name="message"
+                    value={announcementForm.message}
+                    onChange={onAnnouncementFieldChange}
+                    rows={4}
+                    maxLength={1000}
+                    placeholder="Type your announcement details for students..."
+                    disabled={isPostingAnnouncement}
+                  />
+                </label>
+
+                <div className={styles.announcementActions}>
+                  <span>{announcementForm.message.length}/1000</span>
+                  <button
+                    type="submit"
+                    className={styles.announcementSubmit}
+                    disabled={isPostingAnnouncement || teacherClassrooms.length === 0}
+                  >
+                    <FiSend size={13} />
+                    <span>{isPostingAnnouncement ? "Posting..." : "Post Announcement"}</span>
+                  </button>
+                </div>
+              </form>
+            </article>
+
+            <article className={styles.announcementFeed}>
+              <h3>Recent announcements</h3>
+              {isLoadingAnnouncements ? (
+                <p className={styles.feedback}>Loading announcements...</p>
+              ) : teacherAnnouncements.length === 0 ? (
+                <p className={styles.feedback}>No announcements posted yet.</p>
+              ) : (
+                <div className={styles.announcementList}>
+                  {teacherAnnouncements.map((item) => {
+                    const formattedAnnouncement = parseAnnouncementPayload(item.message);
+
+                    return (
+                      <div key={item.id} className={styles.announcementItem}>
+                        <div className={styles.announcementItemHeader}>
+                          <span className={styles.announcementClassTag}>
+                            {item.className} - {item.section}
+                          </span>
+                          <span>{formatDateTime(item.createdAt)}</span>
+                        </div>
+                        <h4 className={styles.announcementItemTitle}>
+                          {formattedAnnouncement.header}
+                        </h4>
+                        <p>{formattedAnnouncement.body}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </article>
+          </div>
+        </section>
 
         <section className={styles.panel}>
           <h2>Overview</h2>
@@ -620,95 +765,6 @@ function TeacherDashboardPage() {
           </div>
         </section>
 
-        <section className={styles.panel}>
-          <h2>Class Announcements</h2>
-
-          <div className={styles.announcementGrid}>
-            <article className={styles.announcementComposer}>
-              <p className={styles.announcementHint}>
-                <FiMessageSquare size={14} />
-                <span>
-                  Post reminders, deadlines, or guidance. Students can view this in
-                  their dashboard announcement tab.
-                </span>
-              </p>
-
-              {announcementError && (
-                <p className={styles.announcementError}>{announcementError}</p>
-              )}
-              {announcementSuccess && (
-                <p className={styles.announcementSuccess}>{announcementSuccess}</p>
-              )}
-
-              <form onSubmit={onPostAnnouncement} className={styles.announcementForm}>
-                <label>
-                  <span>Classroom</span>
-                  <select
-                    name="classroomId"
-                    value={announcementForm.classroomId}
-                    onChange={onAnnouncementFieldChange}
-                    disabled={teacherClassrooms.length === 0 || isPostingAnnouncement}
-                  >
-                    <option value="">Choose classroom</option>
-                    {teacherClassrooms.map((classroom) => (
-                      <option key={classroom.id} value={classroom.id}>
-                        {classroom.className} - {classroom.section}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label>
-                  <span>Announcement message</span>
-                  <textarea
-                    name="message"
-                    value={announcementForm.message}
-                    onChange={onAnnouncementFieldChange}
-                    rows={4}
-                    maxLength={1000}
-                    placeholder="Type your announcement for students..."
-                    disabled={isPostingAnnouncement}
-                  />
-                </label>
-
-                <div className={styles.announcementActions}>
-                  <span>{announcementForm.message.length}/1000</span>
-                  <button
-                    type="submit"
-                    className={styles.announcementSubmit}
-                    disabled={isPostingAnnouncement || teacherClassrooms.length === 0}
-                  >
-                    <FiSend size={13} />
-                    <span>{isPostingAnnouncement ? "Posting..." : "Post Announcement"}</span>
-                  </button>
-                </div>
-              </form>
-            </article>
-
-            <article className={styles.announcementFeed}>
-              <h3>Recent announcements</h3>
-              {isLoadingAnnouncements ? (
-                <p className={styles.feedback}>Loading announcements...</p>
-              ) : teacherAnnouncements.length === 0 ? (
-                <p className={styles.feedback}>No announcements posted yet.</p>
-              ) : (
-                <div className={styles.announcementList}>
-                  {teacherAnnouncements.map((item) => (
-                    <div key={item.id} className={styles.announcementItem}>
-                      <div className={styles.announcementItemHeader}>
-                        <span className={styles.announcementClassTag}>
-                          {item.className} - {item.section}
-                        </span>
-                        <span>{formatDateTime(item.createdAt)}</span>
-                      </div>
-                      <p>{item.message}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </article>
-          </div>
-        </section>
       </div>
 
       {showCreateClassModal && (

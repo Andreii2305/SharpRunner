@@ -1,59 +1,48 @@
+import { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import styles from "./LessonSection.module.css";
 import Sidebar from "../SideBar/Sidebar.jsx";
-import ProgressBar from "../ProgressBarComponent/ProgressBarComponent.jsx";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import LockOutlineIcon from "@mui/icons-material/LockOutline";
 import CheckIcon from "@mui/icons-material/Check";
 import { useNavigate } from "react-router-dom";
+import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 
-/* ─── Lesson data ─────────────────────────────────────────────
-   Replace hardcoded values here with API data when ready.
-   Each lesson maps to a region from the SharpRunner story.
-──────────────────────────────────────────────────────────────── */
-const LESSONS = [
+const DEFAULT_LESSON_META = [
   {
-    id: "variables-and-data-types",
-    title: "Variables and Data Types",
+    lessonKey: "variables-and-data-types",
+    fallbackTitle: "Variables and Data Types",
     region: "The Castle of Syntax",
     description:
       "Explore a crumbling castle and learn to declare variables and assign the right data types.",
-    progress: 75,
-    status: "active", // "active" | "completed" | "locked"
     route: "/Map",
   },
   {
-    id: "operators",
-    title: "Operators",
+    lessonKey: "operators",
+    fallbackTitle: "Operators",
     region: "The Forge of Symbols",
     description:
       "Master the industrial forge by writing arithmetic and comparison expressions to power its machines.",
-    progress: 100,
-    status: "completed",
     route: "/Map",
   },
   {
-    id: "conditional-statements",
-    title: "Conditional Statements",
+    lessonKey: "conditional-statements",
+    fallbackTitle: "Conditional Statements",
     region: "The Branching Keep",
     description:
       "Navigate a gothic fortress of split paths using if, else if, and else to choose the correct route.",
-    progress: 0,
-    status: "locked",
-    route: null,
+    route: "/Map",
   },
   {
-    id: "loops",
-    title: "Loops",
+    lessonKey: "loops",
+    fallbackTitle: "Loops",
     region: "The Spiral Citadel",
     description:
       "Climb a citadel trapped in infinite recursion using for, while, and do-while to break the cycles.",
-    progress: 0,
-    status: "locked",
-    route: null,
+    route: "/Map",
   },
 ];
 
-/* ─── Per-status config ───────────────────────────────────────── */
 const STATUS_CONFIG = {
   active: {
     badgeClass: "badgeActive",
@@ -78,12 +67,139 @@ const STATUS_CONFIG = {
   },
 };
 
-/* ─── Icon inside the card icon area ─────────────────────────── */
+function clampProgress(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function titleFromKey(lessonKey) {
+  return String(lessonKey ?? "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part[0].toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function buildOrderedLessonMeta(seedLessons = []) {
+  const defaultMetaByKey = new Map(
+    DEFAULT_LESSON_META.map((meta) => [meta.lessonKey, meta])
+  );
+  const mergedMetaByKey = new Map(defaultMetaByKey);
+  const orderedKeys = [];
+
+  for (const seedLesson of seedLessons) {
+    const lessonKey =
+      typeof seedLesson?.lessonKey === "string"
+        ? seedLesson.lessonKey.trim().toLowerCase()
+        : "";
+
+    if (!lessonKey) {
+      continue;
+    }
+
+    const fallbackMeta = defaultMetaByKey.get(lessonKey);
+    const fallbackTitle =
+      seedLesson.lessonTitle ?? fallbackMeta?.fallbackTitle ?? titleFromKey(lessonKey);
+
+    mergedMetaByKey.set(lessonKey, {
+      lessonKey,
+      fallbackTitle,
+      region: seedLesson.theme ?? fallbackMeta?.region ?? fallbackTitle,
+      description:
+        seedLesson.description ??
+        seedLesson.summary ??
+        seedLesson.levels?.[0]?.objective ??
+        fallbackMeta?.description ??
+        `Complete all levels in ${fallbackTitle}.`,
+      route: "/Map",
+    });
+
+    orderedKeys.push(lessonKey);
+  }
+
+  for (const defaultMeta of DEFAULT_LESSON_META) {
+    if (!orderedKeys.includes(defaultMeta.lessonKey)) {
+      orderedKeys.push(defaultMeta.lessonKey);
+    }
+  }
+
+  return orderedKeys.map((key) => mergedMetaByKey.get(key)).filter(Boolean);
+}
+
+function buildLessonsFromData({ lessonMeta = [], progressLessons = [] }) {
+  const progressByKey = new Map(
+    progressLessons.map((lesson) => [lesson.lessonKey, lesson])
+  );
+
+  const orderedKeys = lessonMeta.map((meta) => meta.lessonKey);
+  for (const row of progressLessons) {
+    if (!orderedKeys.includes(row.lessonKey)) {
+      orderedKeys.push(row.lessonKey);
+    }
+  }
+
+  const metaByKey = new Map(lessonMeta.map((meta) => [meta.lessonKey, meta]));
+
+  const baseLessons = orderedKeys.map((lessonKey) => {
+    const meta = metaByKey.get(lessonKey);
+    const progressRow = progressByKey.get(lessonKey);
+    const title =
+      progressRow?.lessonTitle ?? meta?.fallbackTitle ?? titleFromKey(lessonKey);
+
+    return {
+      id: lessonKey,
+      lessonKey,
+      title,
+      region: meta?.region ?? title,
+      description: meta?.description ?? `Complete all levels in ${title}.`,
+      progress: clampProgress(progressRow?.progressPercent),
+      status: "locked",
+      route: meta?.route ?? "/Map",
+    };
+  });
+
+  const resolvedLessons = [];
+  let hasActiveLesson = false;
+
+  for (let index = 0; index < baseLessons.length; index += 1) {
+    const lesson = baseLessons[index];
+    const previousLessonCompleted =
+      index === 0 ? true : resolvedLessons[index - 1].status === "completed";
+
+    let status = "locked";
+
+    if (previousLessonCompleted) {
+      if (lesson.progress >= 100) {
+        status = "completed";
+      } else if (!hasActiveLesson) {
+        status = "active";
+        hasActiveLesson = true;
+      }
+    }
+
+    resolvedLessons.push({
+      ...lesson,
+      status,
+      route: status === "locked" ? null : lesson.route,
+    });
+  }
+
+  return resolvedLessons;
+}
+
 function LessonIcon({ status }) {
-  if (status === "completed")
+  if (status === "completed") {
     return <CheckIcon sx={{ fontSize: 22, color: "#0F6E56" }} />;
-  if (status === "locked")
+  }
+
+  if (status === "locked") {
     return <LockOutlineIcon sx={{ fontSize: 22, color: "#94a3b8" }} />;
+  }
+
   return (
     <svg
       width="22"
@@ -100,7 +216,6 @@ function LessonIcon({ status }) {
   );
 }
 
-/* ─── Action button on the right ─────────────────────────────── */
 function ActionBtn({ status, onClick }) {
   if (status === "completed") {
     return (
@@ -109,6 +224,7 @@ function ActionBtn({ status, onClick }) {
       </div>
     );
   }
+
   if (status === "locked") {
     return (
       <div className={`${styles.actionBtn} ${styles.actionLocked}`}>
@@ -116,25 +232,17 @@ function ActionBtn({ status, onClick }) {
       </div>
     );
   }
+
   return (
-    <button
-      className={`${styles.actionBtn} ${styles.actionPlay}`}
-      onClick={onClick}
-    >
+    <button className={`${styles.actionBtn} ${styles.actionPlay}`} onClick={onClick}>
       <PlayArrowIcon sx={{ fontSize: 22, color: "#fff" }} />
     </button>
   );
 }
 
-/* ─── Single lesson card ──────────────────────────────────────── */
 function LessonCard({ lesson, onPlay, onLocked }) {
   const cfg = STATUS_CONFIG[lesson.status];
   const isLocked = lesson.status === "locked";
-
-  const handleClick = () => {
-    if (isLocked) onLocked();
-    else onPlay(lesson);
-  };
 
   return (
     <div
@@ -144,12 +252,10 @@ function LessonCard({ lesson, onPlay, onLocked }) {
       `}
       onClick={isLocked ? onLocked : undefined}
     >
-      {/* Left icon */}
       <div className={`${styles.cardIcon} ${styles[cfg.iconWrapClass]}`}>
         <LessonIcon status={lesson.status} />
       </div>
 
-      {/* Body */}
       <div className={styles.cardBody}>
         <div className={styles.cardTop}>
           <span className={styles.cardTitle}>{lesson.title}</span>
@@ -176,60 +282,103 @@ function LessonCard({ lesson, onPlay, onLocked }) {
         </div>
       </div>
 
-      {/* Action button */}
       <ActionBtn status={lesson.status} onClick={() => onPlay(lesson)} />
     </div>
   );
 }
 
-/* ─── Page ────────────────────────────────────────────────────── */
 function LessonSection() {
   const navigate = useNavigate();
+  const [progressLessons, setProgressLessons] = useState([]);
+  const [lessonSeed, setLessonSeed] = useState([]);
 
-  const activelesson = LESSONS.find((l) => l.status === "active") ?? LESSONS[0];
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchLessonSectionData = async () => {
+      const [progressResult, lessonResult] = await Promise.allSettled([
+        axios.get(buildApiUrl("/api/progress/me"), {
+          headers: getAuthHeaders(),
+        }),
+        axios.get(buildApiUrl("/api/lesson-content"), {
+          headers: getAuthHeaders(),
+        }),
+      ]);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (progressResult.status === "fulfilled") {
+        setProgressLessons(progressResult.value.data?.lessons ?? []);
+      } else {
+        console.error("Failed to load lesson progress", progressResult.reason);
+        setProgressLessons([]);
+      }
+
+      if (lessonResult.status === "fulfilled") {
+        setLessonSeed(lessonResult.value.data?.lessons ?? []);
+      } else {
+        console.error("Failed to load lesson content", lessonResult.reason);
+        setLessonSeed([]);
+      }
+    };
+
+    fetchLessonSectionData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const lessons = useMemo(() => {
+    const orderedMeta = buildOrderedLessonMeta(lessonSeed);
+    return buildLessonsFromData({
+      lessonMeta: orderedMeta,
+      progressLessons,
+    });
+  }, [lessonSeed, progressLessons]);
+
+  const activeLesson = lessons.find((lesson) => lesson.status === "active") ?? lessons[0];
 
   const handlePlay = (lesson) => {
-    if (lesson.route) navigate(lesson.route);
+    if (lesson?.route) {
+      navigate(lesson.route);
+    }
   };
 
   const handleLocked = () => {
     alert("This lesson is locked. Finish the current lesson to unlock it.");
   };
 
-  const completedCount = LESSONS.filter((l) => l.status === "completed").length;
+  const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;
 
   return (
     <div className={styles.lessonContainer}>
       <Sidebar />
 
       <div className={styles.pageBody}>
-        {/* ── Top bar ── */}
         <div className={styles.topBar}>
           <div className={styles.topLeft}>
             <div className={styles.topLabel}>Current lesson</div>
-            <div className={styles.topTitle}>{activelesson.title}</div>
-            <div className={styles.topSub}>{activelesson.region}</div>
+            <div className={styles.topTitle}>{activeLesson.title}</div>
+            <div className={styles.topSub}>{activeLesson.region}</div>
           </div>
-          <button
-            className={styles.btnContinue}
-            onClick={() => handlePlay(activelesson)}
-          >
+          <button className={styles.btnContinue} onClick={() => handlePlay(activeLesson)}>
             <PlayArrowIcon sx={{ fontSize: 16, color: "#fff" }} />
             Continue Game
           </button>
         </div>
 
-        {/* ── Section heading ── */}
         <div className={styles.sectionHead}>
           <div className={styles.sectionTitle}>All lessons</div>
           <div className={styles.sectionCount}>
-            {completedCount} / {LESSONS.length} completed
+            {completedCount} / {lessons.length} completed
           </div>
         </div>
 
-        {/* ── Lesson cards grid ── */}
         <div className={styles.lessonsGrid}>
-          {LESSONS.map((lesson) => (
+          {lessons.map((lesson) => (
             <LessonCard
               key={lesson.id}
               lesson={lesson}

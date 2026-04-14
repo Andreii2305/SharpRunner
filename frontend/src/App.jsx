@@ -8,11 +8,24 @@ import LessonMapPage from "./pages/map/LessonMapPage.jsx";
 import LevelRoutePage from "./pages/game/LevelRoutePage.jsx";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
 import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
+import TeacherClassesPage from "./pages/teacher/TeacherClassesPage.jsx";
+import TeacherStudentsPage from "./pages/teacher/TeacherStudentsPage.jsx";
+import TeacherAnalyticsPage from "./pages/teacher/TeacherAnalyticsPage.jsx";
+import TeacherAnnouncementsPage from "./pages/teacher/TeacherAnnouncementsPage.jsx";
 import JoinClassPage from "./pages/student/JoinClassPage.jsx";
 import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
-import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx"; // ← new
+import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
 import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
+
+/* Convenience wrapper so teacher routes stay DRY */
+function TeacherRoute({ children }) {
+  return (
+    <ProtectedRoute allowedRoles={["teacher", "admin"]}>
+      {children}
+    </ProtectedRoute>
+  );
+}
 
 function App() {
   return (
@@ -20,7 +33,7 @@ function App() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
 
-        {/* Student dashboard — now lives in pages/student/ */}
+        {/* ── Student routes ── */}
         <Route
           path="/dashboard"
           element={
@@ -29,7 +42,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/join-class"
           element={
@@ -47,26 +59,6 @@ function App() {
           }
         />
         <Route
-          path="/teacher"
-          element={
-            <ProtectedRoute allowedRoles={["teacher", "admin"]}>
-              <TeacherDashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute allowedRoles={["admin"]}>
-              <AdminDashboardPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/lesson" element={<LessonSection />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/developer" element={<DeveloperPage />} />
-        <Route path="/admin-invite" element={<AdminInviteRegisterPage />} />
-        <Route
           path="/Map"
           element={
             <ProtectedRoute requireClassMembership>
@@ -82,7 +74,65 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* ── Teacher routes ── */}
+        <Route
+          path="/teacher"
+          element={
+            <TeacherRoute>
+              <TeacherDashboardPage />
+            </TeacherRoute>
+          }
+        />
+        <Route
+          path="/teacher/classes"
+          element={
+            <TeacherRoute>
+              <TeacherClassesPage />
+            </TeacherRoute>
+          }
+        />
+        <Route
+          path="/teacher/students"
+          element={
+            <TeacherRoute>
+              <TeacherStudentsPage />
+            </TeacherRoute>
+          }
+        />
+        <Route
+          path="/teacher/analytics"
+          element={
+            <TeacherRoute>
+              <TeacherAnalyticsPage />
+            </TeacherRoute>
+          }
+        />
+        <Route
+          path="/teacher/announcements"
+          element={
+            <TeacherRoute>
+              <TeacherAnnouncementsPage />
+            </TeacherRoute>
+          }
+        />
+
+        {/* ── Admin ── */}
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ── Auth / misc ── */}
+        <Route path="/lesson" element={<LessonSection />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUp />} />
+        <Route path="/developer" element={<DeveloperPage />} />
+        <Route path="/admin-invite" element={<AdminInviteRegisterPage />} />
       </Routes>
     </BrowserRouter>
   );

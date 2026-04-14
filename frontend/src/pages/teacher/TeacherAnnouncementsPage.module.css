@@ -1,0 +1,96 @@
+.annGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 14px;
+}
+
+.annHint {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  margin-bottom: 2px;
+}
+
+.annError   { font-size: 11px; color: #E24B4A; padding: 3px 0; }
+.annSuccess { font-size: 11px; color: #0F6E56; padding: 3px 0; }
+
+.annForm {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.annLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.annLabel input,
+.annLabel select,
+.annLabel textarea {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 12px;
+  padding: 8px 10px;
+  outline: none;
+  color: #374151;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.annLabel input:focus,
+.annLabel select:focus,
+.annLabel textarea:focus {
+  border-color: #26547c;
+  box-shadow: 0 0 0 3px rgba(38,84,124,0.1);
+}
+
+.annLabel textarea { resize: vertical; min-height: 100px; }
+
+.annFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.annCount { font-size: 10px; color: #94a3b8; }
+
+.annList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  max-height: 560px;
+  padding-right: 2px;
+}
+
+.annItem {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.annItemTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.annTag       { font-size: 10px; font-weight: 600; background: #eef4fb; color: #26547c; padding: 2px 8px; border-radius: 99px; }
+.annTime      { font-size: 10px; color: #94a3b8; white-space: nowrap; }
+.annItemTitle { font-size: 13px; font-weight: 700; color: #1e3a5f; margin-bottom: 3px; }
+.annItemBody  { font-size: 12px; color: #374151; line-height: 1.55; margin: 0; white-space: pre-wrap; }
+
+@media (max-width: 1000px) {
+  .annGrid { grid-template-columns: 1fr; }
+}

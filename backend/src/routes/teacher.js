@@ -7,7 +7,11 @@ const ClassroomMembership = require("../models/ClassroomMembership");
 const ClassroomAnnouncement = require("../models/ClassroomAnnouncement");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
-const { LESSON_DEFINITIONS } = require("../constants/progressDefaults");
+const {
+  LESSON_DEFINITIONS,
+  DEFAULT_LEVEL_PROGRESS,
+} = require("../constants/progressDefaults");
+const { ensureProgressRowsForUser } = require("../services/progressService");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -16,6 +20,8 @@ const CLASS_CODE_LENGTH = 6;
 const CLASS_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
 const MAX_ANNOUNCEMENT_LENGTH = 1000;
+const EXPECTED_PROGRESS_ROWS_PER_STUDENT = DEFAULT_LEVEL_PROGRESS.length;
+const DEFAULT_LEVEL_KEYS = DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey);
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -213,10 +219,46 @@ const buildDashboardPayload = async (req) => {
     new Set(validMemberships.map((membership) => membership.studentId))
   );
 
+  if (validStudentIds.length > 0) {
+    const progressRowCounts = await UserProgress.findAll({
+      where: {
+        userId: { [Op.in]: validStudentIds },
+        levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS },
+      },
+      attributes: [
+        "userId",
+        [
+          UserProgress.sequelize.fn("COUNT", UserProgress.sequelize.col("id")),
+          "rowCount",
+        ],
+      ],
+      group: ["userId"],
+      raw: true,
+    });
+
+    const progressRowCountByUserId = new Map(
+      progressRowCounts.map((row) => [
+        Number(row.userId),
+        Number(row.rowCount) || 0,
+      ])
+    );
+
+    const studentsMissingProgressRows = validStudentIds.filter(
+      (studentId) =>
+        (progressRowCountByUserId.get(studentId) ?? 0) <
+        EXPECTED_PROGRESS_ROWS_PER_STUDENT
+    );
+
+    for (const studentId of studentsMissingProgressRows) {
+      await ensureProgressRowsForUser(studentId);
+    }
+  }
+
   const progressRows = validStudentIds.length
     ? await UserProgress.findAll({
         where: {
           userId: { [Op.in]: validStudentIds },
+          levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS },
         },
         attributes: ["userId", "levelKey", "progressPercent", "isCompleted", "updatedAt"],
       })

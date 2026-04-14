@@ -12,7 +12,7 @@ import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { clearToken, getUser } from "../../utils/auth";
 
-/* ─── Nav definitions per role ───────────────────────────────── */
+/* ─── Nav items per role ──────────────────────────────────────── */
 const STUDENT_NAV = [
   { to: "/dashboard", Icon: DashboardOutlinedIcon, label: "Dashboard" },
   { to: "/lesson", Icon: LibraryBooksOutlinedIcon, label: "Lessons" },
@@ -61,7 +61,10 @@ function Sidebar() {
   };
 
   const isActive = (to) => {
+    /* exact match for root teacher and root student dashboard */
     if (to === "/teacher") return location.pathname === "/teacher";
+    if (to === "/dashboard") return location.pathname === "/dashboard";
+    /* prefix match for sub-pages */
     if (to === "/Map") return location.pathname.startsWith("/Map");
     return location.pathname === to || location.pathname.startsWith(to + "/");
   };

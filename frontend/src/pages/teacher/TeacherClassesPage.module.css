@@ -1,0 +1,67 @@
+.classGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.classCard {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.classCard:hover {
+  box-shadow: 0 3px 10px rgba(30,58,95,0.08);
+  border-color: #bdd2e8;
+}
+
+.classCardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.classCardName {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+
+.classCardMeta {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.classDesc {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.classBarRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.classBarLabel {
+  font-size: 10px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.classBarPct {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e3a5f;
+  min-width: 30px;
+  text-align: right;
+}

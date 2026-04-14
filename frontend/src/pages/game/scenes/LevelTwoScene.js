@@ -17,6 +17,32 @@ const PORTAL_SCALE = 1.5;
 const PORTAL_ANIMATION_KEY = "portal-spin";
 const PORTAL_FRAME_WIDTH = 32;
 const PORTAL_FRAME_HEIGHT = 32;
+const CASTLE_TILE_FRAME_SIZE = 32;
+const CASTLE_TILE_COUNT = 225;
+const CASTLE_FRAME_COMPAT_OFFSET = 80;
+const GATE_TOP_OFFSET_Y = 64;
+const GATE_MIDDLE_OFFSET_Y = 32;
+const GATE_BOTTOM_OFFSET_Y = 0;
+const GATE_COLUMN_OFFSET_X = 16;
+const GATE_SPRITE_DEPTH = 0.75;
+const GATE_ANIMATION_STEP_MS = 150;
+const GATE_STAIR_APPROACH_OFFSET_X = 120;
+const GATE_ENTRY_OFFSET_X = 8;
+const GATE_ENTRY_OFFSET_Y = 0;
+const GATE_ENTRY_NUDGE_X = 4;
+const GATE_ENTRY_NUDGE_Y = 4;
+const GATE_MIN_RUN_SEGMENT_MS = 260;
+const GATE_ENTER_DURATION_MS = 420;
+const GATE_FRAME_SEQUENCE = [
+  {
+    left: { top: 176, middle: 191, bottom: 286 },
+    right: { top: 177, middle: 192, bottom: 287 },
+  }, // closed gate
+  {
+    left: { top: 174, middle: 189, bottom: 284 },
+    right: { top: 175, middle: 190, bottom: 285 },
+  }, // open gate
+];
 const LEVEL_NUMBER = 2;
 const GOAL_PADDING = 96;
 const TARGET_REACH_TOLERANCE_PX = 8;
@@ -24,7 +50,6 @@ const NPC_APPROACH_OFFSET_X = 72;
 const INTRO_APPEAR_DURATION_MS = 520;
 const INTRO_PORTAL_FADE_DURATION_MS = 360;
 const NON_FATAL_FAILURE_DELAY_MS = 260;
-const SUCCESS_HOLD_DELAY_MS = 420;
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const INTRO_DIALOGUE_ID = "level2-intro";
 const SUCCESS_DIALOGUE_ID = "level2-name-intro";
@@ -52,6 +77,15 @@ export default class LevelTwoScene extends Phaser.Scene {
       `${ASSET_BASE}/tiles/greenzone_tileset.png`
     );
     this.load.image("decor_tiles", `${ASSET_BASE}/tiles/Objects.png`);
+    this.load.image(
+      "castle_tiles_grey",
+      `${ASSET_BASE}/tiles/opp5_castle_tiles/opp5_castle_tiles/environment/tiles/castle/tile_castle_grey.png`
+    );
+    this.load.spritesheet(
+      "castle_tiles_sheet",
+      `${ASSET_BASE}/tiles/opp5_castle_tiles/opp5_castle_tiles/environment/tiles/castle/tile_castle_grey.png`,
+      { frameWidth: CASTLE_TILE_FRAME_SIZE, frameHeight: CASTLE_TILE_FRAME_SIZE }
+    );
     this.load.tilemapTiledJSON(
       "level2",
       `${ASSET_BASE}/maps/level2.tmj?v=20260325-1`
@@ -92,7 +126,11 @@ export default class LevelTwoScene extends Phaser.Scene {
       "greenzone_tiles"
     );
     const decorTileset = map.addTilesetImage("Objects", "decor_tiles");
-    const validTilesets = [greenzoneTileset, decorTileset].filter(Boolean);
+    const castleTileset = map.addTilesetImage(
+      "tile_castle_grey",
+      "castle_tiles_grey"
+    );
+    const validTilesets = [greenzoneTileset, decorTileset, castleTileset].filter(Boolean);
     const offsetY = this.scale.height - map.heightInPixels;
     const layersByName = {};
 
@@ -143,6 +181,10 @@ export default class LevelTwoScene extends Phaser.Scene {
       x: map.widthInPixels - GOAL_PADDING,
       y: this.spawnPoint.y,
     });
+    this.gatePoint = this.resolveObjectPoint(map, offsetY, "level2_Gate", {
+      x: map.widthInPixels - GOAL_PADDING,
+      y: this.spawnPoint.y,
+    });
 
     this.createPlayerAnimations();
     this.createPortalAnimations();
@@ -176,6 +218,8 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.npc.setDepth(1);
     this.npc.play(NPC_IDLE_ANIMATION_KEY);
 
+    this.createLevelGate();
+
     ["Ground", "Platforms", "Platform"].forEach((layerName) => {
       const layer = layersByName[layerName];
       if (!layer) return;
@@ -198,6 +242,8 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.approachTargetX = this.npcPoint.x - NPC_APPROACH_OFFSET_X;
     this.failureMessage = "You failed. Declare the exact variable for this level.";
     this.pendingEvaluation = null;
+    this.gateState = "closed";
+    this.gateAnimationEvent = null;
 
     this.player.on(
       Phaser.Animations.Events.ANIMATION_COMPLETE,
@@ -229,18 +275,38 @@ export default class LevelTwoScene extends Phaser.Scene {
     });
 
     const sourcedRanges = sortedTilesets
-      .filter(
-        (tileset) =>
-          Boolean(tileset?.source) &&
-          Number.isInteger(tileset?.firstgid) &&
-          tileset.firstgid > 1
-      )
-      .map((tileset) => ({
-        first: tileset.firstgid,
-        // external source entries commonly omit tilecount in TMJ; use open-ended upper bound.
-        last: Number.MAX_SAFE_INTEGER,
-        offset: tileset.firstgid - 1,
-      }))
+      .map((tileset, index) => {
+        if (
+          !tileset?.source ||
+          !Number.isInteger(tileset?.firstgid) ||
+          tileset.firstgid <= 1
+        ) {
+          return null;
+        }
+
+        // External TSX refs can omit tilecount in TMJ.
+        // Clamp remap range to the next tileset start so we don't rewrite unrelated gids.
+        const nextTileset = sortedTilesets.find(
+          (candidate, candidateIndex) =>
+            candidateIndex > index &&
+            Number.isInteger(candidate?.firstgid) &&
+            candidate.firstgid > tileset.firstgid
+        );
+        const nextFirstGid = Number.isInteger(nextTileset?.firstgid)
+          ? nextTileset.firstgid
+          : null;
+        const rangeLast =
+          Number.isInteger(nextFirstGid) && nextFirstGid > tileset.firstgid
+            ? nextFirstGid - 1
+            : tileset.firstgid;
+
+        return {
+          first: tileset.firstgid,
+          last: rangeLast,
+          offset: tileset.firstgid - 1,
+        };
+      })
+      .filter(Boolean)
       .sort((a, b) => b.first - a.first);
 
     const canonicalByName = new Map();
@@ -268,7 +334,9 @@ export default class LevelTwoScene extends Phaser.Scene {
       }
 
       const duplicateFirst = firstgid;
-      const duplicateLast = tilecount ? duplicateFirst + tilecount - 1 : Number.MAX_SAFE_INTEGER;
+      const duplicateTilecount =
+        tilecount ?? existing.tilecount ?? 1;
+      const duplicateLast = duplicateFirst + duplicateTilecount - 1;
       const offset = duplicateFirst - existing.firstgid;
 
       duplicateRanges.push({
@@ -355,27 +423,7 @@ export default class LevelTwoScene extends Phaser.Scene {
       return;
     }
 
-    if (this.sequenceMode === "success") {
-      const direction = this.successTargetX >= this.player.x ? 1 : -1;
-      this.player.setVelocityX(direction * PLAYER_WALK_SPEED);
-      this.player.setFlipX(direction < 0);
-
-      if (!onGround) {
-        this.playAnimation("player-jump");
-        return;
-      }
-
-      this.playAnimation("player-run");
-
-      if (Math.abs(this.player.x - this.successTargetX) <= TARGET_REACH_TOLERANCE_PX) {
-        this.player.setVelocityX(0);
-        this.player.x = this.successTargetX;
-        this.player.setFlipX(false);
-        this.playAnimation("player-idle");
-        this.sequenceMode = "awaitingSuccessDialogue";
-        this.triggerSuccessDialogue();
-      }
-
+    if (this.sequenceMode === "toGateScripted" || this.sequenceMode === "enterGate") {
       return;
     }
 
@@ -435,6 +483,165 @@ export default class LevelTwoScene extends Phaser.Scene {
       }),
       frameRate: 6,
       repeat: -1,
+    });
+  }
+
+  createLevelGate() {
+    if (!this.gatePoint) {
+      return;
+    }
+
+    const closedGateFrame = GATE_FRAME_SEQUENCE[0];
+    const leftX = this.gatePoint.x - GATE_COLUMN_OFFSET_X;
+    const rightX = this.gatePoint.x + GATE_COLUMN_OFFSET_X;
+
+    this.gateTopLeft = this.add
+      .sprite(
+        leftX,
+        this.gatePoint.y - GATE_TOP_OFFSET_Y,
+        "castle_tiles_sheet",
+        this.toCastleTilesFrame(closedGateFrame.left.top)
+      )
+      .setOrigin(0.5, 1)
+      .setDepth(GATE_SPRITE_DEPTH);
+
+    this.gateMiddleLeft = this.add
+      .sprite(
+        leftX,
+        this.gatePoint.y - GATE_MIDDLE_OFFSET_Y,
+        "castle_tiles_sheet",
+        this.toCastleTilesFrame(closedGateFrame.left.middle)
+      )
+      .setOrigin(0.5, 1)
+      .setDepth(GATE_SPRITE_DEPTH);
+
+    this.gateBottomLeft = this.add
+      .sprite(
+        leftX,
+        this.gatePoint.y + GATE_BOTTOM_OFFSET_Y,
+        "castle_tiles_sheet",
+        this.toCastleTilesFrame(closedGateFrame.left.bottom)
+      )
+      .setOrigin(0.5, 1)
+      .setDepth(GATE_SPRITE_DEPTH);
+
+    this.gateTopRight = this.add
+      .sprite(
+        rightX,
+        this.gatePoint.y - GATE_TOP_OFFSET_Y,
+        "castle_tiles_sheet",
+        this.toCastleTilesFrame(closedGateFrame.right.top)
+      )
+      .setOrigin(0.5, 1)
+      .setDepth(GATE_SPRITE_DEPTH);
+
+    this.gateMiddleRight = this.add
+      .sprite(
+        rightX,
+        this.gatePoint.y - GATE_MIDDLE_OFFSET_Y,
+        "castle_tiles_sheet",
+        this.toCastleTilesFrame(closedGateFrame.right.middle)
+      )
+      .setOrigin(0.5, 1)
+      .setDepth(GATE_SPRITE_DEPTH);
+
+    this.gateBottomRight = this.add
+      .sprite(
+        rightX,
+        this.gatePoint.y + GATE_BOTTOM_OFFSET_Y,
+        "castle_tiles_sheet",
+        this.toCastleTilesFrame(closedGateFrame.right.bottom)
+      )
+      .setOrigin(0.5, 1)
+      .setDepth(GATE_SPRITE_DEPTH);
+  }
+
+  toCastleTilesFrame(frameId) {
+    if (!Number.isFinite(Number(frameId))) {
+      return 0;
+    }
+
+    let frame = Math.trunc(Number(frameId));
+
+    // Compatibility: some provided IDs are offset by +80 for this atlas.
+    if (
+      frame >= CASTLE_TILE_COUNT &&
+      frame - CASTLE_FRAME_COMPAT_OFFSET >= 0 &&
+      frame - CASTLE_FRAME_COMPAT_OFFSET < CASTLE_TILE_COUNT
+    ) {
+      frame -= CASTLE_FRAME_COMPAT_OFFSET;
+    }
+
+    if (frame < 0) {
+      return 0;
+    }
+
+    if (frame >= CASTLE_TILE_COUNT) {
+      return CASTLE_TILE_COUNT - 1;
+    }
+
+    return frame;
+  }
+
+  getGateSprites() {
+    return [
+      this.gateTopLeft,
+      this.gateMiddleLeft,
+      this.gateBottomLeft,
+      this.gateTopRight,
+      this.gateMiddleRight,
+      this.gateBottomRight,
+    ].filter(Boolean);
+  }
+
+  setGateFrameSet(frameSet) {
+    if (!frameSet) {
+      return;
+    }
+
+    if (this.gateTopLeft) {
+      this.gateTopLeft.setFrame(this.toCastleTilesFrame(frameSet.left.top));
+    }
+
+    if (this.gateMiddleLeft) {
+      this.gateMiddleLeft.setFrame(this.toCastleTilesFrame(frameSet.left.middle));
+    }
+
+    if (this.gateBottomLeft) {
+      this.gateBottomLeft.setFrame(this.toCastleTilesFrame(frameSet.left.bottom));
+    }
+
+    if (this.gateTopRight) {
+      this.gateTopRight.setFrame(this.toCastleTilesFrame(frameSet.right.top));
+    }
+
+    if (this.gateMiddleRight) {
+      this.gateMiddleRight.setFrame(this.toCastleTilesFrame(frameSet.right.middle));
+    }
+
+    if (this.gateBottomRight) {
+      this.gateBottomRight.setFrame(this.toCastleTilesFrame(frameSet.right.bottom));
+    }
+  }
+
+  playGateOpenAnimation(onComplete) {
+    if (this.gateState === "open") {
+      onComplete?.();
+      return;
+    }
+
+    if (this.gateState === "opening") {
+      return;
+    }
+
+    this.gateState = "opening";
+    this.setGateFrameSet(GATE_FRAME_SEQUENCE[0]);
+
+    this.gateAnimationEvent = this.time.delayedCall(GATE_ANIMATION_STEP_MS, () => {
+      this.setGateFrameSet(GATE_FRAME_SEQUENCE[1]);
+      this.gateState = "open";
+      this.gateAnimationEvent = null;
+      onComplete?.();
     });
   }
 
@@ -567,19 +774,113 @@ export default class LevelTwoScene extends Phaser.Scene {
   }
 
   startSuccessSequence(introducedName) {
-    const minX = this.physics.world.bounds.x + 16;
-    const maxX = this.physics.world.bounds.right - 16;
-
-    this.sequenceMode = "success";
+    this.sequenceMode = "awaitingSuccessDialogue";
     this.awaitingSuccessDialogueClose = false;
     this.introducedName = introducedName || "Kai";
-    this.successTargetX = Phaser.Math.Clamp(
-      this.npcPoint.x - 18,
+    this.player.setVelocityX(0);
+    this.player.setFlipX(false);
+    this.player.setGravityY(PLAYER_GRAVITY);
+    this.playAnimation("player-idle");
+    this.triggerSuccessDialogue();
+  }
+
+  startRunToGateSequence() {
+    if (!this.gatePoint) {
+      this.finishSuccessSequence();
+      return;
+    }
+
+    const minX = this.physics.world.bounds.x + 16;
+    const maxX = this.physics.world.bounds.right - 16;
+    const stairApproachX = Phaser.Math.Clamp(
+      this.gatePoint.x - GATE_STAIR_APPROACH_OFFSET_X,
       minX,
       maxX
     );
-    this.player.setGravityY(PLAYER_GRAVITY);
+    const gateEntryX = Phaser.Math.Clamp(
+      this.gatePoint.x + GATE_ENTRY_OFFSET_X,
+      minX,
+      maxX
+    );
+    const gateEntryY = this.gatePoint.y + GATE_ENTRY_OFFSET_Y;
+
+    this.sequenceMode = "toGateScripted";
+    this.tweens.killTweensOf(this.player);
+    this.player.setVelocity(0, 0);
+    this.player.setFlipX(false);
+    this.player.setGravityY(0);
+    this.player.body.enable = false;
     this.playAnimation("player-run");
+
+    const firstLegDistance = Math.abs(stairApproachX - this.player.x);
+    const firstLegDuration = Math.max(
+      GATE_MIN_RUN_SEGMENT_MS,
+      Math.round((firstLegDistance / PLAYER_WALK_SPEED) * 1000)
+    );
+
+    this.tweens.add({
+      targets: this.player,
+      x: stairApproachX,
+      y: this.spawnPoint.y,
+      duration: firstLegDuration,
+      ease: "Linear",
+      onComplete: () => {
+        const secondLegDistance = Phaser.Math.Distance.Between(
+          this.player.x,
+          this.player.y,
+          gateEntryX,
+          gateEntryY
+        );
+        const secondLegDuration = Math.max(
+          GATE_MIN_RUN_SEGMENT_MS,
+          Math.round((secondLegDistance / PLAYER_WALK_SPEED) * 1000)
+        );
+
+        this.playAnimation("player-run");
+        this.tweens.add({
+          targets: this.player,
+          x: gateEntryX,
+          y: gateEntryY,
+          duration: secondLegDuration,
+          ease: "Linear",
+          onComplete: () => {
+            this.startGateEnterSequence(gateEntryX, gateEntryY);
+          },
+        });
+      },
+    });
+  }
+
+  startGateEnterSequence(gateEntryX, gateEntryY) {
+    this.sequenceMode = "enterGate";
+    this.player.setVelocity(0, 0);
+    this.playAnimation("player-idle");
+
+    this.tweens.add({
+      targets: this.player,
+      x: gateEntryX + GATE_ENTRY_NUDGE_X,
+      y: gateEntryY + GATE_ENTRY_NUDGE_Y,
+      alpha: 0,
+      scaleX: PLAYER_SCALE * 0.18,
+      scaleY: PLAYER_SCALE * 0.18,
+      duration: GATE_ENTER_DURATION_MS,
+      ease: "Sine.easeIn",
+      onComplete: () => this.finishSuccessSequence(),
+    });
+  }
+
+  finishSuccessSequence() {
+    if (this.sequenceMode === "levelCleared") {
+      return;
+    }
+
+    this.sequenceMode = "levelCleared";
+    gameEvents.emit(GAME_LEVEL_OUTCOME, {
+      levelNumber: LEVEL_NUMBER,
+      status: "success",
+      message: `Correct. "${this.introducedName}" identified. Gate opened. Level 2 cleared.`,
+      shouldProceed: true,
+    });
   }
 
   triggerNpcDialogue() {
@@ -634,14 +935,8 @@ export default class LevelTwoScene extends Phaser.Scene {
 
     if (dialogueId === SUCCESS_DIALOGUE_ID && this.awaitingSuccessDialogueClose) {
       this.awaitingSuccessDialogueClose = false;
-      this.sequenceMode = "awaitingCode";
-      this.time.delayedCall(SUCCESS_HOLD_DELAY_MS, () => {
-        gameEvents.emit(GAME_LEVEL_OUTCOME, {
-          levelNumber: LEVEL_NUMBER,
-          status: "success",
-          message: `Correct. "My name is ${this.introducedName}". Level 2 cleared.`,
-          shouldProceed: true,
-        });
+      this.playGateOpenAnimation(() => {
+        this.startRunToGateSequence();
       });
       return;
     }
@@ -712,6 +1007,11 @@ export default class LevelTwoScene extends Phaser.Scene {
     if (this.failureTimer) {
       this.failureTimer.remove(false);
       this.failureTimer = null;
+    }
+
+    if (this.gateAnimationEvent) {
+      this.gateAnimationEvent.remove(false);
+      this.gateAnimationEvent = null;
     }
   }
 }

@@ -105,7 +105,9 @@ function parseAnnouncementPayload(rawMessage = "") {
   }
 
   return {
-    header: firstLine.slice(ANNOUNCEMENT_HEADER_PREFIX.length).trim() || "Announcement",
+    header:
+      firstLine.slice(ANNOUNCEMENT_HEADER_PREFIX.length).trim() ||
+      "Announcement",
     body: restLines.join("\n").trim(),
   };
 }
@@ -319,8 +321,8 @@ function StudentDashboardPage() {
 
     setAnnouncements((current) =>
       current.map((item) =>
-        item.id === announcement.id ? { ...item, isRead: true } : item
-      )
+        item.id === announcement.id ? { ...item, isRead: true } : item,
+      ),
     );
 
     // Backward compatibility for legacy synthetic announcements
@@ -333,17 +335,17 @@ function StudentDashboardPage() {
       await axios.post(
         buildApiUrl(`/api/classrooms/announcements/${announcementId}/viewed`),
         {},
-        { headers: getAuthHeaders() }
+        { headers: getAuthHeaders() },
       );
     } catch (error) {
       setAnnouncements((current) =>
         current.map((item) =>
-          item.id === announcement.id ? { ...item, isRead: false } : item
-        )
+          item.id === announcement.id ? { ...item, isRead: false } : item,
+        ),
       );
       setAnnouncementActionError(
         error.response?.data?.message ??
-          "Failed to mark announcement as viewed. Please try again."
+          "Failed to mark announcement as viewed. Please try again.",
       );
     }
   };
@@ -363,25 +365,25 @@ function StudentDashboardPage() {
 
     setNotifications((current) =>
       current.map((item) =>
-        item.id === notification.id ? { ...item, isRead: true } : item
-      )
+        item.id === notification.id ? { ...item, isRead: true } : item,
+      ),
     );
 
     try {
       await axios.post(
         buildApiUrl(`/api/notifications/${encodedNotificationId}/viewed`),
         {},
-        { headers: getAuthHeaders() }
+        { headers: getAuthHeaders() },
       );
     } catch (error) {
       setNotifications((current) =>
         current.map((item) =>
-          item.id === notification.id ? { ...item, isRead: false } : item
-        )
+          item.id === notification.id ? { ...item, isRead: false } : item,
+        ),
       );
       setNotificationActionError(
         error.response?.data?.message ??
-          "Failed to mark notification as viewed. Please try again."
+          "Failed to mark notification as viewed. Please try again.",
       );
     }
   };
@@ -419,9 +421,7 @@ function StudentDashboardPage() {
     progressData?.summary?.xpToNextLevel ??
     Math.max(250, Math.min(1000, Math.ceil((xpCurrent + 1) / 250) * 250));
   const myRankDisplay =
-    progressData?.summary?.classRank ??
-    leaderboardMeta.currentUserRank ??
-    null;
+    progressData?.summary?.classRank ?? leaderboardMeta.currentUserRank ?? null;
   const classSize =
     progressData?.summary?.classSize ?? leaderboardMeta.classSize ?? null;
   const totalTimePlayed = progressData?.summary?.totalTimePlayed ?? "—";
@@ -429,7 +429,8 @@ function StudentDashboardPage() {
 
   const myUserId = user?.id;
   const myRank =
-    leaderboardData.findIndex((e) => `${e.userId}` === `${myUserId}`) + 1 || null;
+    leaderboardData.findIndex((e) => `${e.userId}` === `${myUserId}`) + 1 ||
+    null;
   const topFive = leaderboardData.slice(0, 5);
 
   const unreadNotifCount = notifications.filter((n) => !n.isRead).length;
@@ -470,7 +471,8 @@ function StudentDashboardPage() {
     if (levelRows.length > 0) {
       const firstIncomplete = levelRows.find((level) => !level.isCompleted);
       return (
-        firstIncomplete?.levelNumber ?? levelRows[levelRows.length - 1].levelNumber
+        firstIncomplete?.levelNumber ??
+        levelRows[levelRows.length - 1].levelNumber
       );
     }
 
@@ -622,13 +624,13 @@ function StudentDashboardPage() {
             </div>
 
             {/* Common mistakes */}
-            <div className={styles.divider} />
-            <div className={styles.sectionHead}>
-              <div className={styles.sectionTitle}>Common mistakes</div>
-            </div>
-            {isLoading ? (
-              <div className={styles.loadingText}>Loading...</div>
-            ) : mistakes.length === 0 ? (
+            {/* <div className={styles.divider} />
+              <div className={styles.sectionHead}>
+                <div className={styles.sectionTitle}>Common mistakes</div>
+              </div>
+              {isLoading ? (
+                <div className={styles.loadingText}>Loading...</div>
+              ) : mistakes.length === 0 ? (
               <>
                 <MistakeRow
                   label="Wrong data type used"
@@ -652,7 +654,7 @@ function StudentDashboardPage() {
                   typeColor="#0F6E56"
                 />
               </>
-            ) : (
+              ) : (
               mistakes
                 .slice(0, 4)
                 .map((m, i) => (
@@ -665,7 +667,7 @@ function StudentDashboardPage() {
                     typeColor={m.typeColor ?? "#993C1D"}
                   />
                 ))
-            )}
+            )} */}
           </div>
 
           {/* Right: Leaderboard */}
@@ -843,7 +845,9 @@ function StudentDashboardPage() {
                       onClick={() => onAnnouncementOpen(ann)}
                     >
                       {(() => {
-                        const parsedAnnouncement = parseAnnouncementPayload(ann.message);
+                        const parsedAnnouncement = parseAnnouncementPayload(
+                          ann.message,
+                        );
                         return (
                           <>
                             <div
@@ -851,7 +855,9 @@ function StudentDashboardPage() {
                             />
                             <div>
                               <div className={styles.notifText}>
-                                <span className={styles.announcementInlineTitle}>
+                                <span
+                                  className={styles.announcementInlineTitle}
+                                >
                                   {parsedAnnouncement.header}
                                 </span>
                                 {parsedAnnouncement.body
@@ -904,44 +910,43 @@ function StudentDashboardPage() {
         </div>
       </main>
 
-      {selectedAnnouncement && (
+      {selectedAnnouncement &&
         (() => {
           const parsedAnnouncement = parseAnnouncementPayload(
-            selectedAnnouncement.message
+            selectedAnnouncement.message,
           );
           return (
-        <div
-          className={styles.announcementModalBackdrop}
-          onClick={() => setSelectedAnnouncement(null)}
-        >
-          <div
-            className={styles.announcementModalCard}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.announcementModalHeader}>
-              <h3>{parsedAnnouncement.header}</h3>
-              <button
-                type="button"
-                className={styles.announcementModalClose}
-                onClick={() => setSelectedAnnouncement(null)}
+            <div
+              className={styles.announcementModalBackdrop}
+              onClick={() => setSelectedAnnouncement(null)}
+            >
+              <div
+                className={styles.announcementModalCard}
+                onClick={(event) => event.stopPropagation()}
               >
-                Close
-              </button>
+                <div className={styles.announcementModalHeader}>
+                  <h3>{parsedAnnouncement.header}</h3>
+                  <button
+                    type="button"
+                    className={styles.announcementModalClose}
+                    onClick={() => setSelectedAnnouncement(null)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <p className={styles.announcementModalMessage}>
+                  {parsedAnnouncement.body}
+                </p>
+                <p className={styles.announcementModalMeta}>
+                  {selectedAnnouncement.teacherName ?? "Teacher"} ·{" "}
+                  {selectedAnnouncement.createdAt
+                    ? new Date(selectedAnnouncement.createdAt).toLocaleString()
+                    : "Just now"}
+                </p>
+              </div>
             </div>
-            <p className={styles.announcementModalMessage}>
-              {parsedAnnouncement.body}
-            </p>
-            <p className={styles.announcementModalMeta}>
-              {selectedAnnouncement.teacherName ?? "Teacher"} ·{" "}
-              {selectedAnnouncement.createdAt
-                ? new Date(selectedAnnouncement.createdAt).toLocaleString()
-                : "Just now"}
-            </p>
-          </div>
-        </div>
           );
-        })()
-      )}
+        })()}
     </div>
   );
 }

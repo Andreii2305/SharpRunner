@@ -8,21 +8,21 @@ export const LESSON_ONE_MAP_CONFIG = {
     {
       id: "stage-1",
       title: "Stage 1 · Castle Grounds",
-      subtitle: "Mastering Variables",
+      subtitle: "int, string — The Named World",
       x: 50,
       y: 10,
     },
     {
       id: "stage-2",
       title: "Stage 2 · Hall of Types",
-      subtitle: "Exploring Data Types",
+      subtitle: "float, char, bool — The Full Arsenal",
       x: 50,
       y: 51,
     },
   ],
 
   nodes: [
-    /* ── Stage 1 (levels 1–5, level 5 is boss) ── */
+    /* ── Stage 1 (levels 1–5) ── */
     {
       id: "lesson1-level-1",
       levelNumber: 1,
@@ -54,7 +54,7 @@ export const LESSON_ONE_MAP_CONFIG = {
     {
       id: "lesson1-level-5",
       levelNumber: 5,
-      title: "Archivist of Types",
+      title: "Potion Measure",
       x: 80,
       y: 27,
     },
@@ -63,35 +63,35 @@ export const LESSON_ONE_MAP_CONFIG = {
     {
       id: "lesson1-level-6",
       levelNumber: 6,
-      title: "Potion Measure",
+      title: "Rune Letter",
       x: 14,
       y: 74,
     },
     {
       id: "lesson1-level-7",
       levelNumber: 7,
-      title: "Rune Letter",
+      title: "Oath of Truth",
       x: 30,
       y: 68,
     },
     {
       id: "lesson1-level-8",
       levelNumber: 8,
-      title: "Oath of Truth",
+      title: "Pack the Journey",
       x: 48,
       y: 75,
     },
     {
       id: "lesson1-level-9",
       levelNumber: 9,
-      title: "Pack the Journey",
+      title: "Gate of Exact Declarations",
       x: 65,
       y: 68,
     },
     {
       id: "lesson1-level-10",
       levelNumber: 10,
-      title: "Gate of Declarations",
+      title: "Archivist of Types",
       x: 82,
       y: 74,
     },

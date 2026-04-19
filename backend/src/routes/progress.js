@@ -74,6 +74,71 @@ router.get("/me", async (req, res) => {
   }
 });
 
+router.post("/level/:levelKey/start", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    await ensureProgressRowsForUser(req.userId);
+
+    const levelRow = await UserProgress.findOne({
+      where: { userId: req.userId, levelKey },
+    });
+    if (!levelRow) {
+      return res.status(404).json({ message: "Progress row not found" });
+    }
+
+    if (levelRow.isCompleted) {
+      // Score already recorded — return an ephemeral start time without saving to DB
+      return res.json({
+        startedAt: new Date().toISOString(),
+        attemptCount: 0,
+        ephemeral: true,
+      });
+    }
+
+    if (!levelRow.startedAt) {
+      levelRow.startedAt = new Date();
+      await levelRow.save();
+    }
+
+    return res.json({
+      startedAt: levelRow.startedAt,
+      attemptCount: levelRow.attemptCount,
+      ephemeral: false,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/level/:levelKey/attempt", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    const levelRow = await UserProgress.findOne({
+      where: { userId: req.userId, levelKey },
+    });
+    if (!levelRow) {
+      return res.status(404).json({ message: "Progress row not found" });
+    }
+
+    levelRow.attemptCount = (levelRow.attemptCount || 0) + 1;
+    await levelRow.save();
+
+    return res.json({ attemptCount: levelRow.attemptCount });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.put("/level/:levelKey", async (req, res) => {
   try {
     const body = req.body ?? {};
@@ -124,14 +189,14 @@ router.put("/level/:levelKey", async (req, res) => {
     levelRow.completedAt = completedAt;
 
     if (isCompleted && (!wasAlreadyCompleted || levelRow.finalScore == null)) {
-      const attemptCount =
-        typeof body.attemptCount === "number" && body.attemptCount >= 0
-          ? body.attemptCount
-          : levelRow.attemptCount;
-      const timeSpentSeconds =
-        typeof body.timeSpentSeconds === "number" && body.timeSpentSeconds >= 0
-          ? body.timeSpentSeconds
-          : levelRow.timeSpentSeconds;
+      const attemptCount = levelRow.attemptCount;
+      const timeSpentSeconds = levelRow.startedAt
+        ? Math.max(0, Math.floor(
+            (new Date(completedAt).getTime() - new Date(levelRow.startedAt).getTime()) / 1000
+          ))
+        : (typeof body.timeSpentSeconds === "number" && body.timeSpentSeconds >= 0
+            ? body.timeSpentSeconds
+            : levelRow.timeSpentSeconds);
 
       const primaryMembership = await findPrimaryActiveMembership(req.userId);
       let deadlineAt = null;
@@ -154,6 +219,7 @@ router.put("/level/:levelKey", async (req, res) => {
       levelRow.attemptCount = attemptCount;
       levelRow.timeSpentSeconds = timeSpentSeconds;
       levelRow.finalScore = finalScore;
+      levelRow.startedAt = null;
     }
 
     await levelRow.save();

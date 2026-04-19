@@ -39,6 +39,13 @@ const ensureProgressGradingColumns = async () => {
       allowNull: true,
     });
   }
+
+  if (!table["startedAt"]) {
+    await queryInterface.addColumn(TABLE, "startedAt", {
+      type: DataTypes.DATE,
+      allowNull: true,
+    });
+  }
 };
 
 module.exports = { ensureProgressGradingColumns };

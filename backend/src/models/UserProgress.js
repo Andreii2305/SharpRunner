@@ -52,6 +52,10 @@ const UserProgress = sequelize.define(
       type: DataTypes.FLOAT,
       allowNull: true,
     },
+    startedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
   },
   {
     indexes: [

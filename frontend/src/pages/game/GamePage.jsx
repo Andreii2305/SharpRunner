@@ -58,6 +58,7 @@ function GamePage() {
   const startTimeRef = useRef(Date.now());
   const elapsedSecondsRef = useRef(0);
   const failedAttemptsRef = useRef(0);
+  const [startedAt, setStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [showHint, setShowHint] = useState(false);
@@ -103,21 +104,69 @@ function GamePage() {
     setFailedAttempts(0);
     setShowHint(false);
     failedAttemptsRef.current = 0;
+    setStartedAt(null);
+    setElapsedSeconds(0);
+    elapsedSecondsRef.current = 0;
   }, [clearNextLevelTimer, levelConfig]);
 
   useEffect(() => {
-    startTimeRef.current = Date.now();
-    setElapsedSeconds(0);
-    elapsedSecondsRef.current = 0;
+    if (!levelConfig?.progressKey) return;
+    const localKey = `sr_startedat_${levelConfig.progressKey}`;
+    const sessionKey = `sr_session_${levelConfig.progressKey}`;
 
-    const interval = setInterval(() => {
-      const secs = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    // Restore immediately from whichever cache exists
+    const cached = sessionStorage.getItem(sessionKey) || localStorage.getItem(localKey);
+    if (cached) setStartedAt(cached);
+
+    let cancelled = false;
+    axios
+      .post(
+        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/start`),
+        {},
+        { headers: getAuthHeaders() },
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const { startedAt: serverStartedAt, attemptCount, ephemeral } = res.data;
+
+        if (ephemeral) {
+          // Completed level — sessionStorage only (resets on tab close/refresh, not on navigation)
+          const existing = sessionStorage.getItem(sessionKey);
+          if (!existing) {
+            sessionStorage.setItem(sessionKey, serverStartedAt);
+            setStartedAt(serverStartedAt);
+          }
+          // else keep the existing session value so navigating away and back doesn't reset
+        } else {
+          // In-progress level — localStorage so it survives refresh (anti-cheat)
+          localStorage.setItem(localKey, serverStartedAt);
+          setStartedAt(serverStartedAt);
+        }
+
+        const dbAttempts = attemptCount ?? 0;
+        failedAttemptsRef.current = dbAttempts;
+        setFailedAttempts(dbAttempts);
+        if (dbAttempts >= 3 && levelConfig?.hint) setShowHint(true);
+      })
+      .catch((err) => console.error("Failed to start level timer", err));
+
+    return () => { cancelled = true; };
+  }, [levelConfig]);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const startMs = new Date(startedAt).getTime();
+
+    const tick = () => {
+      const secs = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
       elapsedSecondsRef.current = secs;
       setElapsedSeconds(secs);
-    }, 1000);
+    };
 
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [levelConfig]);
+  }, [startedAt]);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -185,15 +234,8 @@ function GamePage() {
       completionRequestRef.current = axios
         .put(
           buildApiUrl(`/api/progress/level/${levelConfig.progressKey}`),
-          {
-            progressPercent: 100,
-            isCompleted: true,
-            timeSpentSeconds: elapsedSecondsRef.current,
-            attemptCount: failedAttemptsRef.current,
-          },
-          {
-            headers: getAuthHeaders(),
-          },
+          { progressPercent: 100, isCompleted: true },
+          { headers: getAuthHeaders() },
         )
         .then(() => true)
         .catch((error) => {
@@ -226,6 +268,11 @@ function GamePage() {
         });
 
         if (shouldProceed) {
+          if (levelConfig?.progressKey) {
+            localStorage.removeItem(`sr_startedat_${levelConfig.progressKey}`);
+            sessionStorage.removeItem(`sr_session_${levelConfig.progressKey}`);
+          }
+          setStartedAt(null);
           void (async () => {
             const didSaveProgress = await markLevelAsCompleted();
             if (!didSaveProgress) {
@@ -250,8 +297,21 @@ function GamePage() {
       const nextCount = failedAttemptsRef.current + 1;
       failedAttemptsRef.current = nextCount;
       setFailedAttempts(nextCount);
-      if (nextCount === 3) {
-        setShowHint(true);
+      if (nextCount === 3 && levelConfig?.hint) setShowHint(true);
+
+      if (levelConfig?.progressKey) {
+        axios
+          .post(
+            buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`),
+            {},
+            { headers: getAuthHeaders() },
+          )
+          .then((res) => {
+            failedAttemptsRef.current = res.data.attemptCount;
+            setFailedAttempts(res.data.attemptCount);
+            if (res.data.attemptCount >= 3 && levelConfig?.hint) setShowHint(true);
+          })
+          .catch(() => {});
       }
 
       setResult({

@@ -569,6 +569,19 @@
 .nodeDone .nodeNum,
 .nodeCurrent .nodeNum { color: #fff; }
 
+/* Score badge below the node label */
+.scoreBadge {
+  font-size: 9px;
+  font-weight: 700;
+  color: #1a365d;
+  background: #ebf8ff;
+  border: 1px solid #90cdf4;
+  border-radius: 99px;
+  padding: 1px 7px;
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+
 /* Boss badge above the node */
 .bossBadge {
   font-size: 9px;

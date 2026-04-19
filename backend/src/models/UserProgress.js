@@ -38,6 +38,20 @@ const UserProgress = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    attemptCount: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    timeSpentSeconds: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    },
+    finalScore: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+    },
   },
   {
     indexes: [

@@ -138,6 +138,11 @@ function MapNode({ node, onNodeClick }) {
       >
         {node.title}
       </span>
+
+      {/* Score badge */}
+      {isDone && node.finalScore != null && (
+        <span className={styles.scoreBadge}>{node.finalScore}</span>
+      )}
     </button>
   );
 }

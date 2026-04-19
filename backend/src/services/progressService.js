@@ -53,6 +53,7 @@ const normalizeLevelRows = (rows) =>
         progressPercent: row.progressPercent,
         isCompleted: row.isCompleted,
         completedAt: row.completedAt,
+        finalScore: row.finalScore ?? null,
       };
     });
 
@@ -213,9 +214,60 @@ const buildProgressSummary = (rows, { classRank = null, classSize = null } = {})
   };
 };
 
+const MIN_SCORE = 75;
+const ATTEMPT_DEDUCTION = 5;
+const DEADLINE_DEDUCTION_PER_DAY = 3;
+const OVERTIME_DEDUCTION_PER_MINUTE = 0.05;
+
+const BOSS_LEVELS = new Set([10, 20, 30, 40]);
+
+const getParTimeSeconds = (globalLevelNumber) => {
+  if (BOSS_LEVELS.has(globalLevelNumber)) return 45 * 60;
+  if (globalLevelNumber <= 5) return 15 * 60;
+  if (
+    (globalLevelNumber >= 6 && globalLevelNumber <= 9) ||
+    (globalLevelNumber >= 11 && globalLevelNumber <= 15)
+  )
+    return 20 * 60;
+  if (
+    (globalLevelNumber >= 16 && globalLevelNumber <= 19) ||
+    (globalLevelNumber >= 21 && globalLevelNumber <= 25)
+  )
+    return 25 * 60;
+  return 30 * 60;
+};
+
+const computeFinalScore = ({
+  attemptCount,
+  timeSpentSeconds,
+  parTimeSeconds,
+  deadlineAt,
+  completedAt,
+}) => {
+  let score = 100;
+
+  score -= attemptCount * ATTEMPT_DEDUCTION;
+
+  if (deadlineAt && completedAt) {
+    const deadlineMs = new Date(deadlineAt).getTime();
+    const completedMs = new Date(completedAt).getTime();
+    if (completedMs > deadlineMs) {
+      const daysLate = Math.floor((completedMs - deadlineMs) / (1000 * 60 * 60 * 24));
+      score -= daysLate * DEADLINE_DEDUCTION_PER_DAY;
+    }
+  } else if (timeSpentSeconds > parTimeSeconds) {
+    const minutesOver = (timeSpentSeconds - parTimeSeconds) / 60;
+    score -= minutesOver * OVERTIME_DEDUCTION_PER_MINUTE;
+  }
+
+  return Math.max(MIN_SCORE, Math.round(score * 100) / 100);
+};
+
 module.exports = {
   DEFAULT_LEVEL_PROGRESS,
   ensureProgressRowsForUser,
   buildProgressSummary,
   computeXpFromTotalPercent,
+  getParTimeSeconds,
+  computeFinalScore,
 };

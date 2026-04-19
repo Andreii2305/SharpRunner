@@ -779,32 +779,43 @@ function StudentDashboardPage() {
             </div>
           </div>
 
-          {/* Time per lesson card */}
+          {/* My Grades card */}
           <div className={styles.card}>
-            <div className={styles.sectionTitle} style={{ marginBottom: 12 }}>
-              Time per lesson
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionTitle}>My grades</div>
+              <div className={styles.sectionSub}>Completed levels</div>
             </div>
-            {REGIONS.map((region, idx) => {
-              const lessonData = lessons.find(
-                (l) => l.lessonKey === region.key,
-              );
-              const timeStr = lessonData?.timeSpent ?? "—";
-              const pct = lessonData?.progressPercent ?? 0;
+            {isLoading ? (
+              <div className={styles.loadingText}>Loading...</div>
+            ) : (() => {
+              const gradedLevels = (progressData?.levels ?? [])
+                .filter((l) => l.isCompleted && l.finalScore != null)
+                .sort((a, b) => a.orderIndex - b.orderIndex);
+              if (gradedLevels.length === 0) {
+                return <div className={styles.emptyText}>No graded levels yet. Complete a level to see your score.</div>;
+              }
               return (
-                <div key={region.key} className={styles.timeRow}>
-                  <div className={styles.timeLeft}>
-                    <div className={styles.timeLabel}>{region.topic}</div>
-                    <div className={styles.timeMiniBarTrack}>
-                      <div
-                        className={styles.timeMiniBarFill}
-                        style={{ width: `${pct}%`, background: region.accent }}
-                      />
+                <div className={styles.gradeList}>
+                  {gradedLevels.map((level) => (
+                    <div key={level.levelKey} className={styles.gradeRow}>
+                      <div className={styles.gradeLevel}>
+                        <span className={styles.gradeLevelNum}>Lv {level.orderIndex}</span>
+                        <span className={styles.gradeLevelKey}>{level.lessonTitle}</span>
+                      </div>
+                      <span
+                        className={styles.gradeScore}
+                        style={{
+                          color: level.finalScore >= 90 ? "#0F6E56" : level.finalScore >= 75 ? "#854F0B" : "#993C1D",
+                          background: level.finalScore >= 90 ? "#E1F5EE" : level.finalScore >= 75 ? "#FAEEDA" : "#FAECE7",
+                        }}
+                      >
+                        {level.finalScore}
+                      </span>
                     </div>
-                  </div>
-                  <div className={styles.timeVal}>{timeStr}</div>
+                  ))}
                 </div>
               );
-            })}
+            })()}
           </div>
 
           {/* Announcements + Notifications */}

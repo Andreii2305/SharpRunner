@@ -86,7 +86,7 @@ function LessonMapPage() {
       } else if (node.levelNumber < currentNum) {
         status = "unlocked";
       }
-      return { ...node, status, route: `/Map/level/${node.levelNumber}` };
+      return { ...node, status, route: `/Map/level/${node.levelNumber}`, finalScore: row?.finalScore ?? null };
     });
   }, [lessonRows]);
 

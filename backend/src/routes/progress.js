@@ -7,7 +7,10 @@ const {
   ensureProgressRowsForUser,
   buildProgressSummary,
   DEFAULT_LEVEL_PROGRESS,
+  getParTimeSeconds,
+  computeFinalScore,
 } = require("../services/progressService");
+const { LevelDeadline } = require("../models");
 const {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
@@ -113,11 +116,45 @@ router.put("/level/:levelKey", async (req, res) => {
         ? completedFromBody || newProgress === 100
         : levelRow.isCompleted || newProgress === 100;
 
+    const wasAlreadyCompleted = levelRow.isCompleted;
+    const completedAt = isCompleted ? levelRow.completedAt ?? new Date() : null;
+
     levelRow.progressPercent = isCompleted ? 100 : newProgress;
     levelRow.isCompleted = isCompleted;
-    levelRow.completedAt = isCompleted
-      ? levelRow.completedAt ?? new Date()
-      : null;
+    levelRow.completedAt = completedAt;
+
+    if (isCompleted && (!wasAlreadyCompleted || levelRow.finalScore == null)) {
+      const attemptCount =
+        typeof body.attemptCount === "number" && body.attemptCount >= 0
+          ? body.attemptCount
+          : levelRow.attemptCount;
+      const timeSpentSeconds =
+        typeof body.timeSpentSeconds === "number" && body.timeSpentSeconds >= 0
+          ? body.timeSpentSeconds
+          : levelRow.timeSpentSeconds;
+
+      const primaryMembership = await findPrimaryActiveMembership(req.userId);
+      let deadlineAt = null;
+      if (primaryMembership) {
+        const deadlineRow = await LevelDeadline.findOne({
+          where: { classroomId: primaryMembership.classroomId, levelKey },
+        });
+        deadlineAt = deadlineRow?.deadlineAt ?? null;
+      }
+
+      const parTimeSeconds = getParTimeSeconds(levelRow.orderIndex);
+      const finalScore = computeFinalScore({
+        attemptCount,
+        timeSpentSeconds,
+        parTimeSeconds,
+        deadlineAt,
+        completedAt,
+      });
+
+      levelRow.attemptCount = attemptCount;
+      levelRow.timeSpentSeconds = timeSpentSeconds;
+      levelRow.finalScore = finalScore;
+    }
 
     await levelRow.save();
 

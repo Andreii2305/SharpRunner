@@ -260,7 +260,7 @@ const buildDashboardPayload = async (req) => {
           userId: { [Op.in]: validStudentIds },
           levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS },
         },
-        attributes: ["userId", "levelKey", "progressPercent", "isCompleted", "updatedAt"],
+        attributes: ["userId", "levelKey", "progressPercent", "isCompleted", "finalScore", "updatedAt"],
       })
     : [];
 
@@ -296,6 +296,8 @@ const buildDashboardPayload = async (req) => {
         levelCount: 0,
         completedLevels: 0,
         lastProgressAt: null,
+        totalScore: 0,
+        scoredLevels: 0,
       });
     }
 
@@ -304,6 +306,10 @@ const buildDashboardPayload = async (req) => {
     stats.levelCount += 1;
     if (row.isCompleted) {
       stats.completedLevels += 1;
+      if (row.finalScore != null) {
+        stats.totalScore += row.finalScore;
+        stats.scoredLevels += 1;
+      }
     }
 
     if (!stats.lastProgressAt || new Date(row.updatedAt) > new Date(stats.lastProgressAt)) {
@@ -331,6 +337,8 @@ const buildDashboardPayload = async (req) => {
       levelCount: 0,
       completedLevels: 0,
       lastProgressAt: null,
+      totalScore: 0,
+      scoredLevels: 0,
     };
     const firstMembership = firstMembershipByStudent.get(studentId);
     const classroom = firstMembership
@@ -359,6 +367,9 @@ const buildDashboardPayload = async (req) => {
       section: classroom?.section ?? DEFAULT_SECTION_NAME,
       classroomName: classroom?.className ?? "No classroom",
       progressPercent,
+      avgScore: stats.scoredLevels > 0
+        ? Math.round(stats.totalScore / stats.scoredLevels * 10) / 10
+        : null,
       badgesCount: Math.floor(stats.completedLevels / 5),
       completedLevels: stats.completedLevels,
       status,
@@ -484,6 +495,47 @@ router.get("/dashboard", async (req, res) => {
   try {
     const payload = await buildDashboardPayload(req);
     return res.json(payload);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/students/:studentId/grades", async (req, res) => {
+  try {
+    const studentId = parseInteger(req.params.studentId);
+    if (!studentId) return res.status(400).json({ message: "Invalid student ID" });
+
+    const scopeWhere = buildScopeWhere(req);
+    const classrooms = await Classroom.findAll({ where: scopeWhere, attributes: ["id"] });
+    const classroomIds = classrooms.map((c) => c.id);
+
+    const membership = await ClassroomMembership.findOne({
+      where: { studentId, classroomId: { [Op.in]: classroomIds }, status: "active" },
+    });
+    if (!membership) return res.status(403).json({ message: "Student not in your classroom" });
+
+    const rows = await UserProgress.findAll({
+      where: { userId: studentId, levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS } },
+      attributes: ["levelKey", "orderIndex", "isCompleted", "attemptCount", "timeSpentSeconds", "finalScore", "completedAt"],
+      order: [["orderIndex", "ASC"]],
+    });
+
+    const student = await User.findByPk(studentId, { attributes: ["firstName", "lastName", "username"] });
+    const studentName = student ? `${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || student.username : "Student";
+
+    return res.json({
+      studentName,
+      grades: rows.map((r) => ({
+        levelKey: r.levelKey,
+        orderIndex: r.orderIndex,
+        isCompleted: r.isCompleted,
+        attemptCount: r.attemptCount,
+        timeSpentSeconds: r.timeSpentSeconds,
+        finalScore: r.finalScore,
+        completedAt: r.completedAt,
+      })),
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

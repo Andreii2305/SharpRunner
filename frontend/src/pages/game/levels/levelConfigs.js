@@ -13,6 +13,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
   1: {
     levelNumber: 1,
     lessonKey: LESSON_KEY,
+    parTimeSeconds: 900,
     title: "The Castle of Syntax",
     subtitle: "Level 1 - The Awakening",
     chapterLabel: "Chapter 1: The Awakening",
@@ -23,6 +24,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     nextDelayMs: 1200,
     defaultCode:
       "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void WalkToPortal(int distanceInSteps) {\n      // Movement is handled by the game engine.\n    }\n\n    static void Main(string[] args) {\n      int steps = 0;\n      WalkToPortal(steps);\n    }\n  }\n}",
+    hint: "Count the tiles between your character and the portal carefully. Set int steps to exactly that number.",
     idleResultMessage: "Set int steps, then click Run.",
     successResultMessage:
       "Great job. Portal reached and level objective completed.",
@@ -92,6 +94,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
   2: {
     levelNumber: 2,
     lessonKey: LESSON_KEY,
+    parTimeSeconds: 900,
     title: "The Castle of Syntax",
     subtitle: "Level 2 - What Is Your Name?",
     chapterLabel: "Chapter 2: The Name Gate",
@@ -104,6 +107,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lockCodeUntilDialogueDone: true,
     defaultCode:
       "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void IntroduceToNpc(string name) {\n      // Dialogue animation is handled by the game engine.\n    }\n\n    static void Main(string[] args) {\n      string myName = \"\";\n      IntroduceToNpc(myName);\n    }\n  }\n}",
+    hint: 'Declare exactly: string myName = "Kai"; — use lowercase string, double quotes, and the exact name Kai.',
     idleResultMessage: "Declare your name variable, then click Run.",
     successResultMessage:
       'Correct. NPC accepted: "Kai". Proceeding to next level.',

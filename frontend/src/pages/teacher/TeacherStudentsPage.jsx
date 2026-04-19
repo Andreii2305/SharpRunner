@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { FiAward } from "react-icons/fi";
+import { FiAward, FiX } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { clampPercent } from "./TeacherDashboardPage.jsx";
@@ -12,6 +12,8 @@ function TeacherStudentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [classrooms, setClassrooms] = useState([]);
+  const [gradesModal, setGradesModal] = useState(null);
+  const [gradesLoading, setGradesLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -33,7 +35,21 @@ function TeacherStudentsPage() {
 
   const sections = [...new Set(students.map((s) => s.section).filter(Boolean))];
 
+  const openGrades = async (student) => {
+    setGradesModal({ studentName: student.studentName || student.username, grades: [] });
+    setGradesLoading(true);
+    try {
+      const res = await axios.get(buildApiUrl(`/api/teacher/students/${student.userId}/grades`), { headers: getAuthHeaders() });
+      setGradesModal({ studentName: res.data.studentName, grades: res.data.grades });
+    } catch {
+      setGradesModal(null);
+    } finally {
+      setGradesLoading(false);
+    }
+  };
+
   return (
+    <>
     <div className={styles.root}>
       <Sidebar />
       <div className={styles.main}>
@@ -75,8 +91,10 @@ function TeacherStudentsPage() {
                       <th>Student name</th>
                       <th>Section</th>
                       <th>Progress</th>
+                      <th>Avg. Score</th>
                       <th>Badges</th>
                       <th>Status</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -122,6 +140,13 @@ function TeacherStudentsPage() {
                             </div>
                           </td>
                           <td>
+                            {s.avgScore != null ? (
+                              <span className={pgStyles.scoreChip}>{s.avgScore}</span>
+                            ) : (
+                              <span className={pgStyles.scorePending}>—</span>
+                            )}
+                          </td>
+                          <td>
                             <div className={pgStyles.badges}>
                               {Array.from({
                                 length: Math.max(1, Math.min(s.badgesCount, 4)),
@@ -144,6 +169,11 @@ function TeacherStudentsPage() {
                               {s.lastActiveLabel}
                             </div>
                           </td>
+                          <td>
+                            <button className={pgStyles.gradesBtn} onClick={() => openGrades(s)}>
+                              Grades
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -155,6 +185,52 @@ function TeacherStudentsPage() {
         </div>
       </div>
     </div>
+
+    {gradesModal && (
+        <div className={pgStyles.modalBackdrop} onClick={() => setGradesModal(null)}>
+          <div className={pgStyles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <div className={pgStyles.modalHeader}>
+              <span className={pgStyles.modalTitle}>{gradesModal.studentName} — Grades</span>
+              <button className={pgStyles.modalClose} onClick={() => setGradesModal(null)}><FiX /></button>
+            </div>
+            {gradesLoading ? (
+              <div className={styles.loadingText}>Loading...</div>
+            ) : (
+              <div className={pgStyles.gradeTable}>
+                <div className={pgStyles.gradeTableHead}>
+                  <span>Level</span><span>Score</span><span>Attempts</span><span>Time</span>
+                </div>
+                {gradesModal.grades.filter((g) => g.isCompleted).length === 0 ? (
+                  <div className={styles.emptyText}>No completed levels yet.</div>
+                ) : (
+                  gradesModal.grades.filter((g) => g.isCompleted).map((g) => {
+                    const mins = Math.floor(g.timeSpentSeconds / 60);
+                    const secs = g.timeSpentSeconds % 60;
+                    const timeStr = `${mins}m ${secs}s`;
+                    return (
+                      <div key={g.levelKey} className={pgStyles.gradeTableRow}>
+                        <span>Lv {g.orderIndex}</span>
+                        <span
+                          className={pgStyles.gradeChip}
+                          style={{
+                            color: g.finalScore >= 90 ? "#0F6E56" : g.finalScore >= 75 ? "#854F0B" : "#993C1D",
+                            background: g.finalScore >= 90 ? "#E1F5EE" : g.finalScore >= 75 ? "#FAEEDA" : "#FAECE7",
+                          }}
+                        >
+                          {g.finalScore ?? "—"}
+                        </span>
+                        <span>{g.attemptCount} fail{g.attemptCount !== 1 ? "s" : ""}</span>
+                        <span>{timeStr}</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+    )}
+    </>
   );
 }
 

@@ -59,3 +59,115 @@
 .statusOnline   { font-size: 11px; color: #0F6E56; font-weight: 600; }
 .statusInactive { font-size: 11px; color: #E24B4A; font-weight: 600; }
 .lastActive     { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+
+.scoreChip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a365d;
+  background: #ebf8ff;
+  border: 1px solid #90cdf4;
+  border-radius: 99px;
+  padding: 2px 9px;
+}
+
+.scorePending {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.gradesBtn {
+  font-size: 11px;
+  font-weight: 600;
+  color: #26547c;
+  background: #e8f0fb;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.gradesBtn:hover { background: #d0e2f7; }
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(8, 17, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modalCard {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.18);
+  padding: 28px;
+  width: min(520px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modalTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a365d;
+}
+
+.modalClose {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+}
+.modalClose:hover { color: #374151; }
+
+.gradeTable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.gradeTableHead {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 1fr;
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0 8px 6px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.gradeTableRow {
+  display: grid;
+  grid-template-columns: 60px 1fr 1fr 1fr;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #374151;
+}
+.gradeTableRow:nth-child(even) { background: #f8fafc; }
+
+.gradeChip {
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 2px 10px;
+  width: fit-content;
+}

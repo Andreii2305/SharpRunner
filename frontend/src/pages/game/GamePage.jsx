@@ -55,6 +55,12 @@ function GamePage() {
 
   const nextLevelTimerRef = useRef(null);
   const completionRequestRef = useRef(null);
+  const startTimeRef = useRef(Date.now());
+  const elapsedSecondsRef = useRef(0);
+  const failedAttemptsRef = useRef(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [showHint, setShowHint] = useState(false);
   const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
   const [activeDialogueId, setActiveDialogueId] = useState(null);
   const [showStoryIntro, setShowStoryIntro] = useState(shouldStartWithDialogue(levelConfig));
@@ -94,7 +100,24 @@ function GamePage() {
     setTypedCharacters(0);
     setShowStoryIntro(shouldStartWithDialogue(levelConfig));
     setIsCodeLocked(isCodeLockedByDialogue(levelConfig));
+    setFailedAttempts(0);
+    setShowHint(false);
+    failedAttemptsRef.current = 0;
   }, [clearNextLevelTimer, levelConfig]);
+
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+    setElapsedSeconds(0);
+    elapsedSecondsRef.current = 0;
+
+    const interval = setInterval(() => {
+      const secs = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      elapsedSecondsRef.current = secs;
+      setElapsedSeconds(secs);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [levelConfig]);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -165,6 +188,8 @@ function GamePage() {
           {
             progressPercent: 100,
             isCompleted: true,
+            timeSpentSeconds: elapsedSecondsRef.current,
+            attemptCount: failedAttemptsRef.current,
           },
           {
             headers: getAuthHeaders(),
@@ -220,6 +245,13 @@ function GamePage() {
         }
 
         return;
+      }
+
+      const nextCount = failedAttemptsRef.current + 1;
+      failedAttemptsRef.current = nextCount;
+      setFailedAttempts(nextCount);
+      if (nextCount === 3) {
+        setShowHint(true);
       }
 
       setResult({
@@ -369,6 +401,12 @@ function GamePage() {
     setDialogueStep((current) => current + 1);
   };
 
+  const parTimeSeconds = levelConfig?.parTimeSeconds ?? 900;
+  const isOvertime = elapsedSeconds > parTimeSeconds;
+  const timerMinutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
+  const timerSecondsDisplay = (elapsedSeconds % 60).toString().padStart(2, "0");
+  const timerLabel = `${timerMinutes}:${timerSecondsDisplay}`;
+
   if (!levelConfig) {
     return (
       <div className={styles.gameContainer}>
@@ -415,6 +453,10 @@ function GamePage() {
           <h1>{levelConfig.title}</h1>
           <span>{levelConfig.subtitle}</span>
         </div>
+        <div className={isOvertime ? styles.timerOvertime : styles.timer}>
+          <span className={styles.timerLabel}>Time</span>
+          <span className={styles.timerValue}>{timerLabel}</span>
+        </div>
         <Button label="Exit" variant="outline" size="sm" onClick={exitButton} />
       </header>
 
@@ -425,6 +467,18 @@ function GamePage() {
               scene={levelConfig.scene}
               sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
             />
+            {showHint && levelConfig.hint && (
+              <div className={styles.hintOverlay}>
+                <div className={styles.hintBox}>
+                  <div className={styles.hintHeader}>
+                    <span className={styles.hintTitle}>Hint</span>
+                    <button className={styles.hintClose} onClick={() => setShowHint(false)}>✕</button>
+                  </div>
+                  <p className={styles.hintText}>{levelConfig.hint}</p>
+                  <button className={styles.hintDismiss} onClick={() => setShowHint(false)}>Got it</button>
+                </div>
+              </div>
+            )}
             {showStoryIntro && activeDialogue && (
               <div className={styles.storyOverlay}>
                 <div className={styles.storyContainer}>

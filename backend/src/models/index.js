@@ -7,6 +7,7 @@ const ClassroomMembership = require("./ClassroomMembership");
 const ClassroomAnnouncement = require("./ClassroomAnnouncement");
 const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
 const UserNotificationView = require("./UserNotificationView");
+const LevelDeadline = require("./LevelDeadline");
 
 User.hasMany(UserProgress, {
   foreignKey: "userId",
@@ -140,6 +141,17 @@ UserNotificationView.belongsTo(User, {
   as: "user",
 });
 
+Classroom.hasMany(LevelDeadline, {
+  foreignKey: "classroomId",
+  as: "levelDeadlines",
+  onDelete: "CASCADE",
+});
+
+LevelDeadline.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+});
+
 module.exports = {
   User,
   UserProgress,
@@ -150,4 +162,5 @@ module.exports = {
   ClassroomAnnouncement,
   ClassroomAnnouncementView,
   UserNotificationView,
+  LevelDeadline,
 };

@@ -7,6 +7,7 @@ const {
   ensureUserActivityColumns,
 } = require("./services/userRoleSchemaService");
 const { ensureClassroomColumns } = require("./services/classroomSchemaService");
+const { ensureProgressGradingColumns } = require("./services/progressSchemaService");
 
 const startServer = async () => {
   try {
@@ -15,6 +16,7 @@ const startServer = async () => {
     await ensureUserStatusColumn();
     await ensureUserActivityColumns();
     await ensureClassroomColumns();
+    await ensureProgressGradingColumns();
     console.log("Database synced");
 
     app.listen(5000, () =>

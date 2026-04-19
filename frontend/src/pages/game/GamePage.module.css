@@ -322,3 +322,111 @@
   font-weight: bold;
   cursor: pointer;
 }
+
+.timer,
+.timerOvertime {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: white;
+  border-radius: 8px;
+  padding: 6px 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
+  min-width: 72px;
+}
+
+.timerLabel {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #718096;
+}
+
+.timerValue {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #1a365d;
+}
+
+.timerOvertime .timerLabel {
+  color: #c53030;
+}
+
+.timerOvertime .timerValue {
+  color: #c53030;
+}
+
+.hintOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  background: rgba(8, 17, 40, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hintBox {
+  background: #1e293b;
+  border: 1px solid #f59e0b;
+  border-radius: 12px;
+  padding: 24px;
+  width: min(400px, 90%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hintHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hintTitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f59e0b;
+}
+
+.hintClose {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.hintClose:hover {
+  color: #e2e8f0;
+}
+
+.hintText {
+  margin: 0;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.hintDismiss {
+  align-self: flex-end;
+  background: #f59e0b;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 20px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hintDismiss:hover {
+  background: #d97706;
+}

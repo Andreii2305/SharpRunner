@@ -112,7 +112,7 @@ export const createExactGoalDeclarationValidator =
       isCorrect: true,
       message: successMessage,
       payload: {
-        goalValues,
+        values: goalValues,
       },
     };
   };
@@ -183,7 +183,7 @@ export const createSingleIntegerDeclarationValidator =
       isCorrect: true,
       message: successMessage,
       payload: {
-        [variableName]: value,
+        values: { [variableName]: value },
       },
     };
   };

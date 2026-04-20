@@ -12,6 +12,7 @@ const {
   DEFAULT_LEVEL_PROGRESS,
 } = require("../constants/progressDefaults");
 const { ensureProgressRowsForUser } = require("../services/progressService");
+const LevelContentOverride = require("../models/LevelContentOverride");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -22,6 +23,7 @@ const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
 const MAX_ANNOUNCEMENT_LENGTH = 1000;
 const EXPECTED_PROGRESS_ROWS_PER_STUDENT = DEFAULT_LEVEL_PROGRESS.length;
 const DEFAULT_LEVEL_KEYS = DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey);
+const LEVEL_KEY_SET = new Set(DEFAULT_LEVEL_KEYS);
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -874,6 +876,93 @@ router.post("/announcements", async (req, res) => {
         teacherName: formatTeacherName(actor),
       },
     });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/classrooms/:classroomId/level-overrides", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const overrides = await LevelContentOverride.findAll({ where: { classroomId } });
+    return res.json(overrides);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/classrooms/:classroomId/level-overrides/:levelKey", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const levelKey = normalizeString(req.params.levelKey).toLowerCase();
+    if (!LEVEL_KEY_SET.has(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const body = req.body ?? {};
+    const fields = [
+      "lessonCardTitle",
+      "lessonCardDescription",
+      "goalTitle",
+      "goalDescription",
+      "instructionItems",
+      "defaultCode",
+      "validatorConfig",
+    ];
+    const updates = {};
+    for (const field of fields) {
+      if (body[field] !== undefined) updates[field] = body[field];
+    }
+
+    const [override] = await LevelContentOverride.findOrCreate({
+      where: { classroomId, levelKey },
+      defaults: { classroomId, levelKey, ...updates },
+    });
+    if (Object.keys(updates).length > 0) {
+      Object.assign(override, updates);
+      await override.save();
+    }
+
+    return res.json(override);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.delete("/classrooms/:classroomId/level-overrides/:levelKey", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const levelKey = normalizeString(req.params.levelKey).toLowerCase();
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await LevelContentOverride.destroy({ where: { classroomId, levelKey } });
+    return res.json({ message: "Override removed" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

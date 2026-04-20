@@ -81,6 +81,14 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
+    validatorConfig: {
+      type: "singleInteger",
+      variableName: "steps",
+      minValue: 1,
+      maxValue: 40,
+      unexpectedVariableMessage: 'Unexpected variable. Only "steps" is allowed in Level 1.',
+      successMessage: "Code accepted. Executing walk steps...",
+    },
     validateCode: createSingleIntegerDeclarationValidator({
       variableName: "steps",
       minValue: 1,
@@ -154,6 +162,13 @@ const LEVEL_CONFIG_BY_NUMBER = {
           ],
         },
       ],
+    },
+    validatorConfig: {
+      type: "exactGoal",
+      goals: [{ name: "myName", allowedTypes: ["string"], requiredValue: '"Kai"' }],
+      unexpectedVariableMessage: 'Unexpected variable. Only "myName" is allowed in Level 2.',
+      strictCountMessage: 'Only this declaration is accepted: string myName = "Kai";',
+      successMessage: 'Code accepted. Introducing "Kai" to the NPC...',
     },
     validateCode: createExactGoalDeclarationValidator({
       goals: [

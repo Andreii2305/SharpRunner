@@ -8,6 +8,7 @@ const ClassroomAnnouncement = require("./ClassroomAnnouncement");
 const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
 const UserNotificationView = require("./UserNotificationView");
 const LevelDeadline = require("./LevelDeadline");
+const LevelContentOverride = require("./LevelContentOverride");
 
 User.hasMany(UserProgress, {
   foreignKey: "userId",
@@ -152,6 +153,17 @@ LevelDeadline.belongsTo(Classroom, {
   as: "classroom",
 });
 
+Classroom.hasMany(LevelContentOverride, {
+  foreignKey: "classroomId",
+  as: "levelContentOverrides",
+  onDelete: "CASCADE",
+});
+
+LevelContentOverride.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+});
+
 module.exports = {
   User,
   UserProgress,
@@ -163,4 +175,5 @@ module.exports = {
   ClassroomAnnouncementView,
   UserNotificationView,
   LevelDeadline,
+  LevelContentOverride,
 };

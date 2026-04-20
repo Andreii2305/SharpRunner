@@ -10,7 +10,7 @@ const {
   getParTimeSeconds,
   computeFinalScore,
 } = require("../services/progressService");
-const { LevelDeadline } = require("../models");
+const { LevelDeadline, LevelContentOverride } = require("../models");
 const {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
@@ -225,6 +225,29 @@ router.put("/level/:levelKey", async (req, res) => {
     await levelRow.save();
 
     return res.json(await buildProgressPayloadForUser(req.userId));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/level/:levelKey/content", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    const primaryMembership = await findPrimaryActiveMembership(req.userId);
+    if (!primaryMembership) {
+      return res.json({ override: null });
+    }
+
+    const override = await LevelContentOverride.findOne({
+      where: { classroomId: primaryMembership.classroomId, levelKey },
+    });
+
+    return res.json({ override: override ?? null });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

@@ -14,6 +14,7 @@ import {
 } from "./gameEvents";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { getLevelConfig } from "./levels/levelConfigs";
+import { buildValidatorFromConfig } from "./levels/buildValidator";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 
@@ -70,6 +71,7 @@ function GamePage() {
   const [isCodeLocked, setIsCodeLocked] = useState(isCodeLockedByDialogue(levelConfig));
   const [code, setCode] = useState(levelConfig?.defaultCode ?? "");
   const [result, setResult] = useState(getIdleResult(levelConfig));
+  const [mergedLevelConfig, setMergedLevelConfig] = useState(levelConfig);
 
   const clearNextLevelTimer = useCallback(() => {
     if (!nextLevelTimerRef.current) {
@@ -93,6 +95,7 @@ function GamePage() {
   useEffect(() => {
     clearNextLevelTimer();
     completionRequestRef.current = null;
+    setMergedLevelConfig(levelConfig);
     setDialogueScript(getDefaultDialogueScript(levelConfig));
     setActiveDialogueId(null);
     setCode(levelConfig?.defaultCode ?? "");
@@ -108,6 +111,52 @@ function GamePage() {
     setElapsedSeconds(0);
     elapsedSecondsRef.current = 0;
   }, [clearNextLevelTimer, levelConfig]);
+
+  useEffect(() => {
+    if (!levelConfig?.progressKey) return;
+    let cancelled = false;
+    axios
+      .get(
+        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/content`),
+        { headers: getAuthHeaders() },
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const override = res.data?.override;
+        if (!override) return;
+
+        const merged = { ...levelConfig };
+
+        if (override.lessonCardTitle != null) {
+          merged.lessonCard = { ...merged.lessonCard, title: override.lessonCardTitle };
+        }
+        if (override.lessonCardDescription != null) {
+          merged.lessonCard = { ...merged.lessonCard, description: override.lessonCardDescription };
+        }
+        if (override.goalTitle != null) {
+          merged.goal = { ...merged.goal, title: override.goalTitle };
+        }
+        if (override.goalDescription != null) {
+          merged.goal = { ...merged.goal, description: override.goalDescription };
+        }
+        if (Array.isArray(override.instructionItems)) {
+          merged.instruction = { ...merged.instruction, items: override.instructionItems };
+        }
+        if (override.defaultCode != null) {
+          merged.defaultCode = override.defaultCode;
+          setCode(override.defaultCode);
+        }
+        if (override.validatorConfig != null) {
+          merged.validatorConfig = override.validatorConfig;
+          const newValidator = buildValidatorFromConfig(override.validatorConfig);
+          if (newValidator) merged.validateCode = newValidator;
+        }
+
+        setMergedLevelConfig(merged);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [levelConfig]);
 
   useEffect(() => {
     if (!levelConfig?.progressKey) return;
@@ -349,7 +398,7 @@ function GamePage() {
       return;
     }
 
-    if (!levelConfig?.validateCode) {
+    if (!mergedLevelConfig?.validateCode) {
       setResult({
         type: "error",
         message: "Level validator is not configured.",
@@ -360,12 +409,16 @@ function GamePage() {
     clearNextLevelTimer();
 
     const sourceCode = code ?? "";
-    const validation = levelConfig.validateCode(sourceCode);
+    const validation = mergedLevelConfig.validateCode(sourceCode);
 
     gameEvents.emit(GAME_LEVEL_CODE_EVALUATED, {
-      levelNumber: levelConfig.levelNumber,
+      levelNumber: mergedLevelConfig.levelNumber,
       isCorrect: validation.isCorrect,
       sourceCode,
+      configuredVariableName:
+        mergedLevelConfig.validatorConfig?.variableName ??
+        mergedLevelConfig.validatorConfig?.goals?.[0]?.name ??
+        null,
       ...(validation.payload ?? {}),
     });
 
@@ -496,13 +549,13 @@ function GamePage() {
     activeDialogue?.portraitAlt ??
     levelConfig.dialogue?.portraitAlt ??
     "Character portrait";
-  const goalTitle = levelConfig.goal?.title ?? "Goal";
+  const goalTitle = mergedLevelConfig?.goal?.title ?? "Goal";
   const goalDescription =
-    levelConfig.goal?.description ?? "Complete this level's coding objective.";
-  const instructionTitle = levelConfig.instruction?.title ?? "Instruction";
-  const instructionItems = levelConfig.instruction?.items ?? [];
-  const lessonCardTitle = levelConfig.lessonCard?.title ?? "Lesson";
-  const lessonCardDescription = levelConfig.lessonCard?.description ?? "";
+    mergedLevelConfig?.goal?.description ?? "Complete this level's coding objective.";
+  const instructionTitle = mergedLevelConfig?.instruction?.title ?? "Instruction";
+  const instructionItems = mergedLevelConfig?.instruction?.items ?? [];
+  const lessonCardTitle = mergedLevelConfig?.lessonCard?.title ?? "Lesson";
+  const lessonCardDescription = mergedLevelConfig?.lessonCard?.description ?? "";
   const chapterLabel =
     levelConfig.chapterLabel ?? `Chapter ${levelConfig.levelNumber}`;
 

@@ -737,7 +737,8 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.resetAttemptState();
 
     if (payload.isCorrect) {
-      const introducedName = payload?.goalValues?.myName ?? "Kai";
+      const varName = payload?.configuredVariableName ?? "myName";
+      const introducedName = payload?.values?.[varName] ?? "Kai";
       this.startSuccessSequence(introducedName);
       return;
     }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { FiPlus, FiUsers } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
@@ -12,6 +13,7 @@ import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
 
 function TeacherClassesPage() {
+  const navigate = useNavigate();
   const [classPerformance, setClassPerformance] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -181,6 +183,29 @@ function TeacherClassesPage() {
                         {clampPercent(item.averageProgressPercent)}%
                       </span>
                     </div>
+                    {item.classId && (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/teacher/classrooms/${item.classId}/levels`)}
+                        style={{
+                          marginTop: 10,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#26547c",
+                          background: "linear-gradient(135deg,#e8f0fb 0%,#d0e2f7 100%)",
+                          border: "1.5px solid #bcd4ec",
+                          borderRadius: 8,
+                          padding: "5px 12px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 5,
+                          transition: "background 0.15s, border-color 0.15s",
+                        }}
+                      >
+                        ⚙️ Edit Levels
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

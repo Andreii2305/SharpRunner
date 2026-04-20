@@ -309,19 +309,21 @@ export default class LevelOneScene extends Phaser.Scene {
     this.player.play(key, true);
   }
 
-  onCodeEvaluated({ levelNumber, isCorrect, steps }) {
+  onCodeEvaluated({ levelNumber, isCorrect, values, configuredVariableName }) {
     if (levelNumber !== LEVEL_NUMBER) return;
     if (typeof isCorrect !== "boolean") return;
 
     this.resetAttemptState();
 
     if (isCorrect) {
-      if (!Number.isInteger(steps)) {
+      const varName = configuredVariableName ?? "steps";
+      const stepValue = values?.[varName];
+      if (!Number.isInteger(stepValue)) {
         this.startFailureSequence("Could not read steps value. Use int steps = <number>;");
         return;
       }
 
-      this.startSuccessSequence(steps);
+      this.startSuccessSequence(stepValue);
       return;
     }
 

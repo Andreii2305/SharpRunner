@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(xargs wc *)",
-      "Bash(ls -la /c/Users/andre/OneDrive/Desktop/SharpRunner/backend/.env*)",
-      "Bash(wc -l /c/Users/andre/OneDrive/Desktop/SharpRunner/backend/src/routes/*.js /c/Users/andre/OneDrive/Desktop/SharpRunner/backend/src/models/*.js)"
-    ]
-  }
-}

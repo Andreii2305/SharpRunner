@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { FiPlus, FiUsers } from "react-icons/fi";
+import { FiPlus, FiUsers, FiCopy, FiCheck } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
+import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import {
   clampPercent,
   CreateClassModal,
@@ -14,7 +15,9 @@ import pgStyles from "./TeacherClassesPage.module.css";
 
 function TeacherClassesPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [classPerformance, setClassPerformance] = useState([]);
+  const [copiedCode, setCopiedCode] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -40,6 +43,14 @@ function TeacherClassesPage() {
     "BSIT 3A",
     "BSIT 4A",
   ];
+
+  const handleCopyCode = (code) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedCode(code);
+      toast.success(`Code "${code}" copied to clipboard!`);
+      setTimeout(() => setCopiedCode(null), 2000);
+    });
+  };
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -152,7 +163,18 @@ function TeacherClassesPage() {
                       <div className={pgStyles.classCardName}>
                         {item.className}
                       </div>
-                      <span className={styles.codePill}>{item.classCode}</span>
+                      <button
+                        type="button"
+                        className={styles.codePill}
+                        onClick={() => handleCopyCode(item.classCode)}
+                        title="Click to copy code"
+                        style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, border: "none" }}
+                      >
+                        {item.classCode}
+                        {copiedCode === item.classCode
+                          ? <FiCheck size={11} />
+                          : <FiCopy size={11} />}
+                      </button>
                     </div>
                     <div className={pgStyles.classCardMeta}>
                       <FiUsers

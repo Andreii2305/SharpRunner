@@ -3,6 +3,8 @@ import axios from "axios";
 import {
   FiActivity,
   FiBarChart2,
+  FiCheck,
+  FiCopy,
   FiGrid,
   FiMessageSquare,
   FiPlus,
@@ -10,6 +12,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
+import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherDashboardPage.module.css";
@@ -172,6 +175,8 @@ export function SuccessModal({ classCode, onClose }) {
 
 /* ─── Overview page ───────────────────────────────────────────── */
 function TeacherDashboardPage() {
+  const toast = useToast();
+  const [copiedCode, setCopiedCode] = useState(null);
   const [dashData, setDashData] = useState(null);
   const [annData, setAnnData] = useState({ classrooms: [], announcements: [] });
   const [isLoading, setIsLoading] = useState(true);
@@ -196,6 +201,14 @@ function TeacherDashboardPage() {
     header: "",
     message: "",
   });
+
+  const handleCopyCode = (code) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedCode(code);
+      toast.success(`Code "${code}" copied to clipboard!`);
+      setTimeout(() => setCopiedCode(null), 2000);
+    });
+  };
 
   /* ── fetch announcement data ── */
   const fetchAnnData = async () => {
@@ -468,7 +481,18 @@ function TeacherDashboardPage() {
                         {item.section} · SY {item.schoolYear} ·{" "}
                         {item.studentCount} students
                       </div>
-                      <span className={styles.codePill}>{item.classCode}</span>
+                      <button
+                        type="button"
+                        className={styles.codePill}
+                        onClick={() => handleCopyCode(item.classCode)}
+                        title="Click to copy code"
+                        style={{ cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 5, border: "none" }}
+                      >
+                        {item.classCode}
+                        {copiedCode === item.classCode
+                          ? <FiCheck size={11} />
+                          : <FiCopy size={11} />}
+                      </button>
                     </div>
                     <div className={pgStyles.classRowRight}>
                       <div className={pgStyles.classAvgLabel}>

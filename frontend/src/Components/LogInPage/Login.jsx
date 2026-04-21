@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../Toast/ToastProvider.jsx";
 import LoginComp from "../LoginAndSignUp/LoginComp.jsx";
 import {
   buildApiUrl,
@@ -13,6 +14,7 @@ import {
 
 const Login = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     identifier: "",
     password: "",
@@ -44,7 +46,7 @@ const Login = () => {
       setUser(res.data.user);
       navigate(getHomeRouteByRole(res.data.user?.role), { replace: true });
     } catch (err) {
-      alert(err.response?.data?.message || "Login failed");
+      toast.error(err.response?.data?.message || "Login failed.");
     }
   };
 

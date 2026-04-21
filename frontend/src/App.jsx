@@ -18,6 +18,7 @@ import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
 import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
 import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
+import { ToastProvider } from "./Components/Toast/ToastProvider.jsx";
 
 /* Convenience wrapper so teacher routes stay DRY */
 function TeacherRoute({ children }) {
@@ -30,6 +31,7 @@ function TeacherRoute({ children }) {
 
 function App() {
   return (
+    <ToastProvider>
     <BrowserRouter basename="/SharpRunner">
       <Routes>
         <Route path="/" element={<LandingPage />} />
@@ -144,6 +146,7 @@ function App() {
         <Route path="/admin-invite" element={<AdminInviteRegisterPage />} />
       </Routes>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../Toast/ToastProvider.jsx";
 import SignUpComp from "../LoginAndSignUp/SignUpComp.jsx";
 import {
   buildApiUrl,
@@ -12,6 +13,7 @@ import {
 
 const SignUp = () => {
   const navigate = useNavigate();
+  const toast = useToast();
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -41,12 +43,12 @@ const SignUp = () => {
       !formData.email.trim() ||
       !formData.password
     ) {
-      alert("Please complete all required fields");
+      toast.error("Please complete all required fields.");
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
+      toast.error("Passwords do not match.");
       return;
     }
 
@@ -64,7 +66,7 @@ const SignUp = () => {
       setUser(res.data.user);
       navigate(getHomeRouteForCurrentUser(), { replace: true });
     } catch (err) {
-      alert(err.response?.data?.message || "Registration failed");
+      toast.error(err.response?.data?.message || "Registration failed.");
     }
   };
 

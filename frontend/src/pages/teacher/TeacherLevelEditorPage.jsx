@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import Editor from "@monaco-editor/react";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
+import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { getLevelConfig, getAvailableLevelNumbers } from "../game/levels/levelConfigs.js";
 import styles from "./TeacherPage.module.css";
@@ -86,6 +87,7 @@ function TeacherLevelEditorPage() {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editorHeight, setEditorHeight] = useState(200);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const editorRef = useRef(null);
 
   const fetchOverrides = useCallback(async () => {
@@ -150,8 +152,10 @@ function TeacherLevelEditorPage() {
     } finally { setSaving(false); }
   };
 
-  const handleReset = async () => {
-    if (!window.confirm("Reset this level to default? All customizations will be removed.")) return;
+  const handleReset = () => setConfirmOpen(true);
+
+  const doReset = async () => {
+    setConfirmOpen(false);
     setSaving(true); setStatus(null);
     try {
       const cfg = getLevelConfig(selectedLevel);
@@ -450,6 +454,16 @@ function TeacherLevelEditorPage() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Reset to Default?"
+        message="All customizations for this level will be removed and the default content will be restored."
+        confirmLabel="Yes, Reset"
+        danger
+        onConfirm={doReset}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </div>
   );
 }

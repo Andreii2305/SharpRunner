@@ -4,9 +4,11 @@ import Button from "../Button/Button.jsx";
 import Background from "./BackgroundEffect.jsx";
 import { useNavigate } from "react-router-dom";
 import { clearToken, isAuthenticated } from "../../utils/auth";
+import { useToast } from "../Toast/ToastProvider.jsx";
 
 function HeroSection() {
   const navigate = useNavigate();
+  const toast = useToast();
   const loggedIn = isAuthenticated();
 
   const handleDashboardClick = () => {

@@ -7,6 +7,7 @@ import LockOutlineIcon from "@mui/icons-material/LockOutline";
 import CheckIcon from "@mui/icons-material/Check";
 import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import { useToast } from "../Toast/ToastProvider.jsx";
 
 const DEFAULT_LESSON_META = [
   {
@@ -289,6 +290,7 @@ function LessonCard({ lesson, onPlay, onLocked }) {
 
 function LessonSection() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [progressLessons, setProgressLessons] = useState([]);
   const [lessonSeed, setLessonSeed] = useState([]);
 
@@ -348,7 +350,7 @@ function LessonSection() {
   };
 
   const handleLocked = () => {
-    alert("This lesson is locked. Finish the current lesson to unlock it.");
+    toast.warning("This lesson is locked. Finish the current lesson to unlock it.");
   };
 
   const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;

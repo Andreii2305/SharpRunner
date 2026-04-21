@@ -1,8 +1,69 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import Button from "../Button/Button.jsx";
 import CircularProgressBar from "../CircularProgressBar/CircularProgressBar.jsx";
 import styles from "./LessonMap.module.css";
+
+/* ─── Sound effects hook (Web Audio API, no files) ──────────── */
+function useSounds(enabled = true) {
+  const ctxRef = useRef(null);
+
+  const getCtx = useCallback(() => {
+    if (!enabled) return null;
+    if (!ctxRef.current) {
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctxRef.current = new AC();
+      } catch {
+        return null;
+      }
+    }
+    if (ctxRef.current.state === "suspended") {
+      ctxRef.current.resume().catch(() => {});
+    }
+    return ctxRef.current;
+  }, [enabled]);
+
+  const tone = useCallback(
+    (freq, duration, type = "sine", gain = 0.08) => {
+      const ctx = getCtx();
+      if (!ctx) return;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      g.gain.setValueAtTime(gain, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+      osc.connect(g);
+      g.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    },
+    [getCtx],
+  );
+
+  const playHover = useCallback(
+    () => tone(520, 0.05, "triangle", 0.04),
+    [tone],
+  );
+
+  const playClick = useCallback(() => {
+    tone(660, 0.08, "square", 0.06);
+    setTimeout(() => tone(880, 0.1, "triangle", 0.05), 20);
+  }, [tone]);
+
+  const playLocked = useCallback(() => {
+    tone(120, 0.18, "sawtooth", 0.05);
+  }, [tone]);
+
+  const playFootstep = useCallback(() => {
+    tone(180, 0.04, "square", 0.025);
+  }, [tone]);
+
+  return { playHover, playClick, playLocked, playFootstep };
+}
 
 /* ─── Roman numeral helper (I, II, III … X) ──────────────────── */
 const toRoman = (num) => {
@@ -111,18 +172,32 @@ function CastleHero() {
 }
 
 /* ─── Single map node (shield-shaped) ────────────────────────── */
-function MapNode({ node, onNodeClick }) {
+function MapNode({ node, onNodeClick, sounds }) {
   const isLocked = node.status === "locked";
   const isCurrent = node.status === "current";
   const isDone = node.status === "completed";
   const isBoss = node.levelNumber === 5 || node.levelNumber === 10;
+
+  const handleClick = () => {
+    if (isLocked) {
+      sounds?.playLocked();
+      return;
+    }
+    sounds?.playClick();
+    onNodeClick?.(node);
+  };
+
+  const handleEnter = () => {
+    if (!isLocked) sounds?.playHover();
+  };
 
   return (
     <button
       type="button"
       className={`${styles.nodeSlot} ${isLocked ? styles.nodeSlotDisabled : ""}`}
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
-      onClick={() => !isLocked && onNodeClick?.(node)}
+      onClick={handleClick}
+      onMouseEnter={handleEnter}
       disabled={isLocked}
       aria-label={`Level ${node.levelNumber}: ${node.title}${isLocked ? " — locked" : ""}`}
     >
@@ -226,7 +301,153 @@ function StageHeader({ stage, completedCount, totalCount, isLocked }) {
   );
 }
 
-/* ─── Main component ─────────────────────────────────────────── */
+/* ─── Walking knight sprite (spritesheet-driven) ──────────────
+   Sheet: /game/assets/characters/players/char_blue.png
+   Layout: 8 cols × 7 rows, 56×56 per frame
+   Row 0 = idle (6 frames)
+   Row 2 = walk/run (8 frames)
+─────────────────────────────────────────────────────────── */
+const SPRITE_FRAME_SIZE = 56; // source frame size in px
+const SPRITE_COLS = 8;
+const WALK_ROW = 2;
+const WALK_FRAMES = 8;
+const IDLE_ROW = 0;
+const IDLE_FRAMES = 6;
+
+function KnightSprite({ path, onStep, spriteSrc }) {
+  const [frame, setFrame] = useState(0);
+  const [progress, setProgress] = useState(0);
+  const [isWalking, setIsWalking] = useState(true);
+  const stepCountRef = useRef(0);
+
+  /* Keep onStep in a ref so frame-cycle interval doesn't tear down */
+  const onStepRef = useRef(onStep);
+  useEffect(() => {
+    onStepRef.current = onStep;
+  }, [onStep]);
+
+  /* Animate position along path */
+  useEffect(() => {
+    if (!path || path.length < 2) {
+      setProgress(1);
+      setIsWalking(false);
+      return;
+    }
+    setIsWalking(true);
+    setProgress(0);
+    const duration = Math.min(2400, 600 + path.length * 400);
+    const start = performance.now();
+    let raf;
+    const tick = (t) => {
+      const elapsed = t - start;
+      const p = Math.min(1, elapsed / duration);
+      const eased = 1 - Math.pow(1 - p, 2);
+      setProgress(eased);
+      if (p < 1) {
+        raf = requestAnimationFrame(tick);
+      } else {
+        setIsWalking(false);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [path]);
+
+  /* Sprite frame cycling — only depends on isWalking */
+  useEffect(() => {
+    const frames = isWalking ? WALK_FRAMES : IDLE_FRAMES;
+    const interval = isWalking ? 100 : 220;
+    const id = setInterval(() => {
+      setFrame((f) => {
+        const next = (f + 1) % frames;
+        if (isWalking) {
+          stepCountRef.current += 1;
+          if (stepCountRef.current % 4 === 0) onStepRef.current?.();
+        }
+        return next;
+      });
+    }, interval);
+    return () => clearInterval(id);
+  }, [isWalking]);
+
+  /* Reset frame when switching animations */
+  useEffect(() => {
+    setFrame(0);
+  }, [isWalking]);
+
+  /* Compute current position on the path — fully defensive */
+  const pos = useMemo(() => {
+    // Guard 1: empty or missing path
+    if (!Array.isArray(path) || path.length === 0) {
+      return null;
+    }
+
+    // Guard 2: validate every point has x/y
+    const safePath = path.filter(
+      (p) => p && typeof p.x === "number" && typeof p.y === "number",
+    );
+    if (safePath.length === 0) return null;
+
+    // Single point OR animation finished — stand at the last valid point
+    if (safePath.length === 1 || progress >= 1) {
+      const last = safePath[safePath.length - 1];
+      const prev = safePath[safePath.length - 2] ?? last;
+      return {
+        x: last.x,
+        y: last.y,
+        angle: Math.atan2(last.y - prev.y, last.x - prev.x),
+      };
+    }
+
+    // Walking between segments
+    const segCount = safePath.length - 1;
+    const t = progress * segCount;
+    const i = Math.max(0, Math.min(segCount - 1, Math.floor(t)));
+    const localT = Math.max(0, Math.min(1, t - i));
+    const a = safePath[i];
+    const b = safePath[i + 1];
+
+    // Guard 3: if a or b is somehow missing, fall back to last point
+    if (!a || !b) {
+      const last = safePath[safePath.length - 1];
+      return { x: last.x, y: last.y, angle: 0 };
+    }
+
+    return {
+      x: a.x + (b.x - a.x) * localT,
+      y: a.y + (b.y - a.y) * localT - Math.sin(localT * Math.PI) * 2,
+      angle: Math.atan2(b.y - a.y, b.x - a.x),
+    };
+  }, [path, progress]);
+
+  // Bail out of rendering if we have no valid position
+  if (!pos) return null;
+
+  const facingLeft = Math.cos(pos.angle) < -0.05;
+  const row = isWalking ? WALK_ROW : IDLE_ROW;
+
+  return (
+    <div
+      className={styles.knightSprite}
+      style={{
+        left: `${pos.x}%`,
+        top: `${pos.y}%`,
+        transform: `translate(-50%, -100%) scaleX(${facingLeft ? -1 : 1})`,
+      }}
+      aria-hidden="true"
+    >
+      <div
+        className={styles.knightFrame}
+        style={{
+          backgroundImage: `url(${spriteSrc})`,
+          backgroundPosition: `-${frame * SPRITE_FRAME_SIZE}px -${row * SPRITE_FRAME_SIZE}px`,
+          backgroundSize: `${SPRITE_COLS * SPRITE_FRAME_SIZE}px auto`,
+        }}
+      />
+    </div>
+  );
+}
+
 function LessonMap({
   lessonTitle,
   subtitle,
@@ -237,6 +458,7 @@ function LessonMap({
   connections = [],
   lessonDetails = [],
   backgroundImageSrc,
+  characterSpriteSrc,
   onContinue,
   onExit,
   onNodeClick,
@@ -244,8 +466,16 @@ function LessonMap({
   continueDisabled = false,
   exitLabel = "Retreat",
 }) {
+  /* Default character sprite — relative to the Vite BASE_URL */
+  const knightSpriteSrc =
+    characterSpriteSrc ??
+    `${import.meta.env.BASE_URL}game/assets/characters/players/char_blue.png`;
+
   const orderedNodes = [...nodes].sort((a, b) => a.levelNumber - b.levelNumber);
   const nodeById = new Map(orderedNodes.map((n) => [n.id, n]));
+
+  /* Sound FX */
+  const sounds = useSounds(true);
 
   /* connectors */
   const fallback = orderedNodes
@@ -269,6 +499,23 @@ function LessonMap({
   const stage2Done = stage2Nodes.filter((n) => n.status === "completed").length;
   const stage2Locked = stage2Nodes.every((n) => n.status === "locked");
   const totalDone = stage1Done + stage2Done;
+
+  /* Knight path — completed nodes → current node.
+     Depends on a serialized signature so identical paths share a reference
+     (prevents KnightSprite from remounting on every parent render). */
+  const knightKey = orderedNodes
+    .filter((n) => n.status === "completed" || n.status === "current")
+    .map((n) => `${n.levelNumber}:${n.status}:${n.x},${n.y}`)
+    .join("|");
+
+  const knightPath = useMemo(() => {
+    const completed = orderedNodes.filter((n) => n.status === "completed");
+    const current = orderedNodes.find((n) => n.status === "current");
+    const pts = completed.map((n) => ({ x: n.x, y: n.y }));
+    if (current) pts.push({ x: current.x, y: current.y });
+    return pts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [knightKey]);
 
   const LEGEND = [
     { label: "Conquered", cls: "legendDone" },
@@ -359,14 +606,20 @@ function LessonMap({
               label={continueLabel}
               variant="primary"
               size="md"
-              onClick={onContinue}
+              onClick={() => {
+                sounds.playClick();
+                onContinue?.();
+              }}
               disabled={continueDisabled}
             />
             <Button
               label={exitLabel}
               variant="outline"
               size="md"
-              onClick={onExit}
+              onClick={() => {
+                sounds.playHover();
+                onExit?.();
+              }}
             />
           </div>
         </aside>
@@ -474,8 +727,23 @@ function LessonMap({
 
             {/* Nodes */}
             {orderedNodes.map((node) => (
-              <MapNode key={node.id} node={node} onNodeClick={onNodeClick} />
+              <MapNode
+                key={node.id}
+                node={node}
+                onNodeClick={onNodeClick}
+                sounds={sounds}
+              />
             ))}
+
+            {/* Walking knight sprite */}
+            {knightPath.length > 0 && knightPath[0] && (
+              <KnightSprite
+                key={knightKey}
+                path={knightPath}
+                spriteSrc={knightSpriteSrc}
+                onStep={sounds.playFootstep}
+              />
+            )}
 
             {/* Stage 2 locked overlay */}
             {stage2Locked && (

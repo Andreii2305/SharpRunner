@@ -896,6 +896,25 @@
   text-shadow: 0 1px 0 rgba(255,235,153,0.5);
 }
 
+/* ── Knight sprite — spritesheet-driven walk cycle ───────── */
+.knightSprite {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+  z-index: 6;
+  filter: drop-shadow(1px 2px 0 rgba(0,0,0,0.35));
+  transition: none;
+}
+
+.knightFrame {
+  width: 100%;
+  height: 100%;
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
 /* ── Responsive ───────────────────────── */
 @media (max-width: 1200px) {
   .mapLayout {
@@ -906,6 +925,10 @@
   .nodeBoss   { width: 58px; height: 66px; }
   .nodeNum    { font-size: 14px; }
   .nodeLabel  { font-size: 9px; max-width: 78px; }
+  .knightSprite { width: 48px; height: 48px; }
+  .knightSprite .knightFrame {
+    background-size: 384px auto !important; /* 8 cols * 48px */
+  }
 }
 
 @media (max-width: 1024px) {

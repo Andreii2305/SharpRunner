@@ -86,7 +86,12 @@ function LessonMapPage() {
       } else if (node.levelNumber < currentNum) {
         status = "unlocked";
       }
-      return { ...node, status, route: `/Map/level/${node.levelNumber}`, finalScore: row?.finalScore ?? null };
+      return {
+        ...node,
+        status,
+        route: `/Map/level/${node.levelNumber}`,
+        finalScore: row?.finalScore ?? null,
+      };
     });
   }, [lessonRows]);
 
@@ -101,7 +106,7 @@ function LessonMapPage() {
 
   return (
     <div className={styles.lessonMapPage}>
-      <Sidebar />
+      {/* <Sidebar /> */}
 
       <section className={styles.lessonMapContent}>
         <LessonMap

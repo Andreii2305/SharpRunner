@@ -49,7 +49,7 @@ const GATE_FRAME_SEQUENCE = [
 const GATEKEEPER_DIALOGUE_ID = "level3-gatekeeper";
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const GH_ASSET_BASE = `${ASSET_BASE}/tiles/GandalfHardcore_FREE_Platformer_Assets`;
-const GH_BG_BASE = `${GH_ASSET_BASE}/GandalfHardcore Background layers/Normal BG`;
+const GH_BG_BASE = `${GH_ASSET_BASE}/GandalfHardcore_Background_layers/Normal_BG`;
 
 const PLAYER_ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -89,34 +89,34 @@ export default class LevelThreeScene extends Phaser.Scene {
       `${ASSET_BASE}/tiles/opp5_castle_tiles/opp5_castle_tiles/environment/tiles/castle/tile_castle_grey.png`,
       { frameWidth: CASTLE_TILE_FRAME_SIZE, frameHeight: CASTLE_TILE_FRAME_SIZE }
     );
-    this.load.image("l3_floor_tiles2", `${GH_ASSET_BASE}/Floor Tiles2.png`);
-    this.load.image("l3_other_tiles2", `${GH_ASSET_BASE}/Other Tiles2.png`);
-    this.load.image("l3_bg_dirt2", `${GH_ASSET_BASE}/BG Dirt2.png`);
+    this.load.image("l3_floor_tiles2", `${GH_ASSET_BASE}/Floor_Tiles2.png`);
+    this.load.image("l3_other_tiles2", `${GH_ASSET_BASE}/Other_Tiles2.png`);
+    this.load.image("l3_bg_dirt2", `${GH_ASSET_BASE}/BG_Dirt2.png`);
     this.load.image("l3_decor_tiles", `${GH_ASSET_BASE}/Decor.png`);
-    this.load.image("l3_willow", `${GH_ASSET_BASE}/Weeping Willow1.png`);
-    this.load.image("l3_pine_trees", `${GH_ASSET_BASE}/Pine Trees.png`);
+    this.load.image("l3_willow", `${GH_ASSET_BASE}/Weeping_Willow1.png`);
+    this.load.image("l3_pine_trees", `${GH_ASSET_BASE}/Pine_Trees.png`);
     this.load.image("greenzone_tiles", `${ASSET_BASE}/tiles/greenzone_tileset.png`);
     this.load.tilemapTiledJSON("level3", `${ASSET_BASE}/maps/level3.tmj`);
     this.load.image(
       "l3_bg5",
-      `${GH_BG_BASE}/GandalfHardcore Background layers_layer 5.png`
+      `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_5.png`
     );
-    this.load.image("l3_bg_castle", `${GH_BG_BASE}/Background Castle .png`);
+    this.load.image("l3_bg_castle", `${GH_BG_BASE}/Background_Castle.png`);
     this.load.image(
       "l3_bg4",
-      `${GH_BG_BASE}/GandalfHardcore Background layers_layer 4.png`
+      `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_4.png`
     );
     this.load.image(
       "l3_bg3",
-      `${GH_BG_BASE}/GandalfHardcore Background layers_layer 3.png`
+      `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_3.png`
     );
     this.load.image(
       "l3_bg2",
-      `${GH_BG_BASE}/GandalfHardcore Background layers_layer 2.png`
+      `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_2.png`
     );
     this.load.image(
       "l3_bg1",
-      `${GH_BG_BASE}/GandalfHardcore Background layers_layer 1.png`
+      `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_1.png`
     );
   }
 

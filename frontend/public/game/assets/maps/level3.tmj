@@ -4,7 +4,7 @@
  "layers":[
         {
          "id":2,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore Background layers\/Normal BG\/GandalfHardcore Background layers_layer 5.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore_Background_layers\/Normal_BG\/GandalfHardcore_Background_layers_layer_5.png",
          "imageheight":346,
          "imagewidth":1024,
          "name":"bg_layer_05_distant",
@@ -21,7 +21,7 @@
         }, 
         {
          "id":7,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore Background layers\/Normal BG\/Background Castle .png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore_Background_layers\/Normal_BG\/Background_Castle.png",
          "imageheight":346,
          "imagewidth":1024,
          "name":"bg_layer_00_castle",
@@ -37,7 +37,7 @@
         }, 
         {
          "id":3,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore Background layers\/Normal BG\/GandalfHardcore Background layers_layer 4.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore_Background_layers\/Normal_BG\/GandalfHardcore_Background_layers_layer_4.png",
          "imageheight":346,
          "imagewidth":1024,
          "name":"bg_layer_04_mid",
@@ -53,7 +53,7 @@
         }, 
         {
          "id":4,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore Background layers\/Normal BG\/GandalfHardcore Background layers_layer 3.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore_Background_layers\/Normal_BG\/GandalfHardcore_Background_layers_layer_3.png",
          "imageheight":346,
          "imagewidth":1024,
          "name":"bg_layer_03_close",
@@ -69,7 +69,7 @@
         }, 
         {
          "id":5,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore Background layers\/Normal BG\/GandalfHardcore Background layers_layer 2.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore_Background_layers\/Normal_BG\/GandalfHardcore_Background_layers_layer_2.png",
          "imageheight":346,
          "imagewidth":1024,
          "name":"bg_layer_02_near",
@@ -85,7 +85,7 @@
         }, 
         {
          "id":6,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore Background layers\/Normal BG\/GandalfHardcore Background layers_layer 1.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/GandalfHardcore_Background_layers\/Normal_BG\/GandalfHardcore_Background_layers_layer_1.png",
          "imageheight":346,
          "imagewidth":1024,
          "name":"bg_layer_01_floor",
@@ -437,7 +437,7 @@
         {
          "columns":9,
          "firstgid":226,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Floor Tiles2.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Floor_Tiles2.png",
          "imageheight":576,
          "imagewidth":288,
          "margin":0,
@@ -450,7 +450,7 @@
         {
          "columns":9,
          "firstgid":388,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Other Tiles2.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Other_Tiles2.png",
          "imageheight":224,
          "imagewidth":288,
          "margin":0,
@@ -463,7 +463,7 @@
         {
          "columns":6,
          "firstgid":451,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/BG Dirt2.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/BG_Dirt2.png",
          "imageheight":128,
          "imagewidth":192,
          "margin":0,
@@ -493,7 +493,7 @@
         {
          "columns":7,
          "firstgid":792,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Weeping Willow1.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Weeping_Willow1.png",
          "imageheight":192,
          "imagewidth":224,
          "margin":0,
@@ -507,7 +507,7 @@
         {
          "columns":21,
          "firstgid":834,
-         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Pine Trees.png",
+         "image":"..\/tiles\/GandalfHardcore_FREE_Platformer_Assets\/Pine_Trees.png",
          "imageheight":192,
          "imagewidth":672,
          "margin":0,

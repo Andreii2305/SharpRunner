@@ -1,7 +1,9 @@
 import LevelOneScene from "../scenes/LevelOneScene";
 import LevelTwoScene from "../scenes/LevelTwoScene";
+import LevelThreeScene from "../scenes/LevelThreeScene";
 import {
   createExactGoalDeclarationValidator,
+  createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
 } from "./validators";
 
@@ -183,6 +185,66 @@ const LEVEL_CONFIG_BY_NUMBER = {
       strictCountMessage:
         'Only this declaration is accepted: string myName = "Kai";',
       successMessage: 'Code accepted. Introducing "Kai" to the NPC...',
+    }),
+  },
+  3: {
+    levelNumber: 3,
+    lessonKey: LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "The Castle of Syntax",
+    subtitle: "Level 3 - Voices of the Village",
+    chapterLabel: "Chapter 3: Voices of the Village",
+    scene: LevelThreeScene,
+    sceneKey: "LevelThreeScene",
+    progressKey: `${LESSON_KEY}-level-3`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: false,
+    defaultCode:
+      'using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      string voice1 = "";\n      string voice2 = "";\n      string voice3 = "";\n    }\n  }\n}',
+    hint: 'Declare three string variables: string voice1 = "hello"; string voice2 = "world"; string voice3 = "hi"; — any non-empty quoted values are accepted.',
+    idleResultMessage: "Declare voice1, voice2, and voice3, then click Run.",
+    successResultMessage:
+      "All three voices restored. The route is now open. Level 3 cleared.",
+    errorResultMessage:
+      "Invalid code. Declare voice1, voice2, and voice3 as non-empty strings.",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare three string variables to restore the voices of the frozen villagers.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        'Declare exactly three variables: voice1, voice2, and voice3.',
+        'Each must use type string and be assigned any non-empty quoted value.',
+        'Example: string voice1 = "hello"; — the value can be any word or phrase.',
+        "No other variable declarations are allowed in this level.",
+      ],
+    },
+    lessonCard: {
+      title: "String Variables",
+      description:
+        "A string stores text. Use double quotes around the value. Any non-empty string is accepted here — the content is your choice.",
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "King Kai portrait",
+      intro: [],
+    },
+    validatorConfig: {
+      type: "multiString",
+      variableNames: ["voice1", "voice2", "voice3"],
+      unexpectedVariableMessage:
+        'Unexpected variable. Only "voice1", "voice2", and "voice3" are allowed in Level 3.',
+      successMessage: "All voices declared. Unfreezing villagers...",
+    },
+    validateCode: createMultiStringDeclarationValidator({
+      variableNames: ["voice1", "voice2", "voice3"],
+      unexpectedVariableMessage:
+        'Unexpected variable. Only "voice1", "voice2", and "voice3" are allowed in Level 3.',
+      successMessage: "All voices declared. Unfreezing villagers...",
     }),
   },
 };

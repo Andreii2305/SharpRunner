@@ -117,6 +117,95 @@ export const createExactGoalDeclarationValidator =
     };
   };
 
+export const createMultiStringDeclarationValidator =
+  ({
+    variableNames,
+    unexpectedVariableMessage,
+    successMessage = "All string declarations accepted.",
+  }) =>
+  (sourceCode) => {
+    const requiredNames = new Set(variableNames ?? []);
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const declarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
+    const declaredNames = new Set();
+    const values = {};
+
+    for (const declaration of declarations) {
+      const [, type, name, assignmentValue] = declaration;
+
+      if (!requiredNames.has(name)) {
+        return {
+          isCorrect: false,
+          message:
+            unexpectedVariableMessage ??
+            `Unexpected variable "${name}". Only the required string variables are allowed in this level.`,
+        };
+      }
+
+      if (declaredNames.has(name)) {
+        return {
+          isCorrect: false,
+          message: `Variable "${name}" is declared more than once.`,
+        };
+      }
+
+      if (type !== "string") {
+        return {
+          isCorrect: false,
+          message: `"${name}" must use type string.`,
+        };
+      }
+
+      const trimmedValue = assignmentValue?.trim() ?? "";
+      if (!trimmedValue) {
+        return {
+          isCorrect: false,
+          message: `"${name}" must be initialized with a quoted string value.`,
+        };
+      }
+
+      const stringMatch = trimmedValue.match(QUOTED_STRING_REGEX);
+      if (!stringMatch) {
+        return {
+          isCorrect: false,
+          message: `"${name}" must be assigned a quoted string (example: "hello").`,
+        };
+      }
+
+      if (stringMatch[1] === "") {
+        return {
+          isCorrect: false,
+          message: `"${name}" must not be an empty string.`,
+        };
+      }
+
+      declaredNames.add(name);
+      values[name] = stringMatch[1];
+    }
+
+    for (const requiredName of requiredNames) {
+      if (!declaredNames.has(requiredName)) {
+        return {
+          isCorrect: false,
+          message: `Missing declaration: string ${requiredName} = "...";`,
+        };
+      }
+    }
+
+    if (declarations.length !== requiredNames.size) {
+      return {
+        isCorrect: false,
+        message: "Only the required string declarations are accepted for this level.",
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: { values },
+    };
+  };
+
 export const createSingleIntegerDeclarationValidator =
   ({
     variableName,

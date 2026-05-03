@@ -36,6 +36,7 @@ const NON_FATAL_FAILURE_DELAY_MS = 260;
 const UNFREEZE_STEP_DELAY_MS = 700;
 const UNFREEZE_TWEEN_DURATION_MS = 500;
 const FROZEN_TINT = 0x88aaff;
+const VILLAGER_SCALE = 1.5;
 const GATE_FRAME_SEQUENCE = [
   {
     left: { top: 176, middle: 191, bottom: 286 },
@@ -50,6 +51,32 @@ const GATEKEEPER_DIALOGUE_ID = "level3-gatekeeper";
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const GH_ASSET_BASE = `${ASSET_BASE}/tiles/GandalfHardcore_FREE_Platformer_Assets`;
 const GH_BG_BASE = `${GH_ASSET_BASE}/GandalfHardcore_Background_layers/Normal_BG`;
+const CHAR_PACK_BASE = `${ASSET_BASE}/characters/gandalfChar/gandalfHardcoreCharacterAssetPack`;
+const CHAR_F_CLOTH_BASE = `${ASSET_BASE}/characters/gandalfChar/gandalfHardcore43xFemaleClothing`;
+const LAYERED_VILLAGER_DEFS = [
+  {
+    layers: [
+      { key: "vl0_skin",  path: `${CHAR_PACK_BASE}/characterSkinColors/femaleSkin1.png`, animKey: "vl0-skin-idle"  },
+      { key: "vl0_dress", path: `${CHAR_F_CLOTH_BASE}/longDressBlue.png`,                animKey: "vl0-dress-idle" },
+      { key: "vl0_hair",  path: `${CHAR_PACK_BASE}/femaleHair/femaleHair2.png`,          animKey: "vl0-hair-idle"  },
+    ],
+  },
+  {
+    layers: [
+      { key: "vl1_skin",  path: `${CHAR_PACK_BASE}/characterSkinColors/maleSkin2.png`,  animKey: "vl1-skin-idle"  },
+      { key: "vl1_shirt", path: `${CHAR_PACK_BASE}/maleClothing/greenShirtV2.png`,      animKey: "vl1-shirt-idle" },
+      { key: "vl1_pants", path: `${CHAR_PACK_BASE}/maleClothing/greenPants.png`,        animKey: "vl1-pants-idle" },
+      { key: "vl1_hair",  path: `${CHAR_PACK_BASE}/maleHair/maleHair3.png`,             animKey: "vl1-hair-idle"  },
+    ],
+  },
+  {
+    layers: [
+      { key: "vl2_skin",  path: `${CHAR_PACK_BASE}/characterSkinColors/femaleSkin3.png`, animKey: "vl2-skin-idle"  },
+      { key: "vl2_dress", path: `${CHAR_F_CLOTH_BASE}/longDressPurple.png`,              animKey: "vl2-dress-idle" },
+      { key: "vl2_hair",  path: `${CHAR_PACK_BASE}/femaleHair/femaleHair4.png`,          animKey: "vl2-hair-idle"  },
+    ],
+  },
+];
 
 const PLAYER_ANIMATIONS = [
   { key: "player-idle", start: 0, end: 5, frameRate: 6, repeat: -1 },
@@ -118,6 +145,11 @@ export default class LevelThreeScene extends Phaser.Scene {
       "l3_bg1",
       `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_1.png`
     );
+    LAYERED_VILLAGER_DEFS.forEach((charDef) => {
+      charDef.layers.forEach(({ key, path }) => {
+        this.load.spritesheet(key, path, { frameWidth: 80, frameHeight: 64 });
+      });
+    });
   }
 
   create() {
@@ -241,15 +273,20 @@ export default class LevelThreeScene extends Phaser.Scene {
     this.gatekeeper.play(NPC_IDLE_ANIMATION_KEY);
 
     this.frozenNpcs = this.frozenNpcPoints.map((pt, i) => {
-      const sprite = this.add
-        .sprite(pt.x, pt.y, "npc_idle_sheet")
-        .setOrigin(0.5, 1)
-        .setScale(NPC_SCALE)
-        .setDepth(1)
-        .setTint(FROZEN_TINT)
-        .setFrame(0);
-      if (i % 2 === 0) sprite.setFlipX(true);
-      return { sprite, x: pt.x, y: pt.y };
+      const charDef = LAYERED_VILLAGER_DEFS[i % LAYERED_VILLAGER_DEFS.length];
+      const flipX = i % 2 === 0;
+      const sprites = charDef.layers.map(({ key, animKey }, layerIdx) => {
+        const s = this.add
+          .sprite(pt.x, pt.y, key)
+          .setOrigin(0.5, 1)
+          .setScale(VILLAGER_SCALE)
+          .setDepth(1 + layerIdx * 0.01)
+          .setTint(FROZEN_TINT)
+          .setFrame(0);
+        if (flipX) s.setFlipX(true);
+        return { sprite: s, animKey };
+      });
+      return { sprites, x: pt.x, y: pt.y, displayH: 64 * VILLAGER_SCALE };
     });
 
     this.createLevelGate();
@@ -503,12 +540,25 @@ export default class LevelThreeScene extends Phaser.Scene {
   }
 
   createNpcAnimations() {
-    if (this.anims.exists(NPC_IDLE_ANIMATION_KEY)) return;
-    this.anims.create({
-      key: NPC_IDLE_ANIMATION_KEY,
-      frames: this.anims.generateFrameNumbers("npc_idle_sheet", { start: 0, end: 4 }),
-      frameRate: 6,
-      repeat: -1,
+    if (!this.anims.exists(NPC_IDLE_ANIMATION_KEY)) {
+      this.anims.create({
+        key: NPC_IDLE_ANIMATION_KEY,
+        frames: this.anims.generateFrameNumbers("npc_idle_sheet", { start: 0, end: 4 }),
+        frameRate: 6,
+        repeat: -1,
+      });
+    }
+    LAYERED_VILLAGER_DEFS.forEach((charDef) => {
+      charDef.layers.forEach(({ key, animKey }) => {
+        if (!this.anims.exists(animKey)) {
+          this.anims.create({
+            key: animKey,
+            frames: this.anims.generateFrameNumbers(key, { start: 0, end: 4 }),
+            frameRate: 8,
+            repeat: -1,
+          });
+        }
+      });
     });
   }
 
@@ -790,13 +840,14 @@ export default class LevelThreeScene extends Phaser.Scene {
           100,
           t
         );
-        npcEntry.sprite.setTint(
-          Phaser.Display.Color.GetColor(result.r, result.g, result.b)
-        );
+        const tintColor = Phaser.Display.Color.GetColor(result.r, result.g, result.b);
+        npcEntry.sprites.forEach(({ sprite }) => sprite.setTint(tintColor));
       },
       onComplete: () => {
-        npcEntry.sprite.clearTint();
-        npcEntry.sprite.play(NPC_IDLE_ANIMATION_KEY);
+        npcEntry.sprites.forEach(({ sprite, animKey }) => {
+          sprite.clearTint();
+          sprite.play(animKey);
+        });
         this.showSpeechBubble(npcEntry, voiceText);
         this.unfreezeIndex++;
         this.time.delayedCall(UNFREEZE_STEP_DELAY_MS, () => this.unfreezeNext());
@@ -809,7 +860,8 @@ export default class LevelThreeScene extends Phaser.Scene {
     const bubbleW = Math.max(100, displayText.length * 8 + 20);
     const bubbleH = 36;
     const bubbleX = npcEntry.x - bubbleW / 2;
-    const bubbleY = npcEntry.y - Math.ceil(NPC_FRAME_SIZE * NPC_SCALE) - bubbleH - 6;
+    const npcDisplayH = npcEntry.displayH ?? Math.ceil(NPC_FRAME_SIZE * NPC_SCALE);
+    const bubbleY = npcEntry.y - npcDisplayH - bubbleH - 6;
 
     const bg = this.add.graphics();
     bg.fillStyle(0xffffff, 0.9);

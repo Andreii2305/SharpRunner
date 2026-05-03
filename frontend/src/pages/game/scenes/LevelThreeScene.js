@@ -337,20 +337,20 @@ export default class LevelThreeScene extends Phaser.Scene {
     const BG_H = 346;
     const bgConfigs = [
       { key: "l3_bg5",       parallax: 0.1, depth: -9, offsetY:   0 },
-      { key: "l3_bg_castle", parallax: 0.1, depth: -8, offsetY:  94 },
+      { key: "l3_bg_castle", parallax: 0.1, depth: -8, offsetY:  94, tileOffsetX: -478 },
       { key: "l3_bg4",       parallax: 0.1, depth: -7, offsetY: 132 },
       { key: "l3_bg3",       parallax: 0.4, depth: -6, offsetY: 168 },
       { key: "l3_bg2",       parallax: 0.7, depth: -5, offsetY: 202 },
       { key: "l3_bg1",       parallax: 0.9, depth: -4, offsetY: 234 },
     ];
 
-    this.bgLayers = bgConfigs.map(({ key, parallax, depth, offsetY }) => {
+    this.bgLayers = bgConfigs.map(({ key, parallax, depth, offsetY, tileOffsetX = 0 }) => {
       const sprite = this.add
         .tileSprite(0, offsetY, 1024, BG_H, key)
         .setOrigin(0, 0)
         .setScrollFactor(0)
         .setDepth(depth);
-      return { sprite, parallax };
+      return { sprite, parallax, tileOffsetX };
     });
   }
   normalizeMapData() {
@@ -456,8 +456,8 @@ export default class LevelThreeScene extends Phaser.Scene {
 
     if (this.bgLayers) {
       const scrollX = this.cameras.main.scrollX;
-      this.bgLayers.forEach(({ sprite, parallax }) => {
-        sprite.tilePositionX = scrollX * parallax;
+      this.bgLayers.forEach(({ sprite, parallax, tileOffsetX = 0 }) => {
+        sprite.tilePositionX = scrollX * parallax + tileOffsetX;
       });
     }
 

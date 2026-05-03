@@ -265,6 +265,9 @@ export const createSingleIntegerDeclarationValidator =
       return {
         isCorrect: false,
         message: `"${variableName}" must be between ${minValue} and ${maxValue}.`,
+        payload: {
+          values: { [variableName]: value },
+        },
       };
     }
 

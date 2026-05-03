@@ -1,6 +1,7 @@
 import LevelOneScene from "../scenes/LevelOneScene";
 import LevelTwoScene from "../scenes/LevelTwoScene";
 import LevelThreeScene from "../scenes/LevelThreeScene";
+import LevelFourScene from "../scenes/LevelFourScene";
 import {
   createExactGoalDeclarationValidator,
   createMultiStringDeclarationValidator,
@@ -245,6 +246,83 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Unexpected variable. Only "voice1", "voice2", and "voice3" are allowed in Level 3.',
       successMessage: "All voices declared. Unfreezing villagers...",
+    }),
+  },
+  4: {
+    levelNumber: 4,
+    lessonKey: LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "The Castle of Syntax",
+    subtitle: "Level 4 - The Coin Keeper",
+    chapterLabel: "Chapter 4: The Coin Keeper",
+    scene: LevelFourScene,
+    sceneKey: "LevelFourScene",
+    startWithDialogue: false,
+    lockCodeUntilDialogueDone: true,
+    progressKey: `${LESSON_KEY}-level-4`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      int coins = 0;\n    }\n  }\n}",
+    hint: "The toll sign shows 20. Declare: int coins = 20; — set coins to exactly the toll amount.",
+    idleResultMessage: "Declare your coin purse, then click Run.",
+    successResultMessage: "Toll paid. Bridge lowered. Proceeding to next level.",
+    errorResultMessage: "Invalid code. Declare: int coins = 20;",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare one integer variable representing how many coins you carry to pay the toll and lower the bridge.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Use exactly one declaration: int coins = <number>;",
+        "The toll sign shows the required amount — match it exactly.",
+        "Do not declare any other variables in this level.",
+      ],
+    },
+    lessonCard: {
+      title: "Integer Variables",
+      description:
+        "An integer stores a whole number. Declare int coins and set it to the toll amount shown on the sign to lower the bridge.",
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "King Kai portrait",
+      intro: [
+        {
+          speaker: "Toll Collector",
+          portraitImage: "gatekeeper_portrait.png",
+          portraitAlt: "Toll Collector portrait",
+          lines: [
+            { text: "I can't lower the bridge for a man with no counted coins.", tone: "normal" },
+            { text: "Declare your purse. The toll is posted on the sign.", tone: "accent" },
+          ],
+        },
+        {
+          speaker: "King Kai",
+          lines: [
+            { text: "I need to declare: int coins = 20;", tone: "goal" },
+            { text: "Then the bridge will lower and I can cross.", tone: "normal" },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "singleInteger",
+      variableName: "coins",
+      minValue: 20,
+      maxValue: 20,
+      unexpectedVariableMessage: 'Unexpected variable. Only "coins" is allowed in Level 4.',
+      successMessage: "Code accepted. Paying toll...",
+    },
+    validateCode: createSingleIntegerDeclarationValidator({
+      variableName: "coins",
+      minValue: 20,
+      maxValue: 20,
+      unexpectedVariableMessage: 'Unexpected variable. Only "coins" is allowed in Level 4.',
+      successMessage: "Code accepted. Paying toll...",
     }),
   },
 };

@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Read(//c/Users/andre/.claude/projects/c--Users-andre-OneDrive-Desktop-SharpRunner/memory/**)",
+      "Bash(python3 -c ' *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\andre\\.claude\\projects\\c--Users-andre-OneDrive-Desktop-SharpRunner\\memory"
     ]
   }
 }

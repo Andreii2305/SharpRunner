@@ -407,6 +407,18 @@
                  "width":0,
                  "x":87.75,
                  "y":480
+                }, 
+                {
+                 "height":0,
+                 "id":10,
+                 "name":"coin_drops",
+                 "point":true,
+                 "rotation":0,
+                 "type":"",
+                 "visible":true,
+                 "width":0,
+                 "x":1299.5,
+                 "y":404
                 }],
          "opacity":1,
          "type":"objectgroup",
@@ -415,7 +427,7 @@
          "y":0
         }],
  "nextlayerid":16,
- "nextobjectid":10,
+ "nextobjectid":11,
  "orientation":"orthogonal",
  "renderorder":"right-down",
  "tiledversion":"1.11.2",

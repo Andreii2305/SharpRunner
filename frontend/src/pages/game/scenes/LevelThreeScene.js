@@ -48,6 +48,7 @@ const GATE_FRAME_SEQUENCE = [
   },
 ];
 const GATEKEEPER_DIALOGUE_ID = "level3-gatekeeper";
+const VILLAGER_THANKS_DIALOGUE_ID = "level3-villager-thanks";
 const ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const GH_ASSET_BASE = `${ASSET_BASE}/tiles/GandalfHardcore_FREE_Platformer_Assets`;
 const GH_BG_BASE = `${GH_ASSET_BASE}/GandalfHardcore_Background_layers/Normal_BG`;
@@ -124,6 +125,11 @@ export default class LevelThreeScene extends Phaser.Scene {
     this.load.image("l3_pine_trees", `${GH_ASSET_BASE}/Pine_Trees.png`);
     this.load.image("greenzone_tiles", `${ASSET_BASE}/tiles/greenzone_tileset.png`);
     this.load.tilemapTiledJSON("level3", `${ASSET_BASE}/maps/level3.tmj`);
+    this.load.spritesheet(
+      "gold_coins",
+      `${ASSET_BASE}/other/Coin_Gems/goldCoins.png`,
+      { frameWidth: 16, frameHeight: 16 }
+    );
     this.load.image(
       "l3_bg5",
       `${GH_BG_BASE}/GandalfHardcore_Background_layers_layer_5.png`
@@ -229,6 +235,8 @@ export default class LevelThreeScene extends Phaser.Scene {
       { x: 760, y: floorSurfaceY }
     );
 
+    this.coinDropPoint = this.resolveObjectPoint(map, offsetY, "coin_drops", null);
+
     const rawNpcPoints = ["npc1", "npc3", "npc2"]
       .map((name) => this.resolveObjectPointTrimmed(map, offsetY, name, null))
       .filter(Boolean);
@@ -251,6 +259,7 @@ export default class LevelThreeScene extends Phaser.Scene {
 
     this.createPlayerAnimations();
     this.createNpcAnimations();
+    this.createCoinAnimation();
 
     this.player = this.physics.add.sprite(
       this.gatePoint.x,
@@ -746,6 +755,12 @@ export default class LevelThreeScene extends Phaser.Scene {
         this.sequenceMode = "approachNpcs";
       }
     }
+
+    if (dialogueId === VILLAGER_THANKS_DIALOGUE_ID) {
+      this.playGateOpenAnimation(() => {
+        this.time.delayedCall(300, () => this.playCoinGiftSequence());
+      });
+    }
   }
 
   onCodeEvaluated(payload) {
@@ -893,18 +908,152 @@ export default class LevelThreeScene extends Phaser.Scene {
   }
 
   onAllUnfrozen() {
-    this.playGateOpenAnimation(() => {
-      this.time.delayedCall(600, () => {
-        if (this.sequenceMode !== "levelCleared") {
-          this.sequenceMode = "levelCleared";
-          gameEvents.emit(GAME_LEVEL_OUTCOME, {
-            levelNumber: LEVEL_NUMBER,
-            status: "success",
-            message: "All three voices restored. The route is now open. Level 3 cleared.",
-            shouldProceed: true,
-          });
-        }
+    this.sequenceMode = "villagerThanks";
+    this.time.delayedCall(600, () => {
+      gameEvents.emit(GAME_LEVEL_DIALOGUE_TRIGGERED, {
+        levelNumber: LEVEL_NUMBER,
+        dialogueId: VILLAGER_THANKS_DIALOGUE_ID,
+        dialogueSteps: [
+          {
+            speaker: "Villager",
+            portraitImage: "villager1_portrait.png",
+            portraitAlt: "Villager 1 portrait",
+            lines: [
+              { text: "King Kai... you did it. You gave us our voices back!", tone: "normal" },
+              { text: "We have been frozen in silence for so long...", tone: "normal" },
+            ],
+          },
+          {
+            speaker: "Villager",
+            portraitImage: "villager2_portrait.png",
+            portraitAlt: "Villager 2 portrait",
+            lines: [
+              { text: "We have little, but please — take these coins as our thanks.", tone: "accent" },
+              { text: "May they help you on the road ahead.", tone: "normal" },
+            ],
+          },
+          {
+            speaker: "Villager",
+            portraitImage: "villager3_portrait.png",
+            portraitAlt: "Villager 3 portrait",
+            lines: [
+              { text: "Please take them, King Kai. You saved us all.", tone: "normal" },
+            ],
+          },
+          {
+            speaker: "King Kai",
+            portraitImage: "portrait_player_main.png",
+            portraitAlt: "King Kai portrait",
+            lines: [
+              { text: "Thank you, friends. I will use them well.", tone: "goal" },
+            ],
+          },
+        ],
       });
+    });
+  }
+
+  playCoinGiftSequence() {
+    const COINS_PER_NPC = [7, 7, 6];
+    const totalCoins = COINS_PER_NPC.reduce((a, b) => a + b, 0);
+    const floorY = this.player.y - 6;
+    const landingCenterX = this.coinDropPoint?.x ?? this.player.x;
+
+    const coinSprites = [];
+    let dropped = 0;
+
+    this.frozenNpcs.forEach((npcEntry, npcIdx) => {
+      const count = COINS_PER_NPC[npcIdx] ?? 6;
+      const npcDelay = npcIdx * 160;
+
+      for (let i = 0; i < count; i++) {
+        const coinDelay = npcDelay + i * 65;
+        const landingX = landingCenterX + (Math.random() * 120 - 60);
+        const peakX = (npcEntry.x + landingX) / 2;
+        const peakY = npcEntry.y - 95;
+
+        this.time.delayedCall(coinDelay, () => {
+          const coin = this.add
+            .sprite(npcEntry.x, npcEntry.y - 30, "gold_coins")
+            .setScale(1.0)
+            .setDepth(5);
+          coin.play("coin-spin");
+          coinSprites.push(coin);
+
+          this.tweens.add({
+            targets: coin,
+            x: peakX,
+            y: peakY,
+            duration: 220,
+            ease: "Sine.easeOut",
+            onComplete: () => {
+              this.tweens.add({
+                targets: coin,
+                x: landingX,
+                y: floorY,
+                duration: 340,
+                ease: "Bounce.easeOut",
+                onComplete: () => {
+                  dropped++;
+                  if (dropped === totalCoins) {
+                    this.time.delayedCall(700, () => this.collectCoins(coinSprites));
+                  }
+                },
+              });
+            },
+          });
+        });
+      }
+    });
+  }
+
+  collectCoins(coins) {
+    let collected = 0;
+    coins.forEach((coin, i) => {
+      this.time.delayedCall(i * 30, () => {
+        this.tweens.add({
+          targets: coin,
+          x: this.player.x,
+          y: this.player.y - 24,
+          scaleX: 0,
+          scaleY: 0,
+          duration: 280,
+          ease: "Sine.easeIn",
+          onComplete: () => {
+            coin.destroy();
+            collected++;
+            if (collected === coins.length) {
+              this.player.setTint(0xffd700);
+              this.time.delayedCall(350, () => {
+                this.player.clearTint();
+                this.time.delayedCall(400, () => this.finishLevelCleared());
+              });
+            }
+          },
+        });
+      });
+    });
+  }
+
+  finishLevelCleared() {
+    if (this.sequenceMode !== "levelCleared") {
+      this.sequenceMode = "levelCleared";
+      gameEvents.emit(GAME_LEVEL_OUTCOME, {
+        levelNumber: LEVEL_NUMBER,
+        status: "success",
+        message: "All three voices restored. The route is now open. Level 3 cleared.",
+        shouldProceed: true,
+      });
+    }
+  }
+
+  createCoinAnimation() {
+    if (this.anims.exists("coin-spin")) return;
+    this.anims.create({
+      key: "coin-spin",
+      frames: this.anims.generateFrameNumbers("gold_coins", { start: 0, end: 4 }),
+      frameRate: 12,
+      repeat: -1,
     });
   }
 

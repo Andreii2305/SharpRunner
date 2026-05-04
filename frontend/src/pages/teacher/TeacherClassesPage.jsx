@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { FiPlus, FiUsers, FiCopy, FiCheck } from "react-icons/fi";
+import { FiPlus, FiUsers, FiCopy, FiCheck, FiX, FiList } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -31,6 +31,10 @@ function TeacherClassesPage() {
     maxStudents: "",
     description: "",
   });
+  const [rosterModal, setRosterModal] = useState(null);
+  const [rosterStudents, setRosterStudents] = useState([]);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const rosterClassCode = useRef("");
 
   const SECTION_OPTIONS = [
     "BSIT 1A",
@@ -67,6 +71,25 @@ function TeacherClassesPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const openRoster = async (classId, className, classCode) => {
+    setRosterModal({ classId, className });
+    rosterClassCode.current = classCode;
+    setRosterStudents([]);
+    setRosterLoading(true);
+    try {
+      const res = await axios.get(
+        buildApiUrl(`/api/teacher/classrooms/${classId}/students`),
+        { headers: getAuthHeaders() },
+      );
+      setRosterStudents(res.data?.students ?? []);
+    } catch {
+      toast.error("Failed to load roster.");
+      setRosterModal(null);
+    } finally {
+      setRosterLoading(false);
+    }
+  };
 
   const onCreateClass = async (e) => {
     e.preventDefault();
@@ -206,27 +229,22 @@ function TeacherClassesPage() {
                       </span>
                     </div>
                     {item.classId && (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/teacher/classrooms/${item.classId}/levels`)}
-                        style={{
-                          marginTop: 10,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          color: "#26547c",
-                          background: "linear-gradient(135deg,#e8f0fb 0%,#d0e2f7 100%)",
-                          border: "1.5px solid #bcd4ec",
-                          borderRadius: 8,
-                          padding: "5px 12px",
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          transition: "background 0.15s, border-color 0.15s",
-                        }}
-                      >
-                        ⚙️ Edit Levels
-                      </button>
+                      <div className={pgStyles.classCardActions}>
+                        <button
+                          type="button"
+                          className={pgStyles.cardBtn}
+                          onClick={() => openRoster(item.classId, item.className, item.classCode)}
+                        >
+                          <FiList size={11} /> View Roster
+                        </button>
+                        <button
+                          type="button"
+                          className={pgStyles.cardBtnSecondary}
+                          onClick={() => navigate(`/teacher/classrooms/${item.classId}/levels`)}
+                        >
+                          ⚙️ Edit Levels
+                        </button>
+                      </div>
                     )}
                   </div>
                 ))}
@@ -254,6 +272,95 @@ function TeacherClassesPage() {
           classCode={createdCode}
           onClose={() => setShowSuccess(false)}
         />
+      )}
+
+      {rosterModal && (
+        <div className={pgStyles.rosterOverlay} onClick={() => setRosterModal(null)}>
+          <div className={pgStyles.rosterPanel} onClick={(e) => e.stopPropagation()}>
+            <div className={pgStyles.rosterHeader}>
+              <div>
+                <div className={pgStyles.rosterTitle}>{rosterModal.className}</div>
+                <div className={pgStyles.rosterSub}>
+                  Class Roster
+                  {rosterStudents.length > 0 && ` · ${rosterStudents.length} student${rosterStudents.length !== 1 ? "s" : ""}`}
+                </div>
+              </div>
+              <button
+                type="button"
+                className={pgStyles.rosterClose}
+                onClick={() => setRosterModal(null)}
+              >
+                <FiX size={16} />
+              </button>
+            </div>
+
+            <div className={pgStyles.rosterBody}>
+              {rosterLoading ? (
+                <div className={styles.loadingText}>Loading roster...</div>
+              ) : rosterStudents.length === 0 ? (
+                <div className={pgStyles.rosterEmpty}>
+                  <FiUsers size={28} style={{ color: "#cbd5e1", marginBottom: 8 }} />
+                  <div>No students enrolled yet.</div>
+                  <div className={pgStyles.rosterEmptySub}>
+                    Share the class code{" "}
+                    <span className={styles.codePill}>{rosterClassCode.current}</span>{" "}
+                    so students can join.
+                  </div>
+                </div>
+              ) : (
+                <table className={pgStyles.rosterTable}>
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Progress</th>
+                      <th>Levels</th>
+                      <th>Avg Score</th>
+                      <th>Last Active</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rosterStudents.map((s, i) => (
+                      <tr key={s.userId}>
+                        <td className={pgStyles.rosterRank}>{i + 1}</td>
+                        <td>
+                          <div className={pgStyles.rosterName}>{s.studentName}</div>
+                          <div className={pgStyles.rosterUsername}>@{s.username}</div>
+                        </td>
+                        <td>
+                          <div className={pgStyles.rosterBarRow}>
+                            <div className={styles.miniBarTrack} style={{ width: 72 }}>
+                              <div
+                                className={styles.miniBarFill}
+                                style={{ width: `${clampPercent(s.progressPercent)}%` }}
+                              />
+                            </div>
+                            <span className={pgStyles.rosterPct}>{s.progressPercent}%</span>
+                          </div>
+                        </td>
+                        <td className={pgStyles.rosterCell}>{s.completedLevels}</td>
+                        <td className={pgStyles.rosterCell}>
+                          {s.avgScore != null ? s.avgScore : "—"}
+                        </td>
+                        <td>
+                          <span
+                            className={
+                              s.isCurrentlyPlaying
+                                ? pgStyles.rosterStatusPlaying
+                                : pgStyles.rosterStatusLabel
+                            }
+                          >
+                            {s.lastActiveLabel}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

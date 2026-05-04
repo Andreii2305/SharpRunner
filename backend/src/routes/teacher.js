@@ -882,6 +882,129 @@ router.post("/announcements", async (req, res) => {
   }
 });
 
+router.get("/classrooms/:classroomId/students", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const memberships = await ClassroomMembership.findAll({
+      where: { classroomId, status: "active" },
+      attributes: ["studentId", "joinedAt"],
+    });
+
+    const studentIds = memberships.map((m) => m.studentId);
+    if (studentIds.length === 0) {
+      return res.json({ classroom: sanitizeClassroom(classroom), students: [] });
+    }
+
+    const students = await User.findAll({
+      where: { id: { [Op.in]: studentIds }, role: "student" },
+      attributes: [
+        "id",
+        "firstName",
+        "lastName",
+        "username",
+        "status",
+        "isPlayingGame",
+        "lastGameHeartbeatAt",
+        "createdAt",
+      ],
+    });
+
+    const progressRows = await UserProgress.findAll({
+      where: {
+        userId: { [Op.in]: studentIds },
+        levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS },
+      },
+      attributes: ["userId", "progressPercent", "isCompleted", "finalScore", "updatedAt"],
+    });
+
+    const statsByUserId = new Map();
+    for (const row of progressRows) {
+      if (!statsByUserId.has(row.userId)) {
+        statsByUserId.set(row.userId, {
+          totalProgress: 0,
+          levelCount: 0,
+          completedLevels: 0,
+          totalScore: 0,
+          scoredLevels: 0,
+          lastProgressAt: null,
+        });
+      }
+      const s = statsByUserId.get(row.userId);
+      s.totalProgress += row.progressPercent;
+      s.levelCount += 1;
+      if (row.isCompleted) {
+        s.completedLevels += 1;
+        if (row.finalScore != null) {
+          s.totalScore += row.finalScore;
+          s.scoredLevels += 1;
+        }
+      }
+      if (!s.lastProgressAt || new Date(row.updatedAt) > new Date(s.lastProgressAt)) {
+        s.lastProgressAt = row.updatedAt;
+      }
+    }
+
+    const joinedAtByStudentId = new Map(memberships.map((m) => [m.studentId, m.joinedAt]));
+    const now = Date.now();
+
+    const studentsData = students
+      .map((student) => {
+        const stats = statsByUserId.get(student.id) ?? {
+          totalProgress: 0,
+          levelCount: 0,
+          completedLevels: 0,
+          totalScore: 0,
+          scoredLevels: 0,
+          lastProgressAt: null,
+        };
+        const progressPercent =
+          stats.levelCount === 0 ? 0 : Math.round(stats.totalProgress / stats.levelCount);
+        const heartbeatAt = student.lastGameHeartbeatAt
+          ? new Date(student.lastGameHeartbeatAt).getTime()
+          : null;
+        const hasRecentHeartbeat =
+          Number.isFinite(heartbeatAt) && now - heartbeatAt <= ACTIVE_GAME_HEARTBEAT_WINDOW_MS;
+        const isCurrentlyPlaying =
+          normalizeString(student.status).toLowerCase() === "active" &&
+          student.isPlayingGame &&
+          hasRecentHeartbeat;
+        const lastActivityAt =
+          stats.lastProgressAt ?? joinedAtByStudentId.get(student.id) ?? student.createdAt;
+
+        return {
+          userId: student.id,
+          studentName:
+            `${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || student.username,
+          username: student.username,
+          progressPercent,
+          completedLevels: stats.completedLevels,
+          avgScore:
+            stats.scoredLevels > 0
+              ? Math.round((stats.totalScore / stats.scoredLevels) * 10) / 10
+              : null,
+          status: normalizeString(student.status).toLowerCase() || "active",
+          isCurrentlyPlaying,
+          lastActiveLabel: isCurrentlyPlaying ? "Playing now" : formatRelativeTime(lastActivityAt),
+          joinedAt: joinedAtByStudentId.get(student.id),
+        };
+      })
+      .sort((a, b) => b.progressPercent - a.progressPercent);
+
+    return res.json({ classroom: sanitizeClassroom(classroom), students: studentsData });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.get("/classrooms/:classroomId/level-overrides", async (req, res) => {
   try {
     const classroomId = parseInteger(req.params.classroomId);

@@ -65,3 +65,212 @@
   min-width: 30px;
   text-align: right;
 }
+
+/* ── Class card action buttons ───────────── */
+.classCardActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cardBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: #1e3a5f;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.cardBtn:hover { background: #16304f; }
+
+.cardBtnSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #26547c;
+  background: linear-gradient(135deg, #e8f0fb 0%, #d0e2f7 100%);
+  border: 1.5px solid #bcd4ec;
+  border-radius: 7px;
+  padding: 5px 11px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+.cardBtnSecondary:hover { background: linear-gradient(135deg, #d0e2f7 0%, #bdd4ef 100%); }
+
+/* ── Roster modal ────────────────────────── */
+.rosterOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(10, 20, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.rosterPanel {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  width: min(680px, 100%);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rosterHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.rosterTitle {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+
+.rosterSub {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.rosterClose {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+.rosterClose:hover { color: #475569; }
+
+.rosterBody {
+  overflow-y: auto;
+  padding: 16px 22px 20px;
+  flex: 1;
+}
+
+.rosterEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 13px;
+  gap: 4px;
+}
+
+.rosterEmptySub {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.rosterTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.rosterTable th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.rosterTable tbody tr {
+  border-bottom: 1px solid #f1f5f9;
+  transition: background 0.1s;
+}
+
+.rosterTable tbody tr:last-child { border-bottom: none; }
+.rosterTable tbody tr:hover { background: #f8fafc; }
+
+.rosterTable td {
+  padding: 9px 10px;
+  vertical-align: middle;
+}
+
+.rosterRank {
+  font-weight: 700;
+  color: #94a3b8;
+  font-size: 11px;
+  width: 28px;
+}
+
+.rosterName {
+  font-weight: 600;
+  color: #1e3a5f;
+  font-size: 12px;
+}
+
+.rosterUsername {
+  font-size: 10px;
+  color: #94a3b8;
+  margin-top: 1px;
+}
+
+.rosterBarRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.rosterPct {
+  font-size: 11px;
+  font-weight: 600;
+  color: #1e3a5f;
+  min-width: 32px;
+}
+
+.rosterCell {
+  font-weight: 600;
+  color: #374151;
+  font-size: 12px;
+}
+
+.rosterStatusPlaying {
+  font-size: 11px;
+  font-weight: 700;
+  color: #16a34a;
+  background: #dcfce7;
+  border-radius: 99px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
+.rosterStatusLabel {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}

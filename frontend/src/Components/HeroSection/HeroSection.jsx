@@ -1,5 +1,5 @@
 import styles from "./HeroSection.module.css";
-import typingBro from "../../assets/typing-bro-1.svg";
+import typingBro from "../../assets/Typing-bro-1.svg";
 import Button from "../Button/Button.jsx";
 import Background from "./BackgroundEffect.jsx";
 import { useNavigate } from "react-router-dom";

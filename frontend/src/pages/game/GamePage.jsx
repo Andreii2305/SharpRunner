@@ -755,7 +755,8 @@ function GamePage() {
               {gradeModal.grade}
             </div>
             <div className={styles.gradeScore}>{gradeModal.score}</div>
-            <div className={styles.gradeScoreLabel}>points</div>
+            <div className={styles.gradeScoreLabel}>SCORE</div>
+            <div className={styles.gradeXp}>+ 25 XP</div>
             <div className={styles.gradeStats}>
               <div className={styles.gradeStat}>
                 <span className={styles.gradeStatValue}>

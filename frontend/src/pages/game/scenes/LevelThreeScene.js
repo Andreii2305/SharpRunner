@@ -32,6 +32,7 @@ const INTRO_PORTAL_FADE_DURATION_MS = 360;
 const TARGET_REACH_TOLERANCE_PX = 8;
 const NPC_APPROACH_OFFSET_X = 72;
 const NPC_AREA_APPROACH_OFFSET_X = 80;
+const POST_COIN_EXIT_MARGIN_X = 80;
 const NON_FATAL_FAILURE_DELAY_MS = 260;
 const UNFREEZE_STEP_DELAY_MS = 700;
 const UNFREEZE_TWEEN_DURATION_MS = 500;
@@ -211,6 +212,7 @@ export default class LevelThreeScene extends Phaser.Scene {
 
     camera.setBounds(0, offsetY, map.widthInPixels, map.heightInPixels);
     this.physics.world.setBounds(0, offsetY, map.widthInPixels, map.heightInPixels);
+    this.postCoinExitTargetX = map.widthInPixels - POST_COIN_EXIT_MARGIN_X;
 
     // Floor surface in world coordinates (Platform layer row 14).
     const tileH = map.tileHeight || 32;
@@ -512,8 +514,13 @@ export default class LevelThreeScene extends Phaser.Scene {
       this.sequenceMode === "gatekeeperDialogue" ||
       this.sequenceMode === "awaitingCode" ||
       this.sequenceMode === "unfreezing" ||
+      this.sequenceMode === "exitRun" ||
       this.sequenceMode === "levelCleared"
     ) {
+      if (this.sequenceMode === "exitRun") {
+        this.playAnimation("player-run");
+        return;
+      }
       this.player.setVelocityX(0);
       if (!onGround) {
         this.playAnimation("player-jump");
@@ -1026,12 +1033,36 @@ export default class LevelThreeScene extends Phaser.Scene {
               this.player.setTint(0xffd700);
               this.time.delayedCall(350, () => {
                 this.player.clearTint();
-                this.time.delayedCall(400, () => this.finishLevelCleared());
+                this.time.delayedCall(400, () => this.startPostCoinExitRunSequence());
               });
             }
           },
         });
       });
+    });
+  }
+
+  startPostCoinExitRunSequence() {
+    this.sequenceMode = "exitRun";
+    this.tweens.killTweensOf(this.player);
+    this.player.setVelocity(0, 0).setGravityY(0).setFlipX(false);
+    this.player.body.enable = false;
+    this.playAnimation("player-run");
+
+    const targetX = Math.max(this.player.x, this.postCoinExitTargetX ?? this.player.x + 240);
+    const distance = targetX - this.player.x;
+    const duration = Math.max(500, (distance / PLAYER_WALK_SPEED) * 1000);
+
+    this.tweens.add({
+      targets: this.player,
+      x: targetX,
+      y: this.player.y,
+      duration,
+      ease: "Linear",
+      onComplete: () => {
+        this.playAnimation("player-idle");
+        this.finishLevelCleared();
+      },
     });
   }
 

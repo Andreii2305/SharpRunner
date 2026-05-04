@@ -72,6 +72,16 @@ function GamePage() {
   const [code, setCode] = useState(levelConfig?.defaultCode ?? "");
   const [result, setResult] = useState(getIdleResult(levelConfig));
   const [mergedLevelConfig, setMergedLevelConfig] = useState(levelConfig);
+  const [gradeModal, setGradeModal] = useState(null);
+
+  const computeGrade = useCallback((attempts, timeSeconds, parSeconds) => {
+    let score = 100 - attempts * 5;
+    const overtimeMins = Math.max(0, timeSeconds - parSeconds) / 60;
+    score -= overtimeMins * 0.05;
+    score = Math.max(75, Math.round(score));
+    const grade = score >= 90 ? "S" : score >= 80 ? "A" : "B";
+    return { score, grade };
+  }, []);
 
   const clearNextLevelTimer = useCallback(() => {
     if (!nextLevelTimerRef.current) {
@@ -333,10 +343,17 @@ function GamePage() {
               return;
             }
 
-            clearNextLevelTimer();
-            nextLevelTimerRef.current = window.setTimeout(() => {
-              navigate(levelConfig.nextRoute ?? "/Map");
-            }, levelConfig.nextDelayMs ?? 1200);
+            const { score, grade } = computeGrade(
+              failedAttemptsRef.current,
+              elapsedSecondsRef.current,
+              levelConfig?.parTimeSeconds ?? 900,
+            );
+            setGradeModal({
+              score,
+              grade,
+              attempts: failedAttemptsRef.current,
+              timeSeconds: elapsedSecondsRef.current,
+            });
           })();
         }
 
@@ -729,6 +746,41 @@ function GamePage() {
           </section>
         </div>
       </main>
+
+      {gradeModal && (
+        <div className={styles.gradeOverlay}>
+          <div className={styles.gradeCard}>
+            <div className={styles.gradeComplete}>LEVEL COMPLETE</div>
+            <div className={`${styles.gradeBadge} ${styles[`grade${gradeModal.grade}`]}`}>
+              {gradeModal.grade}
+            </div>
+            <div className={styles.gradeScore}>{gradeModal.score}</div>
+            <div className={styles.gradeScoreLabel}>points</div>
+            <div className={styles.gradeStats}>
+              <div className={styles.gradeStat}>
+                <span className={styles.gradeStatValue}>
+                  {Math.floor(gradeModal.timeSeconds / 60)}m {gradeModal.timeSeconds % 60}s
+                </span>
+                <span className={styles.gradeStatLabel}>Time</span>
+              </div>
+              <div className={styles.gradeStatDivider} />
+              <div className={styles.gradeStat}>
+                <span className={styles.gradeStatValue}>{gradeModal.attempts}</span>
+                <span className={styles.gradeStatLabel}>Failed Attempts</span>
+              </div>
+            </div>
+            <button
+              className={styles.gradeContinueBtn}
+              onClick={() => {
+                setGradeModal(null);
+                navigate(levelConfig.nextRoute ?? "/Map");
+              }}
+            >
+              Continue to Map
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

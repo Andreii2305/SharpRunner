@@ -32,7 +32,7 @@ function TeacherRoute({ children }) {
 function App() {
   return (
     <ToastProvider>
-    <BrowserRouter basename="/SharpRunner">
+    <BrowserRouter>
       <Routes>
         <Route path="/" element={<LandingPage />} />
 

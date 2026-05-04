@@ -432,77 +432,222 @@
 }
 
 /* ── Grade Modal ─────────────────────────────────────────── */
+@keyframes gradeCardIn {
+  from { opacity: 0; transform: scale(0.82) translateY(24px); }
+  to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+
+@keyframes badgePulseS {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.5), 0 0 28px 8px rgba(251,191,36,0.18); }
+  50%       { box-shadow: 0 0 0 10px rgba(251,191,36,0), 0 0 48px 18px rgba(251,191,36,0.32); }
+}
+@keyframes badgePulseA {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.5), 0 0 28px 8px rgba(52,211,153,0.18); }
+  50%       { box-shadow: 0 0 0 10px rgba(52,211,153,0), 0 0 48px 18px rgba(52,211,153,0.32); }
+}
+@keyframes badgePulseB {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(96,165,250,0.5), 0 0 28px 8px rgba(96,165,250,0.18); }
+  50%       { box-shadow: 0 0 0 10px rgba(96,165,250,0), 0 0 48px 18px rgba(96,165,250,0.32); }
+}
+
+@keyframes raysRotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes sparkFloat {
+  0%   { opacity: 0; transform: translate(0, 0)    scale(0.4); }
+  40%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(1.2); }
+}
+
+@keyframes scoreCount {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .gradeOverlay {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: rgba(5, 10, 25, 0.82);
+  background: rgba(4, 8, 20, 0.88);
   display: flex;
   align-items: center;
   justify-content: center;
+  backdrop-filter: blur(4px);
 }
 
 .gradeCard {
-  background: #0f172a;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 20px;
-  padding: 48px 56px;
+  background: linear-gradient(160deg, #0d1b2e 0%, #0f172a 60%, #0a0f1e 100%);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 24px;
+  padding: 40px 52px 36px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  min-width: 320px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  gap: 14px;
+  min-width: 340px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7);
+  animation: gradeCardIn 0.45s cubic-bezier(0.34,1.56,0.64,1) both;
 }
 
+/* Grade-tinted card border glow */
+.gradeCardS { border-color: rgba(251,191,36,0.35); box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 40px rgba(251,191,36,0.08); }
+.gradeCardA { border-color: rgba(52,211,153,0.35); box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 40px rgba(52,211,153,0.08); }
+.gradeCardB { border-color: rgba(96,165,250,0.35); box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 40px rgba(96,165,250,0.08); }
+
 .gradeComplete {
-  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.7rem;
   font-weight: 800;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: #64748b;
+}
+
+.gradeCompleteLine {
+  flex: 1;
+  height: 1px;
+  width: 40px;
+  background: linear-gradient(90deg, transparent, rgba(100,116,139,0.5));
+}
+.gradeCompleteLine:first-child {
+  background: linear-gradient(270deg, transparent, rgba(100,116,139,0.5));
+}
+
+/* ── Badge wrap ── */
+.gradeBadgeWrap {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px 0;
+}
+
+.gradeRays {
+  position: absolute;
+  inset: -14px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 20deg,
+    rgba(255,255,255,0.05) 20deg 30deg,
+    transparent 30deg 50deg,
+    rgba(255,255,255,0.05) 50deg 60deg,
+    transparent 60deg 80deg,
+    rgba(255,255,255,0.05) 80deg 90deg,
+    transparent 90deg 110deg,
+    rgba(255,255,255,0.05) 110deg 120deg,
+    transparent 120deg 140deg,
+    rgba(255,255,255,0.05) 140deg 150deg,
+    transparent 150deg 170deg,
+    rgba(255,255,255,0.05) 170deg 180deg,
+    transparent 180deg 200deg,
+    rgba(255,255,255,0.05) 200deg 210deg,
+    transparent 210deg 230deg,
+    rgba(255,255,255,0.05) 230deg 240deg,
+    transparent 240deg 260deg,
+    rgba(255,255,255,0.05) 260deg 270deg,
+    transparent 270deg 290deg,
+    rgba(255,255,255,0.05) 290deg 300deg,
+    transparent 300deg 320deg,
+    rgba(255,255,255,0.05) 320deg 330deg,
+    transparent 330deg 350deg,
+    rgba(255,255,255,0.05) 350deg 360deg
+  );
+  animation: raysRotate 8s linear infinite;
 }
 
 .gradeBadge {
-  width: 96px;
-  height: 96px;
+  position: relative;
+  z-index: 1;
+  width: 104px;
+  height: 104px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 3rem;
+  font-size: 3.4rem;
   font-weight: 900;
-  margin: 8px 0;
+  font-family: 'Segoe UI', sans-serif;
   border: 4px solid currentColor;
+  letter-spacing: -2px;
 }
 
-.gradeS { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
-.gradeA { color: #34d399; background: rgba(52, 211, 153, 0.12); }
-.gradeB { color: #60a5fa; background: rgba(96, 165, 250, 0.12); }
+.gradeS {
+  color: #fbbf24;
+  background: radial-gradient(circle at 35% 35%, rgba(251,191,36,0.28), rgba(251,191,36,0.06));
+  animation: badgePulseS 2s ease-in-out infinite;
+  text-shadow: 0 0 20px rgba(251,191,36,0.8);
+}
+.gradeA {
+  color: #34d399;
+  background: radial-gradient(circle at 35% 35%, rgba(52,211,153,0.28), rgba(52,211,153,0.06));
+  animation: badgePulseA 2s ease-in-out infinite;
+  text-shadow: 0 0 20px rgba(52,211,153,0.8);
+}
+.gradeB {
+  color: #60a5fa;
+  background: radial-gradient(circle at 35% 35%, rgba(96,165,250,0.28), rgba(96,165,250,0.06));
+  animation: badgePulseB 2s ease-in-out infinite;
+  text-shadow: 0 0 20px rgba(96,165,250,0.8);
+}
+
+/* ── Spark particles ── */
+.gradeSpark {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  animation: sparkFloat 2.2s ease-out infinite;
+}
+.gradeSparkA { --sx: -36px; --sy: -42px; animation-delay: 0s;    animation-duration: 2s; }
+.gradeSparkB { --sx:  40px; --sy: -38px; animation-delay: 0.55s; animation-duration: 2.4s; }
+.gradeSparkC { --sx: -44px; --sy:  32px; animation-delay: 1.1s;  animation-duration: 1.9s; }
+.gradeSparkD { --sx:  38px; --sy:  40px; animation-delay: 1.65s; animation-duration: 2.2s; }
+
+/* S sparks are gold, A green, B blue — inherit from parent color via sibling trick */
+.gradeS ~ .gradeSpark,
+.gradeBadgeWrap:has(.gradeS) .gradeSpark { background: #fbbf24; }
+.gradeBadgeWrap:has(.gradeA) .gradeSpark { background: #34d399; }
+.gradeBadgeWrap:has(.gradeB) .gradeSpark { background: #60a5fa; }
+
+.gradeScoreRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  animation: scoreCount 0.5s 0.3s both;
+}
 
 .gradeScore {
-  font-size: 3.2rem;
+  font-size: 3.6rem;
   font-weight: 900;
   color: #f1f5f9;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 
 .gradeScoreLabel {
-  font-size: 0.78rem;
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: 1.1rem;
+  color: #475569;
+  font-weight: 600;
 }
 
 .gradeXp {
-  font-size: 1rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  color: #a78bfa;
-  background: rgba(167, 139, 250, 0.12);
-  border: 1px solid rgba(167, 139, 250, 0.3);
+  color: #c4b5fd;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.28);
   border-radius: 20px;
-  padding: 4px 16px;
-  margin-bottom: 4px;
+  padding: 5px 18px;
+  letter-spacing: 0.04em;
 }
 
 .gradeStats {
@@ -510,30 +655,34 @@
   align-items: center;
   gap: 24px;
   background: rgba(255, 255, 255, 0.04);
-  border-radius: 12px;
-  padding: 16px 28px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 14px;
+  padding: 14px 32px;
   width: 100%;
   justify-content: center;
+  margin-top: 2px;
 }
 
 .gradeStat {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .gradeStatValue {
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
 }
 
 .gradeStatLabel {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   color: #64748b;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  font-weight: 600;
 }
 
 .gradeStatDivider {
@@ -543,19 +692,29 @@
 }
 
 .gradeContinueBtn {
-  margin-top: 12px;
-  background: #2563eb;
+  margin-top: 8px;
+  background: linear-gradient(135deg, #2563eb, #1e40af);
   color: white;
   border: none;
-  border-radius: 10px;
-  padding: 14px 40px;
+  border-radius: 12px;
+  padding: 14px 0;
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
   width: 100%;
-  transition: background 0.15s;
+  letter-spacing: 0.04em;
+  transition: filter 0.15s, transform 0.1s;
+  box-shadow: 0 4px 16px rgba(37,99,235,0.4);
 }
+.gradeContinueBtnS { background: linear-gradient(135deg, #d97706, #b45309); box-shadow: 0 4px 16px rgba(217,119,6,0.4); }
+.gradeContinueBtnA { background: linear-gradient(135deg, #059669, #047857); box-shadow: 0 4px 16px rgba(5,150,105,0.4); }
+.gradeContinueBtnB { background: linear-gradient(135deg, #2563eb, #1d4ed8); box-shadow: 0 4px 16px rgba(37,99,235,0.4); }
 
 .gradeContinueBtn:hover {
-  background: #1d4ed8;
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+.gradeContinueBtn:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
 }

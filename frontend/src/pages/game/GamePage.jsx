@@ -749,14 +749,31 @@ function GamePage() {
 
       {gradeModal && (
         <div className={styles.gradeOverlay}>
-          <div className={styles.gradeCard}>
-            <div className={styles.gradeComplete}>LEVEL COMPLETE</div>
-            <div className={`${styles.gradeBadge} ${styles[`grade${gradeModal.grade}`]}`}>
-              {gradeModal.grade}
+          <div className={`${styles.gradeCard} ${styles[`gradeCard${gradeModal.grade}`]}`}>
+            <div className={styles.gradeComplete}>
+              <span className={styles.gradeCompleteLine} />
+              LEVEL COMPLETE
+              <span className={styles.gradeCompleteLine} />
             </div>
-            <div className={styles.gradeScore}>{gradeModal.score}</div>
-            <div className={styles.gradeScoreLabel}>SCORE</div>
-            <div className={styles.gradeXp}>+ 25 XP</div>
+
+            <div className={styles.gradeBadgeWrap}>
+              <div className={styles.gradeRays} />
+              <div className={`${styles.gradeBadge} ${styles[`grade${gradeModal.grade}`]}`}>
+                {gradeModal.grade}
+              </div>
+              <span className={`${styles.gradeSpark} ${styles.gradeSparkA}`} />
+              <span className={`${styles.gradeSpark} ${styles.gradeSparkB}`} />
+              <span className={`${styles.gradeSpark} ${styles.gradeSparkC}`} />
+              <span className={`${styles.gradeSpark} ${styles.gradeSparkD}`} />
+            </div>
+
+            <div className={styles.gradeScoreRow}>
+              <div className={styles.gradeScore}>{gradeModal.score}</div>
+              <div className={styles.gradeScoreLabel}>/ 100</div>
+            </div>
+
+            <div className={styles.gradeXp}>&#10022; +25 XP earned</div>
+
             <div className={styles.gradeStats}>
               <div className={styles.gradeStat}>
                 <span className={styles.gradeStatValue}>
@@ -767,17 +784,18 @@ function GamePage() {
               <div className={styles.gradeStatDivider} />
               <div className={styles.gradeStat}>
                 <span className={styles.gradeStatValue}>{gradeModal.attempts}</span>
-                <span className={styles.gradeStatLabel}>Failed Attempts</span>
+                <span className={styles.gradeStatLabel}>Mistakes</span>
               </div>
             </div>
+
             <button
-              className={styles.gradeContinueBtn}
+              className={`${styles.gradeContinueBtn} ${styles[`gradeContinueBtn${gradeModal.grade}`]}`}
               onClick={() => {
                 setGradeModal(null);
                 navigate(levelConfig.nextRoute ?? "/Map");
               }}
             >
-              Continue to Map
+              Continue →
             </button>
           </div>
         </div>

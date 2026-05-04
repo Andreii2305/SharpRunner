@@ -414,6 +414,7 @@ function GamePage() {
     gameEvents.emit(GAME_LEVEL_CODE_EVALUATED, {
       levelNumber: mergedLevelConfig.levelNumber,
       isCorrect: validation.isCorrect,
+      message: validation.message,
       sourceCode,
       configuredVariableName:
         mergedLevelConfig.validatorConfig?.variableName ??

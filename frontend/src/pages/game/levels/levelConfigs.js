@@ -2,6 +2,7 @@ import LevelOneScene from "../scenes/LevelOneScene";
 import LevelTwoScene from "../scenes/LevelTwoScene";
 import LevelThreeScene from "../scenes/LevelThreeScene";
 import LevelFourScene from "../scenes/LevelFourScene";
+import LevelFiveScene from "../scenes/LevelFiveScene";
 import {
   createExactGoalDeclarationValidator,
   createMultiStringDeclarationValidator,
@@ -323,6 +324,83 @@ const LEVEL_CONFIG_BY_NUMBER = {
       maxValue: 20,
       unexpectedVariableMessage: 'Unexpected variable. Only "coins" is allowed in Level 4.',
       successMessage: "Code accepted. Paying toll...",
+    }),
+  },
+  5: {
+    levelNumber: 5,
+    lessonKey: LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "The Castle of Syntax",
+    subtitle: "Level 5 - Potion Measure",
+    chapterLabel: "Chapter 5: Potion Measure",
+    scene: LevelFiveScene,
+    sceneKey: "LevelFiveScene",
+    progressKey: `${LESSON_KEY}-level-5`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: false,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      double measurement = 0.0;\n    }\n  }\n}",
+    hint: "The seal inscription shows 4.5. Declare: double measurement = 4.5; — use double, not int.",
+    idleResultMessage: "Declare your measurement, then click Run.",
+    successResultMessage: "Seal shattered. The cauldron awakens. Level 5 cleared.",
+    errorResultMessage: 'Invalid code. Declare: double measurement = 4.5;',
+    goal: {
+      title: "Goal",
+      description:
+        "Declare one decimal variable matching the value etched on the force seal to shatter it and activate the cauldron.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Use exactly one declaration: double measurement = <value>;",
+        "The seal inscription shows the required decimal number — match it exactly.",
+        "Use type double (not int) — whole numbers will be rejected.",
+        "Do not declare any other variables in this level.",
+      ],
+    },
+    lessonCard: {
+      title: "Double Variables",
+      description:
+        "A double stores a decimal number. Use it when precision beyond whole numbers is required. The seal only accepts the exact value shown on its inscription.",
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "King Kai portrait",
+      intro: [
+        {
+          speaker: "Alchemist",
+          portraitImage: "gatekeeper_portrait.png",
+          portraitAlt: "Alchemist portrait",
+          lines: [
+            { text: "Whole numbers won't do here. The seal demands precision.", tone: "normal" },
+            { text: "A fraction of truth — etched right there on the inscription.", tone: "accent" },
+          ],
+        },
+        {
+          speaker: "King Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "King Kai portrait",
+          lines: [
+            { text: "I need to declare: double measurement = 4.5;", tone: "goal" },
+            { text: "Then the seal will shatter and the cauldron will respond.", tone: "normal" },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "exactGoal",
+      goals: [{ name: "measurement", allowedTypes: ["double", "float"], requiredValue: "4.5" }],
+      unexpectedVariableMessage: 'Unexpected variable. Only "measurement" is allowed in Level 5.',
+      strictCountMessage: 'Only this declaration is accepted: double measurement = 4.5;',
+      successMessage: "Code accepted. Shattering seal...",
+    },
+    validateCode: createExactGoalDeclarationValidator({
+      goals: [{ name: "measurement", allowedTypes: ["double", "float"], requiredValue: "4.5" }],
+      unexpectedVariableMessage: 'Unexpected variable. Only "measurement" is allowed in Level 5.',
+      strictCountMessage: 'Only this declaration is accepted: double measurement = 4.5;',
+      successMessage: "Code accepted. Shattering seal...",
     }),
   },
 };

@@ -23,7 +23,11 @@ const normalizeGoals = (goals) =>
     allowedTypes:
       goal.allowedTypes instanceof Set
         ? goal.allowedTypes
-        : new Set(goal.allowedTypes ?? []),
+        : new Set(
+            typeof goal.allowedTypes === "string"
+              ? [goal.allowedTypes]
+              : goal.allowedTypes ?? [],
+          ),
   }));
 
 const formatDeclaration = (goal, fallbackType = "string") => {

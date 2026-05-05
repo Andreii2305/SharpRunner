@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../Toast/ToastProvider.jsx";
 import LoginComp from "../LoginAndSignUp/LoginComp.jsx";
 import {
@@ -14,6 +14,7 @@ import {
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const toast = useToast();
   const [formData, setFormData] = useState({
     identifier: "",
@@ -23,6 +24,10 @@ const Login = () => {
   useEffect(() => {
     if (isAuthenticated()) {
       navigate(getHomeRouteForCurrentUser(), { replace: true });
+      return;
+    }
+    if (searchParams.get("error") === "google_auth_failed") {
+      toast.error("Google sign-in failed. Please try again.");
     }
   }, [navigate]);
 
@@ -50,12 +55,17 @@ const Login = () => {
     }
   };
 
+  const handleGoogleLogin = () => {
+    window.location.href = buildApiUrl("/api/auth/google");
+  };
+
   return (
     <LoginComp
       user="IT"
       formData={formData}
       handleChange={handleChange}
       handleSubmit={handleSubmit}
+      onGoogleLogin={handleGoogleLogin}
     />
   );
 };

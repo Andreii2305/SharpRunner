@@ -3,7 +3,7 @@ import styles from "./login.module.css";
 import { FaGoogle, FaFacebookF } from "react-icons/fa";
 import { Link } from "react-router-dom";
 
-function LoginComp({ user, formData, handleChange, handleSubmit }) {
+function LoginComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }) {
   return (
     <div className={styles.loginContainer}>
       <div className={styles.brandLogo}>
@@ -60,7 +60,11 @@ function LoginComp({ user, formData, handleChange, handleSubmit }) {
         </div>
 
         <div className={styles.socialIcons}>
-          <button className={`${styles.socialBtn} ${styles.google}`}>
+          <button
+            type="button"
+            className={`${styles.socialBtn} ${styles.google}`}
+            onClick={onGoogleLogin}
+          >
             <FaGoogle />
           </button>
           <button className={`${styles.socialBtn} ${styles.facebook}`}>

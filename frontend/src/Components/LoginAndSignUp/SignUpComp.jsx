@@ -1,8 +1,9 @@
 import React from "react";
 import styles from "./login.module.css";
+import { FaGoogle } from "react-icons/fa";
 import { Link } from "react-router-dom";
 
-function SignUpComp({ user, formData, handleChange, handleSubmit }) {
+function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }) {
   return (
     <div className={styles.loginContainer}>
       {/* Brand Logo */}
@@ -95,6 +96,19 @@ function SignUpComp({ user, formData, handleChange, handleSubmit }) {
             </span>
           </div>
         </form>
+        <div className={styles.socialSeparator}>
+          <span>or sign up with</span>
+        </div>
+
+        <div className={styles.socialIcons}>
+          <button
+            type="button"
+            className={`${styles.socialBtn} ${styles.google}`}
+            onClick={onGoogleLogin}
+          >
+            <FaGoogle />
+          </button>
+        </div>
       </div>
     </div>
   );

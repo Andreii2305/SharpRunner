@@ -18,6 +18,7 @@ import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
 import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
 import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
+import GoogleCallbackPage from "./pages/auth/GoogleCallbackPage.jsx";
 import { ToastProvider } from "./Components/Toast/ToastProvider.jsx";
 
 /* Convenience wrapper so teacher routes stay DRY */
@@ -144,6 +145,7 @@ function App() {
         <Route path="/signup" element={<SignUp />} />
         <Route path="/developer" element={<DeveloperPage />} />
         <Route path="/admin-invite" element={<AdminInviteRegisterPage />} />
+        <Route path="/auth/callback" element={<GoogleCallbackPage />} />
       </Routes>
     </BrowserRouter>
     </ToastProvider>

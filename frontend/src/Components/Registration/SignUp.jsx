@@ -11,6 +11,7 @@ import {
   setUser,
 } from "../../utils/auth";
 
+
 const SignUp = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -70,12 +71,17 @@ const SignUp = () => {
     }
   };
 
+  const handleGoogleLogin = () => {
+    window.location.href = buildApiUrl("/api/auth/google");
+  };
+
   return (
     <SignUpComp
       user="Student"
       formData={formData}
       handleChange={handleChange}
       handleSubmit={handleSubmit}
+      onGoogleLogin={handleGoogleLogin}
     />
   );
 };

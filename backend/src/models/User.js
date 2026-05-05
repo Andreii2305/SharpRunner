@@ -51,8 +51,13 @@ const User = sequelize.define("Users", {
   },
   password: {
     type: DataTypes.STRING,
-    allowNull: false
-  }
+    allowNull: true,
+  },
+  googleId: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    unique: true,
+  },
 });
 
 module.exports = User;

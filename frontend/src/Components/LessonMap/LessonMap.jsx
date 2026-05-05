@@ -528,8 +528,26 @@ function LessonMap({
     <div className={styles.lessonMapRoot}>
       {/* Mobile fallback */}
       <div className={styles.mobileNotice}>
-        <h3>⚔ Desktop Realm Required ⚔</h3>
-        <p>This quest map is available on desktop and tablet screens.</p>
+        <div className={styles.mobileNoticeIcon}>🗺</div>
+        <h3>Quest Map</h3>
+        <p>The interactive map is best viewed on a larger screen.</p>
+        <div className={styles.mobileProgressWrap}>
+          <div className={styles.mobileProgressLabel}>
+            <span>{lessonTitle}</span>
+            <span>{progressPercent}%</span>
+          </div>
+          <div className={styles.mobileProgressTrack}>
+            <div className={styles.mobileProgressFill} style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
+        <div className={styles.mobileNoticeActions}>
+          <button className={styles.mobileContinueBtn} onClick={onContinue} disabled={continueDisabled}>
+            ▶ Continue Quest
+          </button>
+          <button className={styles.mobileBackBtn} onClick={onExit}>
+            ← Back to Dashboard
+          </button>
+        </div>
       </div>
 
       <div className={styles.mapLayout}>

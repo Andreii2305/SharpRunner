@@ -21,8 +21,7 @@ function HeroSection() {
   };
 
   const handleJoinRoomClick = () => {
-    // Add your logic here for "Join Room via Code"
-    alert("Join Room via Code clicked!");
+    navigate(loggedIn ? "/join-class" : "/login");
   };
 
   const handleLogout = () => {

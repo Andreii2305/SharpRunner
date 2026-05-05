@@ -3,13 +3,10 @@ import avatar from "../../assets/avatar.png";
 import Button from "../Button/Button.jsx";
 import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
+import { isAuthenticated } from "../../utils/auth";
 
 function Header({ pageType, userName }) {
   const navigate = useNavigate();
-
-  const handleClick = () => {
-    navigate("/login");
-  };
 
   return (
     <nav className={styles.navbar}>
@@ -27,7 +24,7 @@ function Header({ pageType, userName }) {
           <Button
             label="Join Room"
             size="sm"
-            onClick={() => navigate("/login")}
+            onClick={() => navigate(isAuthenticated() ? "/join-class" : "/login")}
           />
           <a href="#">
             <img src={avatar} alt="avatar" />

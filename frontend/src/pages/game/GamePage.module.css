@@ -719,6 +719,61 @@
   filter: brightness(0.95);
 }
 
+/* ── Mobile block screen ────────────────── */
+.mobileBlock {
+  min-height: 100dvh;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px 80px;
+}
+
+.mobileBlockInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  max-width: 320px;
+}
+
+.mobileBlockIcon {
+  font-size: 3.5rem;
+  line-height: 1;
+}
+
+.mobileBlockTitle {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+.mobileBlockText {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  line-height: 1.6;
+}
+
+.mobileBlockBtn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 13px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Segoe UI', sans-serif;
+  transition: background 0.15s;
+}
+.mobileBlockBtn:hover { background: #1d4ed8; }
+
 /* ── Responsive ─────────────────────────── */
 @media (max-width: 900px) {
   .gameContainer {

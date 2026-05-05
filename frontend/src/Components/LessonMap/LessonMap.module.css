@@ -88,23 +88,6 @@
   margin-top: 12px;
 }
 
-.mobileContinueBtn {
-  width: 100%;
-  padding: 13px;
-  background: #8b2c1a;
-  color: #f5e6c8;
-  border: none;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  font-family: Georgia, serif;
-  cursor: pointer;
-  letter-spacing: 0.05em;
-  transition: background 0.15s;
-}
-.mobileContinueBtn:hover { background: #6e2015; }
-.mobileContinueBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-
 .mobileBackBtn {
   width: 100%;
   padding: 11px;

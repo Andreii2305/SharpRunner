@@ -541,9 +541,6 @@ function LessonMap({
           </div>
         </div>
         <div className={styles.mobileNoticeActions}>
-          <button className={styles.mobileContinueBtn} onClick={onContinue} disabled={continueDisabled}>
-            ▶ Continue Quest
-          </button>
           <button className={styles.mobileBackBtn} onClick={onExit}>
             ← Back to Dashboard
           </button>

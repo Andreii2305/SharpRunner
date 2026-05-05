@@ -48,6 +48,13 @@ function GamePage() {
   const navigate = useNavigate();
   const { levelNumber } = useParams();
   const parsedLevelNumber = Number(levelNumber);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 900);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const levelConfig = useMemo(
     () => getLevelConfig(parsedLevelNumber),
@@ -537,6 +544,23 @@ function GamePage() {
   const timerMinutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
   const timerSecondsDisplay = (elapsedSeconds % 60).toString().padStart(2, "0");
   const timerLabel = `${timerMinutes}:${timerSecondsDisplay}`;
+
+  if (isMobile) {
+    return (
+      <div className={styles.mobileBlock}>
+        <div className={styles.mobileBlockInner}>
+          <div className={styles.mobileBlockIcon}>🎮</div>
+          <h2 className={styles.mobileBlockTitle}>Desktop Required</h2>
+          <p className={styles.mobileBlockText}>
+            The coding game requires a larger screen to play. Please open SharpRunner on a desktop or laptop.
+          </p>
+          <button className={styles.mobileBlockBtn} onClick={() => navigate("/dashboard")}>
+            ← Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!levelConfig) {
     return (

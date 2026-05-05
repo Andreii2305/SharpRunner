@@ -237,3 +237,19 @@
 }
 .exportBtn:hover:not(:disabled) { background: #dbeafe; }
 .exportBtn:disabled { opacity: 0.45; cursor: default; }
+
+/* ── Responsive ─────────────────────────── */
+@media (max-width: 600px) {
+  .modalCard {
+    padding: 20px 16px;
+  }
+  .gradeTableHead,
+  .gradeTableRow {
+    grid-template-columns: 40px 1fr 1fr;
+  }
+  /* Hide the last score column on very small screens */
+  .gradeTableHead > *:last-child,
+  .gradeTableRow > *:last-child {
+    display: none;
+  }
+}

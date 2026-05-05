@@ -712,3 +712,36 @@
   color: #64748b;
   white-space: nowrap;
 }
+
+/* ── Responsive ─────────────────────────── */
+@media (max-width: 600px) {
+  .analyticsStatRow {
+    grid-template-columns: 1fr 1fr;
+  }
+  .analyticsStudentRow {
+    grid-template-columns: 24px 1fr 1fr 36px;
+  }
+  .rosterPanel {
+    max-height: 90vh;
+  }
+  .rosterBody {
+    padding: 12px 16px 16px;
+  }
+  .rosterHeader {
+    padding: 14px 16px 12px;
+  }
+  .rosterTabBar {
+    padding: 0 16px;
+  }
+  .classGrid {
+    grid-template-columns: 1fr;
+  }
+  .rosterOverlay {
+    padding: 12px;
+    align-items: flex-end;
+  }
+  .rosterPanel {
+    border-radius: 16px 16px 0 0;
+    max-height: 92vh;
+  }
+}

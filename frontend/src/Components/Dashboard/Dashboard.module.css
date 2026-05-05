@@ -986,3 +986,17 @@
     display: none;
   }
 }
+
+@media (max-width: 768px) {
+  .main {
+    padding: 14px 16px;
+    padding-bottom: 72px;
+  }
+  .statRow {
+    grid-template-columns: 1fr 1fr;
+  }
+  .header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}

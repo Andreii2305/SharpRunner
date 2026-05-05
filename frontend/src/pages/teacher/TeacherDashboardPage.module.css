@@ -148,3 +148,15 @@
   .midRow    { grid-template-columns: 1fr; }
   .bottomRow { grid-template-columns: 1fr; }
 }
+
+@media (max-width: 768px) {
+  .classRow {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .classRowRight {
+    min-width: unset;
+    width: 100%;
+    align-items: flex-start;
+  }
+}

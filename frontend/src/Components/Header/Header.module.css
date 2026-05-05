@@ -73,29 +73,21 @@
     }
 }
 
-@media (max-width: 768px) { /* Mobile devices and large tablets */
+@media (max-width: 768px) {
     .navbar {
         padding: 0.5rem 1rem;
     }
-    
-    /* Hide the navigation links (Home, Features, How It Works, About Us) */
+
+    /* Hide only the text nav links, keep the button and avatar */
     .rightNav > div {
-        display: none; 
-    }
-    
-    /* Hide the 'Join Room' button */
-    /* This targets the <Button> component which renders as <button> */
-    .rightNav button { 
         display: none;
     }
 
-    /* Adjust greetings text size */
     .greetings {
         font-size: 14px;
     }
-    
-    /* Ensure the left logo is still legible */
+
     .leftNav a {
-        font-size: 16px;
+        font-size: 15px;
     }
 }

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { FiPlus, FiUsers, FiCopy, FiCheck, FiX, FiList, FiLayers } from "react-icons/fi";
+import { FiPlus, FiUsers, FiCopy, FiCheck, FiX, FiList, FiLayers, FiBarChart2 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -88,7 +88,7 @@ function TeacherClassesPage() {
   }, []);
 
   const openRoster = async (classId, className, classCode) => {
-    setRosterModal({ classId, className, accent: ACCENTS[classPerformance.findIndex(c => c.classId === classId) % ACCENTS.length] });
+    setRosterModal({ classId, className, accent: classAccents.get(classId) ?? ACCENTS[0] });
     rosterClassCode.current = classCode;
     setRosterStudents([]);
     setRosterLoading(true);
@@ -137,9 +137,24 @@ function TeacherClassesPage() {
     }
   };
 
+  const classAccents = useMemo(() => {
+    const map = new Map();
+    classPerformance.forEach((c, i) => map.set(c.classId, ACCENTS[i % ACCENTS.length]));
+    return map;
+  }, [classPerformance]);
+
   const totalStudents = classPerformance.reduce((sum, c) => sum + (c.studentCount ?? 0), 0);
   const avgProgress = classPerformance.length === 0 ? 0 : Math.round(
     classPerformance.reduce((sum, c) => sum + (c.averageProgressPercent ?? 0), 0) / classPerformance.length
+  );
+  const maxStudentCount = Math.max(...classPerformance.map((c) => c.studentCount ?? 0), 1);
+  const sortedByProgress = useMemo(
+    () => [...classPerformance].sort((a, b) => (b.averageProgressPercent ?? 0) - (a.averageProgressPercent ?? 0)),
+    [classPerformance]
+  );
+  const sortedByEnrollment = useMemo(
+    () => [...classPerformance].sort((a, b) => (b.studentCount ?? 0) - (a.studentCount ?? 0)),
+    [classPerformance]
   );
 
   return (
@@ -199,8 +214,8 @@ function TeacherClassesPage() {
             </div>
           ) : (
             <div className={pgStyles.classGrid}>
-              {classPerformance.map((item, idx) => {
-                const accent = ACCENTS[idx % ACCENTS.length];
+              {classPerformance.map((item) => {
+                const accent = classAccents.get(item.classId) ?? ACCENTS[0];
                 return (
                   <div
                     key={item.classId ?? item.className}
@@ -281,6 +296,71 @@ function TeacherClassesPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── Analytics section ─────────────────── */}
+          {!isLoading && classPerformance.length > 0 && (
+            <div className={pgStyles.analyticsSection}>
+              <div className={pgStyles.analyticsSectionHeader}>
+                <FiBarChart2 size={14} />
+                <span className={pgStyles.analyticsSectionTitle}>Class Analytics</span>
+                <span className={pgStyles.analyticsSectionSub}>Based on current enrollment and progress data</span>
+              </div>
+
+              <div className={pgStyles.analyticsGrid}>
+                {/* Progress comparison */}
+                <div className={pgStyles.analyticsCard}>
+                  <div className={pgStyles.analyticsCardTitle}>Progress Comparison</div>
+                  <div className={pgStyles.analyticsCardSub}>Average student progress per class</div>
+                  <div className={pgStyles.analyticsBars}>
+                    {sortedByProgress.map((item) => {
+                      const pct = clampPercent(item.averageProgressPercent);
+                      const accent = classAccents.get(item.classId) ?? ACCENTS[0];
+                      return (
+                        <div key={item.classId} className={pgStyles.analyticsBarRow}>
+                          <span className={pgStyles.analyticsBarLabel} title={item.className}>
+                            {item.className}
+                          </span>
+                          <div className={pgStyles.analyticsBarTrack}>
+                            <div
+                              className={pgStyles.analyticsBarFill}
+                              style={{ width: `${pct}%`, background: accent }}
+                            />
+                          </div>
+                          <span className={pgStyles.analyticsBarValue}>{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Enrollment breakdown */}
+                <div className={pgStyles.analyticsCard}>
+                  <div className={pgStyles.analyticsCardTitle}>Enrollment Breakdown</div>
+                  <div className={pgStyles.analyticsCardSub}>Number of students enrolled per class</div>
+                  <div className={pgStyles.analyticsBars}>
+                    {sortedByEnrollment.map((item) => {
+                      const pct = Math.round(((item.studentCount ?? 0) / maxStudentCount) * 100);
+                      const accent = classAccents.get(item.classId) ?? ACCENTS[0];
+                      return (
+                        <div key={item.classId} className={pgStyles.analyticsBarRow}>
+                          <span className={pgStyles.analyticsBarLabel} title={item.className}>
+                            {item.className}
+                          </span>
+                          <div className={pgStyles.analyticsBarTrack}>
+                            <div
+                              className={pgStyles.analyticsBarFill}
+                              style={{ width: `${pct}%`, background: accent }}
+                            />
+                          </div>
+                          <span className={pgStyles.analyticsBarValue}>{item.studentCount ?? 0}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

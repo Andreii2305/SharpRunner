@@ -281,6 +281,109 @@
 }
 .cardBtnSecondary:hover { background: #f1f5f9; border-color: #cbd5e0; }
 
+/* ── Analytics section ───────────────── */
+.analyticsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.analyticsSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #1e3a5f;
+}
+
+.analyticsSectionTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+
+.analyticsSectionSub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: 2px;
+}
+
+.analyticsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 680px) {
+  .analyticsGrid { grid-template-columns: 1fr; }
+}
+
+.analyticsCard {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.analyticsCardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e3a5f;
+  line-height: 1;
+}
+
+.analyticsCardSub {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: -8px;
+}
+
+.analyticsBars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analyticsBarRow {
+  display: grid;
+  grid-template-columns: 110px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+}
+
+.analyticsBarLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.analyticsBarTrack {
+  height: 8px;
+  background: #f1f5f9;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.analyticsBarFill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.6s ease;
+  opacity: 0.85;
+}
+
+.analyticsBarValue {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e3a5f;
+  text-align: right;
+}
+
 /* ── Roster modal ────────────────────── */
 .rosterOverlay {
   position: fixed;

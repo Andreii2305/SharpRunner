@@ -1,141 +1,342 @@
-.classGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+/* ── Summary stat chips ───────────────── */
+.summaryRow {
+  display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
-.classCard {
-  background: #f8fafc;
+.summaryChip {
+  background: #fff;
   border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  padding: 14px 16px;
+  border-radius: 12px;
+  padding: 12px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  transition: box-shadow 0.15s, border-color 0.15s;
+  gap: 2px;
+  min-width: 110px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.summaryVal {
+  font-size: 22px;
+  font-weight: 800;
+  color: #1e3a5f;
+  line-height: 1;
+}
+
+.summaryLbl {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-top: 2px;
+}
+
+/* ── Grid header ──────────────────────── */
+.gridHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.gridTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+
+.gridSub {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+/* ── Empty state ──────────────────────── */
+.emptyState {
+  background: #fff;
+  border: 2px dashed #e2e8f0;
+  border-radius: 14px;
+  padding: 56px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.emptyStateIcon { color: #cbd5e1; margin-bottom: 4px; }
+.emptyStateTitle { font-size: 14px; font-weight: 700; color: #1e3a5f; }
+.emptyStateSub { font-size: 12px; color: #94a3b8; }
+
+/* ── Class card grid ──────────────────── */
+.classGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+/* ── Class card ───────────────────────── */
+.classCard {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid var(--accent, #2563eb);
+  border-radius: 12px;
+  padding: 16px 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  transition: box-shadow 0.15s, transform 0.15s;
 }
 
 .classCard:hover {
-  box-shadow: 0 3px 10px rgba(30,58,95,0.08);
-  border-color: #bdd2e8;
+  box-shadow: 0 6px 22px rgba(30,58,95,0.1);
+  transform: translateY(-1px);
 }
 
 .classCardTop {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 }
 
+.classCardLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.classInitial {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--accent, #2563eb);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.classCardInfo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .classCardName {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: #1e3a5f;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .classCardMeta {
   font-size: 11px;
   color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+.codePillBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #f0f6ff;
+  color: #2563eb;
+  border: 1px solid #bcd4f5;
+  padding: 4px 9px;
+  border-radius: 99px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: background 0.12s;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+.codePillBtn:hover { background: #dbeafe; }
+
+/* ── Student count row ────────────────── */
+.studentCountRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+}
+
+/* ── Description ──────────────────────── */
 .classDesc {
   font-size: 11px;
   color: #94a3b8;
   font-style: italic;
-  line-height: 1.4;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.classBarRow {
+/* ── Progress ─────────────────────────── */
+.progressSection {
   display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-top: 2px;
 }
 
-.classBarLabel {
+.progressLabel {
   font-size: 10px;
-  color: #94a3b8;
-  white-space: nowrap;
-}
-
-.classBarPct {
-  font-size: 11px;
   font-weight: 600;
-  color: #1e3a5f;
-  min-width: 30px;
-  text-align: right;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 }
 
-/* ── Class card action buttons ───────────── */
+.progressPct {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+
+.progressTrack {
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent, #2563eb);
+  border-radius: 99px;
+  transition: width 0.5s ease;
+  opacity: 0.8;
+}
+
+/* ── Card divider ─────────────────────── */
+.cardDivider {
+  height: 1px;
+  background: #f1f5f9;
+}
+
+/* ── Card actions ─────────────────────── */
 .classCardActions {
   display: flex;
   gap: 6px;
-  margin-top: 6px;
 }
 
 .cardBtn {
+  flex: 1;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 700;
   color: #fff;
-  background: #1e3a5f;
+  background: var(--accent, #2563eb);
   border: none;
-  border-radius: 7px;
-  padding: 5px 11px;
+  border-radius: 8px;
+  padding: 7px 10px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: filter 0.12s;
   font-family: inherit;
 }
-.cardBtn:hover { background: #16304f; }
+.cardBtn:hover { filter: brightness(1.1); }
 
 .cardBtnSecondary {
+  flex: 1;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   font-size: 11px;
   font-weight: 700;
-  color: #26547c;
-  background: linear-gradient(135deg, #e8f0fb 0%, #d0e2f7 100%);
-  border: 1.5px solid #bcd4ec;
-  border-radius: 7px;
-  padding: 5px 11px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 7px 10px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.12s, border-color 0.12s;
   font-family: inherit;
 }
-.cardBtnSecondary:hover { background: linear-gradient(135deg, #d0e2f7 0%, #bdd4ef 100%); }
+.cardBtnSecondary:hover { background: #f1f5f9; border-color: #cbd5e0; }
 
-/* ── Roster modal ────────────────────────── */
+/* ── Roster modal ────────────────────── */
 .rosterOverlay {
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: rgba(10, 20, 40, 0.45);
+  background: rgba(10, 20, 40, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
+  backdrop-filter: blur(2px);
 }
 
 .rosterPanel {
   background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-  width: min(680px, 100%);
-  max-height: 80vh;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.22);
+  width: min(700px, 100%);
+  max-height: 82vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: rosterSlideIn 0.22s ease both;
+}
+
+@keyframes rosterSlideIn {
+  from { opacity: 0; transform: scale(0.96) translateY(10px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .rosterHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  padding: 18px 22px 14px;
+  padding: 20px 24px 16px;
   border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+  background: #fafbfc;
+}
+
+.rosterHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rosterHeaderIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
   flex-shrink: 0;
 }
 
@@ -149,31 +350,51 @@
   font-size: 12px;
   color: #94a3b8;
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rosterCode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bcd4f5;
+  padding: 2px 7px;
+  border-radius: 99px;
+  letter-spacing: 0.05em;
 }
 
 .rosterClose {
-  background: none;
+  background: #f1f5f9;
   border: none;
-  color: #94a3b8;
+  color: #64748b;
   cursor: pointer;
-  padding: 2px;
+  padding: 6px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
+  transition: background 0.12s, color 0.12s;
 }
-.rosterClose:hover { color: #475569; }
+.rosterClose:hover { background: #e2e8f0; color: #1e3a5f; }
 
 .rosterBody {
   overflow-y: auto;
-  padding: 16px 22px 20px;
+  padding: 16px 24px 24px;
   flex: 1;
 }
 
+/* ── Roster empty ─────────────────────── */
 .rosterEmpty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
+  padding: 48px 20px;
   text-align: center;
   color: #94a3b8;
   font-size: 13px;
@@ -183,7 +404,7 @@
 .rosterEmptySub {
   font-size: 12px;
   color: #94a3b8;
-  margin-top: 6px;
+  margin-top: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -191,6 +412,7 @@
   justify-content: center;
 }
 
+/* ── Roster table ─────────────────────── */
 .rosterTable {
   width: 100%;
   border-collapse: collapse;
@@ -202,68 +424,117 @@
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   color: #94a3b8;
-  padding: 0 10px 8px;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 0 10px 10px;
+  border-bottom: 2px solid #f1f5f9;
 }
+
+.rosterTable th:first-child { padding-left: 0; width: 32px; }
 
 .rosterTable tbody tr {
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f8fafc;
   transition: background 0.1s;
 }
-
 .rosterTable tbody tr:last-child { border-bottom: none; }
 .rosterTable tbody tr:hover { background: #f8fafc; }
 
 .rosterTable td {
-  padding: 9px 10px;
+  padding: 10px 10px;
   vertical-align: middle;
 }
+.rosterTable td:first-child { padding-left: 0; }
 
+/* ── Rank cell ────────────────────────── */
 .rosterRank {
   font-weight: 700;
   color: #94a3b8;
-  font-size: 11px;
-  width: 28px;
+  font-size: 13px;
+  width: 32px;
+  text-align: center;
+}
+
+/* ── Name cell with avatar ────────────── */
+.rosterNameCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rosterAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--av-bg, #e0e7ff);
+  color: var(--av-color, #4338ca);
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0;
 }
 
 .rosterName {
   font-weight: 600;
   color: #1e3a5f;
   font-size: 12px;
+  line-height: 1.2;
 }
 
 .rosterUsername {
   font-size: 10px;
   color: #94a3b8;
-  margin-top: 1px;
 }
 
+/* ── Progress cell ────────────────────── */
 .rosterBarRow {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
+
+.rosterBarTrack {
+  width: 80px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.rosterBarFill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+.rosterBarFillHigh   { background: #22c55e; }
+.rosterBarFillMid    { background: #f59e0b; }
+.rosterBarFillLow    { background: #ef4444; }
 
 .rosterPct {
   font-size: 11px;
-  font-weight: 600;
-  color: #1e3a5f;
+  font-weight: 700;
+  color: #374151;
   min-width: 32px;
 }
 
+/* ── Generic cell ─────────────────────── */
 .rosterCell {
   font-weight: 600;
   color: #374151;
   font-size: 12px;
 }
 
+/* ── Status labels ────────────────────── */
 .rosterStatusPlaying {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #16a34a;
   background: #dcfce7;
+  border: 1px solid #bbf7d0;
   border-radius: 99px;
   padding: 2px 8px;
   white-space: nowrap;

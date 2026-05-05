@@ -523,7 +523,7 @@ function StudentDashboardPage() {
                   strokeLinejoin="round"
                 />
               </svg>
-              Continue playing
+              <span>Continue playing</span>
             </button>
             <button
               className={styles.bellBtn}

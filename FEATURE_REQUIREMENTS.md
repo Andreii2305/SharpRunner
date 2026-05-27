@@ -1,193 +1,212 @@
-# SharpRunner — Feature Requirements (Panel-Requested)
+# SharpRunner Feature Requirements
 
-> Last updated: 2026-04-18
-> Source: Panel review feedback during capstone development
-> Status: Design phase — not yet implemented
+> Last updated: 2026-05-27  
+> Source: Panel review feedback and current project implementation  
+> Status: Living project reference
 
----
+This document tracks the main panel-requested features and their current implementation status.
 
-## Requirement 1 — Teacher-Editable Lesson Content Per Level
+## Requirement 1 - Teacher-Editable Lesson Content Per Level
 
-**What the panel wants:**
-Teachers should be able to edit the lesson content for each level from within the teacher dashboard — without touching source code.
+**Status: Partially implemented**
 
-**What "lesson content" means in SharpRunner's context:**
-- NPC dialogue lines (intro, success, hint)
-- Coding objective description (the "Goal" card text)
-- Instructions / checklist items (the "Instruction" card)
-- Lesson card text (the mini-lesson explanation shown below the game)
-- Idle / success / error result messages
+Teachers can edit per-classroom level content from the teacher level editor route:
 
-**Design approach:**
-- Store level content in the database (`LevelContent` table or inside `UserProgress`-adjacent config) instead of hardcoding it in `levelConfigs.js`
-- Teacher dashboard gets a "Level Content Editor" section — a form per level that saves to the backend
-- The frontend fetches level content dynamically from `/api/lesson-content/:levelKey` at game load time
-- The hardcoded `levelConfigs.js` values become the **default seed** — used when no teacher override exists
+- Frontend: `frontend/src/pages/teacher/TeacherLevelEditorPage.jsx`
+- Backend route: `backend/src/routes/teacher.js`
+- Model: `backend/src/models/LevelContentOverride.js`
+- Schema service: `backend/src/services/levelContentSchemaService.js`
 
-**Tables needed:**
-```
-LevelContentOverride
-  id
-  classroomId        → scoped per classroom (teacher's class)
-  levelKey           → e.g. "variables-and-data-types-level-3"
-  goalDescription
-  instructionItems   → JSON array of strings
-  lessonCardTitle
-  lessonCardBody
-  dialogueOverride   → JSON (optional — replaces intro dialogue)
-  updatedAt
-  updatedByTeacherId
-```
+Current editable fields:
 
-**Notes:**
-- Overrides are per-classroom so different teachers can customize for their class
-- If no override exists, fall back to the default config in `levelConfigs.js`
-- The existing `/api/lesson-content` route may already be the right place to extend this
+- lesson card title
+- lesson card description
+- goal title
+- goal description
+- instruction items
+- starter/default code
+- validator configuration
 
----
+Current API endpoints:
 
-## Requirement 2 — Teacher-Editable Boss Levels
+- `GET /api/teacher/classrooms/:classroomId/level-overrides`
+- `PUT /api/teacher/classrooms/:classroomId/level-overrides/:levelKey`
+- `DELETE /api/teacher/classrooms/:classroomId/level-overrides/:levelKey`
+- `GET /api/progress/level/:levelKey/content` for students to load their classroom override
 
-**What the panel wants:**
-Boss levels (1-10, 2-10, 3-10, 4-10) should have configurable parameters that teachers can adjust.
+Current data model:
 
-**What "boss level editable" means:**
-- Number of phases / corruption panels
-- The expressions, variable names, or conditions presented on each panel
-- Success criteria for each phase
-- Optional: boss difficulty modifier (time limit, error tolerance)
-
-**Design approach:**
-- Boss levels use a `BossLevelConfig` structure (separate from regular level content)
-- Teacher can set the challenge content for each phase via a form in the teacher dashboard
-- Each phase has: `phaseNumber`, `challengeType` (variable/operator/conditional/loop), `challengePrompt`, `expectedAnswer`, `hintText`
-- The frontend boss scene reads phase configs from the API instead of hardcoded arrays
-
-**Tables needed:**
-```
-BossLevelOverride
-  id
+```text
+LevelContentOverrides
   classroomId
-  levelKey            → e.g. "variables-and-data-types-level-10"
-  phases              → JSON array of phase configs
-  updatedAt
+  levelKey
+  lessonCardTitle
+  lessonCardDescription
+  goalTitle
+  goalDescription
+  instructionItems
+  defaultCode
+  validatorConfig
+```
+
+Remaining gaps:
+
+- NPC dialogue override is not yet editable.
+- Idle, success, and error result messages are not yet stored as override fields.
+- Par time/deadline configuration is not yet exposed in the teacher level editor.
+- The game currently uses level configs for Lesson 1 levels 1-5 only.
+
+## Requirement 2 - Teacher-Editable Boss Levels
+
+**Status: Not implemented / stretch goal**
+
+The app does not yet have boss-level scenes or a boss-level override model.
+
+Suggested future model:
+
+```text
+BossLevelOverride
+  classroomId
+  levelKey
+  phases
   updatedByTeacherId
 ```
 
-**Notes:**
-- This is "if possible" per panel — treat as stretch goal
-- Start with Requirement 1 first; boss editing shares the same override architecture
-- Default boss content (in code) is the fallback if no override is set
+Suggested phase structure:
 
----
-
-## Requirement 3 — Full Game-Controlled Code Execution
-
-**What the panel wants:**
-The student's code should **directly drive** game character actions — like `walk()`, `attack()`, `jump()` — rather than just being validated for correct declaration patterns.
-
-**What this means:**
-Currently the game validates student code as a *static check* (regex/parsing).
-The panel wants the code to be *executed* — calling predefined methods that produce visible in-game effects in real time.
-
-**How it should work:**
-```csharp
-// Student writes:
-static void Main(string[] args) {
-  Walk(3);
-  Attack();
-  Walk(2);
+```json
+{
+  "phaseNumber": 1,
+  "challengeType": "variable",
+  "challengePrompt": "Declare the required variable.",
+  "expectedAnswer": "int crystals = 4;",
+  "hintText": "Use an integer declaration."
 }
 ```
-Each method call in `Main` triggers a corresponding Phaser animation in sequence.
 
-**Predefined method library (by lesson):**
-| Lesson | Available Methods |
-|---|---|
-| Variables | `WalkToPortal(int steps)`, `IntroduceToNpc(string name)` |
-| Operators | `CrossPlatforms(int steps)`, `AttackEnemy(int damage)`, `ActivateScanner(bool result)` |
-| Conditionals | `OpenGate(string side)`, `CrossBridge()`, `HoldBack()`, `EnterVault()` |
-| Loops | `MarchStep()`, `MoveForward()`, `HitSwitch()`, `CollectCrystal()`, `ClearWave()`, `Walk()`, `Run(string dir)` |
+Recommended approach:
 
-**Implementation approach:**
-- Parse the student's `Main` method to extract the sequence of method calls (AST-lite or regex-based)
-- Build a "command queue" — ordered list of `{ method, args }` objects
-- The Phaser scene consumes the command queue frame by frame, animating each call
-- Validators still run to check correctness before the animation plays
+1. Finish normal Lesson 1 levels 6-10 first.
+2. Implement Level 10 as the first boss-level scene.
+3. Add boss overrides only after the default boss flow is stable.
 
-**Why this is important:**
-- Makes the game feel like actual programming (cause → visual effect)
-- Replaces the current "run + fail animation" loop with a true execution trace
-- Supports future extensions like error highlighting mid-execution
+## Requirement 3 - Full Game-Controlled Code Execution
 
-**Implementation effort:** High — requires a C# method-call parser (or a simplified DSL parser) and a command queue system in Phaser scenes.
+**Status: Not implemented**
 
----
+The current game does not execute C# code. It validates submitted code through JavaScript validators and emits game events to Phaser scenes.
 
-## Requirement 4 — Student Grading Per Level
+Current validator approach:
 
-**What the panel wants:**
-Each level should produce a grade for the student. Grading should reflect not just *pass/fail* but *how well* the student solved it.
+- `frontend/src/pages/game/levels/validators.js`
+- `frontend/src/pages/game/levels/buildValidator.js`
+- `frontend/src/pages/game/levels/levelConfigs.js`
 
-**Proposed grading model (CodeChum-inspired):**
+Implemented validator types:
 
-```
-Base score:         100 points
+- `singleInteger`
+- `exactGoal`
+- `multiString`
 
-Deductions:
-  Per failed attempt:   -10 points  (capped at -50)
-  Per hint used:        -10 points  (if hint system is added)
-  Time penalty:         -0.5 points per minute over the "par time"
+Current behavior:
 
-Minimum score:      50 points (must still pass to proceed)
-Grade thresholds:
-  90–100  →  S  (Perfect)
-  75–89   →  A
-  60–74   →  B
-  50–59   →  C  (Minimum pass)
-  < 50    →  F  (Cannot proceed — must retry)
+- Student submits C#-style code in Monaco.
+- Validator checks declarations and values.
+- Game events tell the active Phaser scene whether the code is correct.
+- The scene animates success or failure.
+
+Future command-queue approach:
+
+```csharp
+static void Main(string[] args) {
+  WalkToPortal(3);
+  AttackEnemy(2);
+}
 ```
 
-**What needs to be tracked per attempt:**
-- `attemptCount` — number of times "Run" was clicked before success
-- `timeSpentSeconds` — from level load to first successful submission
-- `hintsUsed` — 0 for now (hint system TBD)
-- `finalScore` — computed on success and saved to `UserProgress`
+Planned architecture:
 
-**Changes to `UserProgress` table:**
+1. Parse allowed method calls from `Main`.
+2. Convert calls into a command queue.
+3. Validate the queue against the level objective.
+4. Let Phaser consume the queue and animate each command.
+
+This is high effort and should come after one complete playable lesson exists.
+
+## Requirement 4 - Student Grading Per Level
+
+**Status: Implemented, with room for refinement**
+
+The backend stores grading data in `UserProgress` and computes `finalScore` when a level is completed.
+
+Current tracked fields:
+
+```text
+attemptCount
+timeSpentSeconds
+finalScore
+startedAt
+completedAt
 ```
-Add columns:
-  attemptCount        integer   default 0
-  timeSpentSeconds    integer   default 0
-  finalScore          integer   default null
-  grade               varchar   default null  -- "S", "A", "B", "C", "F"
+
+Current scoring source:
+
+- `backend/src/services/progressService.js`
+
+Current score rules:
+
+- Base score: 100
+- Failed attempt deduction: 5 points per failed attempt
+- Deadline deduction: 3 points per day late when a deadline exists
+- Overtime deduction: 0.05 points per minute over par time when no deadline exists
+- Minimum saved score: 75
+
+Current grade labels:
+
+```text
+S = 90+
+A = 80-89
+B = below 80
 ```
 
-**Teacher visibility:**
-- Teacher analytics page shows per-student, per-level: score, grade, attempts, time
-- Class average per level shown in teacher dashboard
+The grade label is computed from `finalScore` in the progress payload. It is not currently stored as a separate database column.
 
-**Student visibility:**
-- After level completion, show score breakdown: base, deductions, final grade
-- Map node shows grade badge (S/A/B/C) once completed
+Student visibility:
 
-**Notes:**
-- Grading should not block the learning loop — a C is still a pass
-- Teacher can optionally configure the par time per level (ties into Requirement 1)
-- Score is saved once on first completion; retrying a level does not overwrite the grade (or optionally allows "best score" tracking)
+- Completion modal uses the backend-saved score and grade.
+- Dashboard and map display saved level scores.
 
----
+Teacher visibility:
 
-## Implementation Priority (Suggested)
+- Teacher student views show per-level scores, attempts, time spent, and completion data.
 
-| Priority | Requirement | Effort |
+Remaining gaps:
+
+- No hint penalty is saved yet.
+- No grade database column exists; grade is derived from score.
+- Score breakdown is not yet shown in detail.
+- Retrying a completed level does not overwrite the first saved score.
+
+## Current Implementation Priority
+
+| Priority | Work Item | Reason |
 |---|---|---|
-| 1 | Grading system (Req 4) | Medium |
-| 2 | Teacher-editable lesson content (Req 1) | Medium–High |
-| 3 | Full code execution / command queue (Req 3) | High |
-| 4 | Teacher-editable boss levels (Req 2) | High (stretch goal) |
+| 1 | Finish Lesson 1 levels 6-10 | Gives the project one complete playable module |
+| 2 | Add demo/manual QA checklist | Helps capstone presentation and regression checks |
+| 3 | Add automated API tests | Protects auth, progress, classroom, and teacher flows |
+| 4 | Add score breakdown UI | Makes grading easier for students and teachers to understand |
+| 5 | Add command-queue execution | Makes coding feel more directly game-controlled |
+| 6 | Add boss-level editing | Stretch goal after boss level defaults exist |
 
----
+## Notes For Panel Explanation
 
-*This document captures panel-requested features for the SharpRunner capstone.*
-*Use as a reference when planning sprints or responding to panel questions.*
+SharpRunner currently prioritizes a stable classroom-based learning loop:
+
+1. Student joins a class.
+2. Student plays a level.
+3. Backend records attempts, time, completion, score, and grade.
+4. Student sees progress and score.
+5. Teacher sees class and student performance.
+6. Admin manages system users.
+
+The next strongest improvement is completing the remaining Lesson 1 levels so the app can demonstrate a full start-to-finish learning chapter.

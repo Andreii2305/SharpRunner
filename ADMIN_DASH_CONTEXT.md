@@ -1,96 +1,67 @@
-# Admin Dash Context (Checkpoint)
+# Admin Dash Context
 
-Last updated: 2026-03-20
+Last updated: 2026-05-27
 
-## What We Completed
+## Current Status
 
-- Added role-aware and status-aware user management for admin.
-- Added user `status` support (`active` / `inactive`) in backend model and schema normalization.
-- Added admin activity log model and logging service for real dashboard logs.
-- Reworked admin APIs to return real user status and real logs (no fake/random frontend values).
-- Updated admin dashboard UI to the Figma-style layout while using live backend data.
-- Wired dashboard actions:
-  - create teacher account
-  - activate/deactivate non-admin users
-  - refresh users/logs from backend
-- Added login guard: inactive users cannot sign in.
+The admin dashboard is connected to live backend data and supports user management, teacher creation, account activation/deactivation, and activity logs.
 
-## Backend Changes
+## Completed
 
-### Models
+- Role-aware and status-aware user management.
+- User `status` support with `active` and `inactive`.
+- Admin activity log model and logging service.
+- Admin APIs return real user status and real activity logs.
+- Admin dashboard UI uses live backend data.
+- Admin can create teacher accounts.
+- Admin can activate or deactivate non-admin users.
+- Inactive users are blocked from login.
+- Admin invite registration exists through the developer invite flow.
+
+## Backend Files
 
 - `backend/src/models/User.js`
-  - Added `status` field with allowed values: `active`, `inactive`.
-- `backend/src/models/AdminActivityLog.js` (new)
-  - Stores actor, target user, role, activity, details, status, timestamp.
-- `backend/src/models/index.js`
-  - Registered `AdminActivityLog` model and associations.
-
-### Services
-
-- `backend/src/services/userRoleSchemaService.js`
-  - Added `ensureUserStatusColumn()` plus status cleanup/normalization.
-- `backend/src/services/adminActivityLogService.js` (new)
-  - Helper to write admin activity logs safely.
-
-### Routes
-
+- `backend/src/models/AdminActivityLog.js`
+- `backend/src/models/AdminInvite.js`
 - `backend/src/routes/admin.js`
-  - `GET /api/admin/users` now includes real `status`.
-  - `GET /api/admin/logs?limit=20` returns real admin activity logs.
-  - `PATCH /api/admin/users/:id/status` updates account status.
-  - `POST /api/admin/users/teacher` now writes a log entry.
 - `backend/src/routes/auth.js`
-  - Blocks login for inactive accounts.
-  - Auth responses now include `status`.
+- `backend/src/services/userRoleSchemaService.js`
+- `backend/src/services/adminActivityLogService.js`
 
-### Server Startup
-
-- `backend/src/server.js`
-  - Runs both:
-    - `ensureUserRoleColumn()`
-    - `ensureUserStatusColumn()`
-
-## Frontend Changes
+## Frontend Files
 
 - `frontend/src/pages/admin/AdminDashboardPage.jsx`
-  - Uses real API data:
-    - users from `GET /api/admin/users`
-    - logs from `GET /api/admin/logs`
-  - Removed hardcoded/fake activity/status generation.
-  - User action buttons now call `PATCH /api/admin/users/:id/status`.
 - `frontend/src/pages/admin/AdminDashboardPage.module.css`
-  - Updated styling and action button states to match current admin UI design.
+- `frontend/src/pages/auth/AdminInviteRegisterPage.jsx`
+- `frontend/src/pages/developer/DeveloperPage.jsx`
 
-## Current API Contract (Admin)
+## Current API Contract
 
 - `GET /api/admin/users`
-  - Returns: `id, firstName, lastName, username, email, role, status, createdAt, updatedAt`
+  - Returns users with `id`, `firstName`, `lastName`, `username`, `email`, `role`, `status`, `createdAt`, and `updatedAt`.
 - `GET /api/admin/logs?limit=20`
   - Returns recent admin activity logs.
 - `POST /api/admin/users/teacher`
-  - Creates teacher account (status defaults to active).
+  - Creates a teacher account.
 - `PATCH /api/admin/users/:id/status`
   - Body: `{ "status": "active" | "inactive" }`
   - Prevents admin accounts from being set inactive.
+- `POST /api/auth/bootstrap-admin`
+  - Creates the first admin when `ADMIN_SETUP_KEY` is configured and no admin exists.
+- `POST /api/auth/register-admin-invite`
+  - Creates an admin account with a valid developer-generated invite.
 
-## Known Gaps / TODO (Before or During Teacher Dash)
+## Remaining Gaps
 
-1. Add persistent classroom data model (teacher-owned classrooms, class code, membership).
-2. Add teacher-focused routes:
-   - create/manage classroom
-   - view classroom roster
-   - view student progress/analytics per classroom
-3. Add teacher dashboard UI pages and protected routing.
-4. Add pagination/sorting in admin users/logs APIs for larger datasets.
-5. Add optional user audit actions in admin:
+1. Add pagination to admin users and logs.
+2. Add optional admin actions:
    - reset password
-   - role update
-   - soft delete / archive
-6. Add seed/demo logs for local testing so log panel is not empty on fresh DB.
-7. Add API-level tests for admin routes (`users`, `logs`, `status patch`).
+   - update role
+   - archive/delete user
+3. Add stronger audit coverage for more admin actions.
+4. Add API tests for admin users, logs, teacher creation, and status changes.
+5. Add rate limiting or other hardening for production auth endpoints.
 
-## Next Focus
+## Suggested Next Focus
 
-- Proceed with Teacher Dash implementation.
-- Keep Admin Dash stable; only return for bug fixes or pagination improvements.
+Admin is stable enough for the current capstone loop. Return to it after completing the playable Lesson 1 path, unless the panel specifically asks for more admin controls.

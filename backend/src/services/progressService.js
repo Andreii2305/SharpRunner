@@ -41,6 +41,7 @@ const normalizeLevelRows = (rows) =>
     .filter((row) => DEFAULT_LEVEL_KEY_SET.has(row.levelKey))
     .map((row) => {
       const parsed = parseLevelKey(row.levelKey);
+      const finalScore = row.finalScore ?? null;
 
       return {
         id: row.id,
@@ -53,7 +54,10 @@ const normalizeLevelRows = (rows) =>
         progressPercent: row.progressPercent,
         isCompleted: row.isCompleted,
         completedAt: row.completedAt,
-        finalScore: row.finalScore ?? null,
+        attemptCount: row.attemptCount ?? 0,
+        timeSpentSeconds: row.timeSpentSeconds ?? 0,
+        finalScore,
+        grade: computeGradeFromScore(finalScore),
       };
     });
 
@@ -263,6 +267,14 @@ const computeFinalScore = ({
   return Math.max(MIN_SCORE, Math.round(score * 100) / 100);
 };
 
+const computeGradeFromScore = (score) => {
+  const parsed = Number(score);
+  if (!Number.isFinite(parsed)) return null;
+  if (parsed >= 90) return "S";
+  if (parsed >= 80) return "A";
+  return "B";
+};
+
 module.exports = {
   DEFAULT_LEVEL_PROGRESS,
   ensureProgressRowsForUser,
@@ -270,4 +282,5 @@ module.exports = {
   computeXpFromTotalPercent,
   getParTimeSeconds,
   computeFinalScore,
+  computeGradeFromScore,
 };

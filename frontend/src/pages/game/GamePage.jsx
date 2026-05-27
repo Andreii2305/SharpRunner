@@ -44,6 +44,9 @@ const shouldStartWithDialogue = (levelConfig) => {
 const isCodeLockedByDialogue = (levelConfig) =>
   Boolean(levelConfig?.lockCodeUntilDialogueDone && hasIntroDialogue(levelConfig));
 
+const getCompletedLevelResult = (progressPayload, levelKey) =>
+  progressPayload?.levels?.find((level) => level.levelKey === levelKey) ?? null;
+
 function GamePage() {
   const navigate = useNavigate();
   const { levelNumber } = useParams();
@@ -80,15 +83,6 @@ function GamePage() {
   const [result, setResult] = useState(getIdleResult(levelConfig));
   const [mergedLevelConfig, setMergedLevelConfig] = useState(levelConfig);
   const [gradeModal, setGradeModal] = useState(null);
-
-  const computeGrade = useCallback((attempts, timeSeconds, parSeconds) => {
-    let score = 100 - attempts * 5;
-    const overtimeMins = Math.max(0, timeSeconds - parSeconds) / 60;
-    score -= overtimeMins * 0.05;
-    score = Math.max(75, Math.round(score));
-    const grade = score >= 90 ? "S" : score >= 80 ? "A" : "B";
-    return { score, grade };
-  }, []);
 
   const clearNextLevelTimer = useCallback(() => {
     if (!nextLevelTimerRef.current) {
@@ -293,7 +287,7 @@ function GamePage() {
 
   const markLevelAsCompleted = useCallback(async () => {
     if (!levelConfig?.progressKey) {
-      return false;
+      return null;
     }
 
     if (!completionRequestRef.current) {
@@ -303,14 +297,14 @@ function GamePage() {
           { progressPercent: 100, isCompleted: true },
           { headers: getAuthHeaders() },
         )
-        .then(() => true)
+        .then((response) => response.data)
         .catch((error) => {
           console.error(
             `Failed to save progress for level ${levelConfig.levelNumber}`,
             error,
           );
           completionRequestRef.current = null;
-          return false;
+          return null;
         });
     }
 
@@ -340,8 +334,8 @@ function GamePage() {
           }
           setStartedAt(null);
           void (async () => {
-            const didSaveProgress = await markLevelAsCompleted();
-            if (!didSaveProgress) {
+            const progressPayload = await markLevelAsCompleted();
+            if (!progressPayload) {
               setResult({
                 type: "error",
                 message:
@@ -350,16 +344,26 @@ function GamePage() {
               return;
             }
 
-            const { score, grade } = computeGrade(
-              failedAttemptsRef.current,
-              elapsedSecondsRef.current,
-              levelConfig?.parTimeSeconds ?? 900,
+            const completedLevel = getCompletedLevelResult(
+              progressPayload,
+              levelConfig.progressKey,
             );
+            const savedScore = Number(completedLevel?.finalScore);
+
+            if (!completedLevel || !Number.isFinite(savedScore)) {
+              setResult({
+                type: "error",
+                message:
+                  "Level cleared, but the saved grade could not be loaded. Refresh the page to confirm progress.",
+              });
+              return;
+            }
+
             setGradeModal({
-              score,
-              grade,
-              attempts: failedAttemptsRef.current,
-              timeSeconds: elapsedSecondsRef.current,
+              score: savedScore,
+              grade: completedLevel?.grade ?? "B",
+              attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
+              timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
             });
           })();
         }
@@ -399,7 +403,7 @@ function GamePage() {
       gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
       clearNextLevelTimer();
     };
-  }, [clearNextLevelTimer, levelConfig, markLevelAsCompleted, navigate]);
+  }, [clearNextLevelTimer, levelConfig, markLevelAsCompleted]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {

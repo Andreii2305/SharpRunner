@@ -499,6 +499,7 @@ function LessonMap({
   const stage2Done = stage2Nodes.filter((n) => n.status === "completed").length;
   const stage2Locked = stage2Nodes.every((n) => n.status === "locked");
   const totalDone = stage1Done + stage2Done;
+  const totalLevelsLabel = toRoman(orderedNodes.length) || orderedNodes.length;
 
   /* Knight path — completed nodes → current node.
      Depends on a serialized signature so identical paths share a reference
@@ -564,8 +565,8 @@ function LessonMap({
             {!backgroundImageSrc && <CastleHero />}
             <div className={styles.heroBadge}>⚔ Region I</div>
             <div className={styles.heroTitleBlock}>
-              <div className={styles.heroName}>The Castle of Syntax</div>
-              <div className={styles.heroSub}>Variables &amp; Data Types</div>
+              <div className={styles.heroName}>{lessonTitle}</div>
+              <div className={styles.heroSub}>{subtitle}</div>
             </div>
           </div>
 
@@ -584,7 +585,7 @@ function LessonMap({
                 {Math.round(progressPercent)}%
               </div>
               <div className={styles.progressSub}>
-                {toRoman(totalDone) || "0"} of X levels
+                {toRoman(totalDone) || "0"} of {totalLevelsLabel} levels
               </div>
             </div>
           </div>

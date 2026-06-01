@@ -125,10 +125,15 @@ DB_HOST=localhost
 DB_PORT=5432
 JWT_SECRET=your_jwt_secret
 FRONTEND_URL=http://localhost:5173
+FRONTEND_URLS=http://localhost:5173,http://127.0.0.1:5173
 BACKEND_URL=http://localhost:5000
 ADMIN_SETUP_KEY=your_admin_setup_key
 DEVELOPER_SETUP_KEY=your_developer_setup_key
 ```
+
+For local frontend development, `frontend/.env.development` points to
+`http://localhost:5000`. Production still uses `frontend/.env.production`, which
+points to the Railway backend.
 
 Optional Google OAuth settings:
 
@@ -146,7 +151,7 @@ npm --prefix backend run dev
 Run the frontend:
 
 ```bash
-npm --prefix frontend run dev
+npm --prefix frontend run dev:local
 ```
 
 Build the frontend:

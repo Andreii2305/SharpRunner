@@ -10,6 +10,8 @@ The current backend progress model still supports the older 4 lessons with 10 le
 
 A new curriculum/story plan is now being reviewed in `NEW_CURRICULUM_STORY_PLAN.md`. The proposed direction keeps the first 5 playable levels as a tutorial/prologue, then adds a 25-level Filipino myth horror main story focused on Arrays, Functions/Methods, and Functions/Methods with Arrays.
 
+The code migration path for that curriculum pivot is documented in `CURRICULUM_MIGRATION_PLAN.md`.
+
 ## Lesson Structure
 
 - Lesson 1: Variables and Data Types

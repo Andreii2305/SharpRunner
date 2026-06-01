@@ -11,6 +11,9 @@ const authMiddleware = require("../middleware/authMiddleware");
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const isGoogleAuthConfigured = Boolean(
+  process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+);
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
@@ -22,59 +25,61 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
-passport.use(new GoogleStrategy(
-  {
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: `${BACKEND_URL}/api/auth/google/callback`,
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
-      const googleId = profile.id;
-      const email = profile.emails?.[0]?.value ?? null;
-      const firstName = profile.name?.givenName || profile.displayName?.split(" ")[0] || "User";
-      const lastName = profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || "";
+if (isGoogleAuthConfigured) {
+  passport.use(new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: `${BACKEND_URL}/api/auth/google/callback`,
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        const googleId = profile.id;
+        const email = profile.emails?.[0]?.value ?? null;
+        const firstName = profile.name?.givenName || profile.displayName?.split(" ")[0] || "User";
+        const lastName = profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || "";
 
-      let user = await User.findOne({ where: { googleId } });
+        let user = await User.findOne({ where: { googleId } });
 
-      if (!user && email) {
-        user = await User.findOne({ where: { email } });
-        if (user) {
-          user.googleId = googleId;
-          await user.save();
+        if (!user && email) {
+          user = await User.findOne({ where: { email } });
+          if (user) {
+            user.googleId = googleId;
+            await user.save();
+          }
         }
-      }
 
-      if (!user) {
-        const base = email ? email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "") : `user${Date.now()}`;
-        let username = base;
-        let counter = 1;
-        while (await User.findOne({ where: { username } })) {
-          username = `${base}${counter++}`;
+        if (!user) {
+          const base = email ? email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "") : `user${Date.now()}`;
+          let username = base;
+          let counter = 1;
+          while (await User.findOne({ where: { username } })) {
+            username = `${base}${counter++}`;
+          }
+          user = await User.create({
+            firstName,
+            lastName,
+            username,
+            email: email || `${googleId}@googleauth.com`,
+            googleId,
+            password: null,
+            role: "student",
+            status: "active",
+          });
+          await ensureProgressRowsForUser(user.id);
         }
-        user = await User.create({
-          firstName,
-          lastName,
-          username,
-          email: email || `${googleId}@googleauth.com`,
-          googleId,
-          password: null,
-          role: "student",
-          status: "active",
-        });
-        await ensureProgressRowsForUser(user.id);
+
+        if (user.status === "inactive") return done(null, false);
+
+        user.lastLoginAt = new Date();
+        await user.save();
+        return done(null, user);
+      } catch (err) {
+        return done(err);
       }
-
-      if (user.status === "inactive") return done(null, false);
-
-      user.lastLoginAt = new Date();
-      await user.save();
-      return done(null, user);
-    } catch (err) {
-      return done(err);
     }
-  }
-));
+  ));
+}
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -334,19 +339,29 @@ router.post("/register-admin-invite", async (req, res) => {
   }
 });
 
-router.get("/google",
-  passport.authenticate("google", {
+router.get("/google", (req, res, next) => {
+  if (!isGoogleAuthConfigured) {
+    return res.status(503).json({
+      message: "Google Sign-In is not configured on this server.",
+    });
+  }
+
+  return passport.authenticate("google", {
     scope: ["openid", "email", "profile"],
     prompt: "select_account",
-  })
-);
+  })(req, res, next);
+});
 
-router.get("/google/callback",
-  passport.authenticate("google", {
+router.get("/google/callback", (req, res, next) => {
+  if (!isGoogleAuthConfigured) {
+    return res.redirect(`${FRONTEND_URL}/login?error=google_auth_not_configured`);
+  }
+
+  return passport.authenticate("google", {
     failureRedirect: `${FRONTEND_URL}/login?error=google_auth_failed`,
     session: false,
-  }),
-  (req, res) => {
+  })(req, res, next);
+}, (req, res) => {
     const token = createAuthToken(req.user.id, req.user.role);
     res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
   }

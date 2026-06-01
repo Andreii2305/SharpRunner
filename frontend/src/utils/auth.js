@@ -4,9 +4,13 @@ const USER_KEY = "user";
 const normalizeRole = (role) =>
   typeof role === "string" ? role.trim().toLowerCase() : "";
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+  (import.meta.env.VITE_API_BASE_URL || "http://localhost:5000").replace(
+    /\/$/,
+    ""
+  );
 
-export const buildApiUrl = (path) => `${API_BASE_URL}${path}`;
+export const buildApiUrl = (path) =>
+  `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 

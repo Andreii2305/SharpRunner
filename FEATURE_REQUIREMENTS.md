@@ -10,6 +10,8 @@ This document tracks the main panel-requested features and their current impleme
 
 The project has a new proposed curriculum and story direction documented in `NEW_CURRICULUM_STORY_PLAN.md`.
 
+The technical migration plan is documented in `CURRICULUM_MIGRATION_PLAN.md`.
+
 The current plan keeps the first 5 implemented levels as a tutorial/prologue, then introduces a 25-level Filipino myth horror main story covering:
 
 - Arrays

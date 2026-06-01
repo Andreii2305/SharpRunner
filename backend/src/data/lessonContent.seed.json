@@ -1,272 +1,224 @@
 {
-  "version": 1,
-  "updatedAt": "2026-03-16",
+  "version": 2,
+  "updatedAt": "2026-06-01",
   "lessons": [
     {
-      "lessonKey": "variables-and-data-types",
-      "lessonTitle": "Variables and Data Types",
-      "theme": "The Castle of Syntax",
+      "lessonKey": "tutorial",
+      "lessonTitle": "Tutorial: First Compile Trial",
+      "theme": "First Compile Trial",
+      "description": "Kai completes five onboarding levels before the Filipino myth horror journey begins.",
       "levels": [
         {
           "levelNumber": 1,
           "title": "The Awakening",
-          "objective": "User declares int steps to control distance.",
-          "expectedOutput": "Hero walks toward portal. Correct distance clears the level."
+          "objective": "Follow the first movement and code-input prompt.",
+          "expectedOutput": "Kai reaches the first checkpoint and the next tutorial node unlocks."
         },
         {
           "levelNumber": 2,
           "title": "What Is Your Name?",
-          "objective": "User declares string myName = \"Kai\".",
-          "expectedOutput": "NPC dialogue updates with hero name and checkpoint opens."
+          "objective": "Complete the name/input prompt correctly.",
+          "expectedOutput": "The dialogue accepts Kai's identity and opens the next route."
         },
         {
           "levelNumber": 3,
           "title": "Voices of the Village",
-          "objective": "User declares required dialogue strings.",
-          "expectedOutput": "Conversation cutscene completes and route unlocks."
+          "objective": "Use the required text values for the dialogue trial.",
+          "expectedOutput": "The conversation completes and Kai can continue."
         },
         {
           "levelNumber": 4,
           "title": "The Coin Keeper",
-          "objective": "User declares int value for coin count.",
-          "expectedOutput": "Bridge toll is accepted and bridge appears."
+          "objective": "Provide the correct whole-number value for the toll event.",
+          "expectedOutput": "The toll is accepted and the obstacle clears."
         },
         {
           "levelNumber": 5,
           "title": "Potion Measure",
-          "objective": "User declares float or double value.",
-          "expectedOutput": "Potion event succeeds and obstacle clears."
-        },
-        {
-          "levelNumber": 6,
-          "title": "Rune Letter",
-          "objective": "User declares a char value for rune key.",
-          "expectedOutput": "Matching rune activates and door opens."
-        },
-        {
-          "levelNumber": 7,
-          "title": "Oath of Truth",
-          "objective": "User declares bool value for gate check.",
-          "expectedOutput": "Guard check passes or fails based on boolean."
-        },
-        {
-          "levelNumber": 8,
-          "title": "Pack the Journey",
-          "objective": "User declares mixed required types in one script.",
-          "expectedOutput": "Inventory check passes and path unlocks."
-        },
-        {
-          "levelNumber": 9,
-          "title": "Gate of Exact Declarations",
-          "objective": "User provides strict exact declarations only.",
-          "expectedOutput": "Trap corridor is disabled."
-        },
-        {
-          "levelNumber": 10,
-          "title": "Boss: Archivist of Types",
-          "objective": "User fixes corrupted type declarations.",
-          "expectedOutput": "Archive is restored and Lesson 2 unlocks."
+          "objective": "Provide the correct decimal value for the potion event.",
+          "expectedOutput": "The potion activates and the main curriculum unlocks."
         }
       ]
     },
     {
-      "lessonKey": "operators",
-      "lessonTitle": "Operators",
-      "theme": "The Forge of Symbols",
+      "lessonKey": "arrays",
+      "lessonTitle": "Arrays",
+      "theme": "Barangay Malumay",
+      "description": "Kai searches a haunted barangay for coded clues while learning arrays.",
       "levels": [
         {
           "levelNumber": 1,
-          "title": "Steps and Stones",
-          "objective": "User uses + and - to compute target steps.",
-          "expectedOutput": "Hero moves exact tiles to safe platform."
+          "title": "Lantern Row",
+          "objective": "Declare an array that stores a fixed set of lantern brightness values.",
+          "expectedOutput": "The correct lanterns light up and the street checkpoint opens."
         },
         {
           "levelNumber": 2,
-          "title": "Forge Multipliers",
-          "objective": "User uses *, /, and % in required expression.",
-          "expectedOutput": "Key mechanism accepts result and door opens."
+          "title": "Sari-Sari Shelf",
+          "objective": "Read values from an array by index to choose the requested item.",
+          "expectedOutput": "Kai collects the correct item and avoids the wrong shelf trigger."
         },
         {
           "levelNumber": 3,
-          "title": "Order of Power",
-          "objective": "User solves precedence expression correctly.",
-          "expectedOutput": "Correct platform rises."
+          "title": "Bamboo Markers",
+          "objective": "Create and update a one-dimensional array of path markers.",
+          "expectedOutput": "The marked platforms appear in the correct order."
         },
         {
           "levelNumber": 4,
-          "title": "Battle Math",
-          "objective": "User computes attack and defense formula.",
-          "expectedOutput": "Combat check passes."
+          "title": "River Stones",
+          "objective": "Use a one-dimensional array to select safe stepping stones.",
+          "expectedOutput": "Safe stones stay solid and Kai crosses the river."
         },
         {
           "levelNumber": 5,
-          "title": "Experience Burst",
-          "objective": "User combines arithmetic expressions for target value.",
-          "expectedOutput": "Experience crystal charges."
+          "title": "Window Grid",
+          "objective": "Declare a two-dimensional array representing lit and unlit windows.",
+          "expectedOutput": "The correct window pattern reveals the hidden route."
         },
         {
           "levelNumber": 6,
-          "title": "Eyes of Comparison",
-          "objective": "User applies ==, !=, >, < operators.",
-          "expectedOutput": "Scanner validates target object."
+          "title": "Cave Tiles",
+          "objective": "Read a two-dimensional array by row and column.",
+          "expectedOutput": "Kai lands on the safe tile and the cave path extends."
         },
         {
           "levelNumber": 7,
-          "title": "Threshold Trial",
-          "objective": "User applies >= and <= in gate rule.",
-          "expectedOutput": "Checkpoint opens only on valid threshold."
+          "title": "Firefly Trail",
+          "objective": "Traverse a one-dimensional array to collect every required firefly.",
+          "expectedOutput": "All fireflies gather into a guide light."
         },
         {
           "levelNumber": 8,
-          "title": "Operator Relay",
-          "objective": "User chains arithmetic and comparison operators.",
-          "expectedOutput": "Relay puzzle completes."
-        },
-        {
-          "levelNumber": 9,
-          "title": "Arena Calculator",
-          "objective": "User computes wave values under constraints.",
-          "expectedOutput": "Mini arena clears."
-        },
-        {
-          "levelNumber": 10,
-          "title": "Boss: Iron Colossus",
-          "objective": "User solves final operator logic.",
-          "expectedOutput": "Armor core collapses and Lesson 3 unlocks."
+          "title": "Aswang Patrol",
+          "objective": "Traverse an array and count matching danger markers.",
+          "expectedOutput": "The patrol route is predicted and Kai slips past safely."
         }
       ]
     },
     {
-      "lessonKey": "conditional-statements",
-      "lessonTitle": "Conditional Statements",
-      "theme": "The Branching Keep",
+      "lessonKey": "functions",
+      "lessonTitle": "Functions and Methods",
+      "theme": "Kapre's Trail",
+      "description": "Kai learns reusable methods while escaping deeper into a haunted forest.",
       "levels": [
         {
           "levelNumber": 1,
-          "title": "Two Roads",
-          "objective": "User writes basic if/else branch.",
-          "expectedOutput": "Hero takes the safe route."
+          "title": "Call the Guide",
+          "objective": "Define and call a simple method.",
+          "expectedOutput": "The guide signal appears and the first forest gate opens."
         },
         {
           "levelNumber": 2,
-          "title": "Night Watch",
-          "objective": "User writes guard condition check.",
-          "expectedOutput": "Guard gate opens on correct branch."
+          "title": "Repeat the Chant",
+          "objective": "Call a method multiple times in the required order.",
+          "expectedOutput": "The chant stabilizes the platforms."
         },
         {
           "levelNumber": 3,
-          "title": "Password at Dawn",
-          "objective": "User branches on input variable.",
-          "expectedOutput": "Correct phrase unlocks gate."
+          "title": "Light Without Return",
+          "objective": "Write a method with no parameters and no return value.",
+          "expectedOutput": "A lamp turns on and clears a dark section."
         },
         {
           "levelNumber": 4,
-          "title": "Weight of the Bridge",
-          "objective": "User uses threshold condition.",
-          "expectedOutput": "Bridge stability event resolves."
+          "title": "Bell Without Return",
+          "objective": "Use a no-parameter void method to trigger an action.",
+          "expectedOutput": "The bell distracts the creature patrol."
         },
         {
           "levelNumber": 5,
-          "title": "Hall of Many Doors",
-          "objective": "User uses if / else if / else.",
-          "expectedOutput": "Correct door opens."
+          "title": "Find the Charm",
+          "objective": "Write a no-parameter method that returns a value.",
+          "expectedOutput": "The returned charm code unlocks a sealed gate."
         },
         {
           "levelNumber": 6,
-          "title": "Nested Decisions",
-          "objective": "User creates nested branch logic.",
-          "expectedOutput": "Dual-condition checkpoint passes."
+          "title": "Measure the Shadow",
+          "objective": "Return a calculated value from a no-parameter method.",
+          "expectedOutput": "The shadow length is accepted and the bridge appears."
         },
         {
           "levelNumber": 7,
-          "title": "Merchant's Deal",
-          "objective": "User chooses reward or penalty branch.",
-          "expectedOutput": "Inventory and path vary by branch."
+          "title": "Pass the Offering",
+          "objective": "Write a method with parameters and no return value.",
+          "expectedOutput": "The offering is placed correctly and the path calms."
         },
         {
           "levelNumber": 8,
-          "title": "Edge of Equality",
-          "objective": "User handles equality boundary case.",
-          "expectedOutput": "Trap is avoided when boundary is met."
+          "title": "Tune the Gongs",
+          "objective": "Use parameters to trigger different actions without returning data.",
+          "expectedOutput": "The correct gong sequence disables the hazard."
         },
         {
           "levelNumber": 9,
-          "title": "Judgment Tower",
-          "objective": "User combines multi-condition chains.",
-          "expectedOutput": "Tower trial completes."
+          "title": "Compute the Ward",
+          "objective": "Write a method with parameters and a return value.",
+          "expectedOutput": "The returned ward strength blocks the next attack."
         },
         {
           "levelNumber": 10,
-          "title": "Boss: Judge of Branches",
-          "objective": "User solves full branching script.",
-          "expectedOutput": "Boss trial clears and Lesson 4 unlocks."
+          "title": "Trade for Passage",
+          "objective": "Return a result based on multiple parameter values.",
+          "expectedOutput": "The trade total is correct and Kai receives the pass."
+        },
+        {
+          "levelNumber": 11,
+          "title": "Echo Steps",
+          "objective": "Write a recursive method with a valid base case.",
+          "expectedOutput": "The echo platforms count down and stop safely."
+        },
+        {
+          "levelNumber": 12,
+          "title": "Kapre's Last Smoke",
+          "objective": "Use recursion to solve the final forest sequence.",
+          "expectedOutput": "The smoke clears and Kai reaches the final array-method area."
         }
       ]
     },
     {
-      "lessonKey": "loops",
-      "lessonTitle": "Loops",
-      "theme": "The Spiral Citadel",
+      "lessonKey": "functions-with-arrays",
+      "lessonTitle": "Functions with Arrays",
+      "theme": "Tikbalang Crossing",
+      "description": "Kai passes arrays into methods to solve the last route before the eclipse.",
       "levels": [
         {
           "levelNumber": 1,
-          "title": "March Pattern",
-          "objective": "User writes for loop for repeated movement.",
-          "expectedOutput": "Hero walks repeated fixed steps."
+          "title": "Bundle the Clues",
+          "objective": "Pass a one-dimensional array into a method.",
+          "expectedOutput": "The method reads the clue bundle and marks the safe route."
         },
         {
           "levelNumber": 2,
-          "title": "Endless Hall",
-          "objective": "User writes while loop with valid stop condition.",
-          "expectedOutput": "Hero runs until marker is reached."
+          "title": "Count the Charms",
+          "objective": "Return a result from a method that processes a one-dimensional array.",
+          "expectedOutput": "The correct charm count unlocks the crossing."
         },
         {
           "levelNumber": 3,
-          "title": "Last Checkpoint",
-          "objective": "User writes do-while for at-least-once action.",
-          "expectedOutput": "Switch sequence succeeds."
+          "title": "Map the Crossing",
+          "objective": "Pass a two-dimensional array into a method.",
+          "expectedOutput": "The method identifies the safe row and column path."
         },
         {
           "levelNumber": 4,
-          "title": "Crystal Collector",
-          "objective": "User loops item collection count.",
-          "expectedOutput": "Required crystals are gathered."
-        },
+          "title": "Seal the Grid",
+          "objective": "Return a result from a method that processes a two-dimensional array.",
+          "expectedOutput": "The grid seal activates and the final level unlocks."
+        }
+      ]
+    },
+    {
+      "lessonKey": "final",
+      "lessonTitle": "Final: Bakunawa Eclipse",
+      "theme": "Bakunawa Eclipse",
+      "description": "Kai combines all lessons to stop the eclipse.",
+      "levels": [
         {
-          "levelNumber": 5,
-          "title": "Wave Runner",
-          "objective": "User writes nested loops.",
-          "expectedOutput": "Wave puzzle resolves."
-        },
-        {
-          "levelNumber": 6,
-          "title": "Method March",
-          "objective": "User loops predefined walk() and run() methods.",
-          "expectedOutput": "Distance matches loop execution."
-        },
-        {
-          "levelNumber": 7,
-          "title": "Directional Sprint",
-          "objective": "User passes direction argument in run().",
-          "expectedOutput": "Character path follows direction argument."
-        },
-        {
-          "levelNumber": 8,
-          "title": "Break the Trap",
-          "objective": "User uses break and continue correctly.",
-          "expectedOutput": "Hazard route is optimized safely."
-        },
-        {
-          "levelNumber": 9,
-          "title": "Efficiency Trial",
-          "objective": "User minimizes loop operations for target.",
-          "expectedOutput": "Speed challenge is cleared."
-        },
-        {
-          "levelNumber": 10,
-          "title": "Final Boss: The Null King",
-          "objective": "User combines variables, operators, conditionals, and loops.",
-          "expectedOutput": "Compiler Core is restored and ending unlocks."
+          "levelNumber": 1,
+          "title": "Bakunawa Eclipse",
+          "objective": "Combine arrays, traversal, methods, parameters, return values, and recursion.",
+          "expectedOutput": "The final seal is restored and the ending sequence unlocks."
         }
       ]
     }

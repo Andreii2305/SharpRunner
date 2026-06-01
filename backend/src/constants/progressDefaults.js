@@ -1,44 +1,47 @@
-const DEFAULT_LEVELS_PER_LESSON = 10;
-
 const LESSON_DEFINITIONS = [
   {
-    lessonKey: "variables-and-data-types",
-    lessonTitle: "Variables and Data Types",
-    totalLevels: DEFAULT_LEVELS_PER_LESSON,
+    lessonKey: "tutorial",
+    lessonTitle: "Tutorial: First Compile Trial",
+    totalLevels: 5,
   },
   {
-    lessonKey: "operators",
-    lessonTitle: "Operators",
-    totalLevels: DEFAULT_LEVELS_PER_LESSON,
+    lessonKey: "arrays",
+    lessonTitle: "Arrays",
+    totalLevels: 8,
   },
   {
-    lessonKey: "conditional-statements",
-    lessonTitle: "Conditional Statements",
-    totalLevels: DEFAULT_LEVELS_PER_LESSON,
+    lessonKey: "functions",
+    lessonTitle: "Functions and Methods",
+    totalLevels: 12,
   },
   {
-    lessonKey: "loops",
-    lessonTitle: "Loops",
-    totalLevels: DEFAULT_LEVELS_PER_LESSON,
+    lessonKey: "functions-with-arrays",
+    lessonTitle: "Functions with Arrays",
+    totalLevels: 4,
+  },
+  {
+    lessonKey: "final",
+    lessonTitle: "Final: Bakunawa Eclipse",
+    totalLevels: 1,
   },
 ];
 
-const DEFAULT_LEVEL_PROGRESS = LESSON_DEFINITIONS.flatMap(
-  (lesson, lessonIndex) =>
-    Array.from({ length: lesson.totalLevels }, (_, levelIndex) => {
-      const levelNumber = levelIndex + 1;
-      const orderIndex = lessonIndex * DEFAULT_LEVELS_PER_LESSON + levelNumber;
+const DEFAULT_LEVEL_PROGRESS = [];
 
-      return {
-        levelKey: `${lesson.lessonKey}-level-${levelNumber}`,
-        lessonTitle: lesson.lessonTitle,
-        orderIndex,
-      };
-    })
-);
+let orderIndex = 1;
+
+for (const lesson of LESSON_DEFINITIONS) {
+  for (let levelNumber = 1; levelNumber <= lesson.totalLevels; levelNumber += 1) {
+    DEFAULT_LEVEL_PROGRESS.push({
+      levelKey: `${lesson.lessonKey}-level-${levelNumber}`,
+      lessonTitle: lesson.lessonTitle,
+      orderIndex,
+    });
+    orderIndex += 1;
+  }
+}
 
 module.exports = {
-  DEFAULT_LEVELS_PER_LESSON,
   LESSON_DEFINITIONS,
   DEFAULT_LEVEL_PROGRESS,
 };

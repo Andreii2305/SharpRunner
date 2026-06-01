@@ -8,44 +8,54 @@ import styles from "./Dashboard.module.css";
 /* ─── Region config ───────────────────────────────────────────── */
 const REGIONS = [
   {
-    key: "variables-and-data-types",
-    label: "Castle of Syntax",
-    topic: "Variables & Data Types",
+    key: "tutorial",
+    label: "First Compile Trial",
+    topic: "Tutorial",
     accent: "#5f5e5a",
     fill: "#D3D1C7",
-    totalLevels: 10,
+    totalLevels: 5,
     pixelColor: "#888780",
-    letter: "V",
+    letter: "T",
   },
   {
-    key: "operators",
-    label: "Forge of Symbols",
-    topic: "Operators",
+    key: "arrays",
+    label: "Barangay Malumay",
+    topic: "Arrays",
     accent: "#854F0B",
     fill: "#FAC775",
-    totalLevels: 10,
+    totalLevels: 8,
     pixelColor: "#EF9F27",
-    letter: "O",
+    letter: "A",
   },
   {
-    key: "conditional-statements",
-    label: "Branching Keep",
-    topic: "Conditional Statements",
+    key: "functions",
+    label: "Kapre's Trail",
+    topic: "Functions and Methods",
     accent: "#534AB7",
     fill: "#CECBF6",
-    totalLevels: 10,
+    totalLevels: 12,
     pixelColor: "#AFA9EC",
-    letter: "C",
+    letter: "F",
   },
   {
-    key: "loops",
-    label: "Spiral Citadel",
-    topic: "Loops",
+    key: "functions-with-arrays",
+    label: "Tikbalang Crossing",
+    topic: "Functions with Arrays",
     accent: "#185FA5",
     fill: "#B5D4F4",
-    totalLevels: 10,
+    totalLevels: 4,
     pixelColor: "#85B7EB",
-    letter: "L",
+    letter: "FA",
+  },
+  {
+    key: "final",
+    label: "Bakunawa Eclipse",
+    topic: "Final Challenge",
+    accent: "#0F6E56",
+    fill: "#C8EFE2",
+    totalLevels: 1,
+    pixelColor: "#5FC99F",
+    letter: "B",
   },
 ];
 
@@ -554,7 +564,7 @@ function StudentDashboardPage() {
           <StatCard
             label="Overall progress"
             value={`${Math.round(overallPct)}%`}
-            sub={`${totalCleared} of 40 levels done`}
+            sub={`${totalCleared} of 30 levels done`}
           />
           <StatCard
             label="Current level"
@@ -581,7 +591,7 @@ function StudentDashboardPage() {
             <div className={styles.sectionHead}>
               <div className={styles.sectionTitle}>Lesson progress</div>
               <div className={styles.sectionSub}>
-                {totalCleared} / 40 levels
+                {totalCleared} / 30 levels
               </div>
             </div>
 

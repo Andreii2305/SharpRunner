@@ -1,13 +1,13 @@
 const lessonContentSeed = require("../data/lessonContent.seed.json");
 
-const normalizeLesson = (lesson, lessonIndex) => {
+const normalizeLesson = (lesson, startingOrderIndex) => {
   const normalizedLevels = (lesson.levels ?? []).map((level) => {
     const levelNumber = Number(level.levelNumber);
     return {
       ...level,
       levelNumber,
       levelKey: `${lesson.lessonKey}-level-${levelNumber}`,
-      orderIndex: lessonIndex * 10 + levelNumber,
+      orderIndex: startingOrderIndex + levelNumber - 1,
     };
   });
 
@@ -18,7 +18,12 @@ const normalizeLesson = (lesson, lessonIndex) => {
 };
 
 const getLessonContentSeed = () => {
-  const lessons = (lessonContentSeed.lessons ?? []).map(normalizeLesson);
+  let nextOrderIndex = 1;
+  const lessons = (lessonContentSeed.lessons ?? []).map((lesson) => {
+    const normalizedLesson = normalizeLesson(lesson, nextOrderIndex);
+    nextOrderIndex += normalizedLesson.levels.length;
+    return normalizedLesson;
+  });
   return {
     version: lessonContentSeed.version ?? 1,
     updatedAt: lessonContentSeed.updatedAt ?? null,

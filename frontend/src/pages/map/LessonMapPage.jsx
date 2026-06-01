@@ -7,13 +7,13 @@ import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import styles from "./LessonMapPage.module.css";
 import { LESSON_ONE_MAP_CONFIG } from "./lessonOneMapConfig";
 
-const TOTAL_LEVELS = 10;
+const TOTAL_LEVELS = LESSON_ONE_MAP_CONFIG.nodes.length;
 const LEVEL_ONE_BG_SRC = `${import.meta.env.BASE_URL}game/assets/backgrounds/level1_bg.png`;
 
 const LESSON_DETAILS = [
-  "A variable is a named container that stores data so your program can use and change it.",
-  "Data types define what kind of value a variable can hold, like text, whole numbers, decimals, or true/false.",
-  "Choosing the right data type makes your code safer, clearer, and easier to debug.",
+  "These five tutorial levels stay as the playable onboarding chapter.",
+  "Students practice the game loop before the new Arrays, Functions, and Functions with Arrays lessons.",
+  "Completing the tutorial unlocks the first main curriculum section in progress tracking.",
 ];
 
 const buildFallbackLevelRows = () =>

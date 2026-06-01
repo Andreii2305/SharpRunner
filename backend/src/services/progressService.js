@@ -16,6 +16,9 @@ const LESSON_TITLE_BY_KEY = new Map(
 const LESSON_ORDER_BY_KEY = new Map(
   LESSON_DEFINITIONS.map((lesson, index) => [lesson.lessonKey, index])
 );
+const LEVEL_COUNT_BY_LESSON_KEY = new Map(
+  LESSON_DEFINITIONS.map((lesson) => [lesson.lessonKey, lesson.totalLevels])
+);
 
 const parseLevelKey = (levelKey) => {
   const match = LEVEL_KEY_PATTERN.exec(levelKey);
@@ -80,12 +83,24 @@ const computeXpToNextLevel = (xp) => {
 };
 
 const formatCurrentLevelName = (lessonKey, levelNumber) => {
-  const lessonOrder = LESSON_ORDER_BY_KEY.get(lessonKey);
-  if (!Number.isInteger(lessonOrder) || !Number.isInteger(levelNumber)) {
+  if (!lessonKey || !Number.isInteger(levelNumber)) {
     return null;
   }
 
-  return `Level ${lessonOrder + 1}-${levelNumber}`;
+  if (lessonKey === "tutorial") {
+    return `Tutorial ${levelNumber}`;
+  }
+
+  if (lessonKey === "final") {
+    return "Final Challenge";
+  }
+
+  const lessonTitle = LESSON_TITLE_BY_KEY.get(lessonKey);
+  if (!lessonTitle) {
+    return `Level ${levelNumber}`;
+  }
+
+  return `${lessonTitle} ${levelNumber}`;
 };
 
 const ensureProgressRowsForUser = async (userId) => {
@@ -223,22 +238,22 @@ const ATTEMPT_DEDUCTION = 5;
 const DEADLINE_DEDUCTION_PER_DAY = 3;
 const OVERTIME_DEDUCTION_PER_MINUTE = 0.05;
 
-const BOSS_LEVELS = new Set([10, 20, 30, 40]);
-
 const getParTimeSeconds = (globalLevelNumber) => {
-  if (BOSS_LEVELS.has(globalLevelNumber)) return 45 * 60;
-  if (globalLevelNumber <= 5) return 15 * 60;
-  if (
-    (globalLevelNumber >= 6 && globalLevelNumber <= 9) ||
-    (globalLevelNumber >= 11 && globalLevelNumber <= 15)
-  )
-    return 20 * 60;
-  if (
-    (globalLevelNumber >= 16 && globalLevelNumber <= 19) ||
-    (globalLevelNumber >= 21 && globalLevelNumber <= 25)
-  )
-    return 25 * 60;
-  return 30 * 60;
+  const parsed = Number(globalLevelNumber);
+  if (!Number.isFinite(parsed)) return 30 * 60;
+
+  const tutorialEnd = LEVEL_COUNT_BY_LESSON_KEY.get("tutorial") ?? 5;
+  const arraysEnd = tutorialEnd + (LEVEL_COUNT_BY_LESSON_KEY.get("arrays") ?? 8);
+  const functionsEnd =
+    arraysEnd + (LEVEL_COUNT_BY_LESSON_KEY.get("functions") ?? 12);
+  const functionsWithArraysEnd =
+    functionsEnd + (LEVEL_COUNT_BY_LESSON_KEY.get("functions-with-arrays") ?? 4);
+
+  if (parsed <= tutorialEnd) return 15 * 60;
+  if (parsed <= arraysEnd) return 20 * 60;
+  if (parsed <= functionsEnd) return 25 * 60;
+  if (parsed <= functionsWithArraysEnd) return 30 * 60;
+  return 45 * 60;
 };
 
 const computeFinalScore = ({

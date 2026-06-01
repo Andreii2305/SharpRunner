@@ -11,35 +11,43 @@ import { useToast } from "../Toast/ToastProvider.jsx";
 
 const DEFAULT_LESSON_META = [
   {
-    lessonKey: "variables-and-data-types",
-    fallbackTitle: "Variables and Data Types",
-    region: "The Castle of Syntax",
+    lessonKey: "tutorial",
+    fallbackTitle: "Tutorial: First Compile Trial",
+    region: "First Compile Trial",
     description:
-      "Explore a crumbling castle and learn to declare variables and assign the right data types.",
+      "Finish the five existing onboarding levels before Kai enters Barangay Malumay.",
     route: "/Map",
   },
   {
-    lessonKey: "operators",
-    fallbackTitle: "Operators",
-    region: "The Forge of Symbols",
+    lessonKey: "arrays",
+    fallbackTitle: "Arrays",
+    region: "Barangay Malumay",
     description:
-      "Master the industrial forge by writing arithmetic and comparison expressions to power its machines.",
+      "Collect, read, and traverse coded clues while learning one-dimensional and multi-dimensional arrays.",
     route: "/Map",
   },
   {
-    lessonKey: "conditional-statements",
-    fallbackTitle: "Conditional Statements",
-    region: "The Branching Keep",
+    lessonKey: "functions",
+    fallbackTitle: "Functions and Methods",
+    region: "Kapre's Trail",
     description:
-      "Navigate a gothic fortress of split paths using if, else if, and else to choose the correct route.",
+      "Break bigger tasks into reusable methods, including parameterized, returning, and recursive methods.",
     route: "/Map",
   },
   {
-    lessonKey: "loops",
-    fallbackTitle: "Loops",
-    region: "The Spiral Citadel",
+    lessonKey: "functions-with-arrays",
+    fallbackTitle: "Functions with Arrays",
+    region: "Tikbalang Crossing",
     description:
-      "Climb a citadel trapped in infinite recursion using for, while, and do-while to break the cycles.",
+      "Pass 1D and 2D arrays into methods to solve side-scroller challenges.",
+    route: "/Map",
+  },
+  {
+    lessonKey: "final",
+    fallbackTitle: "Final: Bakunawa Eclipse",
+    region: "Bakunawa Eclipse",
+    description:
+      "Combine arrays, functions, traversal, and array parameters in the final challenge.",
     route: "/Map",
   },
 ];

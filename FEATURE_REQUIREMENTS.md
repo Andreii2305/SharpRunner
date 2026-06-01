@@ -6,6 +6,19 @@
 
 This document tracks the main panel-requested features and their current implementation status.
 
+## Curriculum Pivot Note
+
+The project has a new proposed curriculum and story direction documented in `NEW_CURRICULUM_STORY_PLAN.md`.
+
+The current plan keeps the first 5 implemented levels as a tutorial/prologue, then introduces a 25-level Filipino myth horror main story covering:
+
+- Arrays
+- Functions/Methods
+- Functions/Methods with Arrays
+- Final combined boss level
+
+This plan is pending review/approval before implementation.
+
 ## Requirement 1 - Teacher-Editable Lesson Content Per Level
 
 **Status: Partially implemented**

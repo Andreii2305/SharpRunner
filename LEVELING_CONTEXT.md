@@ -6,7 +6,9 @@ Last updated: 2026-05-27
 
 SharpRunner uses a level-driven architecture. Each playable level is built from a config, a validator, game events, and a Phaser scene.
 
-The backend progress model already supports 4 lessons with 10 levels each, but the frontend currently has playable configs/scenes for Lesson 1 levels 1-5 only.
+The current backend progress model still supports the older 4 lessons with 10 levels each, but the frontend currently has playable configs/scenes for Lesson 1 levels 1-5 only.
+
+A new curriculum/story plan is now being reviewed in `NEW_CURRICULUM_STORY_PLAN.md`. The proposed direction keeps the first 5 playable levels as a tutorial/prologue, then adds a 25-level Filipino myth horror main story focused on Arrays, Functions/Methods, and Functions/Methods with Arrays.
 
 ## Lesson Structure
 

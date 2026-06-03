@@ -4,6 +4,8 @@ const DECLARATION_REGEX =
 const COMMENT_REGEX = /\/\/.*$|\/\*[\s\S]*?\*\//gm;
 const INTEGER_LITERAL_REGEX = /^-?\d+$/;
 const QUOTED_STRING_REGEX = /^"(.*)"$/s;
+const INT_ARRAY_DECLARATION_REGEX =
+  /\bint\s*\[\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([^}]*)\}\s*;/g;
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
@@ -280,6 +282,85 @@ export const createSingleIntegerDeclarationValidator =
       message: successMessage,
       payload: {
         values: { [variableName]: value },
+      },
+    };
+  };
+
+export const createExactIntegerArrayDeclarationValidator =
+  ({
+    variableName,
+    expectedValues,
+    unexpectedVariableMessage,
+    successMessage = "Array declaration accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const arrayDeclarations = [
+      ...codeWithoutComments.matchAll(INT_ARRAY_DECLARATION_REGEX),
+    ];
+    const otherDeclarations = [
+      ...codeWithoutComments.matchAll(DECLARATION_REGEX),
+    ].filter((declaration) => !declaration[0].includes("[]"));
+
+    if (arrayDeclarations.length !== 1 || otherDeclarations.length > 0) {
+      return {
+        isCorrect: false,
+        message: `Declare exactly one int array: int[] ${variableName} = { ... };`,
+      };
+    }
+
+    const [, declaredName, rawItems] = arrayDeclarations[0];
+    if (declaredName !== variableName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected array "${declaredName}". Use only "${variableName}" in this level.`,
+      };
+    }
+
+    const values = rawItems
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (values.length !== expectedValues.length) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must contain ${expectedValues.length} numbers.`,
+      };
+    }
+
+    const parsedValues = [];
+    for (const value of values) {
+      if (!INTEGER_LITERAL_REGEX.test(value)) {
+        return {
+          isCorrect: false,
+          message: `"${variableName}" must contain only integer literals.`,
+        };
+      }
+      parsedValues.push(Number.parseInt(value, 10));
+    }
+
+    const matches = expectedValues.every(
+      (expected, index) => parsedValues[index] === expected,
+    );
+
+    if (!matches) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must be exactly { ${expectedValues.join(", ")} }.`,
+        payload: {
+          values: { [variableName]: parsedValues },
+        },
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { [variableName]: parsedValues },
       },
     };
   };

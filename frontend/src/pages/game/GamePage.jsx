@@ -602,6 +602,7 @@ function GamePage() {
   const instructionItems = mergedLevelConfig?.instruction?.items ?? [];
   const lessonCardTitle = mergedLevelConfig?.lessonCard?.title ?? "Lesson";
   const lessonCardDescription = mergedLevelConfig?.lessonCard?.description ?? "";
+  const lessonCardSections = mergedLevelConfig?.lessonCard?.sections ?? [];
   const chapterLabel =
     levelConfig.chapterLabel ?? `Chapter ${levelConfig.levelNumber}`;
 
@@ -770,7 +771,25 @@ function GamePage() {
 
           <section className={styles.card}>
             <h3>{lessonCardTitle}</h3>
-            <p>{lessonCardDescription}</p>
+            {lessonCardDescription && <p>{lessonCardDescription}</p>}
+            {lessonCardSections.map((section) => (
+              <div className={styles.lessonSection} key={section.title}>
+                {section.title && <h4>{section.title}</h4>}
+                {section.body && <p>{section.body}</p>}
+                {section.code && (
+                  <pre className={styles.lessonCode}>
+                    <code>{section.code}</code>
+                  </pre>
+                )}
+                {Array.isArray(section.items) && section.items.length > 0 && (
+                  <ul>
+                    {section.items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </section>
         </div>
       </main>

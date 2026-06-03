@@ -3,13 +3,16 @@ import LevelTwoScene from "../scenes/LevelTwoScene";
 import LevelThreeScene from "../scenes/LevelThreeScene";
 import LevelFourScene from "../scenes/LevelFourScene";
 import LevelFiveScene from "../scenes/LevelFiveScene";
+import ArraysLevelOneScene from "../scenes/ArraysLevelOneScene";
 import {
+  createExactIntegerArrayDeclarationValidator,
   createExactGoalDeclarationValidator,
   createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
+const ARRAYS_LESSON_KEY = "arrays";
 const GAME_ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const DIALOGUE_ASSET_BASE = `${GAME_ASSET_BASE}/ui/dialogue`;
 
@@ -336,7 +339,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     scene: LevelFiveScene,
     sceneKey: "LevelFiveScene",
     progressKey: `${LESSON_KEY}-level-5`,
-    nextRoute: "/Map",
+    nextRoute: "/Map/level/6",
     nextDelayMs: 1200,
     startWithDialogue: false,
     defaultCode:
@@ -401,6 +404,130 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage: 'Unexpected variable. Only "measurement" is allowed in Level 5.',
       strictCountMessage: 'Only this declaration is accepted: double measurement = 4.5;',
       successMessage: "Code accepted. Shattering seal...",
+    }),
+  },
+  6: {
+    levelNumber: 6,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Barangay Malumay",
+    subtitle: "Arrays 1 - Lantern Row",
+    chapterLabel: "Arrays 1: Lantern Row",
+    scene: ArraysLevelOneScene,
+    sceneKey: "ArraysLevelOneScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-1`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare the lantern order here.\n    }\n  }\n}",
+    hint: "Use one int array named lanterns. The four marker numbers in the scene show the values and their order.",
+    idleResultMessage: "Declare the lantern array, then click Run.",
+    successResultMessage:
+      "The lanterns accept the array. The gate opens.",
+    errorResultMessage:
+      "Invalid array. Use exactly: int[] lanterns = { 1, 2, 3, 4 };",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare one integer array that stores the lantern order for the haunted path.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Use exactly one array declaration: int[] lanterns = { ... };",
+        "Place the numbers in the same order as the lantern markers.",
+        "For this first array level, the required order is 1, 2, 3, 4.",
+        "Do not declare other variables in this level.",
+      ],
+    },
+    lessonCard: {
+      title: "Arrays",
+      description:
+        "An array stores multiple values of the same type under one variable name. In this level, the lantern path needs one integer array because every lantern marker is a whole number.",
+      sections: [
+        {
+          title: "Array Syntax",
+          body:
+            "In C#, an array declaration has a type, square brackets, a name, and values inside braces.",
+          code: "int[] variableName = { value1, value2, value3 };",
+        },
+        {
+          title: "Order Matters",
+          body:
+            "Arrays keep values in the order you write them. The first value becomes the first item, the second value becomes the second item, and so on. For this path, the lanterns read the array from left to right.",
+        },
+        {
+          title: "How To Solve This Level",
+          items: [
+            "Look at each lantern marker on the path.",
+            "Use one int array named lanterns.",
+            "Write the marker numbers in the same left-to-right order.",
+            "Do not create separate variables for each lantern.",
+          ],
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "Barangay Malumay is too dark. The path only wakes when the lanterns light in order.",
+              tone: "normal",
+            },
+            {
+              text: "Each lantern marker shows one number. I need to collect those numbers into one list.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "In C#, an array stores many values under one variable name.",
+              tone: "normal",
+            },
+            {
+              text: "Since the lantern markers are whole numbers, I need an int array named lanterns.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I should write the numbers in the same left-to-right order they appear on the path.",
+              tone: "normal",
+            },
+            {
+              text: "If my array matches the lantern order, each lamp will light as I pass.",
+              tone: "normal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "exactIntegerArray",
+      variableName: "lanterns",
+      expectedValues: [1, 2, 3, 4],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "lanterns" is allowed in Arrays Level 1.',
+      successMessage: "Code accepted. Lighting the lantern row...",
+    },
+    validateCode: createExactIntegerArrayDeclarationValidator({
+      variableName: "lanterns",
+      expectedValues: [1, 2, 3, 4],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "lanterns" is allowed in Arrays Level 1.',
+      successMessage: "Code accepted. Lighting the lantern row...",
     }),
   },
 };

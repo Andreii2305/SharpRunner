@@ -6,6 +6,8 @@ const INTEGER_LITERAL_REGEX = /^-?\d+$/;
 const QUOTED_STRING_REGEX = /^"(.*)"$/s;
 const INT_ARRAY_DECLARATION_REGEX =
   /\bint\s*\[\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([^}]*)\}\s*;/g;
+const STRING_ARRAY_DECLARATION_REGEX =
+  /\b(?:string|String)\s*\[\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([^}]*)\}\s*;/g;
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
@@ -350,6 +352,86 @@ export const createExactIntegerArrayDeclarationValidator =
       return {
         isCorrect: false,
         message: `"${variableName}" must be exactly { ${expectedValues.join(", ")} }.`,
+        payload: {
+          values: { [variableName]: parsedValues },
+        },
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { [variableName]: parsedValues },
+      },
+    };
+  };
+
+export const createExactStringArrayDeclarationValidator =
+  ({
+    variableName,
+    expectedValues,
+    unexpectedVariableMessage,
+    successMessage = "String array declaration accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const arrayDeclarations = [
+      ...codeWithoutComments.matchAll(STRING_ARRAY_DECLARATION_REGEX),
+    ];
+    const otherDeclarations = [
+      ...codeWithoutComments.matchAll(DECLARATION_REGEX),
+    ].filter((declaration) => !declaration[0].includes("[]"));
+
+    if (arrayDeclarations.length !== 1 || otherDeclarations.length > 0) {
+      return {
+        isCorrect: false,
+        message: `Declare exactly one string array: string[] ${variableName} = { ... };`,
+      };
+    }
+
+    const [, declaredName, rawItems] = arrayDeclarations[0];
+    if (declaredName !== variableName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected array "${declaredName}". Use only "${variableName}" in this level.`,
+      };
+    }
+
+    const values = rawItems
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (values.length !== expectedValues.length) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must contain ${expectedValues.length} text values.`,
+      };
+    }
+
+    const parsedValues = [];
+    for (const value of values) {
+      const stringMatch = value.match(QUOTED_STRING_REGEX);
+      if (!stringMatch) {
+        return {
+          isCorrect: false,
+          message: `"${variableName}" must contain quoted strings.`,
+        };
+      }
+      parsedValues.push(stringMatch[1]);
+    }
+
+    const matches = expectedValues.every(
+      (expected, index) => parsedValues[index] === expected,
+    );
+
+    if (!matches) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must list the supplies in the correct order.`,
         payload: {
           values: { [variableName]: parsedValues },
         },

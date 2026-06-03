@@ -4,8 +4,10 @@ import LevelThreeScene from "../scenes/LevelThreeScene";
 import LevelFourScene from "../scenes/LevelFourScene";
 import LevelFiveScene from "../scenes/LevelFiveScene";
 import ArraysLevelOneScene from "../scenes/ArraysLevelOneScene";
+import ArraysLevelTwoScene from "../scenes/ArraysLevelTwoScene";
 import {
   createExactIntegerArrayDeclarationValidator,
+  createExactStringArrayDeclarationValidator,
   createExactGoalDeclarationValidator,
   createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
@@ -416,7 +418,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     scene: ArraysLevelOneScene,
     sceneKey: "ArraysLevelOneScene",
     progressKey: `${ARRAYS_LESSON_KEY}-level-1`,
-    nextRoute: "/Map",
+    nextRoute: "/Map/level/7",
     nextDelayMs: 1200,
     startWithDialogue: true,
     defaultCode:
@@ -528,6 +530,130 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Unexpected array. Only "lanterns" is allowed in Arrays Level 1.',
       successMessage: "Code accepted. Lighting the lantern row...",
+    }),
+  },
+  7: {
+    levelNumber: 7,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Likod Bahay",
+    subtitle: "Arrays 2 - Protect the Supplies",
+    chapterLabel: "Arrays 2: Protect the Supplies",
+    scene: ArraysLevelTwoScene,
+    sceneKey: "ArraysLevelTwoScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-2`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare the supplies array here.\n    }\n  }\n}",
+    hint:
+      'Use one string array named supplies. String values need double quotes, and the crate labels show the correct order.',
+    idleResultMessage: "Declare the supplies array, then click Run.",
+    successResultMessage: "The supplies are protected. The aswang retreats.",
+    errorResultMessage:
+      "Invalid supplies array. Use one string[] named supplies with the crate items in order.",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare one string array that stores the supplies in the order shown by the crates.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Use exactly one array declaration: string[] supplies = { ... };",
+        "Use double quotes around every text value.",
+        "Place the supplies in crate order: rice, salt, candle.",
+        "Do not declare other variables in this level.",
+      ],
+    },
+    lessonCard: {
+      title: "String Arrays",
+      description:
+        "A string array stores multiple text values under one variable name. This is useful when related words or item names should be treated as one collection.",
+      sections: [
+        {
+          title: "Array Type",
+          body:
+            "The type before the square brackets tells C# what kind of values the array can store. For item names, use string[].",
+          code: 'string[] variableName = { "first", "second", "third" };',
+        },
+        {
+          title: "Quoted Values",
+          body:
+            "Each text value must be wrapped in double quotes. Without quotes, C# will read the word as a variable name instead of text.",
+        },
+        {
+          title: "How To Solve This Level",
+          items: [
+            "Read the crate labels from left to right.",
+            "Create one array named supplies.",
+            "Write each supply as a quoted string.",
+            "Keep the same order so the crates open correctly.",
+          ],
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "The supply crates are still on the path behind the houses.",
+              tone: "normal",
+            },
+            {
+              text: "An aswang is flying overhead. If I leave them here, it will swoop down and steal them one by one.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I need to collect the crates and bring them to the safe house for safety.",
+              tone: "normal",
+            },
+            {
+              text: "The code must group the supply names into one string array.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "Every item name must use double quotes, and the order must match the crates.",
+              tone: "normal",
+            },
+            {
+              text: "If the array is correct, I can carry the supplies to safety before the aswang takes them.",
+              tone: "normal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "exactStringArray",
+      variableName: "supplies",
+      expectedValues: ["rice", "salt", "candle"],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "supplies" is allowed in Arrays Level 2.',
+      successMessage: "Code accepted. Opening the supply crates...",
+    },
+    validateCode: createExactStringArrayDeclarationValidator({
+      variableName: "supplies",
+      expectedValues: ["rice", "salt", "candle"],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "supplies" is allowed in Arrays Level 2.',
+      successMessage: "Code accepted. Opening the supply crates...",
     }),
   },
 };

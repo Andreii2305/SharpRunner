@@ -225,47 +225,53 @@ Important implementation notes:
 Topic: One Dimensional Arrays
 
 Story:
-A line of Santelmo flames blocks the road. Kai must read the correct flame from a one-dimensional array.
+A row of Santelmo flames guards a burning road barrier. None of the flames are safe, but one of them is the boss fire controlling the wall. Kai only has enough power for one attack, so he must use a one-dimensional array to identify which indexed flame to strike.
 
 Level design:
-Create one horizontal path blocked by four flames/orbs. Add index labels `0`, `1`, `2`, `3` under each flame. Keep Kai stationary before the fire line until code is submitted. On success, only index `2` becomes the safe flame and a temporary gap opens for Kai to run through.
+Create one horizontal path with four hovering flames before a fire wall or fog-fire barrier. Add index labels `0`, `1`, `2`, `3` under each flame. The flames should be visual targets, not separate walls Kai must walk through. Keep Kai before the flame row until code is submitted. On success, Kai runs to flame index `2`, attacks the boss fire, and the whole barrier disappears so he can continue to the exit.
 
 Setting and feeling:
-Deep night on an empty road. The flames should feel supernatural, hovering just above the ground. Use warm orange/red for unsafe flames and blue/green for the safe one. The feeling is mysterious and slightly dangerous, like the path itself is testing Kai.
+Deep night on an empty forest road. The Santelmo flames should feel supernatural, hovering just above the ground like watching spirits. Use warm orange/red for the normal flames, and make the boss fire slightly larger or more intense once revealed. When the boss fire is hit, it should flare blue/white before exploding or vanishing. The feeling is mysterious and dangerous, like the road itself is testing whether Kai understands the indexed order.
 
 Student task:
-Declare a string array named `flames`, then declare one string variable named `safeFlame` assigned from index `2`.
+Declare a string array named `flames`, then declare one string variable named `attack` assigned from index `2`. This represents Kai choosing which Santelmo flame to attack.
 
 Expected code shape:
 
 ```csharp
-string[] flames = { "red", "red", "blue", "red" };
-string safeFlame = flames[2];
+string[] flames = { "normal", "normal", "boss", "normal" };
+string attack = flames[2];
 ```
 
 Validation notes:
 
 - Require `flames` as a string array.
-- Require exactly 4 values.
-- Require `safeFlame = flames[2];`.
-- The safe value should resolve to `"blue"`.
+- Require exactly 4 values: `"normal"`, `"normal"`, `"boss"`, `"normal"`.
+- Require `attack = flames[2];`.
+- The attack value should resolve to `"boss"`.
+- Reject hardcoded `"boss"` without array access.
+- Reject wrong indexes such as `flames[0]`, `flames[1]`, or `flames[3]`.
 
 Correct outcome:
-The third flame turns blue/green. Kai walks through the safe gap.
+Kai runs toward the third flame, attacks it, and the boss fire flares blue/white before exploding or disappearing. The other flames die out because the boss was controlling them. The fire wall fades out, then Kai runs through the cleared road to the exit.
 
 Wrong outcome:
-The wrong flame flashes red and the line of fire remains closed.
+Kai attacks a normal flame or the array cannot identify the boss. The flame bursts red, pushes Kai back, and the boss fire keeps the wall closed.
 
 Assets needed:
 
 - fire/flame sprites or glowing orbs
 - straight platform path
-- simple barrier/gate
+- simple fire wall, fog wall, or glowing barrier
+- optional attack slash effect
 
 Important implementation notes:
 
 - This level teaches zero-based indexing.
 - Display index labels under flames: `0`, `1`, `2`, `3`.
+- Flame index `2` is the third flame visually, so dialogue should remind students that arrays start counting at zero.
+- Kai should only attack one flame per submission.
+- If no flame sprite is available, render the Santelmo flames in Phaser using glowing circles and particle-like light effects.
 
 ### Level 4 - Midnight Inventory
 

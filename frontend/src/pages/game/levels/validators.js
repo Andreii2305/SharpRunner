@@ -8,6 +8,8 @@ const INT_ARRAY_DECLARATION_REGEX =
   /\bint\s*\[\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([^}]*)\}\s*;/g;
 const STRING_ARRAY_DECLARATION_REGEX =
   /\b(?:string|String)\s*\[\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([^}]*)\}\s*;/g;
+const STRING_ARRAY_ACCESS_REGEX =
+  /^([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]$/;
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
@@ -444,5 +446,135 @@ export const createExactStringArrayDeclarationValidator =
       payload: {
         values: { [variableName]: parsedValues },
       },
+    };
+  };
+
+export const createStringArrayAccessValidator =
+  ({
+    arrayName,
+    arrayValues,
+    targetVariableName,
+    expectedIndex,
+    unexpectedVariableMessage,
+    successMessage = "Array index access accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const arrayDeclarations = [
+      ...codeWithoutComments.matchAll(STRING_ARRAY_DECLARATION_REGEX),
+    ];
+    const scalarDeclarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
+
+    if (arrayDeclarations.length !== 1 || scalarDeclarations.length !== 1) {
+      return {
+        isCorrect: false,
+        message:
+          `Declare one string array and one attack variable: string ${targetVariableName} = ${arrayName}[index];`,
+      };
+    }
+
+    const [, declaredArrayName, rawItems] = arrayDeclarations[0];
+    if (declaredArrayName !== arrayName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected array "${declaredArrayName}". Use only "${arrayName}" in this level.`,
+      };
+    }
+
+    const parsedArrayValues = rawItems
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const match = item.match(QUOTED_STRING_REGEX);
+        return match ? match[1] : null;
+      });
+
+    if (
+      parsedArrayValues.length !== arrayValues.length ||
+      parsedArrayValues.some((value) => value === null)
+    ) {
+      return {
+        isCorrect: false,
+        message: `"${arrayName}" must contain ${arrayValues.length} quoted string values.`,
+      };
+    }
+
+    const arrayMatches = arrayValues.every(
+      (expectedValue, index) => parsedArrayValues[index] === expectedValue,
+    );
+    if (!arrayMatches) {
+      return {
+        isCorrect: false,
+        message: `"${arrayName}" must be exactly { ${arrayValues.map((value) => `"${value}"`).join(", ")} }.`,
+        payload: {
+          values: { [arrayName]: parsedArrayValues },
+        },
+      };
+    }
+
+    const [, type, declaredVariableName, assignmentValue] = scalarDeclarations[0];
+    if (declaredVariableName !== targetVariableName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected variable "${declaredVariableName}". Use only "${targetVariableName}" in this level.`,
+      };
+    }
+
+    if (type !== "string" && type !== "String") {
+      return {
+        isCorrect: false,
+        message: `"${targetVariableName}" must use type string.`,
+      };
+    }
+
+    const accessMatch = (assignmentValue ?? "").trim().match(STRING_ARRAY_ACCESS_REGEX);
+    if (!accessMatch || accessMatch[1] !== arrayName) {
+      return {
+        isCorrect: false,
+        message: `"${targetVariableName}" must get its value from ${arrayName}[index].`,
+      };
+    }
+
+    const selectedIndex = Number.parseInt(accessMatch[2], 10);
+    const selectedValue = parsedArrayValues[selectedIndex];
+    if (selectedValue === undefined) {
+      return {
+        isCorrect: false,
+        message: `"${arrayName}" has no index ${selectedIndex}. Use an index from 0 to ${arrayValues.length - 1}.`,
+        payload: {
+          values: {
+            [arrayName]: parsedArrayValues,
+            [targetVariableName]: null,
+            attackIndex: selectedIndex,
+          },
+        },
+      };
+    }
+
+    const payload = {
+      values: {
+        [arrayName]: parsedArrayValues,
+        [targetVariableName]: selectedValue,
+        attackIndex: selectedIndex,
+      },
+    };
+
+    if (selectedIndex !== expectedIndex) {
+      return {
+        isCorrect: false,
+        message: `"${targetVariableName}" must attack ${arrayName}[${expectedIndex}], the boss fire.`,
+        payload,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload,
     };
   };

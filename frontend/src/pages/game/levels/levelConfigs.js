@@ -5,9 +5,11 @@ import LevelFourScene from "../scenes/LevelFourScene";
 import LevelFiveScene from "../scenes/LevelFiveScene";
 import ArraysLevelOneScene from "../scenes/ArraysLevelOneScene";
 import ArraysLevelTwoScene from "../scenes/ArraysLevelTwoScene";
+import ArraysLevelThreeScene from "../scenes/ArraysLevelThreeScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactStringArrayDeclarationValidator,
+  createStringArrayAccessValidator,
   createExactGoalDeclarationValidator,
   createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
@@ -55,7 +57,30 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "Declaring Variables",
       description:
-        "Level 1 focuses on integer variable declaration. walk() is already predefined in starter code for this lesson.",
+        "A variable is a named storage location for a value. In C#, you declare a variable by writing its type, its name, and optionally an initial value.",
+      sections: [
+        {
+          title: "Variable Parts",
+          body:
+            "A declaration usually has three parts: the data type, the variable name, and the value assigned with =.",
+          code: "int steps = 10;",
+        },
+        {
+          title: "Why Types Matter",
+          body:
+            "The type tells C# what kind of value the variable can store. An int stores whole numbers, which makes it useful for counts, distances, scores, and quantities.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "A variable must be declared before it is used. The name must also match exactly, including spelling and capitalization.",
+        },
+        {
+          title: "In This Level",
+          body:
+            "The walking function is already prepared. Your job is to declare one integer variable that stores the distance Kai should walk.",
+        },
+      ],
     },
     dialogue: {
       assetBase: DIALOGUE_ASSET_BASE,
@@ -146,7 +171,31 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "String Variables",
       description:
-        "In this level, the NPC reads one exact string variable. This checker is strict and accepts only the required declaration.",
+        "A string stores text. Use strings for names, words, labels, dialogue, item names, and any value made of characters.",
+      sections: [
+        {
+          title: "String Syntax",
+          body:
+            "String values must be written inside double quotes. The quotes tell C# that the value is text, not a variable name.",
+          code: 'string playerName = "Kai";',
+        },
+        {
+          title: "Exact Text",
+          body:
+            "String values can be case-sensitive. \"Kai\" and \"kai\" are different text values because the first letter is not the same.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Forgetting the quotes makes C# look for another variable instead of reading text.",
+          code: 'string name = "Maya";',
+        },
+        {
+          title: "In This Level",
+          body:
+            "The gatekeeper checks one exact name variable. The declaration has to match the required name and value.",
+        },
+      ],
     },
     dialogue: {
       assetBase: DIALOGUE_ASSET_BASE,
@@ -232,7 +281,30 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "String Variables",
       description:
-        "A string stores text. Use double quotes around the value. Any non-empty string is accepted here — the content is your choice.",
+        "Strings are used whenever a program needs to store text. You can create many string variables when different pieces of text need separate names.",
+      sections: [
+        {
+          title: "Multiple Text Values",
+          body:
+            "Each variable has its own name and stores its own value. This is useful when different text values have different meanings.",
+          code: 'string greeting = "hello";\nstring warning = "careful";',
+        },
+        {
+          title: "Meaningful Names",
+          body:
+            "Good variable names explain what the value represents. A name like voice1 is clearer than a random name like x when the value is a villager voice.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Declaring the same variable name twice in the same scope is not allowed. Each variable name must be unique there.",
+        },
+        {
+          title: "In This Level",
+          body:
+            "Each frozen villager needs a separate non-empty string value. The exact words are your choice, but all three required variables must exist.",
+        },
+      ],
     },
     dialogue: {
       assetBase: DIALOGUE_ASSET_BASE,
@@ -290,7 +362,31 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "Integer Variables",
       description:
-        "An integer stores a whole number. Declare int coins and set it to the toll amount shown on the sign to lower the bridge.",
+        "An integer stores a whole number. Use int for values that are counted without decimals, such as coins, lives, steps, points, or item counts.",
+      sections: [
+        {
+          title: "Whole Numbers",
+          body:
+            "The int type cannot store decimal values. It is meant for numbers like 0, 1, 20, or -5.",
+          code: "int coins = 20;",
+        },
+        {
+          title: "When To Use int",
+          body:
+            "Use int when the value represents a count or quantity that should not have fractions.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Writing a decimal value for an int is invalid because decimals require a different numeric type.",
+          code: "double price = 4.5;",
+        },
+        {
+          title: "In This Level",
+          body:
+            "The toll accepts one whole-number coin count. The variable must match the amount shown by the scene.",
+        },
+      ],
     },
     dialogue: {
       assetBase: DIALOGUE_ASSET_BASE,
@@ -367,7 +463,30 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "Double Variables",
       description:
-        "A double stores a decimal number. Use it when precision beyond whole numbers is required. The seal only accepts the exact value shown on its inscription.",
+        "A double stores a number that can include a decimal point. Use it when a value needs fractional precision instead of only whole numbers.",
+      sections: [
+        {
+          title: "Decimal Values",
+          body:
+            "Double values can represent measurements like 4.5, 0.75, or 12.25.",
+          code: "double measurement = 4.5;",
+        },
+        {
+          title: "int vs double",
+          body:
+            "Use int for whole counts. Use double for measurements, weights, distances, percentages, and other values that may include fractions.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Using int for a decimal measurement loses the ability to represent the fractional part.",
+        },
+        {
+          title: "In This Level",
+          body:
+            "The seal requires a precise decimal measurement. A whole-number variable is not enough for this task.",
+        },
+      ],
     },
     dialogue: {
       assetBase: DIALOGUE_ASSET_BASE,
@@ -446,8 +565,14 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "Arrays",
       description:
-        "An array stores multiple values of the same type under one variable name. In this level, the lantern path needs one integer array because every lantern marker is a whole number.",
+        "An array stores multiple related values of the same type under one variable name. Arrays are useful when values belong together and should be handled as one ordered group.",
       sections: [
+        {
+          title: "Why Use Arrays",
+          body:
+            "Without arrays, four related values might need four separate variables. With an array, the values stay grouped and ordered.",
+          code: "int[] numbers = { 1, 2, 3, 4 };",
+        },
         {
           title: "Array Syntax",
           body:
@@ -455,9 +580,19 @@ const LEVEL_CONFIG_BY_NUMBER = {
           code: "int[] variableName = { value1, value2, value3 };",
         },
         {
+          title: "Same Type Rule",
+          body:
+            "Every value in an int[] must be an int. Every value in a string[] must be a string. Mixing unrelated types in one array is not allowed.",
+        },
+        {
           title: "Order Matters",
           body:
             "Arrays keep values in the order you write them. The first value becomes the first item, the second value becomes the second item, and so on. For this path, the lanterns read the array from left to right.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not create separate variables when the task asks for one array. The point is to group related values together.",
         },
         {
           title: "How To Solve This Level",
@@ -570,8 +705,14 @@ const LEVEL_CONFIG_BY_NUMBER = {
     lessonCard: {
       title: "String Arrays",
       description:
-        "A string array stores multiple text values under one variable name. This is useful when related words or item names should be treated as one collection.",
+        "A string array stores multiple text values under one variable name. Use it when names, labels, words, item names, or commands belong to one collection.",
       sections: [
+        {
+          title: "Text Collections",
+          body:
+            "If several text values describe the same kind of thing, a string array keeps them together in one ordered list.",
+          code: 'string[] items = { "rice", "salt", "candle" };',
+        },
         {
           title: "Array Type",
           body:
@@ -582,6 +723,17 @@ const LEVEL_CONFIG_BY_NUMBER = {
           title: "Quoted Values",
           body:
             "Each text value must be wrapped in double quotes. Without quotes, C# will read the word as a variable name instead of text.",
+        },
+        {
+          title: "Order In Arrays",
+          body:
+            "The first string you write is stored first, the second string is stored second, and so on. If a program reads the array in order, changing the order changes the result.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not forget commas between values. Commas separate one string value from the next.",
+          code: 'string[] names = { "Ana", "Ben", "Cara" };',
         },
         {
           title: "How To Solve This Level",
@@ -654,6 +806,151 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Unexpected array. Only "supplies" is allowed in Arrays Level 2.',
       successMessage: "Code accepted. Opening the supply crates...",
+    }),
+  },
+  8: {
+    levelNumber: 8,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Road of Santelmo",
+    subtitle: "Arrays 3 - Boss Fire Index",
+    chapterLabel: "Arrays 3: Boss Fire Index",
+    scene: ArraysLevelThreeScene,
+    sceneKey: "ArraysLevelThreeScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-3`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare the flames array and choose one flame to attack.\n    }\n  }\n}",
+    hint:
+      'Label each flame as "normal" or "boss" inside a string array named flames, then assign attack using flames[index].',
+    idleResultMessage: "Choose which indexed flame Kai should attack, then click Run.",
+    successResultMessage: "Boss fire destroyed. The road is open.",
+    errorResultMessage:
+      "Invalid attack target. Use the flames array and choose the boss fire by index.",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare the flame array, then use one array index access to choose the boss fire Kai should attack.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        'Declare exactly one string array named flames.',
+        'Label each flame as "normal" if it is ordinary or "boss" if it controls the flame line.',
+        "Declare exactly one string variable named attack.",
+        "Assign attack using flames[index], not a hardcoded word.",
+        "Use the index of the flame you believe Kai should attack.",
+      ],
+    },
+    lessonCard: {
+      title: "One Dimensional Arrays",
+      description:
+        "A one-dimensional array stores values in a single ordered row. Each value has an index, and C# starts counting those indexes at 0.",
+      sections: [
+        {
+          title: "One Row Of Values",
+          body:
+            "A one-dimensional array is like one straight line of boxes. Each box stores one value, and each box can be reached by its position number.",
+        },
+        {
+          title: "Index Positions",
+          body:
+            "The first item is index 0, the second item is index 1, the third item is index 2, and so on.",
+          code: 'string[] signs = { "first", "second", "third", "fourth" };',
+        },
+        {
+          title: "Reading One Value",
+          body:
+            "Use the array name and square brackets to read one value from the row. The index inside the brackets decides which item is selected.",
+          code: "string selectedSign = signs[index];",
+        },
+        {
+          title: "Zero-Based Counting",
+          body:
+            "Because C# starts at 0, the third item is not index 3. The third item is index 2.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Using an index that is too large causes an error. For an array with 4 values, the valid indexes are 0, 1, 2, and 3.",
+        },
+        {
+          title: "How To Solve This Level",
+          items: [
+            'Look at the four flames and decide which one should be labeled "boss".',
+            'Write all four labels in one string array named flames.',
+            "Use the boss flame's index inside flames[index].",
+            "Store the selected value in string attack.",
+          ],
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "Four Santelmo flames are blocking the road.",
+              tone: "normal",
+            },
+            {
+              text: "Only one of them is the boss fire controlling the whole flame line.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I only have enough strength for one attack.",
+              tone: "normal",
+            },
+            {
+              text: "The flames are arranged like a one-dimensional array, counted from zero.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "If I attack the boss fire, the barrier should disappear.",
+              tone: "normal",
+            },
+            {
+              text: "If I choose a normal flame, it will burst back and the flame line will stay closed.",
+              tone: "normal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "stringArrayAccess",
+      arrayName: "flames",
+      arrayValues: ["normal", "normal", "boss", "normal"],
+      targetVariableName: "attack",
+      expectedIndex: 2,
+      unexpectedVariableMessage:
+        'Use only string[] flames and string attack in Arrays Level 3.',
+      successMessage: "Code accepted. Kai attacks the boss fire...",
+    },
+    validateCode: createStringArrayAccessValidator({
+      arrayName: "flames",
+      arrayValues: ["normal", "normal", "boss", "normal"],
+      targetVariableName: "attack",
+      expectedIndex: 2,
+      unexpectedVariableMessage:
+        'Use only string[] flames and string attack in Arrays Level 3.',
+      successMessage: "Code accepted. Kai attacks the boss fire...",
     }),
   },
 };

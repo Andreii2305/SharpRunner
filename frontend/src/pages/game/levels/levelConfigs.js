@@ -6,6 +6,7 @@ import LevelFiveScene from "../scenes/LevelFiveScene";
 import ArraysLevelOneScene from "../scenes/ArraysLevelOneScene";
 import ArraysLevelTwoScene from "../scenes/ArraysLevelTwoScene";
 import ArraysLevelThreeScene from "../scenes/ArraysLevelThreeScene";
+import ArraysLevelFourScene from "../scenes/ArraysLevelFourScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactStringArrayDeclarationValidator,
@@ -951,6 +952,144 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Use only string[] flames and string attack in Arrays Level 3.',
       successMessage: "Code accepted. Kai attacks the boss fire...",
+    }),
+  },
+  9: {
+    levelNumber: 9,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Midnight Inventory",
+    subtitle: "Arrays 4 - Door Key Index",
+    chapterLabel: "Arrays 4: Door Key Index",
+    scene: ArraysLevelFourScene,
+    sceneKey: "ArraysLevelFourScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-4`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare the inventory array and select the key by index.\n    }\n  }\n}",
+    hint:
+      'The crates are indexed from left to right. Store "candle", "key", and "map" in inventory, then select the key with inventory[1].',
+    idleResultMessage: "Select the key from the inventory array, then click Run.",
+    successResultMessage: "The key fits. The midnight door opens.",
+    errorResultMessage:
+      "Invalid inventory selection. Use string selectedItem = inventory[1]; to choose the key.",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare an inventory array, then use one array index access to select the key for the locked house door.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        'Declare exactly one string array named **inventory**.',
+        'Store the crate items in order: "candle", "key", "map".',
+        "Declare exactly one string variable named **selectedItem**.",
+        "Assign **selectedItem** using **inventory[index]**, not a hardcoded word.",
+        "Use the index of the key crate.",
+      ],
+    },
+    lessonCard: {
+      title: "Array Index Access",
+      description:
+        "Array indexes let a program choose one value from an ordered collection. In C#, the first item is index 0, so the second item is index 1.",
+      sections: [
+        {
+          title: "Inventory Slots",
+          body:
+            "An array can store item names in order. Each slot has a number that starts at 0.",
+          code: 'string[] tools = { "rope", "torch", "compass" };',
+        },
+        {
+          title: "Selecting One Item",
+          body:
+            "Use the array name and square brackets to read one item. The number inside the brackets chooses the slot.",
+          code: "string chosenTool = tools[1];",
+        },
+        {
+          title: "Zero-Based Indexes",
+          body:
+            "In the example above, tools[0] is rope, tools[1] is torch, and tools[2] is compass.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not write the answer as a plain string. The goal is to practice reading the value from the array by index.",
+        },
+        {
+          title: "How To Solve This Level",
+          items: [
+            "Read the crate labels from left to right.",
+            "Create one string array named inventory.",
+            "Use inventory[1] because the key is in the second crate.",
+            "Store that selected value in string selectedItem.",
+          ],
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Villager",
+          portraitImage: "villager1_portrait.png",
+          portraitAlt: "Farmer villager portrait",
+          lines: [
+            {
+              text: "Kai, I cannot open these crates by hand.",
+              tone: "normal",
+            },
+            {
+              text: "The key is inside the second crate. I need you to open that one.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I need to store the crate labels in order, then pick one item by index.",
+              tone: "normal",
+            },
+            {
+              text: "Since C# counts from zero, the second crate is inventory[1].",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "If selectedItem reads the key from the array, I can open the crate and bring it to the villager.",
+              tone: "normal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "stringArrayAccess",
+      arrayName: "inventory",
+      arrayValues: ["candle", "key", "map"],
+      targetVariableName: "selectedItem",
+      expectedIndex: 1,
+      unexpectedVariableMessage:
+        'Use only string[] inventory and string selectedItem in Arrays Level 4.',
+      successMessage: "Code accepted. Kai selects the inventory key...",
+    },
+    validateCode: createStringArrayAccessValidator({
+      arrayName: "inventory",
+      arrayValues: ["candle", "key", "map"],
+      targetVariableName: "selectedItem",
+      expectedIndex: 1,
+      unexpectedVariableMessage:
+        'Use only string[] inventory and string selectedItem in Arrays Level 4.',
+      successMessage: "Code accepted. Kai selects the inventory key...",
     }),
   },
 };

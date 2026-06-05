@@ -47,6 +47,17 @@ const isCodeLockedByDialogue = (levelConfig) =>
 const getCompletedLevelResult = (progressPayload, levelKey) =>
   progressPayload?.levels?.find((level) => level.levelKey === levelKey) ?? null;
 
+const renderEmphasizedText = (text) =>
+  String(text)
+    .split(/(\*\*[^*]+\*\*)/g)
+    .map((part, index) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        return <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong>;
+      }
+
+      return part;
+    });
+
 function GamePage() {
   const navigate = useNavigate();
   const { levelNumber } = useParams();
@@ -705,7 +716,9 @@ function GamePage() {
                           isTyping
                             ? "Skip"
                             : isLastDialogue
-                              ? "Start Level"
+                              ? activeDialogueId
+                                ? "Continue"
+                                : "Start Level"
                               : "Next"
                         }
                         variant="primary"
@@ -764,7 +777,7 @@ function GamePage() {
             <h3>{instructionTitle}</h3>
             <ul>
               {instructionItems.map((item) => (
-                <li key={item}>{item}</li>
+                <li key={item}>{renderEmphasizedText(item)}</li>
               ))}
             </ul>
           </section>

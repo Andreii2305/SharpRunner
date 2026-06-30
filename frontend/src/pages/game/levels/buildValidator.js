@@ -4,6 +4,7 @@ import {
   createMultiStringDeclarationValidator,
   createExactIntegerArrayDeclarationValidator,
   createExactStringArrayDeclarationValidator,
+  createExactInteger2DArrayDeclarationValidator,
   createStringArrayAccessValidator,
 } from "./validators";
 
@@ -14,6 +15,7 @@ export const buildValidatorFromConfig = (config) => {
   if (config.type === "multiString") return createMultiStringDeclarationValidator(config);
   if (config.type === "exactIntegerArray") return createExactIntegerArrayDeclarationValidator(config);
   if (config.type === "exactStringArray") return createExactStringArrayDeclarationValidator(config);
+  if (config.type === "exactInteger2DArray") return createExactInteger2DArrayDeclarationValidator(config);
   if (config.type === "stringArrayAccess") return createStringArrayAccessValidator(config);
   return null;
 };

@@ -176,7 +176,7 @@ function MapNode({ node, onNodeClick, sounds }) {
   const isLocked = node.status === "locked";
   const isCurrent = node.status === "current";
   const isDone = node.status === "completed";
-  const isBoss = node.levelNumber === 5 || node.levelNumber === 10;
+  const isBoss = Boolean(node.isBoss);
 
   const handleClick = () => {
     if (isLocked) {

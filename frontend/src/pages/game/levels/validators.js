@@ -10,6 +10,8 @@ const STRING_ARRAY_DECLARATION_REGEX =
   /\b(?:string|String)\s*\[\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([^}]*)\}\s*;/g;
 const STRING_ARRAY_ACCESS_REGEX =
   /^([A-Za-z_]\w*)\s*\[\s*(\d+)\s*\]$/;
+const INT_2D_ARRAY_DECLARATION_REGEX =
+  /\bint\s*\[\s*,\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([\s\S]*?)\}\s*;/g;
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
@@ -576,5 +578,105 @@ export const createStringArrayAccessValidator =
       isCorrect: true,
       message: successMessage,
       payload,
+    };
+  };
+
+export const createExactInteger2DArrayDeclarationValidator =
+  ({
+    variableName,
+    expectedRows,
+    unexpectedVariableMessage,
+    successMessage = "2D array declaration accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const arrayDeclarations = [
+      ...codeWithoutComments.matchAll(INT_2D_ARRAY_DECLARATION_REGEX),
+    ];
+    const scalarDeclarations = [...codeWithoutComments.matchAll(DECLARATION_REGEX)];
+    const oneDimensionalArrays = [
+      ...codeWithoutComments.matchAll(INT_ARRAY_DECLARATION_REGEX),
+    ];
+
+    if (
+      arrayDeclarations.length !== 1 ||
+      scalarDeclarations.length > 0 ||
+      oneDimensionalArrays.length > 0
+    ) {
+      return {
+        isCorrect: false,
+        message: `Declare exactly one 2D int array: int[,] ${variableName} = { ... };`,
+      };
+    }
+
+    const [, declaredName, rawRows] = arrayDeclarations[0];
+    if (declaredName !== variableName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected array "${declaredName}". Use only "${variableName}" in this level.`,
+      };
+    }
+
+    const rowMatches = [...rawRows.matchAll(/\{([^{}]*)\}/g)];
+    if (rowMatches.length !== expectedRows.length) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must contain ${expectedRows.length} rows.`,
+      };
+    }
+
+    const parsedRows = [];
+    for (const rowMatch of rowMatches) {
+      const values = rowMatch[1]
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+      const expectedColumnCount = expectedRows[0]?.length ?? 0;
+      if (values.length !== expectedColumnCount) {
+        return {
+          isCorrect: false,
+          message: `"${variableName}" must have ${expectedColumnCount} columns in every row.`,
+        };
+      }
+
+      const parsedValues = [];
+      for (const value of values) {
+        if (!INTEGER_LITERAL_REGEX.test(value)) {
+          return {
+            isCorrect: false,
+            message: `"${variableName}" must contain only integer literals.`,
+          };
+        }
+        parsedValues.push(Number.parseInt(value, 10));
+      }
+      parsedRows.push(parsedValues);
+    }
+
+    const matches = expectedRows.every((expectedRow, rowIndex) =>
+      expectedRow.every(
+        (expectedValue, columnIndex) =>
+          parsedRows[rowIndex]?.[columnIndex] === expectedValue,
+      ),
+    );
+
+    if (!matches) {
+      return {
+        isCorrect: false,
+        message: `"${variableName}" must match the required ward pattern.`,
+        payload: {
+          values: { [variableName]: parsedRows },
+        },
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { [variableName]: parsedRows },
+      },
     };
   };

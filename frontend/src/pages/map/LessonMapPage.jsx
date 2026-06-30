@@ -7,18 +7,19 @@ import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import styles from "./LessonMapPage.module.css";
 import { LESSON_ONE_MAP_CONFIG } from "./lessonOneMapConfig";
 
-const TOTAL_LEVELS = LESSON_ONE_MAP_CONFIG.nodes.length;
 const LEVEL_ONE_BG_SRC = `${import.meta.env.BASE_URL}game/assets/backgrounds/level1_bg.png`;
 
 const LESSON_DETAILS = [
-  "These five tutorial levels stay as the playable onboarding chapter.",
-  "Students practice the game loop before the new Arrays, Functions, and Functions with Arrays lessons.",
-  "Completing the tutorial unlocks the first main curriculum section in progress tracking.",
+  "The first five levels stay as the playable onboarding chapter.",
+  "Barangay Malumay begins the new Arrays curriculum with collections, indexes, and 2D grids.",
+  "Complete each node to continue Kai's path toward the main story curriculum.",
 ];
 
 const buildFallbackLevelRows = () =>
-  Array.from({ length: TOTAL_LEVELS }, (_, i) => ({
-    levelNumber: i + 1,
+  LESSON_ONE_MAP_CONFIG.nodes.map((node) => ({
+    levelNumber: node.levelNumber,
+    levelKey: node.id,
+    lessonKey: node.id.startsWith("arrays-") ? "arrays" : LESSON_ONE_MAP_CONFIG.lessonKey,
     isCompleted: false,
     progressPercent: 0,
   }));
@@ -53,9 +54,30 @@ function LessonMapPage() {
   const lessonRows = useMemo(() => {
     const rows =
       progressData?.levels
-        ?.filter((r) => r.lessonKey === LESSON_ONE_MAP_CONFIG.lessonKey)
-        .sort((a, b) => a.levelNumber - b.levelNumber) ?? [];
-    return rows.length > 0 ? rows : buildFallbackLevelRows();
+        ?.filter((r) => r.lessonKey === LESSON_ONE_MAP_CONFIG.lessonKey || r.lessonKey === "arrays")
+        .map((row) => {
+          const matchingNode = LESSON_ONE_MAP_CONFIG.nodes.find(
+            (node) =>
+              node.id === row.levelKey ||
+              (node.id.startsWith(`${row.lessonKey}-level-`) &&
+                node.id.endsWith(`-${row.levelNumber}`)),
+          );
+          return {
+            ...row,
+            levelNumber: matchingNode?.levelNumber ?? row.levelNumber,
+            levelKey: matchingNode?.id ?? row.levelKey,
+          };
+        }) ?? [];
+    const progressByNumber = new Map(rows.map((row) => [row.levelNumber, row]));
+    const progressByKey = new Map(rows.map((row) => [row.levelKey, row]));
+    return buildFallbackLevelRows()
+      .map((fallbackRow) => ({
+        ...fallbackRow,
+        ...(progressByNumber.get(fallbackRow.levelNumber) ??
+          progressByKey.get(fallbackRow.levelKey) ??
+          {}),
+      }))
+      .sort((a, b) => a.levelNumber - b.levelNumber);
   }, [progressData]);
 
   const lessonProgressPercent = useMemo(() => {
@@ -70,14 +92,17 @@ function LessonMapPage() {
 
   const mapNodes = useMemo(() => {
     const rowByLevel = new Map(lessonRows.map((r) => [r.levelNumber, r]));
-    const firstIncomplete = lessonRows.find((r) => !r.isCompleted);
+    const rowByKey = new Map(lessonRows.map((r) => [r.levelKey, r]));
+    const firstIncomplete = LESSON_ONE_MAP_CONFIG.nodes
+      .map((node) => rowByLevel.get(node.levelNumber) ?? rowByKey.get(node.id))
+      .find((r) => r && !r.isCompleted);
     const currentNum =
       firstIncomplete?.levelNumber ??
-      lessonRows[lessonRows.length - 1]?.levelNumber ??
+      LESSON_ONE_MAP_CONFIG.nodes[LESSON_ONE_MAP_CONFIG.nodes.length - 1]?.levelNumber ??
       1;
 
     return LESSON_ONE_MAP_CONFIG.nodes.map((node) => {
-      const row = rowByLevel.get(node.levelNumber);
+      const row = rowByLevel.get(node.levelNumber) ?? rowByKey.get(node.id);
       let status = "locked";
       if (row?.isCompleted) {
         status = "completed";

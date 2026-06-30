@@ -7,8 +7,10 @@ import ArraysLevelOneScene from "../scenes/ArraysLevelOneScene";
 import ArraysLevelTwoScene from "../scenes/ArraysLevelTwoScene";
 import ArraysLevelThreeScene from "../scenes/ArraysLevelThreeScene";
 import ArraysLevelFourScene from "../scenes/ArraysLevelFourScene";
+import ArraysLevelFiveScene from "../scenes/ArraysLevelFiveScene";
 import {
   createExactIntegerArrayDeclarationValidator,
+  createExactInteger2DArrayDeclarationValidator,
   createExactStringArrayDeclarationValidator,
   createStringArrayAccessValidator,
   createExactGoalDeclarationValidator,
@@ -1090,6 +1092,139 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Use only string[] inventory and string selectedItem in Arrays Level 4.',
       successMessage: "Code accepted. Kai selects the inventory key...",
+    }),
+  },
+  10: {
+    levelNumber: 10,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Lumang Dambana",
+    subtitle: "Arrays 5 - Warding Tile Grid",
+    chapterLabel: "Arrays 5: Warding Tile Grid",
+    scene: ArraysLevelFiveScene,
+    sceneKey: "ArraysLevelFiveScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-5`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare int[,] ward using 1 for yellow ward runes.\n    }\n  }\n}",
+    hint:
+      "Use int[,] ward with 3 rows and 3 columns. Write 1 where the repeated yellow ward rune appears and 0 for the other runes.",
+    idleResultMessage: "Declare the 3x3 int[,] ward array, then click Run.",
+    successResultMessage: "The warding grid is restored. The path opens.",
+    errorResultMessage:
+      "Invalid ward grid. Use a 3x3 int[,] named ward with the exact pattern.",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare a 3x3 int[,] array where 1 marks the yellow ward runes and 0 marks the other runes.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Use exactly one declaration: int[,] ward = { ... };",
+        "Create 3 rows and 3 columns to match the rune grid.",
+        "Use 1 for each repeated yellow ward rune.",
+        "Use 0 for every other rune.",
+        "Read the grid row by row from top-left to bottom-right.",
+        "Do not use int[][] for this level.",
+      ],
+    },
+    lessonCard: {
+      title: "Multi-Dimensional Arrays",
+      description:
+        "A multi-dimensional array stores values by row and column. In this shrine, each number marks whether a rune belongs to the ward pattern.",
+      sections: [
+        {
+          title: "Grid Syntax",
+          body:
+            "Each inner brace group represents one row of runes. The comma inside [] tells C# this is a two-dimensional rectangular array.",
+          code:
+            "int[,] ward = {\n  { 1, 0, 0 },\n  { 0, 1, 0 },\n  { 0, 0, 1 }\n};",
+        },
+        {
+          title: "Rune States",
+          body:
+            "A 1 selects a yellow ward rune. A 0 skips the other runes. The shrine checks the grid row by row.",
+        },
+        {
+          title: "Rows And Columns",
+          body:
+            "The first row controls the top rune row, the second row controls the middle row, and the third row controls the bottom row.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not use int[][] here. That is a jagged array, while this level is practicing int[,] rectangular arrays.",
+        },
+        {
+          title: "How To Solve This Level",
+          items: [
+            "Read the rune grid row by row.",
+            "Write 1 for each repeated yellow ward rune.",
+            "Write 0 for every other rune.",
+            "Place each row in its own braces.",
+            "Name the array ward.",
+          ],
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "The old shrine floor is covered with runes. The ward seems to favor one repeated yellow mark.",
+              tone: "normal",
+            },
+            {
+              text: "I need to select the right rune states with rows and columns.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "In the code, 1 marks a yellow ward rune and 0 marks every other rune.",
+              tone: "goal",
+            },
+            {
+              text: "If my int[,] ward matches the shrine grid, the barrier should break and I can pass.",
+              tone: "normal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "exactInteger2DArray",
+      variableName: "ward",
+      expectedRows: [
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+      ],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "ward" is allowed in Arrays Level 5.',
+      successMessage: "Code accepted. Restoring the warding grid...",
+    },
+    validateCode: createExactInteger2DArrayDeclarationValidator({
+      variableName: "ward",
+      expectedRows: [
+        [1, 0, 1],
+        [0, 1, 0],
+        [1, 0, 1],
+      ],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "ward" is allowed in Arrays Level 5.',
+      successMessage: "Code accepted. Restoring the warding grid...",
     }),
   },
 };

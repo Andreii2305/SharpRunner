@@ -12,6 +12,13 @@ export const LESSON_ONE_MAP_CONFIG = {
       x: 50,
       y: 10,
     },
+    {
+      id: "stage-2",
+      title: "Stage 2 - Barangay Malumay",
+      subtitle: "arrays, indexes, and warding grids",
+      x: 50,
+      y: 50,
+    },
   ],
 
   nodes: [
@@ -50,6 +57,41 @@ export const LESSON_ONE_MAP_CONFIG = {
       x: 80,
       y: 35,
     },
+    {
+      id: "arrays-level-1",
+      levelNumber: 6,
+      title: "Lanterns of Malumay",
+      x: 12,
+      y: 77,
+    },
+    {
+      id: "arrays-level-2",
+      levelNumber: 7,
+      title: "Stolen Supplies",
+      x: 28,
+      y: 70,
+    },
+    {
+      id: "arrays-level-3",
+      levelNumber: 8,
+      title: "Road of Santelmo",
+      x: 45,
+      y: 77,
+    },
+    {
+      id: "arrays-level-4",
+      levelNumber: 9,
+      title: "Midnight Inventory",
+      x: 62,
+      y: 70,
+    },
+    {
+      id: "arrays-level-5",
+      levelNumber: 10,
+      title: "Warding Tile Grid",
+      x: 80,
+      y: 77,
+    },
   ],
 
   connections: [
@@ -57,5 +99,10 @@ export const LESSON_ONE_MAP_CONFIG = {
     { fromId: "tutorial-level-2", toId: "tutorial-level-3" },
     { fromId: "tutorial-level-3", toId: "tutorial-level-4" },
     { fromId: "tutorial-level-4", toId: "tutorial-level-5" },
+    { fromId: "tutorial-level-5", toId: "arrays-level-1" },
+    { fromId: "arrays-level-1", toId: "arrays-level-2" },
+    { fromId: "arrays-level-2", toId: "arrays-level-3" },
+    { fromId: "arrays-level-3", toId: "arrays-level-4" },
+    { fromId: "arrays-level-4", toId: "arrays-level-5" },
   ],
 };

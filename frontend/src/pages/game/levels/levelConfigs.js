@@ -8,6 +8,7 @@ import ArraysLevelTwoScene from "../scenes/ArraysLevelTwoScene";
 import ArraysLevelThreeScene from "../scenes/ArraysLevelThreeScene";
 import ArraysLevelFourScene from "../scenes/ArraysLevelFourScene";
 import ArraysLevelFiveScene from "../scenes/ArraysLevelFiveScene";
+import ArraysLevelSixScene from "../scenes/ArraysLevelSixScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -1225,6 +1226,131 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Unexpected array. Only "ward" is allowed in Arrays Level 5.',
       successMessage: "Code accepted. Restoring the warding grid...",
+    }),
+  },
+  11: {
+    levelNumber: 11,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Ligaw na Landas",
+    subtitle: "Arrays 6 - Branching Path Map",
+    chapterLabel: "Arrays 6: Branching Path Map",
+    scene: ArraysLevelSixScene,
+    sceneKey: "ArraysLevelSixScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-6`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    static void Main(string[] args) {\n      // Declare int[,] pathMap for the three route choices.\n    }\n  }\n}",
+    hint:
+      "Use int[,] pathMap with 3 rows and 3 columns. Rows are path heights; columns are checkpoints.",
+    idleResultMessage: "Declare the 3x3 int[,] pathMap, then click Run.",
+    successResultMessage: "The safe route is restored. Kai can cross the twisted forest.",
+    errorResultMessage:
+      "Invalid path map. Use a 3x3 int[,] named pathMap with the exact safe route.",
+    goal: {
+      title: "Goal",
+      description:
+        "Declare a 3x3 int[,] pathMap that marks one route through three checkpoints. Use 1 for the chosen path at each checkpoint and 0 for paths Kai should avoid.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Use exactly one declaration: int[,] pathMap = { ... };",
+        "Create 3 rows and 3 columns.",
+        "Rows represent the three path heights.",
+        "Columns represent checkpoints 1, 2, and 3 from left to right.",
+        "Each column should contain exactly one 1.",
+        "Use 0 for routes not chosen.",
+        "Do not use int[][] for this level.",
+      ],
+    },
+    lessonCard: {
+      title: "2D Arrays As Maps",
+      description:
+        "A two-dimensional array stores values by row and column. That makes it useful for grids, maps, boards, seating charts, tile layouts, and route choices.",
+      sections: [
+        {
+          title: "General Idea",
+          body:
+            "In an int[,] array, every value has two positions: row first, then column. You can think of it like reading a grid: choose a row, choose a column, then read the value where they meet.",
+        },
+        {
+          title: "Map Syntax",
+          body:
+            "Each inner brace group is one row. The commas inside that row separate the columns. This example shows the shape of a 3x3 map without giving away the forest route.",
+          code:
+            "int[,] pathMap = {\n  { 0, 1, 0 },\n  { 1, 0, 0 },\n  { 0, 0, 1 }\n};",
+        },
+        {
+          title: "Rows And Columns",
+          body:
+            "Row 0 is the upper path, row 1 is the middle path, and row 2 is the lower path. Column 0 is checkpoint 1, column 1 is checkpoint 2, and column 2 is checkpoint 3.",
+        },
+        {
+          title: "Reading A Choice",
+          body:
+            "A 1 means that route is selected for that checkpoint. A 0 means that route is not selected. For this level, each checkpoint column should have one selected route.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not use int[][] here. That is a jagged array. This level practices rectangular int[,] arrays, where every row and column belongs to one fixed grid.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "The forest has three paths at every turn. Upper, middle, lower... then it repeats.",
+              tone: "normal",
+            },
+            {
+              text: "I can scan the trail from left to right, then turn what I see into rows and columns.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I need a 3x3 int[,] named pathMap. Each 1 chooses the safe branch for that checkpoint.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "exactInteger2DArray",
+      variableName: "pathMap",
+      expectedRows: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "pathMap" is allowed in Arrays Level 6.',
+      successMessage: "Code accepted. Restoring the safe route...",
+    },
+    validateCode: createExactInteger2DArrayDeclarationValidator({
+      variableName: "pathMap",
+      expectedRows: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+      unexpectedVariableMessage:
+        'Unexpected array. Only "pathMap" is allowed in Arrays Level 6.',
+      successMessage: "Code accepted. Restoring the safe route...",
     }),
   },
 };

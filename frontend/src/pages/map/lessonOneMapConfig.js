@@ -92,6 +92,13 @@ export const LESSON_ONE_MAP_CONFIG = {
       x: 80,
       y: 77,
     },
+    {
+      id: "arrays-level-6",
+      levelNumber: 11,
+      title: "Branching Path Map",
+      x: 92,
+      y: 70,
+    },
   ],
 
   connections: [
@@ -104,5 +111,6 @@ export const LESSON_ONE_MAP_CONFIG = {
     { fromId: "arrays-level-2", toId: "arrays-level-3" },
     { fromId: "arrays-level-3", toId: "arrays-level-4" },
     { fromId: "arrays-level-4", toId: "arrays-level-5" },
+    { fromId: "arrays-level-5", toId: "arrays-level-6" },
   ],
 };

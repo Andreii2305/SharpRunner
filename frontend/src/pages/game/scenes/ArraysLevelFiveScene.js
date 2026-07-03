@@ -162,7 +162,7 @@ export default class ArraysLevelFiveScene extends Phaser.Scene {
     });
 
     this.add
-      .rectangle(0, 0, this.scale.width, this.scale.height, 0x030711, 0.34)
+      .rectangle(0, 0, worldWidth, this.scale.height, 0x030711, 0.34)
       .setOrigin(0, 0)
       .setDepth(-2);
   }

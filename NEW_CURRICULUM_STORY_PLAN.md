@@ -483,53 +483,62 @@ Important implementation notes:
 Topic: Array Traversal
 
 Story:
-Several jars contain trapped whispers. One jar is cursed. Kai must inspect all values and count the cursed jar.
+Four colored jars contain captured guardian spirits. One seal is secretly cursed, but its color does not reveal the corruption. Kai must store the visible jar colors and use the shrine to scan every jar.
 
 Level design:
-Place four jars, crystals, or crates along a cave/village path. A counter UI starts at `0`. As traversal runs, each object flashes; the cursed value flashes red and increments the counter. The exit opens only after the correct count is displayed.
+Place four differently colored jars along a cave, forest, or abandoned village path. A Manananggal guards the exit beyond them with the prompt `Find the cursed seal.` All jars look safe before execution. A progress panel begins at `scanned 0/4` and includes three empty inventory slots. Each iteration advances the count and leaves a persistent `SAFE` or `CURSED` result above the inspected jar. When the scan reaches the hidden cursed jar, its animated dark aura appears, its state changes to `SEALED`, and the exposed Manananggal retreats immediately. The scan still finishes any remaining index. After all four jars are classified, Kai runs continuously through the row. Each safe jar is collected only when Kai passes through its position and fills one inventory slot. Kai briefly looks back at the sealed cursed jar instead of collecting it.
 
 Setting and feeling:
 Night inside a cave, storage hut, or abandoned path. The jars/objects should whisper visually through small particle effects or pulsing highlights. The mood is investigative: Kai is checking each object carefully instead of fighting.
 
 Student task:
-Loop through an integer array named `jars` and count how many values equal `0`.
+Declare a string array named `jars` containing the visible jar colors, then traverse it and pass every value to the predefined `ScanJar` method.
 
 Expected code shape:
 
 ```csharp
-int[] jars = { 1, 1, 0, 1 };
-int cursedCount = 0;
+string[] jars = { "blue", "green", "purple", "orange" };
+
 for (int i = 0; i < jars.Length; i++) {
-  if (jars[i] == 0) {
-    cursedCount++;
-  }
+  ScanJar(jars[i]);
 }
 ```
 
 Validation notes:
 
-- Require `int[] jars`.
-- Require `int cursedCount = 0;`.
+- Require exactly one `string[] jars`.
+- Require the values `"blue"`, `"green"`, `"purple"`, and `"orange"` in visual left-to-right order.
+- Require loop initializer `int i = 0`.
 - Require traversal with `jars.Length`.
-- Require condition `jars[i] == 0`.
-- Require `cursedCount++`.
+- Require increment `i++`.
+- Require `ScanJar(jars[i])` inside the loop.
+- Reject skipped indexes, hardcoded individual scan calls, and arrays that encode the curse directly.
 
 Correct outcome:
-Each jar is checked. The cursed jar cracks, and the spirit barrier dissolves.
+The progress panel advances from `scanned 0/4` to `scanned 4/4`. Clean jars glow and retain a `SAFE` marker. When the loop reaches the cursed jar, its portal aura appears, it retains a `CURSED` marker, and the Manananggal immediately retreats. The final jar is still scanned. Kai then runs past the row and overlap collection removes each safe jar as he reaches it, leaving the cursed jar sealed before he proceeds to the exit.
 
 Wrong outcome:
-The wrong jar cracks or no jar cracks. A whisper effect pushes Kai back.
+Traversal stops at the first missing scan. Unvisited jars dim, the panel displays `SCAN INCOMPLETE`, and the camera shows the Manananggal reacting before returning to Kai. No jars are collected and the exit remains blocked. After the feedback is shown, jars, labels, inventory slots, player, and Manananggal reset to a clear `TRY AGAIN` state.
 
 Assets needed:
 
-- jars, pots, crates, crystals, or boxes
+- four colored jar sprites
 - cave/forest/village tiles
-- glow/crack effect
+- clean scan glow
+- animated cursed portal aura
+- Manananggal flying sprite
 
 Important implementation notes:
 
-- Any repeated object sprite works.
-- Use text/counter UI to show `cursedCount`.
+- The array stores observable identifiers, not the answer. Jar color must not determine whether a jar is cursed.
+- `ScanJar` is predefined so this remains an array-traversal lesson rather than a method-definition lesson.
+- Keep the cursed aura hidden before execution and reveal it only when the scan reaches the cursed index.
+- Use a compact progress UI that displays `scanned n/4` and a final scan state.
+- Keep `SAFE` and `CURSED` markers visible after each scan so students can map loop iterations to world objects.
+- Separate scanning from collection: classify all jars first, then move Kai to collect only safe jars.
+- Fill one compact inventory slot for each safe jar collected.
+- Let Kai acknowledge the sealed cursed jar with a short look-back while passing it.
+- Restore every visual state after failure so a second attempt begins cleanly.
 
 ## Lesson 2: Functions/Methods
 

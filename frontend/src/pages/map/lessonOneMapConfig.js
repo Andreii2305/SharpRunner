@@ -99,6 +99,13 @@ export const LESSON_ONE_MAP_CONFIG = {
       x: 92,
       y: 70,
     },
+    {
+      id: "arrays-level-7",
+      levelNumber: 12,
+      title: "Kapre's Name Tags",
+      x: 92,
+      y: 86,
+    },
   ],
 
   connections: [
@@ -112,5 +119,6 @@ export const LESSON_ONE_MAP_CONFIG = {
     { fromId: "arrays-level-3", toId: "arrays-level-4" },
     { fromId: "arrays-level-4", toId: "arrays-level-5" },
     { fromId: "arrays-level-5", toId: "arrays-level-6" },
+    { fromId: "arrays-level-6", toId: "arrays-level-7" },
   ],
 };

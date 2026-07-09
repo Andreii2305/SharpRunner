@@ -9,6 +9,8 @@ import ArraysLevelThreeScene from "../scenes/ArraysLevelThreeScene";
 import ArraysLevelFourScene from "../scenes/ArraysLevelFourScene";
 import ArraysLevelFiveScene from "../scenes/ArraysLevelFiveScene";
 import ArraysLevelSixScene from "../scenes/ArraysLevelSixScene";
+import ArraysLevelSevenScene from "../scenes/ArraysLevelSevenScene";
+import ArraysLevelEightScene from "../scenes/ArraysLevelEightScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -17,6 +19,7 @@ import {
   createExactGoalDeclarationValidator,
   createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
+  createStringArrayTraversalValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
@@ -1351,6 +1354,263 @@ const LEVEL_CONFIG_BY_NUMBER = {
       unexpectedVariableMessage:
         'Unexpected array. Only "pathMap" is allowed in Arrays Level 6.',
       successMessage: "Code accepted. Restoring the safe route...",
+    }),
+  },
+  12: {
+    levelNumber: 12,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Mga Pangalan ng Kapre",
+    subtitle: "Arrays 7 - Array Traversal",
+    chapterLabel: "Arrays 7: Kapre's Name Tags",
+    scene: ArraysLevelSevenScene,
+    sceneKey: "ArraysLevelSevenScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-7`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void CheckName(string name) {\n      // The game checks one sign for the cursed name.\n    }\n\n    static void Main(string[] args) {\n      // Declare names, then search every sign with a for loop.\n    }\n  }\n}",
+    hint:
+      "The cursed name could be on any sign. Use a for loop from i = 0 while i < names.Length, then call CheckName(names[i]).",
+    idleResultMessage: "Search every sign for the cursed name, then click Run.",
+    successResultMessage: "Traversal complete: every names[i] was checked. The Kapre lets Kai pass.",
+    errorResultMessage:
+      "Traversal failed. The curse remains because not every sign was checked with CheckName(names[i]).",
+    goal: {
+      title: "Goal",
+      description:
+        "Find the cursed name by declaring the names array, then using a for loop to check every sign from index 0 to names.Length - 1.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        'Declare exactly one string array named names.',
+        'Use these values in order: "Lina", "Tomas", "Mira", "Niko".',
+        "Write a for loop with int i = 0.",
+        "Keep looping while i < names.Length.",
+        "Increment with i++.",
+        "Inside the loop, call CheckName(names[i]);",
+        "Do not skip any sign; the cursed name can be hidden at any index.",
+      ],
+    },
+    lessonCard: {
+      title: "Array Traversal",
+      description:
+        "Traversal means visiting each item in a collection one at a time. In this level, every sign must be checked because the cursed name could be stored at any array index.",
+      sections: [
+        {
+          title: "Problem",
+          body:
+            "Four signs hang near the Kapre tree. One of their names is cursed, but Kai does not know which one until the program checks every sign.",
+        },
+        {
+          title: "General Idea",
+          body:
+            "An array stores ordered values. Traversal walks through that order so a program can inspect, display, count, change, or validate every item.",
+        },
+        {
+          title: "Loop Shape",
+          body:
+            "Start the index at 0 because arrays start counting at 0. Continue while the index is less than Length. Increment after each pass.",
+          code:
+            "for (int i = 0; i < names.Length; i++) {\n  CheckName(names[i]);\n}",
+        },
+        {
+          title: "Why Length",
+          body:
+            "names.Length gives the number of items in the array. Using Length keeps the loop tied to the array size instead of a hardcoded final number.",
+        },
+        {
+          title: "Reading The Current Item",
+          body:
+            "names[i] means 'the current name at index i.' As i changes from 0 to 1 to 2 to 3, the loop reads each tag in order.",
+        },
+        {
+          title: "What The Code Does",
+          body:
+            "Each loop pass sends one array value into CheckName. When i is 0, the game checks names[0]. When i is 1, it checks names[1], and it keeps going until every sign has been tested.",
+        },
+        {
+          title: "Why Check Every Item",
+          body:
+            "If the loop stops early or skips an index, one sign is never tested. The program cannot prove the cursed name was found unless every array item is visited.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not write i <= names.Length. The last valid index is names.Length - 1, so <= tries to go one step too far.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "The Kapre hid a cursed name among these signs. I do not know which sign holds it.",
+              tone: "normal",
+            },
+            {
+              text: "If I skip even one sign, the curse could stay hidden and the path will remain blocked.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I should store the sign names in order, then let a for loop search them one by one.",
+              tone: "normal",
+            },
+            {
+              text: "I need CheckName(names[i]) inside the loop, so every possible hiding place is checked.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "stringArrayTraversal",
+      arrayName: "names",
+      expectedValues: ["Lina", "Tomas", "Mira", "Niko"],
+      methodName: "CheckName",
+      unexpectedVariableMessage:
+        'Unexpected array. Only "names" is allowed in Arrays Level 7.',
+      successMessage: "Code accepted. Checking every hanging name...",
+    },
+    validateCode: createStringArrayTraversalValidator({
+      arrayName: "names",
+      expectedValues: ["Lina", "Tomas", "Mira", "Niko"],
+      methodName: "CheckName",
+      unexpectedVariableMessage:
+        'Unexpected array. Only "names" is allowed in Arrays Level 7.',
+      successMessage: "Code accepted. Checking every hanging name...",
+    }),
+  },
+  13: {
+    levelNumber: 13,
+    lessonKey: ARRAYS_LESSON_KEY,
+    parTimeSeconds: 1200,
+    title: "Ang Mga Sinumpang Banga",
+    subtitle: "Arrays 8 - Scanning With Traversal",
+    chapterLabel: "Arrays 8: The Cursed Jars",
+    scene: ArraysLevelEightScene,
+    sceneKey: "ArraysLevelEightScene",
+    progressKey: `${ARRAYS_LESSON_KEY}-level-8`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void ScanJar(string color) {\n      // The shrine reveals whether this jar is cursed.\n    }\n\n    static void Main(string[] args) {\n      // Declare the jar colors, then scan every jar.\n    }\n  }\n}",
+    hint:
+      'Store "blue", "green", "purple", and "orange" in jars, then call ScanJar(jars[i]) inside a complete for loop.',
+    idleResultMessage: "Declare the jar colors and scan every sealed jar.",
+    successResultMessage:
+      "Scan complete: 3 safe jars collected. The cursed jar remains sealed.",
+    errorResultMessage:
+      "SCAN INCOMPLETE: traverse every jars[i] value with ScanJar.",
+    goal: {
+      title: "Goal",
+      description:
+        "Store the visible jar colors in an array, then scan every jar to reveal which hidden seal is cursed.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        'Declare string[] jars = { "blue", "green", "purple", "orange" };',
+        "Write a for loop beginning with int i = 0.",
+        "Continue while i < jars.Length.",
+        "Increment the index with i++.",
+        "Inside the loop, call ScanJar(jars[i]);",
+        "The colors identify the jars, but they do not reveal the hidden curse.",
+      ],
+    },
+    lessonCard: {
+      title: "Scanning An Array",
+      description:
+        "An array can store visible identifiers while hidden properties are discovered only when each item is processed.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "Four colored jars hold captured guardian spirits. Their colors are visible, but the curse is hidden inside one seal. Kai cannot know which jar is cursed until the shrine scans each one.",
+        },
+        {
+          title: "Observable Data",
+          body:
+            "The jars array stores only what Kai already knows: blue, green, purple, and orange. It does not contain the answer to the mystery.",
+        },
+        {
+          title: "Scan Every Item",
+          body:
+            "The loop passes each color to ScanJar. Clean jars glow briefly. When the hidden cursed jar is reached, its dark aura appears.",
+          code:
+            "for (int i = 0; i < jars.Length; i++) {\n  ScanJar(jars[i]);\n}",
+        },
+        {
+          title: "Why Traverse All Jars",
+          body:
+            "A hidden property cannot be inferred from position or color. Skipping an index could leave the cursed spirit undiscovered.",
+        },
+        {
+          title: "General Use",
+          body:
+            "Programs often store identifiers in arrays, then process each identifier to retrieve, validate, scan, or update information kept elsewhere.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "These colored jars hold the village's captured guardian spirits, but one hidden seal is cursed.",
+              tone: "normal",
+            },
+            {
+              text: "Their colors identify them, but color alone cannot tell me which spirit was corrupted.",
+              tone: "accent",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "I should store the colors in order, then let the shrine scan every jar one by one.",
+              tone: "normal",
+            },
+            {
+              text: "If I call ScanJar(jars[i]) for every index, the cursed seal will reveal its aura.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "stringArrayTraversal",
+      arrayName: "jars",
+      expectedValues: ["blue", "green", "purple", "orange"],
+      methodName: "ScanJar",
+      successMessage: "Code accepted. Inspecting every jar seal...",
+    },
+    validateCode: createStringArrayTraversalValidator({
+      arrayName: "jars",
+      expectedValues: ["blue", "green", "purple", "orange"],
+      methodName: "ScanJar",
+      successMessage: "Code accepted. Inspecting every jar seal...",
     }),
   },
 };

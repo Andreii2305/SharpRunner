@@ -581,6 +581,246 @@ export const createStringArrayAccessValidator =
     };
   };
 
+export const createStringArrayTraversalValidator =
+  ({
+    arrayName,
+    expectedValues,
+    methodName,
+    unexpectedVariableMessage,
+    successMessage = "Array traversal accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const arrayDeclarations = [
+      ...codeWithoutComments.matchAll(STRING_ARRAY_DECLARATION_REGEX),
+    ];
+
+    if (arrayDeclarations.length !== 1) {
+      return {
+        isCorrect: false,
+        message: `Declare exactly one string[] array named ${arrayName}.`,
+      };
+    }
+
+    const [, declaredArrayName, rawItems] = arrayDeclarations[0];
+    if (declaredArrayName !== arrayName) {
+      return {
+        isCorrect: false,
+        message:
+          unexpectedVariableMessage ??
+          `Unexpected array "${declaredArrayName}". Use only "${arrayName}" in this level.`,
+      };
+    }
+
+    const parsedValues = rawItems
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        const match = item.match(QUOTED_STRING_REGEX);
+        return match ? match[1] : null;
+      });
+
+    if (
+      parsedValues.length !== expectedValues.length ||
+      parsedValues.some((value) => value === null)
+    ) {
+      return {
+        isCorrect: false,
+        message: `"${arrayName}" must contain ${expectedValues.length} quoted string values.`,
+        payload: {
+          values: { [arrayName]: parsedValues },
+        },
+      };
+    }
+
+    const arrayMatches = expectedValues.every(
+      (expectedValue, index) => parsedValues[index] === expectedValue,
+    );
+    if (!arrayMatches) {
+      return {
+        isCorrect: false,
+        message: `"${arrayName}" must list the names in the correct order.`,
+        payload: {
+          values: { [arrayName]: parsedValues },
+        },
+      };
+    }
+
+    const loopMatch = codeWithoutComments.match(
+      /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*([A-Za-z_]\w*)\s*\.\s*Length\s*;\s*\1\s*\+\+\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!loopMatch) {
+      return {
+        isCorrect: false,
+        message: `Use a for loop that starts at 0, checks ${arrayName}.Length, and increments with i++.`,
+        payload: {
+          values: { [arrayName]: parsedValues, visitedIndexes: [] },
+        },
+      };
+    }
+
+    const [, indexName, loopArrayName, loopBody] = loopMatch;
+    if (loopArrayName !== arrayName) {
+      return {
+        isCorrect: false,
+        message: `The loop condition must use ${arrayName}.Length.`,
+        payload: {
+          values: { [arrayName]: parsedValues, visitedIndexes: [] },
+        },
+      };
+    }
+
+    const methodCallRegex = new RegExp(
+      `\\b${methodName}\\s*\\(\\s*${arrayName}\\s*\\[\\s*${indexName}\\s*\\]\\s*\\)\\s*;`,
+    );
+    if (!methodCallRegex.test(loopBody)) {
+      return {
+        isCorrect: false,
+        message: `Inside the loop, call ${methodName}(${arrayName}[${indexName}]);`,
+        payload: {
+          values: { [arrayName]: parsedValues, visitedIndexes: [0] },
+        },
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          [arrayName]: parsedValues,
+          visitedIndexes: parsedValues.map((_, index) => index),
+        },
+      },
+    };
+  };
+
+export const createIntegerArrayCountValidator =
+  ({
+    arrayName,
+    expectedValues,
+    counterName,
+    targetValue,
+    successMessage = "Array count accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const arrayDeclarations = [
+      ...codeWithoutComments.matchAll(INT_ARRAY_DECLARATION_REGEX),
+    ];
+
+    if (arrayDeclarations.length !== 1) {
+      return {
+        isCorrect: false,
+        message: `Declare exactly one int[] array named ${arrayName}.`,
+      };
+    }
+
+    const [, declaredArrayName, rawItems] = arrayDeclarations[0];
+    const parsedValues = rawItems
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map(Number);
+    const basePayload = {
+      values: { [arrayName]: parsedValues, [counterName]: 0, visitedIndexes: [] },
+    };
+
+    if (declaredArrayName !== arrayName) {
+      return {
+        isCorrect: false,
+        message: `Name the integer array ${arrayName}.`,
+        payload: basePayload,
+      };
+    }
+
+    if (
+      parsedValues.length !== expectedValues.length ||
+      parsedValues.some((value) => !Number.isInteger(value)) ||
+      !expectedValues.every((value, index) => parsedValues[index] === value)
+    ) {
+      return {
+        isCorrect: false,
+        message: `${arrayName} must contain { ${expectedValues.join(", ")} } in that order.`,
+        payload: basePayload,
+      };
+    }
+
+    const counterRegex = new RegExp(`\\bint\\s+${counterName}\\s*=\\s*0\\s*;`);
+    if (!counterRegex.test(codeWithoutComments)) {
+      return {
+        isCorrect: false,
+        message: `Initialize the counter with int ${counterName} = 0;`,
+        payload: basePayload,
+      };
+    }
+
+    const loopMatch = codeWithoutComments.match(
+      /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*([A-Za-z_]\w*)\s*\.\s*Length\s*;\s*\1\s*\+\+\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!loopMatch) {
+      return {
+        isCorrect: false,
+        message: `Traverse ${arrayName} from index 0 using ${arrayName}.Length and i++.`,
+        payload: basePayload,
+      };
+    }
+
+    const [, indexName, loopArrayName] = loopMatch;
+    if (loopArrayName !== arrayName) {
+      return {
+        isCorrect: false,
+        message: `The loop condition must use ${arrayName}.Length.`,
+        payload: basePayload,
+      };
+    }
+
+    const conditionRegex = new RegExp(
+      `if\\s*\\(\\s*${arrayName}\\s*\\[\\s*${indexName}\\s*\\]\\s*==\\s*${targetValue}\\s*\\)\\s*\\{([\\s\\S]*?)\\}`,
+    );
+    const conditionMatch = codeWithoutComments.match(conditionRegex);
+    if (!conditionMatch) {
+      return {
+        isCorrect: false,
+        message: `Inside the loop, check if (${arrayName}[${indexName}] == ${targetValue}).`,
+        payload: {
+          values: {
+            ...basePayload.values,
+            visitedIndexes: parsedValues.map((_, index) => index),
+          },
+        },
+      };
+    }
+
+    const incrementRegex = new RegExp(`\\b${counterName}\\s*\\+\\+\\s*;`);
+    if (!incrementRegex.test(conditionMatch[1])) {
+      return {
+        isCorrect: false,
+        message: `Increment ${counterName} inside the if block.`,
+        payload: {
+          values: {
+            ...basePayload.values,
+            visitedIndexes: parsedValues.map((_, index) => index),
+          },
+        },
+      };
+    }
+
+    const count = parsedValues.filter((value) => value === targetValue).length;
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          [arrayName]: parsedValues,
+          [counterName]: count,
+          visitedIndexes: parsedValues.map((_, index) => index),
+        },
+      },
+    };
+  };
+
 export const createExactInteger2DArrayDeclarationValidator =
   ({
     variableName,

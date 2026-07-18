@@ -7,6 +7,7 @@ import {
   createExactInteger2DArrayDeclarationValidator,
   createStringArrayAccessValidator,
   createStringArrayTraversalValidator,
+  createVoidMethodDefinitionCallValidator,
   createIntegerArrayCountValidator,
 } from "./validators";
 
@@ -20,6 +21,7 @@ export const buildValidatorFromConfig = (config) => {
   if (config.type === "exactInteger2DArray") return createExactInteger2DArrayDeclarationValidator(config);
   if (config.type === "stringArrayAccess") return createStringArrayAccessValidator(config);
   if (config.type === "stringArrayTraversal") return createStringArrayTraversalValidator(config);
+  if (config.type === "voidMethodDefinitionCall") return createVoidMethodDefinitionCallValidator(config);
   if (config.type === "integerArrayCount") return createIntegerArrayCountValidator(config);
   return null;
 };

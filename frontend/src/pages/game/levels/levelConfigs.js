@@ -11,6 +11,7 @@ import ArraysLevelFiveScene from "../scenes/ArraysLevelFiveScene";
 import ArraysLevelSixScene from "../scenes/ArraysLevelSixScene";
 import ArraysLevelSevenScene from "../scenes/ArraysLevelSevenScene";
 import ArraysLevelEightScene from "../scenes/ArraysLevelEightScene";
+import MethodsLevelOneScene from "../scenes/MethodsLevelOneScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -20,10 +21,12 @@ import {
   createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
   createStringArrayTraversalValidator,
+  createVoidMethodDefinitionCallValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
 const ARRAYS_LESSON_KEY = "arrays";
+const METHODS_LESSON_KEY = "functions";
 const GAME_ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const DIALOGUE_ASSET_BASE = `${GAME_ASSET_BASE}/ui/dialogue`;
 
@@ -1611,6 +1614,129 @@ const LEVEL_CONFIG_BY_NUMBER = {
       expectedValues: ["blue", "green", "purple", "orange"],
       methodName: "ScanJar",
       successMessage: "Code accepted. Inspecting every jar seal...",
+    }),
+  },
+  14: {
+    levelNumber: 14,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Ang Unang Ritwal",
+    subtitle: "Methods 1 - The First Ritual",
+    chapterLabel: "Methods 1: The First Ritual",
+    scene: MethodsLevelOneScene,
+    sceneKey: "MethodsLevelOneScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-1`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the ritual method here.\n\n    static void Main(string[] args) {\n      // Call the ritual method here.\n    }\n  }\n}",
+    hint:
+      "Define static void StartRitual(), then call StartRitual(); inside Main.",
+    idleResultMessage: "Define and call StartRitual.",
+    successResultMessage:
+      "StartRitual was defined, then Main called it. The shrine opens.",
+    errorResultMessage:
+      "RITUAL INCOMPLETE: define StartRitual, then call it inside Main.",
+    goal: {
+      title: "Goal",
+      description:
+        "Create one reusable method named StartRitual, then call it from Main to open the shrine path.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static void StartRitual()** in the Program class.",
+        "The method does **not need parameters**.",
+        "The method does **not return a value**.",
+        "The method body can stay **empty** in this first method level.",
+        "Inside **Main**, call **StartRitual();**",
+        "Defining a method **names** the action. Calling it **runs** the action.",
+      ],
+    },
+    lessonCard: {
+      title: "Introduction To Methods",
+      description:
+        "A method is a named block of code. You define it once, then call it whenever you want that action to run.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The shrine ritual is a complete action. Instead of writing the action directly in Main, Kai gives it a name: StartRitual.",
+        },
+        {
+          title: "Define The Method",
+          body:
+            "A void method performs an action and does not send back a value. The empty parentheses mean this method does not need extra information yet. For this first method level, the body can be empty because the goal is to practice defining and calling the method.",
+          code:
+            "static void StartRitual() {\n}",
+        },
+        {
+          title: "Why The Body Is Empty",
+          body:
+            "Later methods can contain statements, calculations, parameters, or return values. Here, the game only needs to see that StartRitual exists and that Main calls it.",
+        },
+        {
+          title: "Call The Method",
+          body:
+            "A method definition only describes the action. The action happens when Main calls the method by writing its name followed by parentheses.",
+          code:
+            "static void Main(string[] args) {\n  StartRitual();\n}",
+        },
+        {
+          title: "General Use",
+          body:
+            "Methods help programs organize actions like opening a door, saving data, calculating a score, or showing a message. A good method name explains what the action does.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "portrait_player_main.png",
+      portraitAlt: "Kai portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "The shrine path is sealed. It will not open from a wish or a random line of code.",
+              tone: "normal",
+            },
+            {
+              text: "This ritual must be given a name first: StartRitual.",
+              tone: "accent",
+            },
+            {
+              text: "But naming the ritual is not enough. Main must call StartRitual(); to begin it.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          lines: [
+            {
+              text: "So I define the method to describe the ritual, then call it from Main to make it run.",
+              tone: "normal",
+            },
+            {
+              text: "Define the action, call the action, open the shrine.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "voidMethodDefinitionCall",
+      methodName: "StartRitual",
+      successMessage: "Code accepted. Starting the ritual...",
+    },
+    validateCode: createVoidMethodDefinitionCallValidator({
+      methodName: "StartRitual",
+      successMessage: "Code accepted. Starting the ritual...",
     }),
   },
 };

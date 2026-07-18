@@ -15,6 +15,8 @@ const INT_2D_ARRAY_DECLARATION_REGEX =
 
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const parseDeclarationValue = (valueExpression) => {
   const trimmed = (valueExpression ?? "").trim();
   const stringMatch = trimmed.match(QUOTED_STRING_REGEX);
@@ -692,6 +694,53 @@ export const createStringArrayTraversalValidator =
           [arrayName]: parsedValues,
           visitedIndexes: parsedValues.map((_, index) => index),
         },
+      },
+    };
+  };
+
+export const createVoidMethodDefinitionCallValidator =
+  ({
+    methodName,
+    successMessage = "Method definition and call accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const methodDefinitionRegex = new RegExp(
+      `\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(\\s*\\)\\s*\\{[\\s\\S]*?\\}`,
+    );
+
+    if (!methodDefinitionRegex.test(codeWithoutComments)) {
+      return {
+        isCorrect: false,
+        message: `Define static void ${methodName}() before calling it.`,
+      };
+    }
+
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1];
+    const methodCallRegex = new RegExp(`\\b${escapedMethodName}\\s*\\(\\s*\\)\\s*;`);
+    if (!methodCallRegex.test(mainBody)) {
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(); inside Main.`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { methodName, defined: true, called: true },
       },
     };
   };

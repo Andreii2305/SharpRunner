@@ -745,6 +745,204 @@ export const createVoidMethodDefinitionCallValidator =
     };
   };
 
+export const createPredefinedVoidMethodCallValidator =
+  ({
+    methodName,
+    successMessage = "Method call accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1];
+    const methodCallRegex = new RegExp(`\\b${escapedMethodName}\\s*\\(\\s*\\)\\s*;`, "g");
+    const calls = [...mainBody.matchAll(methodCallRegex)];
+    if (calls.length !== 1) {
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(); exactly once inside Main.`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { methodName, called: true },
+      },
+    };
+  };
+
+export const createVoidMethodBodyCallValidator =
+  ({
+    methodName,
+    requiredBodyPattern,
+    requiredBodyStatementLabel,
+    successMessage = "Method body and call accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const methodDefinitionRegex = new RegExp(
+      `\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(\\s*\\)\\s*\\{([\\s\\S]*?)\\}`,
+    );
+    const methodMatch = codeWithoutComments.match(methodDefinitionRegex);
+
+    if (!methodMatch) {
+      return {
+        isCorrect: false,
+        message: `Define static void ${methodName}() before calling it.`,
+      };
+    }
+
+    const methodBody = methodMatch[1] ?? "";
+    const bodyPattern =
+      requiredBodyPattern instanceof RegExp
+        ? requiredBodyPattern
+        : new RegExp(requiredBodyPattern);
+
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1];
+    if (!bodyPattern.test(methodBody)) {
+      if (bodyPattern.test(mainBody)) {
+        return {
+          isCorrect: false,
+          message: `The action is in Main, not inside ${methodName}(). Move ${requiredBodyStatementLabel} into the method body.`,
+        };
+      }
+
+      return {
+        isCorrect: false,
+        message: `Put ${requiredBodyStatementLabel} inside ${methodName}().`,
+      };
+    }
+
+    const methodCallRegex = new RegExp(`\\b${escapedMethodName}\\s*\\(\\s*\\)\\s*;`);
+    if (!methodCallRegex.test(mainBody)) {
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(); inside Main.`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { methodName, hasBody: true, called: true },
+      },
+    };
+  };
+
+export const createVoidMethodParameterCallValidator =
+  ({
+    methodName,
+    parameterType = "int",
+    parameterName,
+    expectedArgument,
+    requiredBodyPattern,
+    requiredBodyStatementLabel,
+    successMessage = "Parameterized method call accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const escapedParameterType = escapeRegex(parameterType);
+    const parameterNamePattern = parameterName
+      ? escapeRegex(parameterName)
+      : "([A-Za-z_]\\w*)";
+    const methodDefinitionRegex = new RegExp(
+      `\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(\\s*${escapedParameterType}\\s+${parameterNamePattern}\\s*\\)\\s*\\{([\\s\\S]*?)\\}`,
+    );
+    const methodMatch = codeWithoutComments.match(methodDefinitionRegex);
+
+    if (!methodMatch) {
+      return {
+        isCorrect: false,
+        message: `Define static void ${methodName}(${parameterType} ${parameterName ?? "value"}) first.`,
+      };
+    }
+
+    const methodBody = methodMatch[parameterName ? 1 : 2] ?? "";
+    const bodyPattern =
+      requiredBodyPattern instanceof RegExp
+        ? requiredBodyPattern
+        : new RegExp(requiredBodyPattern);
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1];
+    if (!bodyPattern.test(methodBody)) {
+      if (bodyPattern.test(mainBody)) {
+        return {
+          isCorrect: false,
+          message: `The right torch number can enter ${methodName}(), but the method body does nothing yet. Move ${requiredBodyStatementLabel} inside ${methodName}().`,
+        };
+      }
+
+      return {
+        isCorrect: false,
+        message: `LightTorch can receive 2, but it will not light the safe torch until ${requiredBodyStatementLabel} is inside ${methodName}().`,
+      };
+    }
+
+    const anyCallRegex = new RegExp(`\\b${escapedMethodName}\\s*\\(\\s*([^)]*?)\\s*\\)\\s*;`);
+    const callMatch = mainBody.match(anyCallRegex);
+    if (!callMatch) {
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(${expectedArgument}); inside Main.`,
+      };
+    }
+
+    const actualArgument = callMatch[1]?.trim();
+    if (actualArgument !== String(expectedArgument)) {
+      return {
+        isCorrect: false,
+        message: `Wrong torch argument. Call ${methodName}(${expectedArgument});`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          methodName,
+          parameterType,
+          parameterName,
+          argument: actualArgument,
+        },
+      },
+    };
+  };
+
 export const createIntegerArrayCountValidator =
   ({
     arrayName,

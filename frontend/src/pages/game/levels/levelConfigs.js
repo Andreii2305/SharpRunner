@@ -12,6 +12,8 @@ import ArraysLevelSixScene from "../scenes/ArraysLevelSixScene";
 import ArraysLevelSevenScene from "../scenes/ArraysLevelSevenScene";
 import ArraysLevelEightScene from "../scenes/ArraysLevelEightScene";
 import MethodsLevelOneScene from "../scenes/MethodsLevelOneScene";
+import MethodsBellOfDawnScene from "../scenes/MethodsBellOfDawnScene";
+import MethodsLevelTwoScene from "../scenes/MethodsLevelTwoScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -21,6 +23,7 @@ import {
   createMultiStringDeclarationValidator,
   createSingleIntegerDeclarationValidator,
   createStringArrayTraversalValidator,
+  createPredefinedVoidMethodCallValidator,
   createVoidMethodDefinitionCallValidator,
 } from "./validators";
 
@@ -1737,6 +1740,254 @@ const LEVEL_CONFIG_BY_NUMBER = {
     validateCode: createVoidMethodDefinitionCallValidator({
       methodName: "StartRitual",
       successMessage: "Code accepted. Starting the ritual...",
+    }),
+  },
+  15: {
+    levelNumber: 15,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Kampana ng Bukang-liwayway",
+    subtitle: "Methods 2 - Bell of Dawn",
+    chapterLabel: "Methods 2: Bell of Dawn",
+    scene: MethodsBellOfDawnScene,
+    sceneKey: "MethodsBellOfDawnScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-2`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void RingBell() {\n      // The game rings the Bell of Dawn.\n    }\n\n    static void Main(string[] args) {\n      // Call the bell method here.\n    }\n  }\n}",
+    hint:
+      "RingBell() is already defined. Your job is to call RingBell(); inside Main so the prepared bell action actually runs.",
+    idleResultMessage: "Call RingBell(); inside Main.",
+    successResultMessage:
+      "RingBell was called. The Bell of Dawn rings and the ghosts fade.",
+    errorResultMessage:
+      "BELL SILENT: RingBell() is predefined, but the bell will not ring unless Main calls RingBell(); exactly once.",
+    goal: {
+      title: "Goal",
+      description:
+        "Call the predefined method RingBell() from Main so the Bell of Dawn can push back the ghosts blocking the road.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "**Do not create a new method** for this level.",
+        "Use the predefined **static void RingBell()** method.",
+        "Inside **Main**, call **RingBell();** to run the prepared bell action.",
+        "A method only performs its action when it is **called**.",
+        "Use exactly **one** call to RingBell().",
+      ],
+    },
+    lessonCard: {
+      title: "Calling A Predefined Method",
+      description:
+        "A predefined method already exists. Your task is to call it from Main so its prepared action runs.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "Ghosts block the road. The Bell of Dawn already knows how to ring, but the prepared action stays silent until Main calls RingBell().",
+        },
+        {
+          title: "Predefined Means Ready",
+          body:
+            "RingBell already has its action. You do not need to define it again; you only need to call it from Main.",
+          code:
+            "static void RingBell() {\n  // The game rings the Bell of Dawn.\n}",
+        },
+        {
+          title: "Call The Method",
+          body:
+            "A method call is the method name followed by parentheses and a semicolon. This tells the program to run that named action right now.",
+          code:
+            "static void Main(string[] args) {\n  RingBell();\n}",
+        },
+        {
+          title: "Why This Matters",
+          body:
+            "Many games and programs provide methods for you. Learning to call an existing method is the first step before writing your own larger actions.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Writing RingBell without parentheses does not call the method. Defining another RingBell method also misses the goal. Use RingBell(); inside Main.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "Ghosts are holding the road in silence. The Bell of Dawn can break their grip.",
+              tone: "normal",
+            },
+            {
+              text: "The bell ritual is already prepared as RingBell(), but prepared code stays quiet until it is called.",
+              tone: "accent",
+            },
+            {
+              text: "Call RingBell(); inside Main and let the sound push them back.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So I do not define the bell again. I just call the method that already exists.",
+              tone: "normal",
+            },
+            {
+              text: "Main will call RingBell(); and the road should clear.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "predefinedVoidMethodCall",
+      methodName: "RingBell",
+      successMessage: "Code accepted. Ringing the Bell of Dawn...",
+    },
+    validateCode: createPredefinedVoidMethodCallValidator({
+      methodName: "RingBell",
+      successMessage: "Code accepted. Ringing the Bell of Dawn...",
+    }),
+  },
+  16: {
+    levelNumber: 16,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Sindihan ang Bantay-Apoy",
+    subtitle: "Methods 3 - No Parameters, No Return",
+    chapterLabel: "Methods 3: Light the Warding Flame",
+    scene: MethodsLevelTwoScene,
+    sceneKey: "MethodsLevelTwoScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-3`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the flame method here.\n\n    static void Main(string[] args) {\n      // Call the flame method here.\n    }\n  }\n}",
+    hint:
+      "Define static void LightFlame(), then call LightFlame(); inside Main. No parameters and no return value are needed.",
+    idleResultMessage: "Define and call LightFlame.",
+    successResultMessage:
+      "LightFlame was defined and called. The warding flame burns away the barrier.",
+    errorResultMessage:
+      "FLAME STILL DARK: define static void LightFlame(), then call LightFlame(); inside Main.",
+    goal: {
+      title: "Goal",
+      description:
+        "Define and call a no-parameter void method named LightFlame so the fixed warding flame burns away the shadow barrier.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static void LightFlame()** in the Program class.",
+        "Keep the parentheses **empty**: this method needs **no parameters**.",
+        "Keep the return type **void**: this method gives **no return value**.",
+        "Inside **Main**, call **LightFlame();**",
+        "The method body can stay **empty** for this beginner method lesson.",
+      ],
+    },
+    lessonCard: {
+      title: "No Parameters, No Return Value",
+      description:
+        "A no-parameter void method performs one fixed action. It does not receive input and it does not send a value back.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "A fixed warding flame must be lit. It does not need a number, word, or item from Kai. The method only needs to be defined and called.",
+        },
+        {
+          title: "Define The Fixed Action",
+          body:
+            "LightFlame uses empty parentheses because nothing is passed into it. The return type is void because nothing is returned.",
+          code:
+            "static void LightFlame() {\n}",
+        },
+        {
+          title: "Call The Method",
+          body:
+            "Defining the method gives the ritual a name. Calling it from Main starts the action.",
+          code:
+            "static void Main(string[] args) {\n  LightFlame();\n}",
+        },
+        {
+          title: "Why No Input?",
+          body:
+            "There is only one flame and only one result: light it. Later methods will receive parameters when they need choices or values.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "LightFlame does not need anything inside its parentheses. Do not write LightFlame(1), LightFlame(\"apoy\"), or return a value.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "This warding flame has one fixed duty: burn away the shadow gate.",
+              tone: "normal",
+            },
+            {
+              text: "It needs no offering and gives no answer back. It only needs a named action.",
+              tone: "accent",
+            },
+            {
+              text: "Define LightFlame(), then call LightFlame(); from Main.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So the empty parentheses mean the method receives no input.",
+              tone: "normal",
+            },
+            {
+              text: "I only need to define LightFlame and call it once.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "voidMethodDefinitionCall",
+      methodName: "LightFlame",
+      successMessage: "Code accepted. Lighting the warding flame...",
+    },
+    validateCode: createVoidMethodDefinitionCallValidator({
+      methodName: "LightFlame",
+      successMessage: "Code accepted. Lighting the warding flame...",
     }),
   },
 };

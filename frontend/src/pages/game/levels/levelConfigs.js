@@ -14,6 +14,7 @@ import ArraysLevelEightScene from "../scenes/ArraysLevelEightScene";
 import MethodsLevelOneScene from "../scenes/MethodsLevelOneScene";
 import MethodsBellOfDawnScene from "../scenes/MethodsBellOfDawnScene";
 import MethodsLevelTwoScene from "../scenes/MethodsLevelTwoScene";
+import MethodsSealCursedShrineScene from "../scenes/MethodsSealCursedShrineScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -1988,6 +1989,139 @@ const LEVEL_CONFIG_BY_NUMBER = {
     validateCode: createVoidMethodDefinitionCallValidator({
       methodName: "LightFlame",
       successMessage: "Code accepted. Lighting the warding flame...",
+    }),
+  },
+  17: {
+    levelNumber: 17,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Selyo ng Sinumpang Dambana",
+    subtitle: "Methods 4 - Seal the Cursed Shrine",
+    chapterLabel: "Methods 4: Seal the Cursed Shrine",
+    scene: MethodsSealCursedShrineScene,
+    sceneKey: "MethodsSealCursedShrineScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-4`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the shrine-sealing method here.\n\n    static void Main(string[] args) {\n      // Call the shrine-sealing method here.\n    }\n  }\n}",
+    hint:
+      "Define static void SealShrine(), then call SealShrine(); inside Main. The method needs no parameters and returns nothing.",
+    idleResultMessage: "Define and call SealShrine.",
+    successResultMessage:
+      "SealShrine was defined and called. The cursed shrine seals and the creature retreats.",
+    errorResultMessage:
+      "SHRINE STILL CURSED: define static void SealShrine(), then call SealShrine(); inside Main.",
+    goal: {
+      title: "Goal",
+      description:
+        "Define and call a no-parameter void method named SealShrine so the cursed shrine breach seals before the manananggal gets through.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static void SealShrine()** in the Program class.",
+        "Keep the parentheses **empty** because the seal needs **no parameters**.",
+        "Keep the return type **void** because the seal gives **no return value**.",
+        "Inside **Main**, call **SealShrine();**",
+        "Use exactly **one** SealShrine method and call it once.",
+      ],
+    },
+    lessonCard: {
+      title: "Another Fixed Method",
+      description:
+        "A no-parameter void method can represent any fixed action: lighting a flame, sealing a shrine, opening a path, or playing a sound.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "A manananggal circles above a cursed shrine breach. The sealing ritual does not need a number, word, or item. It only needs one named action to run.",
+        },
+        {
+          title: "Define The Action",
+          body:
+            "SealShrine has empty parentheses because nothing is passed into it. It uses void because it performs the seal without returning a value.",
+          code:
+            "static void SealShrine() {\n}",
+        },
+        {
+          title: "Call From Main",
+          body:
+            "Defining SealShrine gives the action a name. Calling SealShrine(); from Main performs the action.",
+          code:
+            "static void Main(string[] args) {\n  SealShrine();\n}",
+        },
+        {
+          title: "Define Does Not Run",
+          body:
+            "Defining a method does not run it. A method runs only when another part of the program calls it.",
+        },
+        {
+          title: "Why This Is Still Useful",
+          body:
+            "Even without parameters or return values, methods keep actions organized. The name SealShrine explains the fixed sealing action.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not write SealShrine(1), return a value, or only define the method without calling it. The shrine seals only when Main calls SealShrine();.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "This shrine is cursed. Its cracked stone is holding a breach open, and a manananggal circles above it.",
+              tone: "normal",
+            },
+            {
+              text: "This ritual has one fixed action: seal the shrine breach shut.",
+              tone: "accent",
+            },
+            {
+              text: "The shrine already knows what to do. It only waits for Main to call the named ritual.",
+              tone: "normal",
+            },
+            {
+              text: "Define SealShrine(), then call SealShrine(); from Main.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "No number, no offering, no returned answer. Just one named action.",
+              tone: "normal",
+            },
+            {
+              text: "If Main calls SealShrine();, the shrine should seal.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "voidMethodDefinitionCall",
+      methodName: "SealShrine",
+      successMessage: "Code accepted. Sealing the cursed shrine...",
+    },
+    validateCode: createVoidMethodDefinitionCallValidator({
+      methodName: "SealShrine",
+      successMessage: "Code accepted. Sealing the cursed shrine...",
     }),
   },
 };

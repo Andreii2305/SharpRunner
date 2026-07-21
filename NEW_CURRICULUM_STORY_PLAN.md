@@ -684,58 +684,58 @@ The flame sparks but dies out. The barrier remains.
 Assets needed:
 
 - flame or torch sprite
-- barrier/gate
+- barrier/portal
 - dark path tiles
 
-### Level 12 - Seal the Broken Gate
+### Level 12 - Seal the Cursed Shrine
 
 Topic: Methods with no parameters and no return values
 
 Story:
-A manananggal circles above a broken gate. Kai must call a fixed sealing ritual.
+A manananggal circles above a cursed shrine breach. Kai must call a fixed sealing ritual.
 
 Level design:
-Use a gate or barrier on the right side of the level and a flying enemy moving above it. The method call triggers a seal animation over the gate. The flying enemy does not need complex combat behavior; it can swoop once on failure and retreat on success.
+Use a cursed shrine or barrier on the right side of the level and a flying enemy moving above it. The method call triggers a seal animation over the shrine. The flying enemy does not need complex combat behavior; it can swoop once on failure and retreat on success.
 
 Setting and feeling:
-Windy midnight near a broken gate or rooftop edge. The flying creature should create pressure from above. Use darker sky, quick wing movement, and a tense sound/motion cue. The success should feel like sealing a weak point before something gets in.
+Windy midnight near a cursed shrine or rooftop edge. The flying creature should create pressure from above. Use darker sky, quick wing movement, and a tense sound/motion cue. The success should feel like sealing a weak point before something gets in.
 
 Student task:
-Define and call a no-parameter `void` method named `SealGate`.
+Define and call a no-parameter `void` method named `SealShrine`.
 
 Expected code shape:
 
 ```csharp
-static void SealGate() {
+static void SealShrine() {
 }
 
 static void Main(string[] args) {
-  SealGate();
+  SealShrine();
 }
 ```
 
 Validation notes:
 
-- Require method name `SealGate`.
+- Require method name `SealShrine`.
 - Require return type `void`.
 - Require no parameters.
 - Require a call from `Main`.
 
 Correct outcome:
-The gate glows, closes, and the flying creature retreats.
+The shrine glows, seals, and the flying creature retreats.
 
 Wrong outcome:
-The gate shakes open and the flying creature swoops near Kai.
+The shrine breach flares and the flying creature swoops near Kai.
 
 Assets needed:
 
-- gate/barrier sprite
+- cursed shrine/barrier sprite
 - flying monster sprite or shadow sprite
 - glow overlay
 
 Important implementation notes:
 
-- Use an existing gate instead of a window.
+- Use an existing shrine/seal prop instead of a window.
 
 ### Level 13 - Oracle Stone
 

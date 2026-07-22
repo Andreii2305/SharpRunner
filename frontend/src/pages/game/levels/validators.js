@@ -943,6 +943,175 @@ export const createVoidMethodParameterCallValidator =
     };
   };
 
+export const createIntReturnMethodValidator =
+  ({
+    methodName,
+    returnValue,
+    variableName,
+    successMessage = "Return-value method accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const escapedVariableName = escapeRegex(variableName);
+
+    if (
+      new RegExp(`\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(`).test(
+        codeWithoutComments,
+      )
+    ) {
+      return {
+        isCorrect: false,
+        message: `${methodName} must return int, not void.`,
+      };
+    }
+
+    const methodDefinitionRegex = new RegExp(
+      `\\bstatic\\s+int\\s+${escapedMethodName}\\s*\\(\\s*\\)\\s*\\{([\\s\\S]*?)\\}`,
+    );
+    const methodMatch = codeWithoutComments.match(methodDefinitionRegex);
+    if (!methodMatch) {
+      return {
+        isCorrect: false,
+        message: `Define static int ${methodName}() before calling it.`,
+      };
+    }
+
+    const methodBody = methodMatch[1] ?? "";
+    const returnRegex = new RegExp(`\\breturn\\s+${escapeRegex(String(returnValue))}\\s*;`);
+    if (!returnRegex.test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: `${methodName} must return ${returnValue};`,
+      };
+    }
+
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1] ?? "";
+    const assignmentRegex = new RegExp(
+      `\\bint\\s+${escapedVariableName}\\s*=\\s*${escapedMethodName}\\s*\\(\\s*\\)\\s*;`,
+    );
+    if (!assignmentRegex.test(mainBody)) {
+      if (new RegExp(`\\bint\\s+${escapedVariableName}\\s*=\\s*${returnValue}\\s*;`).test(mainBody)) {
+        return {
+          isCorrect: false,
+          message: `Store the method result, not the literal number: int ${variableName} = ${methodName}();`,
+        };
+      }
+
+      return {
+        isCorrect: false,
+        message: `Inside Main, store the returned value with int ${variableName} = ${methodName}();`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          methodName,
+          returnValue,
+          variableName,
+        },
+      },
+    };
+  };
+
+export const createStringReturnMethodValidator =
+  ({
+    methodName,
+    returnValue,
+    variableName,
+    successMessage = "String return-value method accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const escapedVariableName = escapeRegex(variableName);
+    const escapedReturnValue = escapeRegex(returnValue);
+
+    if (
+      new RegExp(`\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(`).test(
+        codeWithoutComments,
+      )
+    ) {
+      return {
+        isCorrect: false,
+        message: `${methodName} must return string, not void.`,
+      };
+    }
+
+    const methodDefinitionRegex = new RegExp(
+      `\\bstatic\\s+(?:string|String)\\s+${escapedMethodName}\\s*\\(\\s*\\)\\s*\\{([\\s\\S]*?)\\}`,
+    );
+    const methodMatch = codeWithoutComments.match(methodDefinitionRegex);
+    if (!methodMatch) {
+      return {
+        isCorrect: false,
+        message: `Define static string ${methodName}() before calling it.`,
+      };
+    }
+
+    const methodBody = methodMatch[1] ?? "";
+    const returnRegex = new RegExp(`\\breturn\\s+"${escapedReturnValue}"\\s*;`);
+    if (!returnRegex.test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: `${methodName} must return "${returnValue}";`,
+      };
+    }
+
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1] ?? "";
+    const assignmentRegex = new RegExp(
+      `\\b(?:string|String)\\s+${escapedVariableName}\\s*=\\s*${escapedMethodName}\\s*\\(\\s*\\)\\s*;`,
+    );
+    if (!assignmentRegex.test(mainBody)) {
+      if (new RegExp(`\\b(?:string|String)\\s+${escapedVariableName}\\s*=\\s*"${escapedReturnValue}"\\s*;`).test(mainBody)) {
+        return {
+          isCorrect: false,
+          message: `Store the method result, not the literal word: string ${variableName} = ${methodName}();`,
+        };
+      }
+
+      return {
+        isCorrect: false,
+        message: `Inside Main, store the returned value with string ${variableName} = ${methodName}();`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          methodName,
+          returnValue,
+          variableName,
+        },
+      },
+    };
+  };
+
 export const createIntegerArrayCountValidator =
   ({
     arrayName,

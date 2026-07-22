@@ -792,19 +792,19 @@ Story:
 The diwata gives Kai a method that returns which route is safe.
 
 Level design:
-Create two visible routes: left/upper danger and right/lower safe path, or simply two gates labeled `left` and `right`. The returned string chooses which gate glows. Kai should only move after the selected path is shown, reinforcing that the method's return value controls the route.
+Create two visible routes: an upper safe path and a lower dangerous water route. The returned string chooses which route glows. Kai should only move after the selected path is shown, reinforcing that the method's return value controls the route.
 
 Setting and feeling:
 Night at a forked forest path. One side should look unsafe with red light, thorns, or shadow; the safe side should glow softly after the return value appears. The mood is guided uncertainty: the diwata knows, but Kai must use the returned answer.
 
 Student task:
-Define a method named `GetSafePath` that returns `"right"`, then assign it to `path`.
+Define a method named `GetSafePath` that returns `"up"`, then assign it to `path`.
 
 Expected code shape:
 
 ```csharp
 static string GetSafePath() {
-  return "right";
+  return "up";
 }
 
 static void Main(string[] args) {
@@ -815,19 +815,20 @@ static void Main(string[] args) {
 Validation notes:
 
 - Require `static string GetSafePath()`.
-- Require `return "right";`.
+- Require `return "up";`.
 - Require `string path = GetSafePath();`.
 
 Correct outcome:
-The right gate lights green and opens.
+The upper path lights green and Kai crosses safely.
 
 Wrong outcome:
-The wrong path flashes red and closes.
+The lower water route flashes red and warns Kai away.
 
 Assets needed:
 
 - NPC guide sprite
-- two gates or platforms
+- upper and lower path platforms
+- animated water/waterfall hazard
 - path glow
 
 ### Level 15 - Shrine Offering

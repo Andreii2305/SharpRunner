@@ -15,6 +15,8 @@ import MethodsLevelOneScene from "../scenes/MethodsLevelOneScene";
 import MethodsBellOfDawnScene from "../scenes/MethodsBellOfDawnScene";
 import MethodsLevelTwoScene from "../scenes/MethodsLevelTwoScene";
 import MethodsSealCursedShrineScene from "../scenes/MethodsSealCursedShrineScene";
+import MethodsOracleStoneScene from "../scenes/MethodsOracleStoneScene";
+import MethodsDiwatasSafePathScene from "../scenes/MethodsDiwatasSafePathScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -26,6 +28,8 @@ import {
   createStringArrayTraversalValidator,
   createPredefinedVoidMethodCallValidator,
   createVoidMethodDefinitionCallValidator,
+  createIntReturnMethodValidator,
+  createStringReturnMethodValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
@@ -2122,6 +2126,255 @@ const LEVEL_CONFIG_BY_NUMBER = {
     validateCode: createVoidMethodDefinitionCallValidator({
       methodName: "SealShrine",
       successMessage: "Code accepted. Sealing the cursed shrine...",
+    }),
+  },
+  18: {
+    levelNumber: 18,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Bato ng Orakulo",
+    subtitle: "Methods 5 - Oracle Stone",
+    chapterLabel: "Methods 5: Oracle Stone",
+    scene: MethodsOracleStoneScene,
+    sceneKey: "MethodsOracleStoneScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-5`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the code-returning method here.\n\n    static void Main(string[] args) {\n      // Store the returned code here.\n    }\n  }\n}",
+    hint:
+      "Count the oracle lights, define static int GetCode() that returns that number, then store it with int code = GetCode(); inside Main.",
+    idleResultMessage: "Return the oracle code, then store it in Main.",
+    successResultMessage:
+      "GetCode returned the oracle code. Main stored it, and the sealed path opened.",
+    errorResultMessage:
+      "ORACLE SILENT: GetCode must return the counted number, and Main must store GetCode() in code.",
+    goal: {
+      title: "Goal",
+      description:
+        "Define a no-parameter method named GetCode that returns the oracle stone's counted code, then store that returned value in Main.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static int GetCode()** in the Program class.",
+        "Inside GetCode, use **return** to send back the number shown by the oracle lights.",
+        "Do **not** use void: this method must return an **int**.",
+        "Inside **Main**, store the returned value with **int code = GetCode();**",
+      ],
+    },
+    lessonCard: {
+      title: "Methods With Return Values",
+      description:
+        "A method can send a value back to the code that called it. That returned value can then be stored in a variable.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The oracle stone shows its code as a set of glowing marks. Kai must ask a method for that code, then Main must keep the answer in a variable.",
+        },
+        {
+          title: "Return Type",
+          body:
+            "The word before the method name tells C# what kind of value comes back. static int GetCode() means GetCode returns an integer.",
+          code:
+            "static int GetCode() {\n  return 7;\n}",
+        },
+        {
+          title: "Return Statement",
+          body:
+            "return ends the method and sends one value back to the caller. In this level, the value comes from counting the oracle lights in the scene.",
+        },
+        {
+          title: "Store The Answer",
+          body:
+            "A returned value is useful when another part of the program stores or uses it. Main calls GetCode() and saves the answer in code.",
+          code:
+            "static void Main(string[] args) {\n  int code = GetCode();\n}",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not write static void GetCode(), because void means no value comes back. Also avoid int code = 7; here; the lesson is about receiving the value from the method call.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "This oracle stone does not open for a silent action. It gives an answer back.",
+              tone: "normal",
+            },
+            {
+              text: "Count the glowing marks around the crystal. That count is the code the method must return.",
+              tone: "accent",
+            },
+            {
+              text: "Define GetCode() so it returns the counted number, then let Main store the answer in code.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So GetCode() is not just doing an action. It sends an int back.",
+              tone: "normal",
+            },
+            {
+              text: "Main should receive that answer with int code = GetCode();",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "intReturnMethod",
+      methodName: "GetCode",
+      returnValue: 7,
+      variableName: "code",
+      successMessage: "Code accepted. Reading the oracle stone...",
+    },
+    validateCode: createIntReturnMethodValidator({
+      methodName: "GetCode",
+      returnValue: 7,
+      variableName: "code",
+      successMessage: "Code accepted. Reading the oracle stone...",
+    }),
+  },
+  19: {
+    levelNumber: 19,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Ligtas na Landas ng Diwata",
+    subtitle: "Methods 6 - Diwata's Safe Path",
+    chapterLabel: "Methods 6: Diwata's Safe Path",
+    scene: MethodsDiwatasSafePathScene,
+    sceneKey: "MethodsDiwatasSafePathScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-6`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the safe-path method here.\n\n    static void Main(string[] args) {\n      // Store the returned path here.\n    }\n  }\n}",
+    hint:
+      'Define static string GetSafePath() that returns "up", then store it with string path = GetSafePath(); inside Main.',
+    idleResultMessage: "Return the safe path, then store it in Main.",
+    successResultMessage:
+      'GetSafePath returned "up". Main stored it, and Kai crossed the safe path.',
+    errorResultMessage:
+      'PATH UNSAFE: GetSafePath must return "up", and Main must store GetSafePath() in path.',
+    goal: {
+      title: "Goal",
+      description:
+        "Define a no-parameter method named GetSafePath that returns the safe route as text, then store the returned path in Main.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static string GetSafePath()** in the Program class.",
+        'Inside GetSafePath, use **return "up";**',
+        "Do **not** use void: this method must return a **string**.",
+        "Inside **Main**, store the returned value with **string path = GetSafePath();**",
+      ],
+    },
+    lessonCard: {
+      title: "Returning Text From A Method",
+      description:
+        "A method can return text, not just numbers. The returned string can control which route the program chooses.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The lower path is flooded and dangerous. The diwata's method must send back the safe route, then Main stores that answer.",
+        },
+        {
+          title: "Return A String",
+          body:
+            "static string GetSafePath() means the method returns text. A string value is written inside double quotes.",
+          code:
+            'static string GetSafePath() {\n  return "up";\n}',
+        },
+        {
+          title: "Store The Returned Path",
+          body:
+            "Main calls GetSafePath() and stores the returned word in path. The scene uses that stored word to guide Kai.",
+          code:
+            "static void Main(string[] args) {\n  string path = GetSafePath();\n}",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            'Do not write static void GetSafePath(), because void returns nothing. Also avoid string path = "up"; here; the lesson is about receiving the value from the method call.',
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "The lower path is waterlogged. It looks calm, but it pulls travelers away.",
+              tone: "normal",
+            },
+            {
+              text: "Ask GetSafePath() for the safe route. This time the answer is text.",
+              tone: "accent",
+            },
+            {
+              text: 'Return "up", then let Main store the returned path.',
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So the method sends back a string, and Main keeps it in path.",
+              tone: "normal",
+            },
+            {
+              text: "Then the scene can choose the upper route.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "stringReturnMethod",
+      methodName: "GetSafePath",
+      returnValue: "up",
+      variableName: "path",
+      successMessage: "Code accepted. Choosing the safe path...",
+    },
+    validateCode: createStringReturnMethodValidator({
+      methodName: "GetSafePath",
+      returnValue: "up",
+      variableName: "path",
+      successMessage: "Code accepted. Choosing the safe path...",
     }),
   },
 };

@@ -17,6 +17,8 @@ import MethodsLevelTwoScene from "../scenes/MethodsLevelTwoScene";
 import MethodsSealCursedShrineScene from "../scenes/MethodsSealCursedShrineScene";
 import MethodsOracleStoneScene from "../scenes/MethodsOracleStoneScene";
 import MethodsDiwatasSafePathScene from "../scenes/MethodsDiwatasSafePathScene";
+import MethodsShrineOfferingScene from "../scenes/MethodsShrineOfferingScene";
+import MethodsSaltAgainstAswangScene from "../scenes/MethodsSaltAgainstAswangScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -27,7 +29,9 @@ import {
   createSingleIntegerDeclarationValidator,
   createStringArrayTraversalValidator,
   createPredefinedVoidMethodCallValidator,
+  createPredefinedVoidMethodArgumentValidator,
   createVoidMethodDefinitionCallValidator,
+  createVoidMethodParameterCallValidator,
   createIntReturnMethodValidator,
   createStringReturnMethodValidator,
 } from "./validators";
@@ -2375,6 +2379,266 @@ const LEVEL_CONFIG_BY_NUMBER = {
       returnValue: "up",
       variableName: "path",
       successMessage: "Code accepted. Choosing the safe path...",
+    }),
+  },
+  20: {
+    levelNumber: 20,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Handog sa Dambana",
+    subtitle: "Methods 7 - Shrine Offering",
+    chapterLabel: "Methods 7: Shrine Offering",
+    scene: MethodsShrineOfferingScene,
+    sceneKey: "MethodsShrineOfferingScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-7`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void PlaceOffering(string item) {\n      // The game places the offering named by item.\n    }\n\n    static void Main(string[] args) {\n      // Pass the correct offering here.\n    }\n  }\n}",
+    hint:
+      'PlaceOffering already exists and needs one string parameter. Call PlaceOffering("rice"); inside Main.',
+    idleResultMessage: "Pass the correct offering to the shrine.",
+    successResultMessage:
+      'PlaceOffering received "rice". The offering appears, and the path opens.',
+    errorResultMessage:
+      'OFFERING REJECTED: call PlaceOffering("rice"); inside Main.',
+    goal: {
+      title: "Goal",
+      description:
+        'Call the predefined method PlaceOffering with the string "rice" so the shrine receives the exact offering it asks for.',
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "**Do not create a new method** for this level.",
+        "Use the predefined **static void PlaceOffering(string item)** method.",
+        'Inside **Main**, call **PlaceOffering("rice");**',
+        "The word inside the parentheses is the **argument** passed into the method.",
+        "Because the method is **void**, it performs an action but does **not** return a value.",
+      ],
+    },
+    lessonCard: {
+      title: "Methods With Parameters",
+      description:
+        "A parameter lets a method receive a value. The method can use that value to decide what action to perform.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            'The shrine is ready, but it does not accept just any action. It needs the exact offering: "rice". That value must be passed into PlaceOffering.',
+        },
+        {
+          title: "Parameter In The Method",
+          body:
+            "The method header says it receives a string named item. That means the caller must provide text when calling the method.",
+          code:
+            "static void PlaceOffering(string item) {\n  // The game places the offering named by item.\n}",
+        },
+        {
+          title: "Argument In The Call",
+          body:
+            'The value "rice" is the argument. It travels into the item parameter when Main calls PlaceOffering.',
+          code:
+            'static void Main(string[] args) {\n  PlaceOffering("rice");\n}',
+        },
+        {
+          title: "No Return Value",
+          body:
+            "PlaceOffering is void, so it does not send a value back. It simply uses the argument to perform the shrine action.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            'PlaceOffering(); is missing the offering. PlaceOffering("stone"); passes the wrong offering. Use the exact string "rice".',
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "This roadside shrine opens the path only when it receives the right handog.",
+              tone: "normal",
+            },
+            {
+              text: "The method is already prepared: PlaceOffering(string item). It waits for the item you pass.",
+              tone: "accent",
+            },
+            {
+              text: 'Pass "rice" into PlaceOffering so the shrine knows what Kai is offering.',
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So the method name is the action, and the string inside the parentheses is the offering.",
+              tone: "normal",
+            },
+            {
+              text: 'I need Main to call PlaceOffering("rice");',
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "voidMethodParameterCall",
+      methodName: "PlaceOffering",
+      parameterType: "string",
+      parameterName: "item",
+      expectedArgument: '"rice"',
+      wrongArgumentMessage: 'The shrine asks for rice. Call PlaceOffering("rice");',
+      successMessage: "Code accepted. Placing the shrine offering...",
+    },
+    validateCode: createVoidMethodParameterCallValidator({
+      methodName: "PlaceOffering",
+      parameterType: "string",
+      parameterName: "item",
+      expectedArgument: '"rice"',
+      wrongArgumentMessage: 'The shrine asks for rice. Call PlaceOffering("rice");',
+      successMessage: "Code accepted. Placing the shrine offering...",
+    }),
+  },
+  21: {
+    levelNumber: 21,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Asin Laban sa Aswang",
+    subtitle: "Methods 8 - Salt Against the Aswang",
+    chapterLabel: "Methods 8: Salt Against the Aswang",
+    scene: MethodsSaltAgainstAswangScene,
+    sceneKey: "MethodsSaltAgainstAswangScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-8`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void ThrowSalt(int amount) {\n      // The game throws a measured amount of salt.\n    }\n\n    static void Main(string[] args) {\n      // Pass the salt amount here.\n    }\n  }\n}",
+    hint:
+      "ThrowSalt already exists and needs one integer parameter. Count the distance markers, then call ThrowSalt(5); inside Main.",
+    idleResultMessage: "Pass the measured salt amount.",
+    successResultMessage:
+      "ThrowSalt received 5. The salt reaches the aswang and clears the path.",
+    errorResultMessage:
+      "SALT MISSED: count the target marker, then call ThrowSalt(5); inside Main.",
+    goal: {
+      title: "Goal",
+      description:
+        "Call the predefined method ThrowSalt with the integer 5 so Kai throws the right measured amount of salt.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "**Do not create a new method** for this level.",
+        "Use the predefined **static void ThrowSalt(int amount)** method.",
+        "Use the numbered distance markers to find the aswang's position.",
+        "Inside **Main**, call **ThrowSalt(5);**",
+        "The number inside the parentheses is the **argument** passed into the method.",
+        "Because the method is **void**, it performs the throw but does **not** return a value.",
+      ],
+    },
+    lessonCard: {
+      title: "Numeric Parameters",
+      description:
+        "A parameter can receive a number. The method uses that number to control how strong or far an action should be.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The aswang is blocking the path at marker 5. Too little salt falls short, and too much misses. The method needs the exact measured amount.",
+        },
+        {
+          title: "Parameter In The Method",
+          body:
+            "ThrowSalt has an int parameter named amount. That means the call must pass a whole number.",
+          code:
+            "static void ThrowSalt(int amount) {\n  // The game throws a measured amount of salt.\n}",
+        },
+        {
+          title: "Argument In The Call",
+          body:
+            "The argument 5 travels into the amount parameter. The game uses that value to make the salt reach the aswang.",
+          code:
+            "static void Main(string[] args) {\n  ThrowSalt(5);\n}",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            'ThrowSalt(); is missing the amount. ThrowSalt("5"); is text, not an integer. ThrowSalt(2); is too weak.',
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "The aswang is close. A careless throw will not push it back.",
+              tone: "normal",
+            },
+            {
+              text: "ThrowSalt(int amount) is ready. The number you pass controls the strength of the salt.",
+              tone: "accent",
+            },
+            {
+              text: "Salt works only when measured. Count the reach before you throw.",
+              tone: "normal",
+            },
+            {
+              text: "Count the markers. The aswang stands at 5.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So the method already knows how to throw. I only choose the amount.",
+              tone: "normal",
+            },
+            {
+              text: "Main should call ThrowSalt(5);",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "predefinedVoidMethodArgument",
+      methodName: "ThrowSalt",
+      expectedArgument: "5",
+      wrongArgumentMessage: "The aswang is at marker 5. Call ThrowSalt(5);",
+      successMessage: "Code accepted. Throwing measured salt...",
+    },
+    validateCode: createPredefinedVoidMethodArgumentValidator({
+      methodName: "ThrowSalt",
+      expectedArgument: "5",
+      wrongArgumentMessage: "The aswang is at marker 5. Call ThrowSalt(5);",
+      successMessage: "Code accepted. Throwing measured salt...",
     }),
   },
 };

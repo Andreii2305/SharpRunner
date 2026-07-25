@@ -783,6 +783,56 @@ export const createPredefinedVoidMethodCallValidator =
     };
   };
 
+export const createPredefinedVoidMethodArgumentValidator =
+  ({
+    methodName,
+    expectedArgument,
+    wrongArgumentMessage,
+    successMessage = "Method argument accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1];
+    const anyCallRegex = new RegExp(`\\b${escapedMethodName}\\s*\\(\\s*([^)]*?)\\s*\\)\\s*;`, "g");
+    const calls = [...mainBody.matchAll(anyCallRegex)];
+    if (calls.length !== 1) {
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(${expectedArgument}); exactly once inside Main.`,
+      };
+    }
+
+    const actualArgument = calls[0][1]?.trim();
+    if (actualArgument !== String(expectedArgument)) {
+      return {
+        isCorrect: false,
+        message:
+          wrongArgumentMessage ??
+          `Wrong argument. Call ${methodName}(${expectedArgument});`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: { methodName, argument: actualArgument },
+      },
+    };
+  };
+
 export const createVoidMethodBodyCallValidator =
   ({
     methodName,
@@ -861,6 +911,8 @@ export const createVoidMethodParameterCallValidator =
     expectedArgument,
     requiredBodyPattern,
     requiredBodyStatementLabel,
+    missingBodyMessage,
+    wrongArgumentMessage,
     successMessage = "Parameterized method call accepted.",
   }) =>
   (sourceCode) => {
@@ -902,13 +954,17 @@ export const createVoidMethodParameterCallValidator =
       if (bodyPattern.test(mainBody)) {
         return {
           isCorrect: false,
-          message: `The right torch number can enter ${methodName}(), but the method body does nothing yet. Move ${requiredBodyStatementLabel} inside ${methodName}().`,
+          message:
+            missingBodyMessage ??
+            `The argument can enter ${methodName}(), but the method body does nothing yet. Move ${requiredBodyStatementLabel} inside ${methodName}().`,
         };
       }
 
       return {
         isCorrect: false,
-        message: `LightTorch can receive 2, but it will not light the safe torch until ${requiredBodyStatementLabel} is inside ${methodName}().`,
+        message:
+          missingBodyMessage ??
+          `${methodName} can receive ${expectedArgument}, but it will not perform the action until ${requiredBodyStatementLabel} is inside the method body.`,
       };
     }
 
@@ -925,7 +981,9 @@ export const createVoidMethodParameterCallValidator =
     if (actualArgument !== String(expectedArgument)) {
       return {
         isCorrect: false,
-        message: `Wrong torch argument. Call ${methodName}(${expectedArgument});`,
+        message:
+          wrongArgumentMessage ??
+          `Wrong argument. Call ${methodName}(${expectedArgument});`,
       };
     }
 

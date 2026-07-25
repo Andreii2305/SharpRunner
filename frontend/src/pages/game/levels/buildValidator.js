@@ -8,6 +8,7 @@ import {
   createStringArrayAccessValidator,
   createStringArrayTraversalValidator,
   createPredefinedVoidMethodCallValidator,
+  createPredefinedVoidMethodArgumentValidator,
   createVoidMethodDefinitionCallValidator,
   createVoidMethodBodyCallValidator,
   createVoidMethodParameterCallValidator,
@@ -27,6 +28,7 @@ export const buildValidatorFromConfig = (config) => {
   if (config.type === "stringArrayAccess") return createStringArrayAccessValidator(config);
   if (config.type === "stringArrayTraversal") return createStringArrayTraversalValidator(config);
   if (config.type === "predefinedVoidMethodCall") return createPredefinedVoidMethodCallValidator(config);
+  if (config.type === "predefinedVoidMethodArgument") return createPredefinedVoidMethodArgumentValidator(config);
   if (config.type === "voidMethodDefinitionCall") return createVoidMethodDefinitionCallValidator(config);
   if (config.type === "voidMethodBodyCall") return createVoidMethodBodyCallValidator(config);
   if (config.type === "voidMethodParameterCall") return createVoidMethodParameterCallValidator(config);

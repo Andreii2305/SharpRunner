@@ -1085,6 +1085,100 @@ export const createIntReturnMethodValidator =
     };
   };
 
+export const createIntParameterReturnMethodValidator =
+  ({
+    methodName,
+    parameters = [],
+    returnExpression,
+    variableName,
+    expectedArguments = [],
+    successMessage = "Parameterized return method accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const escapedVariableName = escapeRegex(variableName);
+
+    if (new RegExp(`\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(`).test(codeWithoutComments)) {
+      return {
+        isCorrect: false,
+        message: `${methodName} must return int, not void.`,
+      };
+    }
+
+    const parameterPattern = parameters
+      .map(({ type = "int", name }) => `${escapeRegex(type)}\\s+${escapeRegex(name)}`)
+      .join("\\s*,\\s*");
+    const methodDefinitionRegex = new RegExp(
+      `\\bstatic\\s+int\\s+${escapedMethodName}\\s*\\(\\s*${parameterPattern}\\s*\\)\\s*\\{([\\s\\S]*?)\\}`,
+    );
+    const methodMatch = codeWithoutComments.match(methodDefinitionRegex);
+    if (!methodMatch) {
+      const signature = parameters.map(({ type = "int", name }) => `${type} ${name}`).join(", ");
+      return {
+        isCorrect: false,
+        message: `Define static int ${methodName}(${signature}) before calling it.`,
+      };
+    }
+
+    const methodBody = methodMatch[1] ?? "";
+    const returnRegex = new RegExp(`\\breturn\\s+${escapeRegex(returnExpression)}\\s*;`);
+    if (!returnRegex.test(methodBody.replace(/\s+/g, " "))) {
+      return {
+        isCorrect: false,
+        message: `Return the calculated value with: return ${returnExpression};`,
+      };
+    }
+
+    const mainMatch = codeWithoutComments.match(
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{([\s\S]*?)\}/,
+    );
+    if (!mainMatch) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+      };
+    }
+
+    const mainBody = mainMatch[1] ?? "";
+    const expectedArgumentText = expectedArguments.map(String).join("\\s*,\\s*");
+    const displayArguments = expectedArguments.join(", ");
+    const assignmentRegex = new RegExp(
+      `\\bint\\s+${escapedVariableName}\\s*=\\s*${escapedMethodName}\\s*\\(\\s*${expectedArgumentText}\\s*\\)\\s*;`,
+    );
+    if (!assignmentRegex.test(mainBody)) {
+      const expectedLiteralResult = expectedArguments.every((value) => Number.isFinite(Number(value)))
+        ? expectedArguments.reduce((sum, value) => sum + Number(value), 0)
+        : null;
+      if (
+        expectedLiteralResult !== null &&
+        new RegExp(`\\bint\\s+${escapedVariableName}\\s*=\\s*${escapeRegex(String(expectedLiteralResult))}\\s*;`).test(mainBody)
+      ) {
+        return {
+          isCorrect: false,
+          message: `The shield needs a returned value, not a typed final answer. Store ${methodName}(${displayArguments}) in ${variableName}.`,
+        };
+      }
+
+      return {
+        isCorrect: false,
+        message: `Store the result with int ${variableName} = ${methodName}(${displayArguments});`,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          methodName,
+          variableName,
+          arguments: expectedArguments,
+        },
+      },
+    };
+  };
+
 export const createStringReturnMethodValidator =
   ({
     methodName,

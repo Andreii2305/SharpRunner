@@ -13,6 +13,7 @@ import {
   createVoidMethodBodyCallValidator,
   createVoidMethodParameterCallValidator,
   createIntReturnMethodValidator,
+  createIntParameterReturnMethodValidator,
   createStringReturnMethodValidator,
   createIntegerArrayCountValidator,
 } from "./validators";
@@ -33,6 +34,7 @@ export const buildValidatorFromConfig = (config) => {
   if (config.type === "voidMethodBodyCall") return createVoidMethodBodyCallValidator(config);
   if (config.type === "voidMethodParameterCall") return createVoidMethodParameterCallValidator(config);
   if (config.type === "intReturnMethod") return createIntReturnMethodValidator(config);
+  if (config.type === "intParameterReturnMethod") return createIntParameterReturnMethodValidator(config);
   if (config.type === "stringReturnMethod") return createStringReturnMethodValidator(config);
   if (config.type === "integerArrayCount") return createIntegerArrayCountValidator(config);
   return null;

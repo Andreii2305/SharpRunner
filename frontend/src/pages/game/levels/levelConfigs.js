@@ -19,6 +19,7 @@ import MethodsOracleStoneScene from "../scenes/MethodsOracleStoneScene";
 import MethodsDiwatasSafePathScene from "../scenes/MethodsDiwatasSafePathScene";
 import MethodsShrineOfferingScene from "../scenes/MethodsShrineOfferingScene";
 import MethodsSaltAgainstAswangScene from "../scenes/MethodsSaltAgainstAswangScene";
+import MethodsAntingAntingPowerScene from "../scenes/MethodsAntingAntingPowerScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -33,6 +34,7 @@ import {
   createVoidMethodDefinitionCallValidator,
   createVoidMethodParameterCallValidator,
   createIntReturnMethodValidator,
+  createIntParameterReturnMethodValidator,
   createStringReturnMethodValidator,
 } from "./validators";
 
@@ -2639,6 +2641,139 @@ const LEVEL_CONFIG_BY_NUMBER = {
       expectedArgument: "5",
       wrongArgumentMessage: "The aswang is at marker 5. Call ThrowSalt(5);",
       successMessage: "Code accepted. Throwing measured salt...",
+    }),
+  },
+  22: {
+    levelNumber: 22,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Lakas ng Anting-Anting",
+    subtitle: "Methods 9 - Anting-Anting Power",
+    chapterLabel: "Methods 9: Anting-Anting Power",
+    scene: MethodsAntingAntingPowerScene,
+    sceneKey: "MethodsAntingAntingPowerScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-9`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the power method here.\n\n    static void Main(string[] args) {\n      // Store the returned power here.\n    }\n  }\n}",
+    hint:
+      "Define static int CalculatePower(int basePower, int bonus), return basePower + bonus, then store CalculatePower(5, 3) in power.",
+    idleResultMessage: "Calculate and store the anting-anting power.",
+    successResultMessage:
+      "CalculatePower returned 8. The anting-anting shield blocks the shadow.",
+    errorResultMessage:
+      "POWER UNSTABLE: define CalculatePower with two int parameters, return their sum, and store CalculatePower(5, 3).",
+    goal: {
+      title: "Goal",
+      description:
+        "Define a method named CalculatePower that receives basePower and bonus, returns their sum, then store the result in power.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static int CalculatePower(int basePower, int bonus)** in the Program class.",
+        "Inside the method, write **return basePower + bonus;**",
+        "Inside **Main**, write **int power = CalculatePower(5, 3);**",
+        "The two numbers are **arguments**. They enter the method through the parameters.",
+        "The returned value must be stored in **power**.",
+      ],
+    },
+    lessonCard: {
+      title: "Parameters And Return Values",
+      description:
+        "A method can receive values, calculate with them, and send one value back to the caller.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The anting-anting needs exactly 8 power to block the shadow. Kai must calculate that value instead of writing the final number directly.",
+        },
+        {
+          title: "Define The Calculation",
+          body:
+            "The parameters basePower and bonus are placeholders for the numbers that will be passed into the method.",
+          code:
+            "static int CalculatePower(int basePower, int bonus) {\n  return basePower + bonus;\n}",
+        },
+        {
+          title: "Store The Return Value",
+          body:
+            "The call CalculatePower(5, 3) returns 8. Main stores that returned value in power.",
+          code:
+            "static void Main(string[] args) {\n  int power = CalculatePower(5, 3);\n}",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not use void here. A shield needs a returned number, so CalculatePower must return int.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "The shadow is coming. The anting-anting will only guard Kai if its power reaches 8.",
+              tone: "normal",
+            },
+            {
+              text: "Use a method that receives base power and bonus, then returns the total.",
+              tone: "accent",
+            },
+            {
+              text: "CalculatePower(5, 3) should return the shield power.",
+              tone: "goal",
+            },
+          ],
+        },
+        {
+          speaker: "Kai",
+          portraitImage: "portrait_player_main.png",
+          portraitAlt: "Kai portrait",
+          lines: [
+            {
+              text: "So the method does the adding, and Main stores what comes back.",
+              tone: "normal",
+            },
+            {
+              text: "I need int power = CalculatePower(5, 3);",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "intParameterReturnMethod",
+      methodName: "CalculatePower",
+      parameters: [
+        { type: "int", name: "basePower" },
+        { type: "int", name: "bonus" },
+      ],
+      returnExpression: "basePower + bonus",
+      variableName: "power",
+      expectedArguments: [5, 3],
+      successMessage: "Code accepted. Charging the anting-anting...",
+    },
+    validateCode: createIntParameterReturnMethodValidator({
+      methodName: "CalculatePower",
+      parameters: [
+        { type: "int", name: "basePower" },
+        { type: "int", name: "bonus" },
+      ],
+      returnExpression: "basePower + bonus",
+      variableName: "power",
+      expectedArguments: [5, 3],
+      successMessage: "Code accepted. Charging the anting-anting...",
     }),
   },
 };

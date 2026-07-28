@@ -20,6 +20,7 @@ import MethodsDiwatasSafePathScene from "../scenes/MethodsDiwatasSafePathScene";
 import MethodsShrineOfferingScene from "../scenes/MethodsShrineOfferingScene";
 import MethodsSaltAgainstAswangScene from "../scenes/MethodsSaltAgainstAswangScene";
 import MethodsAntingAntingPowerScene from "../scenes/MethodsAntingAntingPowerScene";
+import MethodsHealingRitualScene from "../scenes/MethodsHealingRitualScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -2774,6 +2775,118 @@ const LEVEL_CONFIG_BY_NUMBER = {
       variableName: "power",
       expectedArguments: [5, 3],
       successMessage: "Code accepted. Charging the anting-anting...",
+    }),
+  },
+  23: {
+    levelNumber: 23,
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Ritwal ng Paghilom",
+    subtitle: "Methods 10 - Healing Ritual",
+    chapterLabel: "Methods 10: Healing Ritual",
+    scene: MethodsHealingRitualScene,
+    sceneKey: "MethodsHealingRitualScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-10`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the healing method here.\n\n    static void Main(string[] args) {\n      // Store the returned healing here.\n    }\n  }\n}",
+    hint:
+      "Define static int Heal(int herb, int water), return herb * water, then store Heal(5, 2) in healing.",
+    idleResultMessage: "Speak with the Diwata.",
+    successResultMessage:
+      "Heal returned 10. The diwata is restored.",
+    errorResultMessage:
+      "HEALING FAILED: define Heal with two int parameters, multiply them, and store Heal(5, 2).",
+    goal: {
+      title: "Goal",
+      description:
+        "Define a method named Heal that receives herb and water, returns their product, then store the result in healing.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static int Heal(int herb, int water)** in the Program class.",
+        "Inside the method, write **return herb * water;**",
+        "Inside **Main**, write **int healing = Heal(5, 2);**",
+        "The returned value fills the Diwata's healing bar.",
+        "Do not type **int healing = 10;** directly. The value must come from the method call.",
+      ],
+    },
+    lessonCard: {
+      title: "Multiplying Parameters",
+      description:
+        "A method can receive more than one value, use those values in a calculation, and return the result.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The Diwata was wounded by a shadow attack. The ritual needs herb power and water power combined by multiplication, not a typed final answer.",
+        },
+        {
+          title: "Define The Method",
+          body:
+            "The parameters herb and water are input values. Inside Heal, multiply them and return the result.",
+          code:
+            "static int Heal(int herb, int water) {\n  return herb * water;\n}",
+        },
+        {
+          title: "Store The Result",
+          body:
+            "Main calls Heal(5, 2). The method returns 10, then Main stores that returned value in healing.",
+          code:
+            "static void Main(string[] args) {\n  int healing = Heal(5, 2);\n}",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not use void here. A healing bar needs a returned number, so Heal must return int.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "Kai, you made it. The forest has been quiet, but stay close.",
+              tone: "normal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "intParameterReturnMethod",
+      methodName: "Heal",
+      parameters: [
+        { type: "int", name: "herb" },
+        { type: "int", name: "water" },
+      ],
+      returnExpression: "herb * water",
+      variableName: "healing",
+      expectedArguments: [5, 2],
+      expectedResult: 10,
+      successMessage: "Code accepted. Restoring the Diwata...",
+    },
+    validateCode: createIntParameterReturnMethodValidator({
+      methodName: "Heal",
+      parameters: [
+        { type: "int", name: "herb" },
+        { type: "int", name: "water" },
+      ],
+      returnExpression: "herb * water",
+      variableName: "healing",
+      expectedArguments: [5, 2],
+      expectedResult: 10,
+      successMessage: "Code accepted. Restoring the Diwata...",
     }),
   },
 };

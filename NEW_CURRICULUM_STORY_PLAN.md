@@ -992,7 +992,7 @@ static int Heal(int herb, int water) {
 }
 
 static void Main(string[] args) {
-  int healing = Heal(4, 2);
+  int healing = Heal(5, 2);
 }
 ```
 
@@ -1000,8 +1000,8 @@ Validation notes:
 
 - Require two integer parameters.
 - Require multiplication return expression.
-- Require call `Heal(4, 2)`.
-- Expected result is `8`.
+- Require call `Heal(5, 2)`.
+- Expected result is `10`.
 
 Correct outcome:
 The healing bar fills, the diwata stands, and she opens the path.

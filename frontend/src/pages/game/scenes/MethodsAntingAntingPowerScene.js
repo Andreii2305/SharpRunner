@@ -55,6 +55,7 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
     this.load.image("methods_9_blue_amulet", `${ASSET_BASE}/other/blue_amulet.png`);
     this.load.image("methods_9_gold_amulet", `${ASSET_BASE}/other/gold_amulet.png`);
     this.load.image("methods_9_shield", `${ASSET_BASE}/other/shield.png`);
+    this.load.audio("methods_9_magicbeam_sound", `${ASSET_BASE}/sounds/projectile_magicbeam_sound.mp3`);
     this.load.spritesheet(
       "methods_9_fireball",
       `${ASSET_BASE}/other/Fireball_Pack/Fireball_Pack/Fireball_Sprite_Sheet.png`,
@@ -523,6 +524,9 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
   launchShadow(isCorrect) {
     const targetX = isCorrect ? this.impactPoint.x : this.spawnPoint.x + 32;
     const targetY = isCorrect ? this.impactPoint.y - 54 : this.spawnPoint.y - 52;
+    if (this.cache.audio.exists("methods_9_magicbeam_sound")) {
+      this.sound.play("methods_9_magicbeam_sound", { volume: 0.34 });
+    }
     this.shadow
       .setPosition(this.projectileSpawnPoint.x, this.projectileSpawnPoint.y)
       .setAlpha(1)

@@ -1092,6 +1092,7 @@ export const createIntParameterReturnMethodValidator =
     returnExpression,
     variableName,
     expectedArguments = [],
+    expectedResult = null,
     successMessage = "Parameterized return method accepted.",
   }) =>
   (sourceCode) => {
@@ -1147,9 +1148,9 @@ export const createIntParameterReturnMethodValidator =
       `\\bint\\s+${escapedVariableName}\\s*=\\s*${escapedMethodName}\\s*\\(\\s*${expectedArgumentText}\\s*\\)\\s*;`,
     );
     if (!assignmentRegex.test(mainBody)) {
-      const expectedLiteralResult = expectedArguments.every((value) => Number.isFinite(Number(value)))
+      const expectedLiteralResult = expectedResult ?? (expectedArguments.every((value) => Number.isFinite(Number(value)))
         ? expectedArguments.reduce((sum, value) => sum + Number(value), 0)
-        : null;
+        : null);
       if (
         expectedLiteralResult !== null &&
         new RegExp(`\\bint\\s+${escapedVariableName}\\s*=\\s*${escapeRegex(String(expectedLiteralResult))}\\s*;`).test(mainBody)

@@ -13,3 +13,11 @@ frontend/dist/
 .DS_Store
 .env
 .claude/settings.local.json
+
+#AI Tool
+.codex/
+.claude/
+
+
+#temp images
+tmp_*.png

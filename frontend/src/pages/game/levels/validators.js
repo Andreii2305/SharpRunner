@@ -1529,6 +1529,183 @@ export const createIntegerArrayCountValidator =
     };
   };
 
+export const createCursedCharmCountMethodValidator =
+  ({
+    methodName = "CountCursed",
+    parameterName = "charms",
+    arrayName = "charms",
+    counterName = "count",
+    resultName = "cursedCount",
+    expectedValues = [1, 0, 1, 1, 0, 1],
+    targetValue = 0,
+    successMessage = "Cursed charm count accepted.",
+  } = {}) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethodName = escapeRegex(methodName);
+    const escapedParameterName = escapeRegex(parameterName);
+    const escapedArrayName = escapeRegex(arrayName);
+    const escapedCounterName = escapeRegex(counterName);
+    const baseValues = {
+      [arrayName]: [],
+      [resultName]: 0,
+      visitedIndexes: [],
+    };
+
+    if (
+      new RegExp(`\\bstatic\\s+void\\s+${escapedMethodName}\\s*\\(`).test(
+        codeWithoutComments,
+      )
+    ) {
+      return {
+        isCorrect: false,
+        message: `${methodName} must return int, not void.`,
+        payload: { values: baseValues },
+      };
+    }
+
+    const signatureRegex = new RegExp(
+      `\\bstatic\\s+int\\s+${escapedMethodName}\\s*\\(\\s*int\\s*\\[\\s*\\]\\s+${escapedParameterName}\\s*\\)`,
+    );
+    const methodBody = extractBalancedBody(codeWithoutComments, signatureRegex);
+    if (methodBody === null) {
+      return {
+        isCorrect: false,
+        message: `Define static int ${methodName}(int[] ${parameterName}).`,
+        payload: { values: baseValues },
+      };
+    }
+
+    if (!new RegExp(`\\bint\\s+${escapedCounterName}\\s*=\\s*0\\s*;`).test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: `Start the count with int ${counterName} = 0;`,
+        payload: { values: baseValues },
+      };
+    }
+
+    const loopSignature =
+      /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*([A-Za-z_]\w*)\s*\.\s*Length\s*;\s*\1\s*\+\+\s*\)/;
+    const loopMatch = methodBody.match(loopSignature);
+    if (!loopMatch || loopMatch[2] !== parameterName) {
+      return {
+        isCorrect: false,
+        message: `Loop from index 0 while i < ${parameterName}.Length, then use i++.`,
+        payload: { values: baseValues },
+      };
+    }
+
+    const indexName = loopMatch[1];
+    const loopBody = extractBalancedBody(methodBody, new RegExp(loopSignature.source));
+    if (loopBody === null) {
+      return {
+        isCorrect: false,
+        message: "Put the array inspection inside the for loop braces.",
+        payload: { values: baseValues },
+      };
+    }
+    const conditionRegex = new RegExp(
+      `if\\s*\\(\\s*(?:${escapedParameterName}\\s*\\[\\s*${escapeRegex(indexName)}\\s*\\]\\s*==\\s*${targetValue}|${targetValue}\\s*==\\s*${escapedParameterName}\\s*\\[\\s*${escapeRegex(indexName)}\\s*\\])\\s*\\)`,
+    );
+    const conditionBody = extractBalancedBody(loopBody, conditionRegex);
+    if (conditionBody === null) {
+      return {
+        isCorrect: false,
+        message: `Inside the loop, check if (${parameterName}[${indexName}] == ${targetValue}).`,
+        payload: { values: baseValues },
+      };
+    }
+
+    if (!new RegExp(`\\b${escapedCounterName}\\s*\\+\\+\\s*;`).test(conditionBody)) {
+      return {
+        isCorrect: false,
+        message: `Increment ${counterName} when a cursed charm is found.`,
+        payload: { values: baseValues },
+      };
+    }
+
+    if (!new RegExp(`\\breturn\\s+${escapedCounterName}\\s*;`).test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: `Return the finished counter with return ${counterName};`,
+        payload: { values: baseValues },
+      };
+    }
+
+    const mainBody = extractBalancedBody(
+      codeWithoutComments,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)/,
+    );
+    if (mainBody === null) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+        payload: { values: baseValues },
+      };
+    }
+
+    const declarations = [...mainBody.matchAll(INT_ARRAY_DECLARATION_REGEX)];
+    const arrayDeclaration = declarations.find((match) => match[1] === arrayName);
+    if (!arrayDeclaration) {
+      return {
+        isCorrect: false,
+        message: `Inside Main, declare int[] ${arrayName} = { ${expectedValues.join(", ")} };`,
+        payload: { values: baseValues },
+      };
+    }
+
+    const parsedValues = arrayDeclaration[2]
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map(Number);
+    const payloadValues = {
+      [arrayName]: parsedValues,
+      [resultName]: 0,
+      visitedIndexes: [],
+    };
+    if (
+      parsedValues.length !== expectedValues.length ||
+      parsedValues.some((value) => !Number.isInteger(value)) ||
+      !expectedValues.every((value, index) => parsedValues[index] === value)
+    ) {
+      return {
+        isCorrect: false,
+        message: `${arrayName} must contain { ${expectedValues.join(", ")} } in that order.`,
+        payload: { values: payloadValues },
+      };
+    }
+
+    const assignmentRegex = new RegExp(
+      `\\bint\\s+${escapeRegex(resultName)}\\s*=\\s*${escapedMethodName}\\s*\\(\\s*${escapedArrayName}\\s*\\)\\s*;`,
+    );
+    if (!assignmentRegex.test(mainBody)) {
+      return {
+        isCorrect: false,
+        message: `Store the returned count with int ${resultName} = ${methodName}(${arrayName});`,
+        payload: {
+          values: {
+            ...payloadValues,
+            visitedIndexes: parsedValues.map((_, index) => index),
+          },
+        },
+      };
+    }
+
+    const count = parsedValues.filter((value) => value === targetValue).length;
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          [arrayName]: parsedValues,
+          [resultName]: count,
+          visitedIndexes: parsedValues.map((_, index) => index),
+        },
+      },
+    };
+  };
+
 export const createExactInteger2DArrayDeclarationValidator =
   ({
     variableName,

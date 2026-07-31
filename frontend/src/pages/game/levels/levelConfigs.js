@@ -23,6 +23,7 @@ import MethodsAntingAntingPowerScene from "../scenes/MethodsAntingAntingPowerSce
 import MethodsHealingRitualScene from "../scenes/MethodsHealingRitualScene";
 import MethodsEndlessBambooStairsScene from "../scenes/MethodsEndlessBambooStairsScene";
 import FunctionsArraysLanternLineScene from "../scenes/FunctionsArraysLanternLineScene";
+import FunctionsArraysCountCursedCharmsScene from "../scenes/FunctionsArraysCountCursedCharmsScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -41,6 +42,7 @@ import {
   createStringReturnMethodValidator,
   createRecursiveStairMethodValidator,
   createVoidMethodIntegerArrayParameterValidator,
+  createCursedCharmCountMethodValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
@@ -3133,6 +3135,130 @@ const LEVEL_CONFIG_BY_NUMBER = {
       arrayName: "lanterns",
       expectedValues: [1, 1, 1],
       successMessage: "Code accepted. Sending the array through the lantern line...",
+    }),
+  },
+  27: {
+    levelNumber: 27,
+    lessonKey: FUNCTIONS_ARRAYS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Bilangin ang Sumpang Agimat",
+    subtitle: "Functions With Arrays 2 - Count the Cursed Charms",
+    chapterLabel: "Functions With Arrays 2: Count the Cursed Charms",
+    scene: FunctionsArraysCountCursedCharmsScene,
+    sceneKey: "FunctionsArraysCountCursedCharmsScene",
+    progressKey: `${FUNCTIONS_ARRAYS_LESSON_KEY}-level-2`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define CountCursed here.\n\n    static void Main(string[] args) {\n      int[] charms = { 1, 0, 1, 1, 0, 1 };\n      // Store the returned cursed count here.\n    }\n  }\n}",
+    hint:
+      "Start count at 0. Visit every index with a for loop. When charms[i] == 0, increment count, then return it.",
+    idleResultMessage: "The charm inspection is waiting.",
+    successResultMessage:
+      "The method found both cursed charms. The checkpoint is clear.",
+    errorResultMessage:
+      "The inspection stopped. Check the method signature, loop, condition, counter, and returned value.",
+    goal: {
+      title: "Goal",
+      description:
+        "Pass the charm array into CountCursed, count every 0, and store the returned number.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static int CountCursed(int[] charms)** in the Program class.",
+        "Start with **int count = 0;**",
+        "Use a **for loop** from index 0 to **charms.Length - 1**.",
+        "When **charms[i] == 0**, run **count++;**",
+        "After the loop, write **return count;**",
+        "Inside **Main**, store the result with **int cursedCount = CountCursed(charms);**",
+      ],
+    },
+    lessonCard: {
+      title: "Counting Array Values In A Method",
+      description:
+        "A method can receive an array, inspect every element, accumulate a result, and return that result to its caller.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The charms look harmless until the ritual scans them. A value of 1 means clean and 0 means cursed. Kai needs the total number of cursed charms before the checkpoint can open.",
+        },
+        {
+          title: "Traverse The Parameter",
+          body:
+            "The parameter charms refers to the array passed by Main. The loop index visits each element from left to right.",
+          code:
+            "for (int i = 0; i < charms.Length; i++) {\n  // inspect charms[i]\n}",
+        },
+        {
+          title: "Accumulate A Count",
+          body:
+            "The counter begins at zero. Each matching value adds one, preserving the total found so far.",
+          code:
+            "if (charms[i] == 0) {\n  count++;\n}",
+        },
+        {
+          title: "Return The Result",
+          body:
+            "After the loop finishes, return sends the completed count back to Main, where cursedCount stores it.",
+          code:
+            "return count;\n\nint cursedCount = CountCursed(charms);",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not return from inside the loop. That would stop after the first inspected charm instead of checking the complete array.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "Six charms guard this checkpoint, but two carry a hidden curse.",
+              tone: "danger",
+            },
+            {
+              text: "In their array, 1 means clean and 0 means cursed. CountCursed must inspect every position.",
+              tone: "normal",
+            },
+            {
+              text: "Count each zero, return the total, and the ritual will expose the cursed charms.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "cursedCharmCountMethod",
+      methodName: "CountCursed",
+      parameterName: "charms",
+      arrayName: "charms",
+      counterName: "count",
+      resultName: "cursedCount",
+      expectedValues: [1, 0, 1, 1, 0, 1],
+      targetValue: 0,
+      successMessage: "Code accepted. Inspecting every charm...",
+    },
+    validateCode: createCursedCharmCountMethodValidator({
+      methodName: "CountCursed",
+      parameterName: "charms",
+      arrayName: "charms",
+      counterName: "count",
+      resultName: "cursedCount",
+      expectedValues: [1, 0, 1, 1, 0, 1],
+      targetValue: 0,
+      successMessage: "Code accepted. Inspecting every charm...",
     }),
   },
 };

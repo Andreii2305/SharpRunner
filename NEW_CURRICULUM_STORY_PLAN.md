@@ -1170,13 +1170,26 @@ Story:
 Kai must pass a list of charms into a method that counts how many are cursed.
 
 Level design:
-Place several repeated charm/orb sprites in a row and a counter gate on the right. The method traversal highlights each charm, counts cursed ones, then sends the final number to the gate. The gate opens only if the count is correct.
+Place six accessory charms in a row and a compact counter checkpoint on the right. The method traversal highlights each charm, counts cursed ones, then sends the final number to the checkpoint seal. The seal opens only if the count is correct.
 
 Setting and feeling:
 Night at a protective charm checkpoint. The area should feel like a final inspection before the curse gets stronger. Use red flashes for cursed charms and green/white light for clean ones. The mood is analytical and tense.
 
 Student task:
 Define a method named `CountCursed` that accepts an `int[]` and returns the number of `0` values.
+
+Playable setup:
+
+```csharp
+static void Main(string[] args) {
+  int[] charms = { 1, 0, 1, 1, 0, 1 };
+  int cursedCount = CountCursed(charms);
+}
+```
+
+Tiled map: `functions-arrays-level-2-count-cursed-charms.tmj`
+
+Objects: `player_spawn`, `diwata_spawn`, `charm_0` through `charm_5`, `counter_point`, `exit_seal`, and `level_exit`.
 
 Expected code shape:
 
@@ -1200,18 +1213,19 @@ Validation notes:
 - Require condition `charms[i] == 0`.
 - Require `count++`.
 - Require `return count;`.
+- Require the returned value to be stored with `int cursedCount = CountCursed(charms);`.
 
 Correct outcome:
-Cursed charms flash red, the counter shows the correct number, and the gate opens.
+Cursed charms flash red-violet, clean charms answer with pale light, the counter shows `2`, and the checkpoint seal opens.
 
 Wrong outcome:
-The counter shows the wrong number, the charms stay cursed, and the gate stays closed.
+The scan stops with a specific code correction, the charms stay sealed, and the checkpoint remains closed.
 
 Assets needed:
 
-- gems/orbs/charms, or repeated item sprite
+- six 64x64 gold and iron accessory sprites
 - counter UI
-- gate
+- animated checkpoint seal
 
 ### Level 23 - Restore the Warding Grid
 

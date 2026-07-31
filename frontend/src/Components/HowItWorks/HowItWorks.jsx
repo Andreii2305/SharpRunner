@@ -1,39 +1,60 @@
 import styles from "./HowItWorks.module.css";
-import classroom from "../../assets/Webinar.svg";
-import playgames from "../../assets/Gameanalytics.svg";
-import progress from "../../assets/Webinar1.svg";
-import lineConnector1 from "../../assets/lineConnector1.svg";
-import lineConnector2 from "../../assets/lineConnector2.svg";
+
+const steps = [
+  {
+    title: "Join a Classroom",
+    description:
+      "Students enter a classroom code shared by their teacher to connect with their class.",
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm10-4v6m3-3h-6" />
+      </svg>
+    ),
+  },
+  {
+    title: "Complete Coding Levels",
+    description:
+      "Follow lesson goals, write C# solutions, and run the code to control the game.",
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m8 9-3 3 3 3m8-6 3 3-3 3m-2-9-4 12" />
+      </svg>
+    ),
+  },
+  {
+    title: "Track Your Progress",
+    description:
+      "Review completed lessons and performance while teachers monitor class development.",
+    icon: (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 20V10m6 10V4m6 16v-7m4 7H2" />
+      </svg>
+    ),
+  },
+];
 
 function HowItWorks() {
   return (
-    <section id="howItWorks" className={styles.section}>
-      <div className={styles.background}></div>
-      <h2 className={styles.title}>How it Works?</h2>
-
-      <div className={styles.stepsContainer}>
-        <div className={`${styles.step} ${styles.step1}`}>
-          <img src={classroom} alt="Create a Classroom" />
-          <h3>1. Create a Classroom</h3>
-          <p>Teachers create classrooms and share codes with students.</p>
+    <section
+      id="howItWorks"
+      className={styles.section}
+      aria-labelledby="how-title"
+    >
+      <div className={styles.sectionInner}>
+        <div className={styles.heading}>
+          <span>Three simple steps</span>
+          <h2 id="how-title">How It Works</h2>
+          <p>From joining a class to seeing progress, the learning path stays clear.</p>
         </div>
-
-        <div className={`${styles.step} ${styles.step2}`}>
-          <img src={playgames} alt="Start Lessons and Play Games" />
-          <h3>2. Start Lessons and Play Games</h3>
-          <p>
-            Students explore Java topics through interactive mini-games and
-            challenges.
-          </p>
-        </div>
-
-        <div className={`${styles.step} ${styles.step3}`}>
-          <img src={progress} alt="Track Progress" />
-          <h3>3. Track Progress</h3>
-          <p>
-            Teachers and students view overall learning progress through
-            analytics dashboards.
-          </p>
+        <div className={styles.stepsContainer}>
+          {steps.map((step, index) => (
+            <article className={styles.step} key={step.title}>
+              <div className={styles.iconWrap}>{step.icon}</div>
+              <span className={styles.stepNumber}>0{index + 1}</span>
+              <h3>{step.title}</h3>
+              <p>{step.description}</p>
+            </article>
+          ))}
         </div>
       </div>
     </section>

@@ -1,71 +1,97 @@
 import styles from "./HeroSection.module.css";
-import typingBro from "../../assets/Typing-bro-1.svg";
-import Button from "../Button/Button.jsx";
-import Background from "./BackgroundEffect.jsx";
-import { useNavigate } from "react-router-dom";
-import { clearToken, isAuthenticated } from "../../utils/auth";
-import { useToast } from "../Toast/ToastProvider.jsx";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { getHomeRouteForCurrentUser, isAuthenticated } from "../../utils/auth";
+import heroGameplayVideo from "../../assets/landing/hero-gameplay.mp4";
+import heroGameplayPoster from "../../assets/landing/hero-gameplay.png";
 
 function HeroSection() {
-  const navigate = useNavigate();
-  const toast = useToast();
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  );
   const loggedIn = isAuthenticated();
+  const startRoute = loggedIn ? getHomeRouteForCurrentUser() : "/signup";
+  const joinRoute = loggedIn ? "/join-class" : "/login";
 
-  const handleDashboardClick = () => {
-    if (loggedIn) {
-      navigate("/dashboard");
-      return;
-    }
+  useEffect(() => {
+    const motionPreference = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    );
+    const updateMotionPreference = (event) =>
+      setPrefersReducedMotion(event.matches);
 
-    navigate("/login");
-  };
-
-  const handleJoinRoomClick = () => {
-    navigate(loggedIn ? "/join-class" : "/login");
-  };
-
-  const handleLogout = () => {
-    clearToken();
-    navigate("/login", { replace: true });
-  };
+    motionPreference.addEventListener("change", updateMotionPreference);
+    return () =>
+      motionPreference.removeEventListener("change", updateMotionPreference);
+  }, []);
 
   return (
-    <div id="heroSection" className={styles.heroSection}>
-      <Background />
-      <h1>
-        A <span className={styles.green}>Fun</span> and{" "}
-        <span className={styles.green}>Interactive</span> way to{" "}
-        <span className={styles.blue}>Learn</span> C# Programming
-      </h1>
-      <p>
-        Gamify your coding journey through interactive lessons, code challenges,
-        and progress tracking, built for students and teachers.
-      </p>
-      <div className={styles.buttons}>
-        <Button
-          label="Open Dashboard"
-          variant="outline"
-          size="lg"
-          onClick={handleDashboardClick}
-        />
-        {loggedIn ? (
-          <Button
-            label="Logout"
-            variant="primary"
-            size="lg"
-            onClick={handleLogout}
-          />
-        ) : (
-          <Button
-            label="Join Room via Code"
-            variant="primary"
-            size="lg"
-            onClick={handleJoinRoomClick}
-          />
-        )}
+    <section id="heroSection" className={styles.heroSection}>
+      <div className={styles.heroInner}>
+        <div className={styles.heroCopy}>
+          <span className={styles.eyebrow}>
+            <span aria-hidden="true">✦</span> Interactive C# Learning Platform
+          </span>
+          <h1>Learn C# by Coding Your Way Through an Adventure</h1>
+          <p>
+            SharpRunner helps beginners understand programming through
+            interactive lessons, platforming challenges, instant code feedback,
+            and classroom progress tracking.
+          </p>
+          <div className={styles.buttons}>
+            <Link className={styles.primaryButton} to={startRoute}>
+              Start Learning <span aria-hidden="true">→</span>
+            </Link>
+            <Link className={styles.secondaryButton} to={joinRoute}>
+              Join a Classroom
+            </Link>
+          </div>
+          <p className={styles.helperText}>
+            Built for beginner students and the teachers guiding them.
+          </p>
+        </div>
+
+        <div className={styles.heroVisual}>
+          <div className={styles.windowBar}>
+            <span />
+            <span />
+            <span />
+            <strong>First Compile Trial</strong>
+          </div>
+          <div className={styles.videoFrame}>
+            {prefersReducedMotion ? (
+              <img
+                src={heroGameplayPoster}
+                width="1026"
+                height="572"
+                className={styles.heroMedia}
+                alt="SharpRunner gameplay level with a character navigating toward a glowing portal"
+              />
+            ) : (
+              <video
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster={heroGameplayPoster}
+                width="1026"
+                height="572"
+                className={styles.heroMedia}
+                aria-label="SharpRunner gameplay demonstration"
+              >
+                <source src={heroGameplayVideo} type="video/mp4" />
+                Your browser does not support embedded video.
+              </video>
+            )}
+          </div>
+          <div className={styles.visualStatus}>
+            <span className={styles.statusDot} />
+            Write C# code. Run it. Watch the level respond.
+          </div>
+        </div>
       </div>
-      <img src={typingBro} alt="typing-bro" />
-    </div>
+    </section>
   );
 }
 

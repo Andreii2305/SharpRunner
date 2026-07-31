@@ -1,0 +1,237 @@
+.landingPage {
+  --navy-950: #0b1f33;
+  --navy-800: #183b56;
+  --blue-700: #1769aa;
+  --blue-600: #217fc2;
+  --blue-100: #dff3fb;
+  --cyan-50: #f2fbfd;
+  --yellow-400: #f8c84b;
+  --slate-600: #526779;
+  --slate-300: #cbd8e2;
+  --white: #ffffff;
+  --surface: #f8fbfd;
+  --container: 1160px;
+  --radius-md: 16px;
+  --radius-lg: 26px;
+  --shadow-sm: 0 12px 30px rgba(21, 55, 78, 0.08);
+  --shadow-lg: 0 28px 70px rgba(11, 31, 51, 0.15);
+  color: var(--navy-950);
+  background: var(--white);
+  overflow: clip;
+}
+
+.landingPage *,
+.landingPage *::before,
+.landingPage *::after {
+  box-sizing: border-box;
+}
+
+.landingPage a {
+  text-decoration: none;
+}
+
+.benefitStrip {
+  position: relative;
+  z-index: 3;
+  padding: 0 24px;
+  background: var(--white);
+}
+
+.benefitGrid {
+  width: min(100%, var(--container));
+  margin: -34px auto 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border: 1px solid #dce9f0;
+  border-radius: var(--radius-md);
+  background: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+
+.benefitItem {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 22px 24px;
+}
+
+.benefitItem + .benefitItem {
+  border-left: 1px solid #e3edf2;
+}
+
+.benefitIcon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  color: var(--blue-700);
+  background: var(--cyan-50);
+}
+
+.benefitIcon svg {
+  width: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.benefitItem strong,
+.benefitItem small {
+  display: block;
+}
+
+.benefitItem strong {
+  font-size: 0.88rem;
+  color: var(--navy-950);
+}
+
+.benefitItem small {
+  margin-top: 3px;
+  color: var(--slate-600);
+  font-size: 0.75rem;
+}
+
+.finalCta {
+  padding: clamp(64px, 8vw, 96px) 24px;
+  background: var(--white);
+}
+
+.finalCtaInner {
+  width: min(100%, var(--container));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 48px;
+  padding: clamp(32px, 5vw, 56px);
+  border-radius: var(--radius-lg);
+  color: var(--white);
+  background:
+    radial-gradient(circle at 90% 10%, rgba(69, 190, 224, 0.34), transparent 34%),
+    var(--navy-950);
+  box-shadow: var(--shadow-lg);
+}
+
+.eyebrow {
+  display: block;
+  margin-bottom: 10px;
+  color: #80d9ee;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.finalCta h2 {
+  max-width: 650px;
+  margin: 0;
+  font-size: clamp(1.75rem, 3.5vw, 2.65rem);
+  line-height: 1.15;
+  letter-spacing: -0.035em;
+}
+
+.finalCta p {
+  margin: 14px 0 0;
+  color: #c9dae6;
+  line-height: 1.7;
+}
+
+.ctaActions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 12px;
+}
+
+.primaryAction,
+.secondaryAction {
+  min-height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.primaryAction {
+  color: var(--navy-950);
+  background: var(--yellow-400);
+}
+
+.secondaryAction {
+  color: var(--white);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+
+.primaryAction:hover,
+.secondaryAction:hover {
+  transform: translateY(-2px);
+}
+
+.secondaryAction:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.primaryAction:focus-visible,
+.secondaryAction:focus-visible {
+  outline: 3px solid #8fdcf0;
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .benefitGrid {
+    grid-template-columns: 1fr;
+    margin-top: -20px;
+  }
+
+  .benefitItem + .benefitItem {
+    border-top: 1px solid #e3edf2;
+    border-left: 0;
+  }
+
+  .finalCtaInner {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .benefitStrip,
+  .finalCta {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .benefitItem {
+    padding: 18px;
+  }
+
+  .ctaActions {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .primaryAction,
+  .secondaryAction {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landingPage *,
+  .landingPage *::before,
+  .landingPage *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

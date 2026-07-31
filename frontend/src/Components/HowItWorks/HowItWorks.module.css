@@ -1,154 +1,132 @@
 .section {
-  position: relative;
-  /* Reduced vertical padding on top, added on bottom */
-  padding: 3rem 1rem 8rem 1rem; 
+  padding: clamp(88px, 11vw, 140px) 24px;
+  background: #f8fbfd;
+}
+
+.sectionInner {
+  width: min(100%, 1160px);
+  margin: 0 auto;
+}
+
+.heading {
+  max-width: 650px;
+  margin: 0 auto 54px;
   text-align: center;
-  overflow: hidden;
 }
 
-.background {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    overflow: hidden;
-    background: radial-gradient(circle at 10% 80%, rgb(0, 198, 167, 0.5), transparent 50%),
-                radial-gradient(circle at 90% 20%, rgb(255, 179, 71, 0.5) , transparent 50%);
-    filter: blur(10px);
+.heading > span {
+  color: #1769aa;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
 }
 
-.title {
-  font-size: 3rem;
-  font-weight: 700;
-  margin-top: 0;
-  margin-bottom: 4rem;
-  color: #2E353A;
+.heading h2 {
+  margin: 12px 0 0;
+  color: #0b1f33;
+  font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.15;
+  letter-spacing: -0.045em;
 }
 
-/* Default Mobile/Stacked Layout */
+.heading p {
+  margin: 16px 0 0;
+  color: #526779;
+  line-height: 1.7;
+}
+
 .stepsContainer {
-  display: flex;
-  flex-direction: column; /* Stack steps vertically by default */
-  gap: 4rem; 
-  max-width: 400px;
-  margin: 0 auto; /* Center the container on small screens */
-  padding: 0 1rem;
-  align-items: center; /* Center items inside the container */
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(32px, 6vw, 80px);
+}
+
+.stepsContainer::before {
+  content: "";
+  position: absolute;
+  top: 33px;
+  right: 16%;
+  left: 16%;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, #9bc9db 0 8px, transparent 8px 15px);
 }
 
 .step {
-  width: 100%; 
-  max-width: 280px; /* Constrain step width for better presentation */
-  text-align: center;
   position: relative;
+  z-index: 1;
+  text-align: center;
 }
 
-/* Remove specific step margins as they are stacked */
-.step1, .step2, .step3 {
-  margin: 0;
+.iconWrap {
+  width: 68px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  border: 8px solid #f8fbfd;
+  border-radius: 50%;
+  color: #1769aa;
+  background: #dff3fb;
+  box-shadow: 0 0 0 1px #c7e0ea;
 }
 
-.step img {
-  width: 120px; /* Slightly smaller image for mobile */
-  height: auto;
-  margin-bottom: 1rem;
+.iconWrap svg {
+  width: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.stepNumber {
+  display: block;
+  margin-top: 20px;
+  color: #1769aa;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
 }
 
 .step h3 {
-  font-size: 1.2rem; /* Increased size for better readability */
-  font-weight: 700;
-  margin-bottom: 0.3rem;
+  margin: 7px 0 0;
+  color: #183b56;
+  font-size: 1rem;
 }
 
 .step p {
-  font-size: 1rem;
-  color: #444;
+  max-width: 290px;
+  margin: 12px auto 0;
+  color: #526779;
+  font-size: 0.82rem;
+  line-height: 1.7;
 }
 
-/* Hide connectors on mobile */
-.lineConnector1, .lineConnector2 {
-    display: none; 
-}
+@media (max-width: 720px) {
+  .section {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
 
+  .stepsContainer {
+    grid-template-columns: 1fr;
+    gap: 46px;
+  }
 
-/* --- Desktop Layout (Min-Width: 1024px) --- */
-@media (min-width: 1024px) {
-    .title {
-        font-size: 3.5rem;
-    }
+  .stepsContainer::before {
+    top: 33px;
+    bottom: 33px;
+    left: 50%;
+    width: 2px;
+    height: auto;
+    background: repeating-linear-gradient(180deg, #9bc9db 0 8px, transparent 8px 15px);
+    transform: translateX(-50%);
+  }
 
-    .stepsContainer {
-        /* Use a grid layout for precise positioning on desktop */
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr; /* Three columns for steps */
-        grid-template-rows: auto 1fr auto; /* Rows for step1, connectors, step3 */
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 0 2rem;
-        gap: 0; /* Reset gap for grid */
-    }
-
-    /* Positioning the Steps in the Grid */
-    .step1 {
-        grid-column: 1 / 2;
-        grid-row: 1 / 2;
-        margin: 0;
-    }
-
-    .step2 {
-        grid-column: 2 / 3;
-        grid-row: 2 / 3;
-        margin-top: 5rem; /* Push step 2 down to zig-zag */
-    }
-
-    .step3 {
-        grid-column: 3 / 4;
-        grid-row: 1 / 2;
-        margin: 0;
-    }
-    
-    /* Re-show and position connectors */
-    .lineConnector1, .lineConnector2 {
-        display: block; 
-        position: absolute; /* Maintain absolute positioning relative to section */
-    }
-
-    /* Correct Connector Positioning (Requires careful adjustment) */
-    .lineConnector1 {
-        /* Positioned between step 1 and step 2 */
-        width: 380px;
-        top: 25%; /* Adjust vertically */
-        left: 20%; 
-        transform: rotate(10deg);
-    }
-
-    .lineConnector2 {
-        /* Positioned between step 2 and step 3 */
-        width: 380px;
-        top: 35%; /* Adjust vertically */
-        right: 20%; 
-        transform: rotate(-10deg);
-    }
-}
-
-/* Adjustments for medium screens where steps are still horizontal but connectors might look too big */
-@media (min-width: 769px) and (max-width: 1023px) {
-    .stepsContainer {
-        display: flex; /* Fall back to flex row for mid-size screens */
-        flex-direction: row;
-        justify-content: space-around;
-        gap: 20px;
-        max-width: 900px;
-        padding: 0 1rem;
-    }
-    .step {
-        width: 30%;
-        max-width: none;
-    }
-    /* Hide connectors on tablets/mid-size where the specific angles are hard to maintain */
-    .lineConnector1, .lineConnector2 {
-        display: none; 
-    }
+  .step {
+    padding: 0 12px 22px;
+    background: #f8fbfd;
+  }
 }

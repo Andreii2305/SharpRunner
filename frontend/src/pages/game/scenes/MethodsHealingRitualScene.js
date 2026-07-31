@@ -1082,6 +1082,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
     gameEvents.emit(GAME_LEVEL_OUTCOME, {
       levelNumber: LEVEL_NUMBER,
       status: "success",
+      shouldProceed: true,
     });
   }
 

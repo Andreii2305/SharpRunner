@@ -16,6 +16,8 @@ import {
   createIntParameterReturnMethodValidator,
   createStringReturnMethodValidator,
   createIntegerArrayCountValidator,
+  createRecursiveStairMethodValidator,
+  createVoidMethodIntegerArrayParameterValidator,
 } from "./validators";
 
 export const buildValidatorFromConfig = (config) => {
@@ -37,5 +39,9 @@ export const buildValidatorFromConfig = (config) => {
   if (config.type === "intParameterReturnMethod") return createIntParameterReturnMethodValidator(config);
   if (config.type === "stringReturnMethod") return createStringReturnMethodValidator(config);
   if (config.type === "integerArrayCount") return createIntegerArrayCountValidator(config);
+  if (config.type === "recursiveStairMethod") return createRecursiveStairMethodValidator(config);
+  if (config.type === "voidMethodIntegerArrayParameter") {
+    return createVoidMethodIntegerArrayParameterValidator(config);
+  }
   return null;
 };

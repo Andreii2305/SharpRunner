@@ -21,6 +21,8 @@ import MethodsShrineOfferingScene from "../scenes/MethodsShrineOfferingScene";
 import MethodsSaltAgainstAswangScene from "../scenes/MethodsSaltAgainstAswangScene";
 import MethodsAntingAntingPowerScene from "../scenes/MethodsAntingAntingPowerScene";
 import MethodsHealingRitualScene from "../scenes/MethodsHealingRitualScene";
+import MethodsEndlessBambooStairsScene from "../scenes/MethodsEndlessBambooStairsScene";
+import FunctionsArraysLanternLineScene from "../scenes/FunctionsArraysLanternLineScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -37,11 +39,14 @@ import {
   createIntReturnMethodValidator,
   createIntParameterReturnMethodValidator,
   createStringReturnMethodValidator,
+  createRecursiveStairMethodValidator,
+  createVoidMethodIntegerArrayParameterValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
 const ARRAYS_LESSON_KEY = "arrays";
 const METHODS_LESSON_KEY = "functions";
+const FUNCTIONS_ARRAYS_LESSON_KEY = "functions-with-arrays";
 const GAME_ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const DIALOGUE_ASSET_BASE = `${GAME_ASSET_BASE}/ui/dialogue`;
 
@@ -2887,6 +2892,247 @@ const LEVEL_CONFIG_BY_NUMBER = {
       expectedArguments: [5, 2],
       expectedResult: 10,
       successMessage: "Code accepted. Restoring the Diwata...",
+    }),
+  },
+  24: {
+    levelNumber: 24,
+    mapLevelLabel: "24-25",
+    lessonKey: METHODS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Walang-Hanggang Hagdan ng Kawayan",
+    subtitle: "Methods 11-12 - Endless Bamboo Stairs",
+    chapterLabel: "Methods 11-12: Endless Bamboo Stairs",
+    scene: MethodsEndlessBambooStairsScene,
+    sceneKey: "MethodsEndlessBambooStairsScene",
+    progressKey: `${METHODS_LESSON_KEY}-level-11`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Predefined for this lesson.\n    static void CreateStep(int step) {\n      // The game creates one bamboo stair.\n    }\n\n    // Define the recursive stair method here.\n\n    static void Main(string[] args) {\n      // Start the stair ritual here.\n    }\n  }\n}",
+    hint:
+      "Stop at step 0. Otherwise call BuildStairs(step - 1), then CreateStep(step). Start with BuildStairs(5).",
+    idleResultMessage: "The bamboo stairs are still hidden.",
+    successResultMessage:
+      "The recursive calls returned in order. All five bamboo stairs are stable.",
+    errorResultMessage:
+      "STAIR RITUAL FAILED: check the base case, decreasing recursive call, and unwinding order.",
+    goal: {
+      title: "Goal",
+      description:
+        "Use recursion to build five bamboo stairs from the lowest step to the shrine.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static void BuildStairs(int step)** in the Program class.",
+        "Add the base case **if (step == 0) return;**",
+        "Call **BuildStairs(step - 1);** so each call moves toward the base case.",
+        "After that call, write **CreateStep(step);** so stairs appear while recursion unwinds.",
+        "Inside **Main**, call **BuildStairs(5);** exactly once.",
+      ],
+    },
+    lessonCard: {
+      title: "Recursion And The Call Stack",
+      description:
+        "Recursion happens when a method calls itself with a smaller problem. Every call waits on the call stack until the base case is reached.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "The bamboo stairway is trapped in a loop. Building a step before finding the bottom makes the path unstable. The ritual must first descend from step 5 to step 0.",
+        },
+        {
+          title: "Base Case",
+          body:
+            "A recursive method needs a condition that stops further calls. At step 0, return immediately.",
+          code:
+            "if (step == 0) return;",
+        },
+        {
+          title: "Recursive Step",
+          body:
+            "Each call uses step - 1, so the problem becomes smaller and eventually reaches the base case.",
+          code:
+            "BuildStairs(step - 1);",
+        },
+        {
+          title: "Unwinding",
+          body:
+            "Code after the recursive call runs while the call stack unwinds. CreateStep therefore receives 1, 2, 3, 4, then 5, building safely from bottom to top.",
+          code:
+            "static void BuildStairs(int step) {\n  if (step == 0) return;\n  BuildStairs(step - 1);\n  CreateStep(step);\n}",
+        },
+        {
+          title: "Execution Trace",
+          body:
+            "The calls travel downward first. Only after step 0 returns does each waiting call create its stair.",
+          code:
+            "Calls:  5 -> 4 -> 3 -> 2 -> 1 -> 0\nBuilds: 1 -> 2 -> 3 -> 4 -> 5",
+        },
+        {
+          title: "Common Mistakes",
+          body:
+            "Without a base case, recursion never stops. Calling BuildStairs(step) makes no progress. Placing CreateStep before the recursive call builds the stairs in reverse order.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "The bamboo stairs repeat forever because the old ritual never learned when to stop.",
+              tone: "normal",
+            },
+            {
+              text: "Guide the ritual down to step zero. When the calls return, each waiting step can rise in order.",
+              tone: "danger",
+            },
+            {
+              text: "Build five steps. The shrine is waiting above.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "recursiveStairMethod",
+      methodName: "BuildStairs",
+      parameterName: "step",
+      actionMethodName: "CreateStep",
+      expectedArgument: 5,
+      successMessage: "Code accepted. Unwinding the bamboo stair ritual...",
+    },
+    validateCode: createRecursiveStairMethodValidator({
+      methodName: "BuildStairs",
+      parameterName: "step",
+      actionMethodName: "CreateStep",
+      expectedArgument: 5,
+      successMessage: "Code accepted. Unwinding the bamboo stair ritual...",
+    }),
+  },
+  26: {
+    levelNumber: 26,
+    lessonKey: FUNCTIONS_ARRAYS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Sindihan ang Hanay ng Parol",
+    subtitle: "Functions With Arrays 1 - Process the Lantern Line",
+    chapterLabel: "Functions With Arrays 1: Process the Lantern Line",
+    scene: FunctionsArraysLanternLineScene,
+    sceneKey: "FunctionsArraysLanternLineScene",
+    progressKey: `${FUNCTIONS_ARRAYS_LESSON_KEY}-level-1`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define the lantern method here.\n\n    static void Main(string[] args) {\n      // Create the lantern array, then pass it to the method.\n    }\n  }\n}",
+    hint:
+      "The method parameter uses int[]. A signal of 1 means on and 0 means off. In Main, create lanterns with three 1 values, then pass the array name to the method.",
+    idleResultMessage: "The lantern line is waiting for its array.",
+    successResultMessage:
+      "The array reached the method. All three lanterns are burning.",
+    errorResultMessage:
+      "The lantern method could not receive the array. Check its parameter, declaration, and call.",
+    goal: {
+      title: "Goal",
+      description:
+        "Group the three lantern signals in one integer array and pass that array to LightLanterns.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static void LightLanterns(int[] lanterns)** in the Program class.",
+        "The method body can remain **empty for now**. This level focuses on receiving and passing an array.",
+        "Inside **Main**, declare **int[] lanterns = { 1, 1, 1 };**",
+        "Each **1** means on; **0** would mean off for the lantern at the same array index.",
+        "Pass the whole array with **LightLanterns(lanterns);**",
+        "Do not call the method once for every value. One array argument carries the complete lantern line.",
+      ],
+    },
+    lessonCard: {
+      title: "Passing Arrays To Methods",
+      description:
+        "An array groups related values. A method can receive the entire group through one array parameter.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "Three ward lanterns share one ritual line. Sending separate values would repeat the same action, so Kai groups their signals into one array.",
+        },
+        {
+          title: "Array Parameter",
+          body:
+            "The brackets in int[] tell C# that lanterns receives an integer array, not one integer.",
+          code:
+            "static void LightLanterns(int[] lanterns) {\n}",
+        },
+        {
+          title: "Pass The Group",
+          body:
+            "Main creates the array once. The method call uses the array name, passing all three values together.",
+          code:
+            "int[] lanterns = { 1, 1, 1 };\nLightLanterns(lanterns);",
+        },
+        {
+          title: "What Happens",
+          body:
+            "A value of 1 means on and 0 means off, so { 1, 1, 1 } activates all three lanterns. The method body may stay empty for now; later lessons will inspect and process the elements inside it.",
+        },
+        {
+          title: "Common Mistake",
+          body:
+            "Do not write LightLanterns(1). The parameter expects int[], so the argument must be an array.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "Each lantern reads one signal from the array: 1 means on, while 0 means off.",
+              tone: "normal",
+            },
+            {
+              text: "For now, LightLanterns can have an empty body. We are practicing how a method receives an int[] array.",
+              tone: "normal",
+            },
+            {
+              text: "Create { 1, 1, 1 } in Main, then pass the whole array to LightLanterns once.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "voidMethodIntegerArrayParameter",
+      methodName: "LightLanterns",
+      parameterName: "lanterns",
+      arrayName: "lanterns",
+      expectedValues: [1, 1, 1],
+      successMessage: "Code accepted. Sending the array through the lantern line...",
+    },
+    validateCode: createVoidMethodIntegerArrayParameterValidator({
+      methodName: "LightLanterns",
+      parameterName: "lanterns",
+      arrayName: "lanterns",
+      expectedValues: [1, 1, 1],
+      successMessage: "Code accepted. Sending the array through the lantern line...",
     }),
   },
 };

@@ -17,6 +17,22 @@ const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const extractBalancedBody = (sourceCode, signatureRegex) => {
+  const signature = signatureRegex.exec(sourceCode);
+  if (!signature) return null;
+  const openingBrace = sourceCode.indexOf("{", signature.index);
+  if (openingBrace < 0) return null;
+
+  let depth = 0;
+  for (let index = openingBrace; index < sourceCode.length; index += 1) {
+    if (sourceCode[index] === "{") depth += 1;
+    if (sourceCode[index] !== "}") continue;
+    depth -= 1;
+    if (depth === 0) return sourceCode.slice(openingBrace + 1, index);
+  }
+  return null;
+};
+
 const parseDeclarationValue = (valueExpression) => {
   const trimmed = (valueExpression ?? "").trim();
   const stringMatch = trimmed.match(QUOTED_STRING_REGEX);
@@ -741,6 +757,129 @@ export const createVoidMethodDefinitionCallValidator =
       message: successMessage,
       payload: {
         values: { methodName, defined: true, called: true },
+      },
+    };
+  };
+
+export const createRecursiveStairMethodValidator =
+  ({
+    methodName = "BuildStairs",
+    parameterName = "step",
+    actionMethodName = "CreateStep",
+    expectedArgument = 5,
+    successMessage = "Recursive stair ritual accepted.",
+  } = {}) =>
+  (sourceCode) => {
+    const code = stripComments(sourceCode ?? "");
+    const escapedMethod = escapeRegex(methodName);
+    const escapedParameter = escapeRegex(parameterName);
+    const escapedAction = escapeRegex(actionMethodName);
+    const methodBody = extractBalancedBody(
+      code,
+      new RegExp(
+        `\\bstatic\\s+void\\s+${escapedMethod}\\s*\\(\\s*int\\s+${escapedParameter}\\s*\\)\\s*\\{`,
+      ),
+    );
+
+    if (methodBody == null) {
+      return {
+        isCorrect: false,
+        message: `Define static void ${methodName}(int ${parameterName}).`,
+        payload: { recursionError: "missingMethod" },
+      };
+    }
+
+    const baseCaseRegex = new RegExp(
+      `\\bif\\s*\\(\\s*${escapedParameter}\\s*(?:==|<=)\\s*0\\s*\\)\\s*(?:\\{\\s*)?return\\s*;`,
+    );
+    if (!baseCaseRegex.test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: "The ritual has no stopping condition. Add a base case that returns at step 0.",
+        payload: { recursionError: "missingBaseCase" },
+      };
+    }
+
+    const unchangedCallRegex = new RegExp(
+      `\\b${escapedMethod}\\s*\\(\\s*${escapedParameter}\\s*\\)\\s*;`,
+    );
+    if (unchangedCallRegex.test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: "The ritual repeats, but it never moves closer to completion. Subtract 1 from step.",
+        payload: { recursionError: "noProgress" },
+      };
+    }
+
+    const recursiveCallRegex = new RegExp(
+      `\\b${escapedMethod}\\s*\\(\\s*${escapedParameter}\\s*-\\s*1\\s*\\)\\s*;`,
+    );
+    const recursiveCall = recursiveCallRegex.exec(methodBody);
+    if (!recursiveCall) {
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(${parameterName} - 1) so each call moves toward the base case.`,
+        payload: { recursionError: "wrongRecursiveCall" },
+      };
+    }
+
+    const actionRegex = new RegExp(
+      `\\b${escapedAction}\\s*\\(\\s*${escapedParameter}\\s*\\)\\s*;`,
+    );
+    const actionCall = actionRegex.exec(methodBody);
+    if (!actionCall) {
+      return {
+        isCorrect: false,
+        message: `Call ${actionMethodName}(${parameterName}) while the recursive calls unwind.`,
+        payload: { recursionError: "missingAction" },
+      };
+    }
+
+    if (actionCall.index < recursiveCall.index) {
+      return {
+        isCorrect: false,
+        message:
+          `${actionMethodName} must run after the recursive call so the stairs grow safely from bottom to top.`,
+        payload: { recursionError: "wrongOrder" },
+      };
+    }
+
+    const mainBody = extractBalancedBody(
+      code,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+args\s*\)\s*\{/,
+    );
+    if (mainBody == null) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the program.",
+        payload: { recursionError: "missingMain" },
+      };
+    }
+
+    const mainCallRegex = new RegExp(
+      `\\b${escapedMethod}\\s*\\(\\s*${expectedArgument}\\s*\\)\\s*;`,
+    );
+    if (!mainCallRegex.test(mainBody)) {
+      const attemptedCall = mainBody.match(
+        new RegExp(`\\b${escapedMethod}\\s*\\(\\s*(-?\\d+)\\s*\\)\\s*;`),
+      );
+      return {
+        isCorrect: false,
+        message: `Call ${methodName}(${expectedArgument}) once inside Main.`,
+        payload: {
+          recursionError: "missingMainCall",
+          attemptedArgument: attemptedCall ? Number(attemptedCall[1]) : null,
+        },
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        recursionError: null,
+        recursionDepths: Array.from({ length: expectedArgument + 1 }, (_, index) => expectedArgument - index),
+        createdSteps: Array.from({ length: expectedArgument }, (_, index) => index + 1),
       },
     };
   };
@@ -1486,6 +1625,103 @@ export const createExactInteger2DArrayDeclarationValidator =
       message: successMessage,
       payload: {
         values: { [variableName]: parsedRows },
+      },
+    };
+  };
+
+export const createVoidMethodIntegerArrayParameterValidator =
+  ({
+    methodName,
+    parameterName,
+    arrayName,
+    expectedValues,
+    successMessage = "Array method accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethod = escapeRegex(methodName);
+    const escapedParameter = escapeRegex(parameterName);
+    const methodBody = extractBalancedBody(
+      codeWithoutComments,
+      new RegExp(
+        `\\bstatic\\s+void\\s+${escapedMethod}\\s*\\(\\s*int\\s*\\[\\s*\\]\\s+${escapedParameter}\\s*\\)\\s*\\{`,
+      ),
+    );
+
+    if (methodBody === null) {
+      return {
+        isCorrect: false,
+        message: `Define static void ${methodName}(int[] ${parameterName}).`,
+      };
+    }
+
+    const mainBody = extractBalancedBody(
+      codeWithoutComments,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+\w+\s*\)\s*\{/,
+    );
+    if (mainBody === null) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the Program class.",
+      };
+    }
+
+    const declarations = [...mainBody.matchAll(INT_ARRAY_DECLARATION_REGEX)];
+    const declaration = declarations.find((match) => match[1] === arrayName);
+    if (!declaration) {
+      return {
+        isCorrect: false,
+        message: `Inside Main, declare int[] ${arrayName}.`,
+      };
+    }
+
+    const values = declaration[2]
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map(Number);
+    const expectedMatches =
+      values.length === expectedValues.length &&
+      values.every(
+        (value, index) =>
+          Number.isInteger(value) && value === expectedValues[index],
+      );
+    const payload = {
+      values: {
+        [arrayName]: values,
+        methodName,
+        called: false,
+      },
+    };
+
+    if (!expectedMatches) {
+      return {
+        isCorrect: false,
+        message: `${arrayName} must contain { ${expectedValues.join(", ")} } in order.`,
+        payload,
+      };
+    }
+
+    const callRegex = new RegExp(
+      `\\b${escapedMethod}\\s*\\(\\s*${escapeRegex(arrayName)}\\s*\\)\\s*;`,
+    );
+    if (!callRegex.test(mainBody)) {
+      return {
+        isCorrect: false,
+        message: `Pass the whole array with ${methodName}(${arrayName});`,
+        payload,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          [arrayName]: values,
+          methodName,
+          called: true,
+        },
       },
     };
   };

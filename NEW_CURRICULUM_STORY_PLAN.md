@@ -1,6 +1,6 @@
 # SharpRunner New Curriculum And Story Plan
 
-Last updated: 2026-05-28
+Last updated: 2026-07-30
 
 ## Purpose
 
@@ -10,16 +10,20 @@ This document plans the revised SharpRunner curriculum and game storyline based 
 - Functions/Methods
 - Functions/Methods with Arrays
 
-The first 5 existing game levels will remain as a tutorial/prologue. The new main curriculum will contain 25 levels:
+The first 5 existing game levels will remain as a tutorial/prologue. The new main curriculum contains 25 numbered curriculum slots delivered through 24 playable scenes:
 
-- 12 topics x 2 levels each = 24 levels
+- 23 regular curriculum scenes
+- 1 double-length recursion scene covering main levels 19-20
 - 1 final combined level = 25 levels
+
+The skipped second recursion scene is not a missing lesson. **Endless Bamboo Stairs** carries the learning content and playtime of both recursion levels.
 
 Total target structure:
 
 - Tutorial/Prologue: 5 existing levels
-- Main curriculum: 25 new levels
-- Total playable target: 30 levels
+- Main curriculum: 25 numbered slots across 24 playable scenes
+- Total playable target: 29 scenes
+- Overall map numbering still reaches level 30; the combined recursion node is labeled **Level 24-25**
 
 ## Design Rules
 
@@ -95,7 +99,7 @@ These can be framed as Kai's first compile trial before entering Barangay Maluma
 | 13-14 | Functions | No Parameters but With Return Values |
 | 15-16 | Functions | With Parameters and No Return Values |
 | 17-18 | Functions | With Parameters and Return Values |
-| 19-20 | Functions | Recursive Functions/Methods |
+| 19-20 (combined scene) | Functions | Recursive Functions/Methods |
 | 21-22 | Functions With Arrays | Methods with 1D Arrays |
 | 23-24 | Functions With Arrays | Methods with 2D Arrays |
 | 25 | Final | Combined lesson boss |
@@ -113,7 +117,7 @@ arrays-level-1
 arrays-level-8
 functions-level-1
 ...
-functions-level-12
+functions-level-11
 functions-arrays-level-1
 ...
 functions-arrays-level-4
@@ -1015,110 +1019,95 @@ Assets needed:
 - potion/crystal/fire sprite
 - Phaser health/healing bar
 
-### Level 19 - Endless Bamboo Stairs
+### Levels 19-20 - Endless Bamboo Stairs
+
+Overall map label: **Level 24-25**
+
+Implementation note: this is one double-length playable scene. Keep the existing route `/Map/level/24`, scene, TMJ filename, and `functions-level-11` progress key. When the world map is created, display this node as **Level 24-25** and continue the next scene at overall level 26.
 
 Topic: Recursive Functions/Methods
 
 Story:
-The stairs repeat endlessly. Kai must use recursion with a base case to reach the top.
+Kai reaches the bottom of a high cliff, where a sacred shrine waits above him. The ancient bamboo stairs have vanished. A Diwata explains that Kai must awaken the path one step at a time with a recursive method.
 
 Level design:
-Use stacked platforms or stair-like tiles rising upward/right. Add a recursion depth counter beside the play area. Each recursive call lights the next platform; the base case stops the sequence and reveals the exit. Failure should loop the platform lighting until the counter turns red.
+Place five invisible stair placeholders rising from Kai toward the shrine. While recursion goes deeper, an optional call-stack panel adds each `BuildStairs` call. When the base case is reached, the stack unwinds and `CreateStep(1)` through `CreateStep(5)` make the stairs physically grow from bottom to top. Kai remains still until the complete staircase is safe.
 
 Setting and feeling:
-Night on an impossible staircase that seems to repeat into fog. The mood should be eerie and looping. Use repeated platform shapes, faint motion in the background, and a counter that gives the player a concrete sense of descending recursion depth.
+Night at a high cliff covered in bamboo and fog. The missing path should feel ancient and impossible. Each new stair begins as a faint cyan rune, gathers roots and magical particles, then becomes a solid bamboo platform.
+
+Guide dialogue:
+
+- "The ancient stairs have vanished."
+- "They can only be awakened one step at a time."
+- "Create a method that calls itself until the path is complete."
 
 Student task:
-Complete a recursive method named `Climb` that stops when `step == 0`.
+Complete `BuildStairs(int step)` with a base case, a recursive call that moves toward zero, and `CreateStep(step)` after the recursive call.
 
 Expected code shape:
 
 ```csharp
-static void Climb(int step) {
-  if (step == 0) {
+static void BuildStairs(int step) {
+  if (step == 0)
     return;
-  }
 
-  Climb(step - 1);
+  BuildStairs(step - 1);
+  CreateStep(step);
+}
+
+static void Main(string[] args) {
+  BuildStairs(5);
 }
 ```
 
+Execution sequence:
+
+- Going deeper: `BuildStairs(5)` to `BuildStairs(0)`.
+- Base case: `BuildStairs(0)` returns without creating another stair.
+- Unwinding: `CreateStep(1)` to `CreateStep(5)` run as the earlier calls return.
+- Placing `CreateStep(step)` after the recursive call makes the stairs appear naturally from bottom to top.
+
 Validation notes:
 
-- Require method `Climb(int step)`.
+- Require method `BuildStairs(int step)`.
 - Require base case checking `step == 0` or `step <= 0`.
 - Require `return;` in base case.
-- Require recursive call with `step - 1`.
+- Require recursive call `BuildStairs(step - 1)`.
+- Require `CreateStep(step)` after the recursive call.
+- Require `BuildStairs(5)` from `Main`.
 - Reject recursion without a base case.
+- Reject a recursive call that does not move `step` toward the base case.
 
 Correct outcome:
-Each recursive depth lights one stair. When the base case is reached, Kai exits the repeating stairs.
+Each unwinding call grows one stair with a rune, roots, and magical particles. After the fifth stair becomes solid, the shrine activates, a soft magical sound plays, and Kai automatically climbs to the exit.
 
 Wrong outcome:
-The stairs loop visually, the depth counter turns red, and Kai is returned to the start.
+
+- Missing base case: interrupt the ritual before the game freezes and show "The ritual has no stopping condition."
+- Unchanged step value: repeat `BuildStairs(5)` in the call-stack panel, create no stairs, and show "The ritual repeats, but it never moves closer to completion."
+- `CreateStep(step)` before recursion: explain that this builds from the highest stair downward. It is valid recursion, but unsafe for Kai and not the intended solution.
 
 Assets needed:
 
 - stairs/platform tiles
-- repeated platforms
-- depth counter UI
+- bamboo, roots, or forest decoration
+- cyan rune and growth particles
+- shrine or exit prop
+- optional call-stack panel
 
 Important implementation notes:
 
-- Use normal platforms; no bamboo-specific asset required.
+- Suggested Tiled objects: `player_spawn`, `diwata_spawn`, `code_terminal`, `stair_1` through `stair_5`, `shrine`, and `level_exit`.
+- Optional objects: `camera_trigger` and `shrine_activation_trigger`.
+- Stair objects may be invisible placeholders in Tiled, but must begin invisible and without collision.
+- `CreateStep(1)` enables `stair_1`; continue in order through `CreateStep(5)`.
+- Add a short delay between stair-growth animations so unwinding remains readable.
+- Prevent Kai from entering the stair area until all five stairs are solid.
+- Visually distinguish the two phases: calls build the stack, then returning calls remove entries as stairs appear.
 
-### Level 20 - Echoes Under the Balete
-
-Topic: Recursive Functions/Methods
-
-Story:
-Echoes repeat under a haunted tree. Kai must reduce the echo count until the curse stops.
-
-Level design:
-Use a dark forest scene with repeated echo text bubbles appearing around Kai. Each recursive call removes one bubble or makes it smaller. The base case clears the final bubble and opens the path. This avoids needing a special Balete asset.
-
-Setting and feeling:
-Very late night in a haunted forest. The scene should feel claustrophobic, with repeated whispers appearing around Kai. The emotional goal is relief: each recursive step reduces the echo until silence returns.
-
-Student task:
-Complete a recursive method named `Echo` that returns an integer count and stops at zero.
-
-Expected code shape:
-
-```csharp
-static int Echo(int count) {
-  if (count == 0) {
-    return 0;
-  }
-
-  return Echo(count - 1);
-}
-```
-
-Validation notes:
-
-- Require `static int Echo(int count)`.
-- Require base case `count == 0` or `count <= 0`.
-- Require `return 0;` in the base case.
-- Require recursive return with `count - 1`.
-
-Correct outcome:
-Echo text bubbles shrink one by one until the final echo disappears.
-
-Wrong outcome:
-Echo bubbles multiply or stay on screen, and Kai cannot proceed.
-
-Assets needed:
-
-- forest tileset
-- optional large tree or dark background
-- text bubbles drawn with Phaser
-- shadow/glow effect
-
-Important implementation notes:
-
-- No carved tree needed.
-- The recursion is shown through repeated echo bubbles.
+Learning objective:
+The student should understand that a recursive method calls itself, a base case stops recursion, every call must move toward that base case, and statements after the recursive call execute while the call stack unwinds.
 
 ## Lesson 3: Functions/Methods With Arrays
 
@@ -1132,13 +1121,16 @@ Story:
 Kai passes the lantern array into a ritual method to relight the whole street.
 
 Level design:
-Reuse a lantern-row layout, but add a large method panel between Kai and the lanterns. The array appears on the left side of the panel and the method name appears on the right. On success, a visual "data flow" line connects the array into the method, then the lanterns light.
+Reuse a lantern-row layout with three subtle index labels. Each value `1` represents an on signal and `0` represents an off signal for the lantern at the matching index. On success, ritual light travels from the Diwata through the lantern line, then the lanterns light in sequence.
 
 Setting and feeling:
 Night, but the barrio road now feels more hopeful because earlier lessons are paying off. Use more lanterns and slightly warmer lighting. The mood should communicate progress: Kai is no longer doing one small action, he is sending grouped data into a reusable ritual.
 
 Student task:
 Define a void method named `LightLanterns` that accepts an `int[]`, then call it with `lanterns`.
+
+Teaching note:
+The method body may remain empty in this introductory level. The focus is declaring an array parameter and passing the complete array into the method. Each `1` means the corresponding lantern is on, while `0` means it is off.
 
 Expected code shape:
 
@@ -1159,16 +1151,16 @@ Validation notes:
 - Require call `LightLanterns(lanterns);`.
 
 Correct outcome:
-The method panel activates, then three lanterns light in sequence.
+The Diwata sends light through the line, then all three lanterns light in sequence.
 
 Wrong outcome:
-The method panel fails to connect to the array, and the lanterns remain dark.
+The lanterns briefly flicker with failed energy and remain dark.
 
 Assets needed:
 
 - lantern/flame/orb row
-- method panel UI
-- gate/barrier
+- Diwata casting effect
+- dark-road seal effect
 
 ### Level 22 - Count the Cursed Charms
 

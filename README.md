@@ -132,8 +132,8 @@ DEVELOPER_SETUP_KEY=your_developer_setup_key
 ```
 
 For local frontend development, `frontend/.env.development` points to
-`http://localhost:5000`. Production still uses `frontend/.env.production`, which
-points to the Railway backend.
+`http://localhost:5000`. Production uses the Render API URL in
+`frontend/.env.production`.
 
 Optional Google OAuth settings:
 
@@ -159,6 +159,53 @@ Build the frontend:
 ```bash
 npm --prefix frontend run build
 ```
+
+## Supabase + Render Deployment
+
+The backend continues to use Sequelize and connects to Supabase as a standard
+PostgreSQL database. It does not need a Supabase API key.
+
+1. Create a Supabase project near the Render region you plan to use.
+2. In Supabase, open **Connect**, select the **Session pooler**, and copy its URI.
+   Use session mode (port `5432`) for the persistent Render web service. Replace
+   the password placeholder with the database password if necessary.
+3. Commit and push this repository, then in Render choose **New > Blueprint** and
+   select it. Render reads `render.yaml` and asks for:
+   - `DATABASE_URL`: the Supabase Session pooler URI.
+   - `FRONTEND_URL`: the exact deployed frontend origin, without a trailing slash
+     (for example, `https://your-app.vercel.app`).
+4. After deployment, verify
+   `https://sharprunner-api-andreii2305.onrender.com/api/health`. It should return
+   `{"status":"ok","database":"connected"}`. The first startup creates the
+   application tables in an empty Supabase database.
+5. If Render assigns a different hostname, update `frontend/.env.production` to
+   that URL. Rebuild and redeploy the frontend so Vite embeds the new API URL.
+
+For Google sign-in, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Render,
+then register this callback URL with Google:
+
+```text
+https://YOUR-RENDER-SERVICE.onrender.com/api/auth/google/callback
+```
+
+`BACKEND_URL` is optional on Render because the app uses Render's built-in
+`RENDER_EXTERNAL_URL`. Set it explicitly only when using a custom backend domain.
+
+### Moving existing Railway data
+
+If the old Railway PostgreSQL connection is still reachable, export and restore
+it before directing users to the new backend. Supabase recommends its Session
+pooler URI for PostgreSQL migrations as well:
+
+```bash
+pg_dump --dbname="OLD_RAILWAY_DATABASE_URL" --format=custom --no-owner --no-acl --file=sharprunner.dump
+pg_restore --dbname="SUPABASE_SESSION_POOLER_URL" --clean --if-exists --no-owner --no-acl sharprunner.dump
+```
+
+Keep both connection strings out of Git. If the Railway database is no longer
+reachable, deploy against the empty Supabase database and Sequelize will create
+the current schema on startup; the old rows cannot be recovered without a dump
+or provider backup.
 
 ## Important Routes
 

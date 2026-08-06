@@ -9,7 +9,10 @@ const AdminInvite = require("../models/AdminInvite");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const authMiddleware = require("../middleware/authMiddleware");
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL =
+  process.env.BACKEND_URL ||
+  process.env.RENDER_EXTERNAL_URL ||
+  "http://localhost:5000";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const isGoogleAuthConfigured = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET

@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const passport = require("passport");
+const sequelize = require("./config/database");
 
 require("./models");
 
@@ -52,6 +53,16 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 app.use(express.json());
+
+app.get("/api/health", async (_req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.status(200).json({ status: "ok", database: "connected" });
+  } catch (error) {
+    console.error("Health check failed", error);
+    res.status(503).json({ status: "error", database: "unavailable" });
+  }
+});
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/progress", require("./routes/progress"));

@@ -174,6 +174,9 @@ PostgreSQL database. It does not need a Supabase API key.
    - `DATABASE_URL`: the Supabase Session pooler URI.
    - `FRONTEND_URL`: the exact deployed frontend origin, without a trailing slash
      (for example, `https://your-app.vercel.app`).
+   The Blueprint keeps the database connection encrypted but disables Node's CA
+   chain verification because the Supabase pooler presents a certificate chain
+   that Render's Node runtime does not trust by default.
 4. After deployment, verify
    `https://sharprunner-api-andreii2305.onrender.com/api/health`. It should return
    `{"status":"ok","database":"connected"}`. The first startup creates the

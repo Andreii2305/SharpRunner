@@ -239,6 +239,23 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
         .ellipse(point.x, baseY - 32, 56, 70)
         .setStrokeStyle(1, 0x9cecff, 0)
         .setDepth(1.28);
+      const cursedMarker = this.add
+        .graphics({ x: point.x + 18, y: baseY - 54 })
+        .setAlpha(0)
+        .setDepth(1.42);
+      cursedMarker.lineStyle(2, 0xc8f3ff, 0.95);
+      cursedMarker.beginPath();
+      cursedMarker.arc(0, 0, 8, 0.2, 2.72);
+      cursedMarker.strokePath();
+      cursedMarker.beginPath();
+      cursedMarker.arc(0, 0, 8, 3.18, 5.96);
+      cursedMarker.strokePath();
+      cursedMarker.beginPath();
+      cursedMarker.moveTo(-2, -8);
+      cursedMarker.lineTo(1, -3);
+      cursedMarker.lineTo(-1, 1);
+      cursedMarker.lineTo(3, 7);
+      cursedMarker.strokePath();
       return {
         index,
         value: CHARM_VALUES[index],
@@ -248,8 +265,21 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
         accessory,
         label,
         scanRing,
+        cursedMarker,
       };
     });
+
+    this.loopCursor = this.add
+      .text(this.charms[0].label.x, this.charms[0].label.y - 18, "i = 0", {
+        fontFamily: "monospace",
+        fontSize: "10px",
+        color: "#d7f8ff",
+        backgroundColor: "#06131dcc",
+        padding: { x: 5, y: 2 },
+      })
+      .setOrigin(0.5)
+      .setAlpha(0)
+      .setDepth(1.5);
 
     const floatProfiles = [
       { distance: 4, duration: 1680, delay: 120 },
@@ -262,7 +292,12 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     this.charms.forEach((charm, index) => {
       const profile = floatProfiles[index];
       this.tweens.add({
-        targets: [charm.accessory, charm.aura, charm.scanRing],
+        targets: [
+          charm.accessory,
+          charm.aura,
+          charm.scanRing,
+          charm.cursedMarker,
+        ],
         y: `-=${profile.distance}`,
         duration: profile.duration,
         delay: profile.delay,
@@ -277,11 +312,11 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     const x = this.counterPoint.x;
     const y = this.counterPoint.y;
     this.counterPanel = this.add
-      .rectangle(x, y, 112, 52, 0x07141f, 0.9)
+      .rectangle(x, y, 120, 64, 0x07141f, 0.9)
       .setStrokeStyle(1, 0x6da3ad, 0.58)
       .setDepth(1.45);
     this.counterTitle = this.add
-      .text(x, y - 12, "CURSED", {
+      .text(x, y - 19, "CURSED", {
         fontFamily: "monospace",
         fontSize: "10px",
         color: "#93aeb6",
@@ -289,10 +324,18 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
       .setOrigin(0.5)
       .setDepth(1.5);
     this.counterValue = this.add
-      .text(x, y + 9, "0", {
+      .text(x, y - 1, "0", {
         fontFamily: "monospace",
         fontSize: "18px",
         color: "#f1e6bd",
+      })
+      .setOrigin(0.5)
+      .setDepth(1.5);
+    this.counterProgress = this.add
+      .text(x, y + 20, "SCANNED 0/6", {
+        fontFamily: "monospace",
+        fontSize: "9px",
+        color: "#78949d",
       })
       .setOrigin(0.5)
       .setDepth(1.5);
@@ -358,10 +401,14 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     this.mode = "scanning";
     this.diwata.playAnimation("spellcast", "right");
     this.counterValue.setText("0").setColor("#f1e6bd");
+    this.counterProgress.setText(`SCANNED 0/${this.charms.length}`);
+    this.loopCursor.setAlpha(0);
+    this.charms.forEach((charm) => charm.cursedMarker.setAlpha(0));
     let cursedCount = 0;
 
     this.charms.forEach((charm, index) => {
-      this.schedule(300 + index * 620, () => {
+      this.schedule(300 + index * 720, () => {
+        this.focusCharm(charm);
         this.sendScanTrail(
           index === 0
             ? { x: this.diwata.x + 18, y: this.diwata.y - 42 }
@@ -371,22 +418,68 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
               },
           { x: charm.accessory.x, y: charm.accessory.y },
         );
-        this.schedule(250, () => {
+        this.schedule(320, () => {
           if (values[index] === CURSED) {
             cursedCount += 1;
             this.revealCursed(charm, cursedCount);
           } else {
             this.revealClean(charm);
           }
+          this.counterProgress.setText(
+            `SCANNED ${index + 1}/${this.charms.length}`,
+          );
         });
       });
     });
 
-    this.schedule(680 + this.charms.length * 620, () => {
+    this.schedule(760 + this.charms.length * 720, () => {
       this.diwata.playIdle("right");
+      this.tweens.add({
+        targets: this.loopCursor,
+        alpha: 0,
+        y: "-=5",
+        duration: 180,
+        ease: "Sine.easeIn",
+      });
       this.counterValue.setText(String(cursedCount)).setColor("#ff9fb4");
       this.playCompletionChord();
-      this.schedule(420, () => this.cleanseCurses());
+      this.schedule(520, () => {
+        this.sendReturnedCountToSeal(cursedCount, () => this.cleanseCurses());
+      });
+    });
+  }
+
+  focusCharm(charm) {
+    this.tweens.killTweensOf(this.loopCursor);
+    this.loopCursor
+      .setText(`i = ${charm.index}`)
+      .setPosition(charm.label.x, charm.label.y - 18)
+      .setAlpha(0)
+      .setScale(0.92);
+    this.tweens.add({
+      targets: this.loopCursor,
+      alpha: 1,
+      scale: 1,
+      duration: 180,
+      ease: "Back.easeOut",
+    });
+    charm.scanRing.setStrokeStyle(1, 0x9cecff, 0.9).setAlpha(0);
+    charm.label.setColor("#d5f7ff");
+    this.tweens.add({
+      targets: charm.scanRing,
+      alpha: 0.85,
+      scaleX: { from: 0.84, to: 1.08 },
+      scaleY: { from: 0.84, to: 1.08 },
+      duration: 250,
+      yoyo: true,
+      ease: "Sine.easeInOut",
+    });
+    this.tweens.add({
+      targets: charm.accessory,
+      alpha: 1,
+      duration: 180,
+      yoyo: true,
+      ease: "Sine.easeOut",
     });
   }
 
@@ -418,6 +511,14 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     charm.accessory.setTint(0xff7b9c).setAlpha(1);
     charm.label.setColor("#ff93aa");
     charm.scanRing.setStrokeStyle(2, 0xff668d, 1);
+    charm.cursedMarker.setAlpha(0).setScale(0.72);
+    this.tweens.add({
+      targets: charm.cursedMarker,
+      alpha: 1,
+      scale: 1,
+      duration: 280,
+      ease: "Back.easeOut",
+    });
     this.tweens.add({
       targets: charm.aura,
       alpha: { from: 0, to: 0.78 },
@@ -446,8 +547,9 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     const cursedCharms = this.charms.filter((charm) => charm.value === CURSED);
     cursedCharms.forEach((charm, index) => {
       this.schedule(index * 180, () => {
-        charm.aura.setTexture("fa2_clean_aura");
+        charm.aura.setTexture("fa2_clean_aura").setTint(0xbcefff);
         charm.accessory.setTint(0xc6f5ff);
+        charm.label.setColor("#a9e9ff");
         charm.scanRing.setStrokeStyle(1, 0x9cecff, 0.9);
         this.tweens.add({
           targets: charm.aura,
@@ -460,6 +562,60 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     });
     this.schedule(cursedCharms.length * 180 + 360, () => {
       this.dissolveSeal(() => this.runPlayerToExit());
+    });
+  }
+
+  sendReturnedCountToSeal(count, onComplete) {
+    this.diwata.playAnimation("spellcast", "right");
+    this.tweens.add({
+      targets: this.diwataAura,
+      alpha: { from: 0.08, to: 0.24 },
+      scale: { from: 1, to: 1.08 },
+      duration: 380,
+      yoyo: true,
+      ease: "Sine.easeInOut",
+    });
+    const returnedValue = this.add
+      .text(this.counterPoint.x, this.counterPoint.y - 2, String(count), {
+        fontFamily: "monospace",
+        fontSize: "20px",
+        fontStyle: "bold",
+        color: "#bdf6ff",
+        stroke: "#276879",
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(2.8)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.effects.push(returnedValue);
+    this.counterProgress.setText("RETURNING COUNT").setColor("#a9e9f3");
+    this.sendScanTrail(
+      { x: this.counterPoint.x, y: this.counterPoint.y },
+      { x: this.sealPoint.x, y: this.sealPoint.y - 42 },
+    );
+    this.tweens.add({
+      targets: returnedValue,
+      x: this.sealPoint.x,
+      y: this.sealPoint.y - 42,
+      scale: { from: 0.8, to: 1.25 },
+      alpha: { from: 1, to: 0.2 },
+      duration: 760,
+      ease: "Sine.easeInOut",
+      onComplete: () => {
+        this.diwata.playIdle("right");
+        this.destroyEffect(returnedValue);
+        this.counterProgress.setText("COUNT RETURNED").setColor("#9bdac8");
+        this.exitSeal.setTint(0xa4f4ff).setAlpha(0.82);
+        this.exitSealGlow.setFillStyle(0x79deef, 0.3);
+        this.tweens.add({
+          targets: [this.exitSeal, this.exitSealGlow],
+          scale: "+=0.08",
+          duration: 180,
+          yoyo: true,
+          ease: "Sine.easeOut",
+          onComplete,
+        });
+      },
     });
   }
 
@@ -526,21 +682,48 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
 
   runFailure(message, values, visitedIndexes) {
     this.mode = "failure";
+    this.loopCursor.setAlpha(0);
     const visited = Array.isArray(visitedIndexes) ? visitedIndexes : [];
     const canPreview = Array.isArray(values) && values.length === this.charms.length;
+    const hasPartialTraversal =
+      canPreview && visited.length > 0 && visited.length < this.charms.length;
+    const lastVisited = hasPartialTraversal ? visited[visited.length - 1] : null;
     this.counterValue.setText("?").setColor("#ff8b9d");
+    this.counterProgress
+      .setText(
+        hasPartialTraversal ? `SCAN ENDED AT [${lastVisited}]` : "SCAN STOPPED",
+      )
+      .setColor("#d87888");
+    this.exitSeal.setTint(0xa94b68);
+    this.exitSealGlow.setFillStyle(0x8f2949, 0.22);
+    this.tweens.add({
+      targets: [this.exitSeal, this.exitSealGlow],
+      alpha: { from: 0.38, to: 0.68 },
+      duration: 180,
+      yoyo: true,
+      repeat: 2,
+      ease: "Sine.easeInOut",
+    });
 
-    if (canPreview && visited.length > 0) {
+    if (hasPartialTraversal) {
       this.charms.forEach((charm, index) => {
-        if (!visited.includes(index)) return;
-        charm.scanRing.setStrokeStyle(1, 0xff6f86, 0.75);
-        this.tweens.add({
-          targets: [charm.accessory, charm.scanRing],
-          alpha: 0.35,
-          duration: 130,
-          yoyo: true,
-          repeat: 2,
-        });
+        if (visited.includes(index)) {
+          charm.accessory.setAlpha(0.88);
+          charm.label.setAlpha(1);
+          charm.scanRing.setStrokeStyle(1, 0xff6f86, 0.75);
+          this.tweens.add({
+            targets: [charm.accessory, charm.scanRing],
+            alpha: 0.35,
+            duration: 130,
+            yoyo: true,
+            repeat: 2,
+          });
+          return;
+        }
+        charm.accessory.setAlpha(0.24);
+        charm.aura.setAlpha(0.05);
+        charm.label.setAlpha(0.32);
+        charm.scanRing.setAlpha(0.12);
       });
     } else {
       this.tweens.add({
@@ -555,9 +738,16 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
     this.schedule(720, () => {
       this.charms.forEach((charm) => {
         charm.accessory.setAlpha(0.88);
+        charm.aura.setAlpha(0);
+        charm.label.setAlpha(1);
         charm.scanRing.setAlpha(1).setStrokeStyle(1, 0x9cecff, 0);
       });
       this.counterValue.setText("0").setColor("#f1e6bd");
+      this.counterProgress
+        .setText(`SCANNED 0/${this.charms.length}`)
+        .setColor("#78949d");
+      this.exitSeal.setTint(0x6e5c8b).setAlpha(0.54);
+      this.exitSealGlow.setFillStyle(0x5f407c, 0.15).setAlpha(1);
       gameEvents.emit(GAME_LEVEL_OUTCOME, {
         levelNumber: LEVEL_NUMBER,
         status: "failure",

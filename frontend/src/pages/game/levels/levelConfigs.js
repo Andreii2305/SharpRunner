@@ -24,6 +24,8 @@ import MethodsHealingRitualScene from "../scenes/MethodsHealingRitualScene";
 import MethodsEndlessBambooStairsScene from "../scenes/MethodsEndlessBambooStairsScene";
 import FunctionsArraysLanternLineScene from "../scenes/FunctionsArraysLanternLineScene";
 import FunctionsArraysCountCursedCharmsScene from "../scenes/FunctionsArraysCountCursedCharmsScene";
+import FunctionsArraysRestoreWardingGridScene from "../scenes/FunctionsArraysRestoreWardingGridScene";
+import FunctionsArraysAncientCemeteryScene from "../scenes/FunctionsArraysAncientCemeteryScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -42,7 +44,9 @@ import {
   createStringReturnMethodValidator,
   createRecursiveStairMethodValidator,
   createVoidMethodIntegerArrayParameterValidator,
+  createVoidMethodInteger2DArrayParameterValidator,
   createCursedCharmCountMethodValidator,
+  createBlessedGraveCount2DMethodValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
@@ -3259,6 +3263,294 @@ const LEVEL_CONFIG_BY_NUMBER = {
       expectedValues: [1, 0, 1, 1, 0, 1],
       targetValue: 0,
       successMessage: "Code accepted. Inspecting every charm...",
+    }),
+  },
+  28: {
+    levelNumber: 28,
+    lessonKey: FUNCTIONS_ARRAYS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Ibalik ang Warding Grid",
+    subtitle: "Functions With Arrays 3 - Restore the Warding Grid",
+    chapterLabel: "Functions With Arrays 3: Restore the Warding Grid",
+    scene: FunctionsArraysRestoreWardingGridScene,
+    sceneKey: "FunctionsArraysRestoreWardingGridScene",
+    progressKey: `${FUNCTIONS_ARRAYS_LESSON_KEY}-level-3`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define RestoreGrid here.\n\n    static void Main(string[] args) {\n      // Declare the 2D warding grid, then pass it to the method.\n    }\n  }\n}",
+    hint:
+      "Blue runes are 1 and all other runes are 0. Read the upper row left to right, then the lower row, and pass grid to RestoreGrid once.",
+    idleResultMessage: "The warding grid is unstable.",
+    successResultMessage:
+      "The complete 2D grid reached RestoreGrid. The shrine floor is safe.",
+    errorResultMessage:
+      "The grid could not be restored. Check the int[,] parameter, declaration and method call.",
+    goal: {
+      title: "Goal",
+      description:
+        "Select the blue runes with 1, mark every other rune with 0, and pass the complete 2D array into RestoreGrid.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static void RestoreGrid(int[,] grid)** in the Program class.",
+        "The method body may remain **empty for now**. This level focuses on receiving a two-dimensional array.",
+        "Inspect the shrine grid: encode each **blue rune as 1** and every **other rune as 0**.",
+        "Inside **Main**, declare **int[,] grid**. Read the **upper row first**, from left to right, followed by the lower row.",
+        "Pass the entire grid once with **RestoreGrid(grid);**",
+        "Use the rectangular form **int[,]**, not the jagged form **int[][]**.",
+      ],
+    },
+    lessonCard: {
+      title: "Passing 2D Arrays To Methods",
+      description:
+        "A rectangular two-dimensional array can be passed through one method parameter while preserving its rows and columns.",
+      sections: [
+        {
+          title: "The Problem",
+          body:
+            "Only the blue runes belong to the restored ward. Kai must translate their positions into rows and columns, then send the complete pattern to one restoration method.",
+        },
+        {
+          title: "The 2D Parameter",
+          body:
+            "The comma inside int[,] tells C# that grid has two dimensions. The method receives one reference to the complete rectangular grid.",
+          code: "static void RestoreGrid(int[,] grid) {\n}",
+        },
+        {
+          title: "Create The Pattern",
+          body:
+            "Use 1 where a blue rune appears and 0 everywhere else. Each inner brace group is one row, read from left to right and from the upper row to the lower row.",
+        },
+        {
+          title: "Pass The Whole Grid",
+          body:
+            "The call uses only the array name. One argument carries all four cells into RestoreGrid.",
+          code: "RestoreGrid(grid);",
+        },
+        {
+          title: "Rectangular And Jagged",
+          body:
+            "int[,] is one rectangular array with rows and columns. int[][] is an array of separate arrays and is not accepted in this lesson.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "Only the blue runes belong to this ward. Record a blue rune as 1 and every other rune as 0.",
+              tone: "danger",
+            },
+            {
+              text: "Read the upper row from left to right, then the lower row. Keep those positions in a rectangular int[,] grid.",
+              tone: "normal",
+            },
+            {
+              text: "Define RestoreGrid with an int[,] parameter, then pass the finished grid to it once.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "voidMethodInteger2DArrayParameter",
+      methodName: "RestoreGrid",
+      parameterName: "grid",
+      arrayName: "grid",
+      expectedRows: [
+        [1, 0],
+        [0, 1],
+      ],
+      mismatchMessage:
+        "The selection does not match the shrine. Use 1 for blue runes and 0 for every other rune, reading each row left to right.",
+      successMessage: "Code accepted. Restoring the warding grid...",
+    },
+    validateCode: createVoidMethodInteger2DArrayParameterValidator({
+      methodName: "RestoreGrid",
+      parameterName: "grid",
+      arrayName: "grid",
+      expectedRows: [
+        [1, 0],
+        [0, 1],
+      ],
+      mismatchMessage:
+        "The selection does not match the shrine. Use 1 for blue runes and 0 for every other rune, reading each row left to right.",
+      successMessage: "Code accepted. Restoring the warding grid...",
+    }),
+  },
+  29: {
+    levelNumber: 29,
+    lessonKey: FUNCTIONS_ARRAYS_LESSON_KEY,
+    parTimeSeconds: 900,
+    title: "Sementeryo ng mga Limot na Espiritu",
+    subtitle: "Functions With Arrays 4 - Ancient Cemetery",
+    chapterLabel: "Functions With Arrays 4: Ancient Cemetery of the Forgotten Spirits",
+    scene: FunctionsArraysAncientCemeteryScene,
+    sceneKey: "FunctionsArraysAncientCemeteryScene",
+    progressKey: `${FUNCTIONS_ARRAYS_LESSON_KEY}-level-4`,
+    nextRoute: "/Map",
+    nextDelayMs: 1200,
+    startWithDialogue: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Define CountBlessedGraves here.\n\n    static void Main(string[] args) {\n      int[,] graves = {\n        { 1, 0, 1, 1 },\n        { 0, 1, 0, 1 },\n        { 1, 1, 0, 0 }\n      };\n      // Store the returned blessed-grave count here.\n    }\n  }\n}",
+    hint:
+      "Use GetLength(0) for rows and GetLength(1) for columns. Count a grave only when graves[row, col] == 1.",
+    idleResultMessage: "The forgotten cemetery is waiting for every grave to be inspected.",
+    successResultMessage:
+      "All twelve graves were inspected. Seven guardian spirits returned beneath the opened moon. The forgotten are finally at peace.",
+    errorResultMessage:
+      "The cemetery scan stopped. Check both GetLength loops, graves[row, col], the increment and the returned count.",
+    goal: {
+      title: "Goal",
+      description:
+        "Pass the 3 by 4 cemetery grid to a method, inspect every grave, count each blessed grave marked 1, and store the returned total.",
+    },
+    instruction: {
+      title: "Instruction",
+      items: [
+        "Define **static int CountBlessedGraves(int[,] graves)** in the Program class.",
+        "Inside the method, begin with **int blessed = 0;**",
+        "Use an outer loop with **graves.GetLength(0)** to visit every row.",
+        "Inside it, use another loop with **graves.GetLength(1)** to visit every column.",
+        "When **graves[row, col] == 1**, increment **blessed**.",
+        "Return the count, then store it with **int blessed = CountBlessedGraves(graves);**",
+      ],
+    },
+    lessonCard: {
+      title: "Methods With 2D Arrays",
+      description:
+        "Learn how a C# method receives a rectangular array, traverses every element with nested for loops, accumulates a result, and returns that result to its caller.",
+      sections: [
+        {
+          title: "Learning Objectives",
+          body:
+            "After this lesson, you should be able to identify rows and columns in a rectangular array, use GetLength to set safe loop bounds, traverse every element with nested for loops, count matching values, and return the count from a method.",
+        },
+        {
+          title: "Rectangular Two-Dimensional Arrays",
+          body:
+            "The C# type int[,] represents one rectangular table of integers. The first index selects a row and the second selects a column. Therefore, grid[1, 2] means the value in row 1, column 2. Array indexes begin at 0.",
+          code:
+            "int[,] grid = {\n  { 4, 7, 2 },\n  { 9, 1, 5 }\n};\n\nint value = grid[1, 2]; // 5",
+        },
+        {
+          title: "Why Use For Loops?",
+          body:
+            "A for loop repeats an operation while its loop variable changes in a predictable sequence. Arrays are indexed collections, so a for loop can use its counter as an array index. This avoids writing a separate statement for every element and still works when the array size changes.",
+          code:
+            "for (int index = 0; index < items.Length; index++) {\n  Console.WriteLine(items[index]);\n}",
+        },
+        {
+          title: "Why Two Loops Are Required",
+          body:
+            "A two-dimensional array has two independent directions. The outer loop chooses one row. For that row, the inner loop visits every column. When the inner loop finishes, the outer loop advances to the next row. This order is called row-major traversal.",
+          code:
+            "for (int row = 0; row < grid.GetLength(0); row++) {\n  for (int col = 0; col < grid.GetLength(1); col++) {\n    Console.WriteLine(grid[row, col]);\n  }\n}",
+        },
+        {
+          title: "Safe Loop Bounds With GetLength",
+          body:
+            "GetLength(0) returns the number of rows, while GetLength(1) returns the number of columns. The condition uses < instead of <= because the last valid index is always one less than the length. Correct bounds prevent IndexOutOfRangeException.",
+          code:
+            "int rows = grid.GetLength(0);\nint columns = grid.GetLength(1);",
+        },
+        {
+          title: "The Accumulator Pattern",
+          body:
+            "An accumulator stores a result that develops over repeated steps. A counter begins at 0 and increases only when the current element satisfies a condition. It must be declared before the loops so its value is preserved across every iteration.",
+          code:
+            "int matches = 0;\n\nif (grid[row, col] == target) {\n  matches++;\n}",
+        },
+        {
+          title: "Passing An Array To A Method",
+          body:
+            "A parameter allows one method to receive data from its caller. The parameter int[,] grid accepts a reference to the complete rectangular array; the method does not need twelve separate parameters. An int return type promises that the method will send one integer result back.",
+          code:
+            "static int CountMatches(int[,] grid) {\n  int matches = 0;\n  // Traverse and count here.\n  return matches;\n}",
+        },
+        {
+          title: "Calling And Storing The Result",
+          body:
+            "Calling a method runs its body. Because this method returns an integer, Main should store the returned value in a variable. Typing the expected total directly would skip the algorithm and would fail for a different grid.",
+          code: "int result = CountMatches(grid);",
+        },
+        {
+          title: "Tracing The Algorithm",
+          body:
+            "For a 3 by 4 grid, the outer loop runs 3 times and the inner loop runs 4 times for each row. That produces 3 x 4 = 12 element inspections. Track row, column, current value, and the counter after each inspection to verify the algorithm.",
+        },
+        {
+          title: "Complexity And Common Errors",
+          body:
+            "If a grid has R rows and C columns, complete traversal performs R x C inspections, so its time complexity is O(R x C). Common errors include using only one loop, swapping GetLength dimensions, using <= as a bound, reading grid[row] instead of grid[row, col], resetting the counter inside a loop, and forgetting to return the result.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+                text: "These graves once guarded Barangay Malumay. Now corruption has silenced many of their spirits.",
+              tone: "danger",
+            },
+            {
+                text: "They were arranged in three rows and four columns. A blessed grave is 1; a corrupted grave is 0.",
+              tone: "normal",
+            },
+            {
+                text: "Every grave must be inspected. Visit every row, visit every column, then return how many guardian spirits remain.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "blessedGraveCount2DMethod",
+      methodName: "CountBlessedGraves",
+      parameterName: "graves",
+      arrayName: "graves",
+      counterName: "blessed",
+      resultName: "blessed",
+      expectedRows: [
+        [1, 0, 1, 1],
+        [0, 1, 0, 1],
+        [1, 1, 0, 0],
+      ],
+      targetValue: 1,
+      successMessage: "Code accepted. Inspecting every grave...",
+    },
+    validateCode: createBlessedGraveCount2DMethodValidator({
+      methodName: "CountBlessedGraves",
+      parameterName: "graves",
+      arrayName: "graves",
+      counterName: "blessed",
+      resultName: "blessed",
+      expectedRows: [
+        [1, 0, 1, 1],
+        [0, 1, 0, 1],
+        [1, 1, 0, 0],
+      ],
+      targetValue: 1,
+      successMessage: "Code accepted. Inspecting every grave...",
     }),
   },
 };

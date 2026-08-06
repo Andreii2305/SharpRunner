@@ -1588,10 +1588,25 @@ export const createCursedCharmCountMethodValidator =
       /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*([A-Za-z_]\w*)\s*\.\s*Length\s*;\s*\1\s*\+\+\s*\)/;
     const loopMatch = methodBody.match(loopSignature);
     if (!loopMatch || loopMatch[2] !== parameterName) {
+      const fixedBoundLoop = methodBody.match(
+        /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*(\d+)\s*;\s*\1\s*\+\+\s*\)/,
+      );
+      const visitedCount = fixedBoundLoop
+        ? Math.min(Number(fixedBoundLoop[2]), expectedValues.length)
+        : 0;
       return {
         isCorrect: false,
         message: `Loop from index 0 while i < ${parameterName}.Length, then use i++.`,
-        payload: { values: baseValues },
+        payload: {
+          values: {
+            ...baseValues,
+            [arrayName]: expectedValues,
+            visitedIndexes: Array.from(
+              { length: visitedCount },
+              (_, index) => index,
+            ),
+          },
+        },
       };
     }
 
@@ -1900,5 +1915,328 @@ export const createVoidMethodIntegerArrayParameterValidator =
           called: true,
         },
       },
+    };
+  };
+
+export const createVoidMethodInteger2DArrayParameterValidator =
+  ({
+    methodName,
+    parameterName,
+    arrayName,
+    expectedRows,
+    mismatchMessage,
+    successMessage = "2D array method accepted.",
+  }) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethod = escapeRegex(methodName);
+    const escapedParameter = escapeRegex(parameterName);
+    const escapedArray = escapeRegex(arrayName);
+    const basePayload = {
+      values: {
+        [arrayName]: [],
+        methodName,
+        called: false,
+      },
+    };
+
+    if (/\bint\s*\[\s*\]\s*\[\s*\]/.test(codeWithoutComments)) {
+      return {
+        isCorrect: false,
+        message: "Use a rectangular int[,] array here, not int[][].",
+        payload: basePayload,
+      };
+    }
+
+    const methodBody = extractBalancedBody(
+      codeWithoutComments,
+      new RegExp(
+        `\\bstatic\\s+void\\s+${escapedMethod}\\s*\\(\\s*int\\s*\\[\\s*,\\s*\\]\\s+${escapedParameter}\\s*\\)\\s*\\{`,
+      ),
+    );
+    if (methodBody === null) {
+      return {
+        isCorrect: false,
+        message: `Define static void ${methodName}(int[,] ${parameterName}).`,
+        payload: basePayload,
+      };
+    }
+
+    const mainBody = extractBalancedBody(
+      codeWithoutComments,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+\w+\s*\)\s*\{/,
+    );
+    if (mainBody === null) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the Program class.",
+        payload: basePayload,
+      };
+    }
+
+    const declarations = [...mainBody.matchAll(INT_2D_ARRAY_DECLARATION_REGEX)];
+    const declaration = declarations.find((match) => match[1] === arrayName);
+    if (!declaration) {
+      return {
+        isCorrect: false,
+        message: `Inside Main, declare int[,] ${arrayName} with two rows and two columns.`,
+        payload: basePayload,
+      };
+    }
+
+    const parsedRows = [...declaration[2].matchAll(/\{([^{}]*)\}/g)].map(
+      (rowMatch) =>
+        rowMatch[1]
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map(Number),
+    );
+    const payload = {
+      values: {
+        [arrayName]: parsedRows,
+        methodName,
+        called: false,
+      },
+    };
+    const matchesExpected =
+      parsedRows.length === expectedRows.length &&
+      expectedRows.every(
+        (expectedRow, rowIndex) =>
+          parsedRows[rowIndex]?.length === expectedRow.length &&
+          expectedRow.every(
+            (expectedValue, columnIndex) =>
+              Number.isInteger(parsedRows[rowIndex]?.[columnIndex]) &&
+              parsedRows[rowIndex][columnIndex] === expectedValue,
+          ),
+      );
+    if (!matchesExpected) {
+      return {
+        isCorrect: false,
+        message:
+          mismatchMessage ||
+          `${arrayName} does not match the required two-dimensional pattern.`,
+        payload,
+      };
+    }
+
+    const callRegex = new RegExp(
+      `\\b${escapedMethod}\\s*\\(\\s*${escapedArray}\\s*\\)\\s*;`,
+    );
+    if (!callRegex.test(mainBody)) {
+      return {
+        isCorrect: false,
+        message: `Pass the complete grid with ${methodName}(${arrayName});`,
+        payload,
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          [arrayName]: parsedRows,
+          methodName,
+          called: true,
+        },
+      },
+    };
+  };
+
+export const createBlessedGraveCount2DMethodValidator =
+  ({
+    methodName = "CountBlessedGraves",
+    parameterName = "graves",
+    arrayName = "graves",
+    counterName = "blessed",
+    resultName = "blessed",
+    expectedRows = [
+      [1, 0, 1, 1],
+      [0, 1, 0, 1],
+      [1, 1, 0, 0],
+    ],
+    targetValue = 1,
+    successMessage = "Blessed graves counted.",
+  } = {}) =>
+  (sourceCode) => {
+    const codeWithoutComments = stripComments(sourceCode ?? "");
+    const escapedMethod = escapeRegex(methodName);
+    const escapedParameter = escapeRegex(parameterName);
+    const escapedArray = escapeRegex(arrayName);
+    const escapedCounter = escapeRegex(counterName);
+    const emptyValues = {
+      [arrayName]: [],
+      [resultName]: 0,
+      visitedCells: [],
+    };
+
+    if (/\bint\s*\[\s*\]\s*\[\s*\]/.test(codeWithoutComments)) {
+      return {
+        isCorrect: false,
+        message: "Use one rectangular int[,] array, not int[][] here.",
+        payload: { values: emptyValues },
+      };
+    }
+
+    const methodBody = extractBalancedBody(
+      codeWithoutComments,
+      new RegExp(
+        `\\bstatic\\s+int\\s+${escapedMethod}\\s*\\(\\s*int\\s*\\[\\s*,\\s*\\]\\s+${escapedParameter}\\s*\\)`,
+      ),
+    );
+    if (methodBody === null) {
+      return {
+        isCorrect: false,
+        message: `Define static int ${methodName}(int[,] ${parameterName}).`,
+        payload: { values: emptyValues },
+      };
+    }
+
+    if (!new RegExp(`\\bint\\s+${escapedCounter}\\s*=\\s*0\\s*;`).test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: `Start the blessed-spirit count with int ${counterName} = 0;`,
+        payload: { values: { ...emptyValues, failureType: "missing_counter" } },
+      };
+    }
+
+    const outerLoopRegex = new RegExp(
+      `for\\s*\\(\\s*int\\s+([A-Za-z_]\\w*)\\s*=\\s*0\\s*;\\s*\\1\\s*<\\s*${escapedParameter}\\s*\\.\\s*GetLength\\s*\\(\\s*0\\s*\\)\\s*;\\s*\\1\\s*\\+\\+\\s*\\)`,
+    );
+    const outerMatch = methodBody.match(outerLoopRegex);
+    const outerBody = extractBalancedBody(methodBody, outerLoopRegex);
+    if (!outerMatch || outerBody === null) {
+      return {
+        isCorrect: false,
+        message: `Use an outer loop from 0 to ${parameterName}.GetLength(0).`,
+        payload: { values: { ...emptyValues, failureType: "missing_outer_loop" } },
+      };
+    }
+
+    const innerLoopRegex = new RegExp(
+      `for\\s*\\(\\s*int\\s+([A-Za-z_]\\w*)\\s*=\\s*0\\s*;\\s*\\1\\s*<\\s*${escapedParameter}\\s*\\.\\s*GetLength\\s*\\(\\s*1\\s*\\)\\s*;\\s*\\1\\s*\\+\\+\\s*\\)`,
+    );
+    const innerMatch = outerBody.match(innerLoopRegex);
+    const innerBody = extractBalancedBody(outerBody, innerLoopRegex);
+    if (!innerMatch || innerBody === null) {
+      return {
+        isCorrect: false,
+        message: `Inside it, loop from 0 to ${parameterName}.GetLength(1).`,
+        payload: { values: { ...emptyValues, failureType: "missing_inner_loop" } },
+      };
+    }
+
+    const rowName = outerMatch[1];
+    const columnName = innerMatch[1];
+    const cellAccess =
+      `${escapedParameter}\\s*\\[\\s*${escapeRegex(rowName)}\\s*,\\s*${escapeRegex(columnName)}\\s*\\]`;
+    const corruptedCondition = new RegExp(
+      `if\\s*\\(\\s*(?:${cellAccess}\\s*==\\s*0|0\\s*==\\s*${cellAccess})\\s*\\)`,
+    );
+    if (extractBalancedBody(innerBody, corruptedCondition) !== null) {
+      return {
+        isCorrect: false,
+        message: "A value of 0 marks a corrupted grave. Count only blessed graves whose value is 1.",
+        payload: { values: { ...emptyValues, failureType: "counting_corrupted" } },
+      };
+    }
+    const blessedCondition = new RegExp(
+      `if\\s*\\(\\s*(?:${cellAccess}\\s*==\\s*${targetValue}|${targetValue}\\s*==\\s*${cellAccess})\\s*\\)`,
+    );
+    const conditionBody = extractBalancedBody(innerBody, blessedCondition);
+    if (conditionBody === null) {
+      return {
+        isCorrect: false,
+        message: `Inspect each grave with ${parameterName}[${rowName}, ${columnName}] and count only values equal to ${targetValue}.`,
+        payload: { values: { ...emptyValues, failureType: "wrong_access" } },
+      };
+    }
+    if (!new RegExp(`\\b${escapedCounter}\\s*\\+\\+\\s*;`).test(conditionBody)) {
+      return {
+        isCorrect: false,
+        message: `Increment ${counterName} inside the blessed-grave if block.`,
+        payload: { values: { ...emptyValues, failureType: "missing_increment" } },
+      };
+    }
+    if (!new RegExp(`\\breturn\\s+${escapedCounter}\\s*;`).test(methodBody)) {
+      return {
+        isCorrect: false,
+        message: `Return the final count with return ${counterName};`,
+        payload: { values: { ...emptyValues, failureType: "missing_return" } },
+      };
+    }
+
+    const mainBody = extractBalancedBody(
+      codeWithoutComments,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+\w+\s*\)/,
+    );
+    if (mainBody === null) {
+      return {
+        isCorrect: false,
+        message: "Keep static void Main(string[] args) in the Program class.",
+        payload: { values: emptyValues },
+      };
+    }
+
+    const declarations = [...mainBody.matchAll(INT_2D_ARRAY_DECLARATION_REGEX)];
+    const declaration = declarations.find((match) => match[1] === arrayName);
+    if (!declaration) {
+      return {
+        isCorrect: false,
+        message: `Inside Main, declare the shown cemetery as int[,] ${arrayName}.`,
+        payload: { values: emptyValues },
+      };
+    }
+    const parsedRows = [...declaration[2].matchAll(/\{([^{}]*)\}/g)].map(
+      (rowMatch) =>
+        rowMatch[1]
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .map(Number),
+    );
+    const matrixMatches =
+      parsedRows.length === expectedRows.length &&
+      expectedRows.every(
+        (expectedRow, rowIndex) =>
+          parsedRows[rowIndex]?.length === expectedRow.length &&
+          expectedRow.every(
+            (expectedValue, columnIndex) =>
+              parsedRows[rowIndex][columnIndex] === expectedValue,
+          ),
+      );
+    const visitedCells = parsedRows.flatMap((row, rowIndex) =>
+      row.map((_, columnIndex) => [rowIndex, columnIndex]),
+    );
+    const count = parsedRows.flat().filter((value) => value === targetValue).length;
+    const values = {
+      [arrayName]: parsedRows,
+      [resultName]: count,
+      visitedCells,
+    };
+    if (!matrixMatches) {
+      return {
+        isCorrect: false,
+        message: "Copy the displayed 3 by 4 grave pattern exactly: 1 is blessed and 0 is corrupted.",
+        payload: { values: { ...values, failureType: "wrong_dimensions" } },
+      };
+    }
+
+    const assignmentRegex = new RegExp(
+      `\\bint\\s+${escapeRegex(resultName)}\\s*=\\s*${escapedMethod}\\s*\\(\\s*${escapedArray}\\s*\\)\\s*;`,
+    );
+    if (!assignmentRegex.test(mainBody)) {
+      return {
+        isCorrect: false,
+        message: `Store the result with int ${resultName} = ${methodName}(${arrayName});`,
+        payload: { values },
+      };
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: { values },
     };
   };

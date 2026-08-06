@@ -19,6 +19,8 @@ import {
   createCursedCharmCountMethodValidator,
   createRecursiveStairMethodValidator,
   createVoidMethodIntegerArrayParameterValidator,
+  createVoidMethodInteger2DArrayParameterValidator,
+  createBlessedGraveCount2DMethodValidator,
 } from "./validators";
 
 export const buildValidatorFromConfig = (config) => {
@@ -46,6 +48,12 @@ export const buildValidatorFromConfig = (config) => {
   if (config.type === "recursiveStairMethod") return createRecursiveStairMethodValidator(config);
   if (config.type === "voidMethodIntegerArrayParameter") {
     return createVoidMethodIntegerArrayParameterValidator(config);
+  }
+  if (config.type === "voidMethodInteger2DArrayParameter") {
+    return createVoidMethodInteger2DArrayParameterValidator(config);
+  }
+  if (config.type === "blessedGraveCount2DMethod") {
+    return createBlessedGraveCount2DMethodValidator(config);
   }
   return null;
 };

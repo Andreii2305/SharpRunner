@@ -1277,63 +1277,114 @@ Assets needed:
 - Phaser-drawn 2D grid
 - glow effect
 
-### Level 24 - Roof Tile Defense
+### Level 24 - Ancient Cemetery of the Forgotten Spirits
 
 Topic: Methods with 2D arrays
 
+Academic lesson:
+
+- Explain that int[,] is a rectangular two-dimensional array whose first index is the row and second index is the column.
+- Review zero-based indexing and why the last valid index is one less than a dimension's length.
+- Teach for loops as controlled repetition that can use loop counters as array indexes.
+- Explain why a complete 2D traversal requires an outer row loop and an inner column loop.
+- Teach GetLength(0) for row count and GetLength(1) for column count.
+- Introduce row-major traversal: finish every column in one row before advancing to the next row.
+- Review the accumulator pattern: initialize a counter before traversal and increment it only when a condition is true.
+- Explain that an int[,] parameter passes the complete grid to a method and an int return type sends one computed result back.
+- Include a trace exercise using row, column, current value, and accumulated count.
+- State that traversing an R by C grid takes R * C inspections, or O(R * C) time.
+- Identify common errors: one loop only, incorrect dimensions, <= bounds, one-index access, resetting the counter inside a loop, hard-coding the answer, and omitting return.
+
 Story:
-A flying creature attacks through weak roof tiles. Kai must process a 2D tile grid to find safe cells.
+Kai and the Diwata reach the cemetery that once guarded Barangay Malumay. Corruption has silenced some graves, while seven blessed graves still shelter guardian spirits. Every grave must be inspected before those spirits can awaken and return to the sky.
 
 Level design:
-Build a side-scroller roof/platform section with a 2D grid overlay. The flying enemy travels overhead from left to right. Safe cells glow green as the method counts them. If correct, Kai stands on safe tiles while the enemy misses.
+Arrange twelve tombstones as a visible 3 by 4 grid across three horizontal platform rows. The student scans the same arrangement in code. During execution, a row highlight advances from top to bottom and each grave keeps its revealed state. Blessed graves release blue guardian wisps; corrupted graves retain purple smoke.
+
+Grave mapping:
+
+```text
+Row 0: 1 0 1 1
+Row 1: 0 1 0 1
+Row 2: 1 1 0 0
+```
+
+There are seven blessed graves. A value of `1` is blessed and a value of `0` is corrupted.
 
 Setting and feeling:
-Night on rooftops or high platforms with wind and fast movement. The mood is urgent: the flying creature is actively passing overhead. Use moving shadows, red danger flashes, and green safe-cell highlights to make the 2D array feel spatial.
+Use a quiet midnight cemetery with layered forest silhouettes, low drifting fog, weathered tombstones, and restrained blue and purple light. A dim full moon becomes clear only when the spirits are released. The scene should feel solemn rather than combat-heavy and should not contain a cage-like gate, shrine, or ritual altar.
 
 Student task:
-Define a method named `CountSafeTiles` that accepts an `int[,]` and returns how many cells equal `1`.
+Define `CountBlessedGraves`, pass it the rectangular `int[,] graves` grid, inspect every row and column, count values equal to `1`, return that count, and store it in `Main`.
 
 Expected code shape:
 
 ```csharp
-static int CountSafeTiles(int[,] tiles) {
-  int safe = 0;
-  for (int row = 0; row < tiles.GetLength(0); row++) {
-    for (int col = 0; col < tiles.GetLength(1); col++) {
-      if (tiles[row, col] == 1) {
-        safe++;
+static int CountBlessedGraves(int[,] graves) {
+  int blessed = 0;
+  for (int row = 0; row < graves.GetLength(0); row++) {
+    for (int col = 0; col < graves.GetLength(1); col++) {
+      if (graves[row, col] == 1) {
+        blessed++;
       }
     }
   }
-  return safe;
+  return blessed;
 }
+```
+
+In `Main`, store the returned value with:
+
+```csharp
+int blessed = CountBlessedGraves(graves);
 ```
 
 Validation notes:
 
-- Require method return type `int`.
-- Require parameter `int[,] tiles`.
-- Require nested loops.
-- Require `GetLength(0)` and `GetLength(1)`.
-- Require access `tiles[row, col]`.
-- Require counting cells equal to `1`.
+- Require return type `int` and parameter `int[,] graves`.
+- Reject `int[][]` for this rectangular-array lesson.
+- Require `int blessed = 0;`.
+- Require nested loops using `GetLength(0)` and `GetLength(1)`.
+- Require two-index access in the form `graves[row, col]`.
+- Require comparison with `1` and incrementing `blessed` inside that condition.
+- Require `return blessed;`.
+- Require the exact 3 by 4 cemetery matrix and a call whose result is stored in `Main`.
+- Reject hard-coded final answers and incomplete one-loop scans.
+
+Execution feedback:
+
+- HUD shows the current row, column, grave value, blessed count, and overall progress.
+- A correct scan visits all twelve graves in row-major order.
+- A blessed grave produces a blue spirit and a purified glow.
+- A corrupted grave produces purple smoke and remains visibly corrupted.
+- Revealed states remain visible so the student can connect code traversal to the cemetery grid.
+- As each blessed spirit leaves, its grave settles into a calm pale-gray state.
 
 Correct outcome:
-Safe tiles glow. The flying creature passes overhead and misses Kai.
+All seven guardian spirits rise from their graves on staggered paths as ascending chimes sound. The moon opens above them, the Diwata gives a final farewell gesture, and the spirits ascend beyond the sky. Corruption fades, a resolved chord plays, and the scene closes with: "The forgotten are finally at peace."
+
+Transition to Bakunawa:
+As the spirits disappear into the night, they leave a pale trail toward the eclipse. The Diwata warns Kai that Bakunawa is close, carrying the cemetery's restored protection directly into the final chapter.
 
 Wrong outcome:
-Unsafe tiles flash red, the creature dives, and Kai is pushed back.
+The scan stops at the structural mistake. Missing nested traversal leaves graves unvisited; wrong indexing highlights the coordinate problem; missing counting or return logic leaves the guardian total incomplete. Feedback should name the failed concept without revealing a complete solution.
 
-Assets needed:
+Tiled objects:
 
-- platform/roof-like tiles
-- flying enemy sprite
-- Phaser grid overlay
-- safe/unsafe tile highlights
+- `player_spawn`
+- `guide_spawn`
+- `coding_trigger`
+- `grave_0_0` through `grave_2_3`
+- `spirit_release_focus`
+- `exit_trigger`
+- `level_complete`
 
-Important implementation notes:
+Assets and effects:
 
-- Use normal platforms. The roof grid can be a UI overlay, not a literal roof asset.
+- Use `tomb1.png` through `tomb5.png` from `assets/other/tombstone` for visual variety.
+- Keep tombstones at pixel-art nearest-neighbor filtering and a consistent 0.9 scene scale.
+- Use Phaser-drawn fog, blue guardian wisps, purple corruption smoke, scan highlights, HUD, and the heavenly release glow.
+- Reuse the existing layered forest background, platform tiles, Kai, and Diwata assets.
 
 ## Final Level 25 - Bakunawa Eclipse: The Last Compile
 

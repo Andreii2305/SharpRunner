@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import Phaser from "phaser";
 
-export default function Game({ scene, sceneKey, parentId = "phaser-canvas-root" }) {
+export default function Game({ scene, sceneKey, parentId = "phaser-canvas-root", isMuted = false }) {
   const gameRef = useRef(null);
 
   useEffect(() => {
@@ -38,6 +38,10 @@ export default function Game({ scene, sceneKey, parentId = "phaser-canvas-root" 
       }
     };
   }, [scene, sceneKey, parentId]);
+
+  useEffect(() => {
+    if (gameRef.current?.sound) gameRef.current.sound.mute = isMuted;
+  }, [isMuted]);
 
   return null;
 }

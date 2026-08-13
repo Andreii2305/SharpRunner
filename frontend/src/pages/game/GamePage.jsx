@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
+import { FiRefreshCw, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
 import axios from "axios";
 import { useNavigate, useParams } from "react-router-dom";
 import styles from "./GamePage.module.css";
@@ -11,12 +12,28 @@ import {
   GAME_LEVEL_OUTCOME,
   GAME_LEVEL_DIALOGUE_TRIGGERED,
   GAME_LEVEL_DIALOGUE_CLOSED,
+  GAME_ACCESSIBILITY_CHANGED,
+  GAME_LEVEL_RESET,
 } from "./gameEvents";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { getLevelConfig } from "./levels/levelConfigs";
 import { buildValidatorFromConfig } from "./levels/buildValidator";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
+const AUDIO_PREFERENCE_KEY = "sharprunner:game-audio-muted";
+const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
+
+const readBooleanPreference = (key, fallback = false) => {
+  try {
+    const saved = window.localStorage.getItem(key);
+    return saved == null ? fallback : saved === "true";
+  } catch {
+    return fallback;
+  }
+};
+
+const getDraftKey = (levelConfig) =>
+  levelConfig?.progressKey ? `sharprunner:code-draft:${levelConfig.progressKey}` : null;
 
 const getIdleResult = (levelConfig) => ({
   type: "idle",
@@ -77,12 +94,15 @@ function GamePage() {
 
   const nextLevelTimerRef = useRef(null);
   const completionRequestRef = useRef(null);
-  const startTimeRef = useRef(Date.now());
+  const runLevelCheckRef = useRef(null);
+  const dialogueButtonRef = useRef(null);
+  const hintButtonRef = useRef(null);
+  const gradeButtonRef = useRef(null);
   const elapsedSecondsRef = useRef(0);
   const failedAttemptsRef = useRef(0);
   const [startedAt, setStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [, setFailedAttempts] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
   const [activeDialogueId, setActiveDialogueId] = useState(null);
@@ -94,6 +114,14 @@ function GamePage() {
   const [result, setResult] = useState(getIdleResult(levelConfig));
   const [mergedLevelConfig, setMergedLevelConfig] = useState(levelConfig);
   const [gradeModal, setGradeModal] = useState(null);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [isMuted, setIsMuted] = useState(() => readBooleanPreference(AUDIO_PREFERENCE_KEY));
+  const [reducedMotion, setReducedMotion] = useState(() =>
+    readBooleanPreference(
+      MOTION_PREFERENCE_KEY,
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+    ),
+  );
 
   const clearNextLevelTimer = useCallback(() => {
     if (!nextLevelTimerRef.current) {
@@ -111,7 +139,9 @@ function GamePage() {
         { isPlayingGame },
         { headers: getAuthHeaders() },
       );
-    } catch {}
+    } catch {
+      // Activity reporting is best effort and must not interrupt the lesson.
+    }
   }, []);
 
   useEffect(() => {
@@ -120,7 +150,10 @@ function GamePage() {
     setMergedLevelConfig(levelConfig);
     setDialogueScript(getDefaultDialogueScript(levelConfig));
     setActiveDialogueId(null);
-    setCode(levelConfig?.defaultCode ?? "");
+    const draftKey = getDraftKey(levelConfig);
+    const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+    setCode(savedDraft ?? levelConfig?.defaultCode ?? "");
+    setDraftRestored(Boolean(savedDraft && savedDraft !== levelConfig?.defaultCode));
     setResult(getIdleResult(levelConfig));
     setDialogueStep(0);
     setTypedCharacters(0);
@@ -133,6 +166,16 @@ function GamePage() {
     setElapsedSeconds(0);
     elapsedSecondsRef.current = 0;
   }, [clearNextLevelTimer, levelConfig]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(AUDIO_PREFERENCE_KEY, String(isMuted));
+      localStorage.setItem(MOTION_PREFERENCE_KEY, String(reducedMotion));
+    } catch {
+      // Preferences remain usable for this session when storage is unavailable.
+    }
+    gameEvents.emit(GAME_ACCESSIBILITY_CHANGED, { isMuted, reducedMotion });
+  }, [isMuted, reducedMotion, levelConfig?.levelNumber]);
 
   useEffect(() => {
     if (!levelConfig?.progressKey) return;
@@ -166,7 +209,9 @@ function GamePage() {
         }
         if (override.defaultCode != null) {
           merged.defaultCode = override.defaultCode;
-          setCode(override.defaultCode);
+          const draftKey = getDraftKey(levelConfig);
+          const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+          if (!savedDraft) setCode(override.defaultCode);
         }
         if (override.validatorConfig != null) {
           merged.validatorConfig = override.validatorConfig;
@@ -370,11 +415,15 @@ function GamePage() {
               return;
             }
 
+            const draftKey = getDraftKey(levelConfig);
+            if (draftKey) localStorage.removeItem(draftKey);
+
             setGradeModal({
               score: savedScore,
               grade: completedLevel?.grade ?? "B",
               attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
               timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
+              isFinalLevel: levelConfig.levelNumber === 30,
             });
           })();
         }
@@ -467,9 +516,48 @@ function GamePage() {
       message: validation.message,
     });
   };
+  runLevelCheckRef.current = runLevelCheck;
+
+  const handleEditorMount = useCallback((editor, monaco) => {
+    editor.addAction({
+      id: "sharprunner-run-code",
+      label: "Run level code",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
+      run: () => runLevelCheckRef.current?.(),
+    });
+  }, []);
 
   const exitButton = () => {
     navigate("/dashboard");
+  };
+
+  const resetCode = () => {
+    const defaultCode = mergedLevelConfig?.defaultCode ?? levelConfig?.defaultCode ?? "";
+    if (
+      levelConfig?.levelNumber === 30 &&
+      code !== defaultCode &&
+      !window.confirm("Reset the final compile? Your current draft will be replaced.")
+    ) {
+      return;
+    }
+    const draftKey = getDraftKey(levelConfig);
+    if (draftKey) localStorage.removeItem(draftKey);
+    setCode(defaultCode);
+    setDraftRestored(false);
+    setResult(getIdleResult(mergedLevelConfig));
+    gameEvents.emit(GAME_LEVEL_RESET, { levelNumber: levelConfig?.levelNumber });
+  };
+
+  const updateCode = (nextValue) => {
+    const nextCode = nextValue ?? "";
+    setCode(nextCode);
+    const draftKey = getDraftKey(levelConfig);
+    if (!draftKey) return;
+    try {
+      localStorage.setItem(draftKey, nextCode);
+    } catch {
+      // Draft recovery is optional when storage is unavailable.
+    }
   };
 
   const activeDialogue = dialogueScript[dialogueStep];
@@ -508,6 +596,28 @@ function GamePage() {
   useEffect(() => {
     setTypedCharacters(0);
   }, [dialogueStep, levelConfig?.levelNumber]);
+
+  useEffect(() => {
+    if (showHint) hintButtonRef.current?.focus();
+  }, [showHint]);
+
+  useEffect(() => {
+    if (!showStoryIntro || !activeDialogue) return undefined;
+    const focusTimer = window.setTimeout(() => dialogueButtonRef.current?.focus(), 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [showStoryIntro, activeDialogue, activeDialogueId, dialogueStep]);
+
+  useEffect(() => {
+    if (gradeModal) gradeButtonRef.current?.focus();
+  }, [gradeModal]);
+
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key === "Escape" && showHint) setShowHint(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [showHint]);
 
   useEffect(() => {
     if (!showStoryIntro || !activeDialogue) {
@@ -637,22 +747,23 @@ function GamePage() {
             <Game
               scene={levelConfig.scene}
               sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
+              isMuted={isMuted}
             />
             {showHint && levelConfig.hint && (
-              <div className={styles.hintOverlay}>
-                <div className={styles.hintBox}>
+              <div className={styles.hintOverlay} role="presentation">
+                <div className={styles.hintBox} role="dialog" aria-modal="true" aria-labelledby="level-hint-title">
                   <div className={styles.hintHeader}>
-                    <span className={styles.hintTitle}>Hint</span>
-                    <button className={styles.hintClose} onClick={() => setShowHint(false)}>✕</button>
+                    <span id="level-hint-title" className={styles.hintTitle}>Hint</span>
+                    <button ref={hintButtonRef} type="button" className={styles.hintClose} onClick={() => setShowHint(false)} aria-label="Close hint">✕</button>
                   </div>
                   <p className={styles.hintText}>{levelConfig.hint}</p>
-                  <button className={styles.hintDismiss} onClick={() => setShowHint(false)}>Got it</button>
+                  <button type="button" className={styles.hintDismiss} onClick={() => setShowHint(false)}>Got it</button>
                 </div>
               </div>
             )}
             {showStoryIntro && activeDialogue && (
-              <div className={styles.storyOverlay}>
-                <div className={styles.storyContainer}>
+              <div className={styles.storyOverlay} role="presentation">
+                <div className={styles.storyContainer} role="dialog" aria-modal="true" aria-label={`${activeDialogue.speaker} dialogue`}>
                   <div className={styles.storyChapter}>{chapterLabel}</div>
 
                   <div className={styles.dialogueBox}>
@@ -712,6 +823,7 @@ function GamePage() {
 
                     <div className={styles.dialogueButtonWrap}>
                       <Button
+                        ref={dialogueButtonRef}
                         label={
                           isTyping
                             ? "Skip"
@@ -734,15 +846,38 @@ function GamePage() {
 
           <div className={styles.editorPanel}>
             <div className={styles.editorHeader}>
-              <span>
+              <div className={styles.editorTitleGroup}>
                 <b>C#</b>
-              </span>
-              <Button
-                label="Submit"
-                variant="primary"
-                size="sm"
-                onClick={runLevelCheck}
-              />
+                {draftRestored && <span className={styles.draftStatus}>Draft restored</span>}
+              </div>
+              <div className={styles.editorActions}>
+                <button type="button" className={styles.iconButton} onClick={resetCode} title="Reset code" aria-label="Reset code">
+                  <FiRefreshCw aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.iconButton} ${isMuted ? styles.iconButtonActive : ""}`}
+                  onClick={() => setIsMuted((current) => !current)}
+                  title={isMuted ? "Turn sound on" : "Mute sound"}
+                  aria-label={isMuted ? "Turn sound on" : "Mute sound"}
+                  aria-pressed={isMuted}
+                >
+                  {isMuted ? <FiVolumeX aria-hidden="true" /> : <FiVolume2 aria-hidden="true" />}
+                </button>
+                {levelConfig.levelNumber === 30 && (
+                  <button
+                    type="button"
+                    className={`${styles.iconButton} ${reducedMotion ? styles.iconButtonActive : ""}`}
+                    onClick={() => setReducedMotion((current) => !current)}
+                    title={reducedMotion ? "Use full motion" : "Reduce motion"}
+                    aria-label={reducedMotion ? "Use full motion" : "Reduce motion"}
+                    aria-pressed={reducedMotion}
+                  >
+                    {reducedMotion ? <FiZapOff aria-hidden="true" /> : <FiZap aria-hidden="true" />}
+                  </button>
+                )}
+                <Button label="Submit" variant="primary" size="sm" onClick={runLevelCheck} />
+              </div>
             </div>
             <div style={{ flexGrow: 1 }}>
               <Editor
@@ -750,7 +885,8 @@ function GamePage() {
                 theme="light"
                 defaultLanguage="csharp"
                 value={code}
-                onChange={(val) => setCode(val ?? "")}
+                onChange={updateCode}
+                onMount={handleEditorMount}
                 options={{
                   minimap: { enabled: false },
                   fontSize: 14,
@@ -766,7 +902,7 @@ function GamePage() {
                 onClick={runLevelCheck}
               />
             </div>
-            <div className={resultClassName}>{result.message}</div>
+            <div className={resultClassName} role="status" aria-live="polite">{result.message}</div>
           </div>
         </div>
 
@@ -808,13 +944,33 @@ function GamePage() {
       </main>
 
       {gradeModal && (
-        <div className={styles.gradeOverlay}>
-          <div className={`${styles.gradeCard} ${styles[`gradeCard${gradeModal.grade}`]}`}>
-            <div className={styles.gradeComplete}>
+        <div className={styles.gradeOverlay} role="presentation">
+          <div className={`${styles.gradeCard} ${styles[`gradeCard${gradeModal.grade}`]}`} role="dialog" aria-modal="true" aria-labelledby="completion-title">
+            <div id="completion-title" className={styles.gradeComplete}>
               <span className={styles.gradeCompleteLine} />
-              LEVEL COMPLETE
+              {gradeModal.isFinalLevel ? "JOURNEY COMPLETE" : "LEVEL COMPLETE"}
               <span className={styles.gradeCompleteLine} />
             </div>
+
+            {gradeModal.isFinalLevel && (
+              <div className={styles.finalCompletionCopy}>
+                <strong>Dawn of the Last Compile</strong>
+                <span>You restored the moon and completed SharpRunner's coding journey.</span>
+                <div className={styles.finalSkillRecap} aria-label="Skills used in the final compile">
+                  {[
+                    "Arrays",
+                    "Loops",
+                    "Methods",
+                    "Parameters",
+                    "Return values",
+                    "2D arrays",
+                    "Recursion",
+                  ].map((skill) => (
+                    <span key={skill}>{skill}</span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className={styles.gradeBadgeWrap}>
               <div className={styles.gradeRays} />
@@ -849,13 +1005,14 @@ function GamePage() {
             </div>
 
             <button
+              ref={gradeButtonRef}
               className={`${styles.gradeContinueBtn} ${styles[`gradeContinueBtn${gradeModal.grade}`]}`}
               onClick={() => {
                 setGradeModal(null);
                 navigate(levelConfig.nextRoute ?? "/Map");
               }}
             >
-              Continue →
+              {gradeModal.isFinalLevel ? "Return to Map" : "Continue"}
             </button>
           </div>
         </div>

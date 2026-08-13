@@ -309,6 +309,38 @@
   align-items: center;
 }
 
+.editorTitleGroup,
+.editorActions {
+  display: flex;
+  align-items: center;
+}
+
+.editorTitleGroup { gap: 10px; }
+.editorActions { gap: 8px; }
+
+.draftStatus {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.iconButton {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #31536d;
+  cursor: pointer;
+}
+
+.iconButton:hover { background: #f1f5f9; }
+.iconButtonActive { background: #e0f2fe; border-color: #7dd3fc; color: #075985; }
+.iconButton:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
 .btnSubmit {
   background: #2b6cb0;
   color: white;
@@ -678,6 +710,44 @@
   border-radius: 20px;
   padding: 5px 18px;
   letter-spacing: 0.04em;
+}
+
+.finalCompletionCopy {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 320px;
+  text-align: center;
+}
+
+.finalCompletionCopy strong { color: #f8e7a3; font-size: 1.05rem; }
+.finalCompletionCopy span { color: #94a3b8; font-size: 0.82rem; line-height: 1.45; }
+
+.finalSkillRecap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.finalSkillRecap span {
+  padding: 4px 7px;
+  border: 1px solid rgba(125, 211, 252, 0.24);
+  border-radius: 4px;
+  background: rgba(14, 116, 144, 0.12);
+  color: #bae6fd;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gradeCard,
+  .gradeRays,
+  .gradeBadge,
+  .gradeSpark,
+  .gradeScoreRow { animation: none !important; }
 }
 
 .gradeStats {

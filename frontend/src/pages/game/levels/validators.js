@@ -2240,3 +2240,113 @@ export const createBlessedGraveCount2DMethodValidator =
       payload: { values },
     };
   };
+
+export const createBakunawaFinaleValidator =
+  ({ successMessage = "The last compile succeeded. Breaking the eclipse..." } = {}) =>
+  (sourceCode) => {
+    const code = stripComments(sourceCode ?? "");
+    const fail = (phase, message) => ({
+      isCorrect: false,
+      message,
+      payload: { values: { failurePhase: phase, completedPhases: phase - 1 } },
+    });
+
+    const symbolsMatch = code.match(
+      /\bint\s*\[\s*\]\s+symbols\s*=\s*\{\s*1\s*,\s*1\s*,\s*0\s*,\s*1\s*\}\s*;/,
+    );
+    if (!symbolsMatch) {
+      return fail(1, "Phase 1: the moon-seal array does not match the four symbols shown in the arena.");
+    }
+
+    const countBody = extractBalancedBody(
+      code,
+      /\bstatic\s+int\s+CountCorrupted\s*\(\s*int\s*\[\s*\]\s+([A-Za-z_]\w*)\s*\)/,
+    );
+    if (countBody === null) {
+      return fail(2, "Phase 2: the corrupted-symbol counter method is missing.");
+    }
+    const countLoop = countBody.match(
+      /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*symbols\s*\.\s*Length\s*;\s*\1\s*\+\+\s*\)/,
+    );
+    if (
+      !countLoop ||
+      !new RegExp(`symbols\\s*\\[\\s*${escapeRegex(countLoop[1])}\\s*\\]\\s*==\\s*0`).test(countBody) ||
+      !/\b[A-Za-z_]\w*\s*\+\+\s*;/.test(countBody) ||
+      !/\breturn\s+[A-Za-z_]\w*\s*;/.test(countBody)
+    ) {
+      return fail(2, "Phase 2: check the traversal, counter update, and returned count.");
+    }
+
+    const repairBody = extractBalancedBody(
+      code,
+      /\bstatic\s+void\s+RepairSymbol\s*\(\s*int\s+index\s*\)/,
+    );
+    if (repairBody === null || !/\bRepairSymbol\s*\(\s*2\s*\)\s*;/.test(code)) {
+      return fail(3, "Phase 3: the repair action is not both defined and invoked for the corrupted seal.");
+    }
+
+    const wardBody = extractBalancedBody(
+      code,
+      /\bstatic\s+int\s+CalculateWard\s*\(\s*int\s+basePower\s*,\s*int\s+bonus\s*\)/,
+    );
+    if (
+      wardBody === null ||
+      !/\breturn\s+(?:basePower\s*\+\s*bonus|bonus\s*\+\s*basePower)\s*;/.test(wardBody)
+    ) {
+      return fail(4, "Phase 4: the ward calculation is not returning the combined power of both inputs.");
+    }
+
+    const moonBody = extractBalancedBody(
+      code,
+      /\bstatic\s+int\s+CountMoonCells\s*\(\s*int\s*\[\s*,\s*\]\s+moon\s*\)/,
+    );
+    if (
+      moonBody === null ||
+      !/\.\s*GetLength\s*\(\s*0\s*\)/.test(moonBody) ||
+      !/\.\s*GetLength\s*\(\s*1\s*\)/.test(moonBody) ||
+      !/moon\s*\[\s*[A-Za-z_]\w*\s*,\s*[A-Za-z_]\w*\s*\]/.test(moonBody) ||
+      !/\breturn\s+[A-Za-z_]\w*\s*;/.test(moonBody)
+    ) {
+      return fail(5, "Phase 5: the moon-grid method is not visiting every row and column before returning its count.");
+    }
+
+    const eclipseBody = extractBalancedBody(
+      code,
+      /\bstatic\s+void\s+BreakEclipse\s*\(\s*int\s+phase\s*\)/,
+    );
+    if (
+      eclipseBody === null ||
+      !/if\s*\(\s*phase\s*(?:==|<=)\s*0\s*\)/.test(eclipseBody) ||
+      !/\breturn\s*;/.test(eclipseBody) ||
+      !/\bBreakEclipse\s*\(\s*phase\s*-\s*1\s*\)\s*;/.test(eclipseBody)
+    ) {
+      return fail(6, "Phase 6: the recursive chain needs a stopping condition and a call that moves toward it.");
+    }
+
+    const mainBody = extractBalancedBody(
+      code,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+[A-Za-z_]\w*\s*\)/,
+    );
+    if (
+      mainBody === null ||
+      !/\bCountCorrupted\s*\(\s*symbols\s*\)/.test(mainBody) ||
+      !/\bCalculateWard\s*\(/.test(mainBody) ||
+      !/\bCountMoonCells\s*\(/.test(mainBody) ||
+      !/\bBreakEclipse\s*\(\s*6\s*\)\s*;/.test(mainBody)
+    ) {
+      return fail(6, "Final phase: Main has not yet connected every prepared result and the eclipse-breaking call.");
+    }
+
+    return {
+      isCorrect: true,
+      message: successMessage,
+      payload: {
+        values: {
+          phases: 6,
+          completedPhases: 6,
+          symbols: [1, 1, 0, 1],
+          corrupted: 1,
+        },
+      },
+    };
+  };

@@ -26,6 +26,7 @@ import FunctionsArraysLanternLineScene from "../scenes/FunctionsArraysLanternLin
 import FunctionsArraysCountCursedCharmsScene from "../scenes/FunctionsArraysCountCursedCharmsScene";
 import FunctionsArraysRestoreWardingGridScene from "../scenes/FunctionsArraysRestoreWardingGridScene";
 import FunctionsArraysAncientCemeteryScene from "../scenes/FunctionsArraysAncientCemeteryScene";
+import FunctionsArraysBakunawaEclipseScene from "../scenes/FunctionsArraysBakunawaEclipseScene";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -47,12 +48,14 @@ import {
   createVoidMethodInteger2DArrayParameterValidator,
   createCursedCharmCountMethodValidator,
   createBlessedGraveCount2DMethodValidator,
+  createBakunawaFinaleValidator,
 } from "./validators";
 
 const LESSON_KEY = "tutorial";
 const ARRAYS_LESSON_KEY = "arrays";
 const METHODS_LESSON_KEY = "functions";
 const FUNCTIONS_ARRAYS_LESSON_KEY = "functions-with-arrays";
+const FINAL_LESSON_KEY = "final";
 const GAME_ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const DIALOGUE_ASSET_BASE = `${GAME_ASSET_BASE}/ui/dialogue`;
 
@@ -3551,6 +3554,115 @@ const LEVEL_CONFIG_BY_NUMBER = {
       ],
       targetValue: 1,
       successMessage: "Code accepted. Inspecting every grave...",
+    }),
+  },
+  30: {
+    levelNumber: 30,
+    lessonKey: FINAL_LESSON_KEY,
+    parTimeSeconds: 1800,
+    title: "Bakunawa Eclipse: The Last Compile",
+    subtitle: "Final Level - Dawn of the Last Compile",
+    chapterLabel: "Final Level: Bakunawa Eclipse",
+    scene: FunctionsArraysBakunawaEclipseScene,
+    sceneKey: "FunctionsArraysBakunawaEclipseScene",
+    progressKey: `${FINAL_LESSON_KEY}-level-1`,
+    nextRoute: "/Map",
+    nextDelayMs: 1600,
+    startWithDialogue: false,
+    lockCodeUntilDialogueDone: true,
+    defaultCode:
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Phase 2: traverse symbols and return the number of 0 values.\n    static int CountCorrupted(int[] symbols) {\n      // Write the counter and loop here.\n    }\n\n    // Phase 3: name the repair action.\n    static void RepairSymbol(int index) {\n    }\n\n    // Phase 4: combine two ward powers and return the result.\n    static int CalculateWard(int basePower, int bonus) {\n    }\n\n    // Phase 5: traverse every cell and return how many cells were visited.\n    static int CountMoonCells(int[,] moon) {\n    }\n\n    // Phase 6: stop at 0; otherwise call the next smaller phase.\n    static void BreakEclipse(int phase) {\n    }\n\n    static void Main(string[] args) {\n      // Phase 1\n      int[] symbols = { 1, 1, 0, 1 };\n      int[,] moon = { { 1, 1 }, { 1, 1 } };\n\n      // Call the five methods and store every returned value here.\n    }\n  }\n}",
+    hint:
+      "Complete the phases in order: count the 0, repair index 2, add the ward powers, traverse both moon dimensions, then recurse from phase 6 down to 0.",
+    idleResultMessage: "The eclipsed moon is waiting for the last compile.",
+    successResultMessage: "Compilation successful. Umaga na.",
+    errorResultMessage: "Bakunawa found a broken phase. Repair the first phase named in the result.",
+    goal: {
+      title: "Goal",
+      description:
+        "Complete one final C# program that combines arrays, traversal, parameters, return values, two-dimensional arrays, and recursion to restore the moon.",
+    },
+    instruction: {
+      title: "The Six Seals",
+      items: [
+        "Keep **int[] symbols = { 1, 1, 0, 1 };**. The single 0 is the corrupted moon seal.",
+        "Define **static int CountCorrupted(int[] symbols)**. Traverse the array, count values equal to 0, and return the count.",
+        "Define **static void RepairSymbol(int index)** and call **RepairSymbol(2);** from Main.",
+        "Define **static int CalculateWard(int basePower, int bonus)** and return their sum.",
+        "Define **static int CountMoonCells(int[,] moon)**. Use nested GetLength loops, inspect **moon[row, col]**, and return the visited-cell count.",
+        "Define **static void BreakEclipse(int phase)**. Return when phase reaches 0; otherwise call **BreakEclipse(phase - 1)**. Begin with **BreakEclipse(6);**.",
+        "From Main, call CountCorrupted, CalculateWard, and CountMoonCells and store each returned result.",
+      ],
+    },
+    lessonCard: {
+      title: "The Last Compile",
+      description:
+        "This final program combines the major skills from the journey. Each technique solves a different part of one larger algorithm.",
+      sections: [
+        {
+          title: "Arrays And Traversal",
+          body:
+            "An array groups values under one name. A loop visits each valid index from 0 through Length - 1. A counter declared before the loop preserves the number of matching values found across all iterations.",
+          code:
+            "int count = 0;\nfor (int i = 0; i < values.Length; i++) {\n  if (values[i] == target) count++;\n}\nreturn count;",
+        },
+        {
+          title: "Parameters And Return Values",
+          body:
+            "Parameters carry input into a method. A non-void return type promises that the method sends one result back. The caller should store that result so later parts of the program can use it.",
+          code:
+            "static int Add(int first, int second) {\n  return first + second;\n}\n\nint total = Add(5, 3);",
+        },
+        {
+          title: "Two-Dimensional Arrays",
+          body:
+            "A rectangular array needs one loop for rows and another for columns. GetLength(0) is the row count, GetLength(1) is the column count, and grid[row, col] accesses the current cell.",
+        },
+        {
+          title: "Recursion And The Base Case",
+          body:
+            "A recursive method calls itself with a smaller problem. The base case must stop the calls. Without it, the call stack continues growing until the program fails.",
+          code:
+            "static void Resolve(int phase) {\n  if (phase == 0) return;\n  Resolve(phase - 1);\n}",
+        },
+        {
+          title: "Reading A Compile Failure",
+          body:
+            "Work from the earliest reported phase. Later code can depend on earlier declarations and returned values, so fixing errors in order prevents one mistake from hiding several others.",
+        },
+      ],
+    },
+    dialogue: {
+      assetBase: DIALOGUE_ASSET_BASE,
+      portraitImage: "diwata_dialogue.png",
+      portraitAlt: "Diwata portrait",
+      intro: [
+        {
+          speaker: "Diwata",
+          portraitImage: "diwata_dialogue.png",
+          portraitAlt: "Diwata portrait",
+          lines: [
+            {
+              text: "Bakunawa has swallowed the last light of the moon. Every lesson brought us to this final compile.",
+              tone: "danger",
+            },
+            {
+              text: "Six seals bind the eclipse: array, traversal, repair, return, moon grid, and recursion.",
+              tone: "normal",
+            },
+            {
+              text: "Complete the program. Each correct phase restores one piece of moonlight. Break all six, and dawn will return.",
+              tone: "goal",
+            },
+          ],
+        },
+      ],
+    },
+    validatorConfig: {
+      type: "bakunawaFinale",
+    },
+    validateCode: createBakunawaFinaleValidator({
+      successMessage: "The last compile succeeded. Breaking the eclipse...",
     }),
   },
 };

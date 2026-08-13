@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import LandingPage from "./Components/LandingPage/LandingPage.jsx";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import LessonSection from "./Components/LessonSection/LessonSection.jsx";
@@ -5,14 +6,12 @@ import LoginPage from "./Components/LogInPage/Login.jsx";
 import SignUp from "./Components/Registration/SignUp.jsx";
 import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute.jsx";
 import LessonMapPage from "./pages/map/LessonMapPage.jsx";
-import LevelRoutePage from "./pages/game/LevelRoutePage.jsx";
 import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
 import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
 import TeacherClassesPage from "./pages/teacher/TeacherClassesPage.jsx";
 import TeacherStudentsPage from "./pages/teacher/TeacherStudentsPage.jsx";
 import TeacherAnalyticsPage from "./pages/teacher/TeacherAnalyticsPage.jsx";
 import TeacherAnnouncementsPage from "./pages/teacher/TeacherAnnouncementsPage.jsx";
-import TeacherLevelEditorPage from "./pages/teacher/TeacherLevelEditorPage.jsx";
 import JoinClassPage from "./pages/student/JoinClassPage.jsx";
 import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
 import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
@@ -20,6 +19,15 @@ import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
 import GoogleCallbackPage from "./pages/auth/GoogleCallbackPage.jsx";
 import { ToastProvider } from "./Components/Toast/ToastProvider.jsx";
+
+const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
+const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEditorPage.jsx"));
+
+const gameRouteFallback = (
+  <div role="status" aria-live="polite" style={{ padding: "2rem", textAlign: "center" }}>
+    Loading level...
+  </div>
+);
 
 /* Convenience wrapper so teacher routes stay DRY */
 function TeacherRoute({ children }) {
@@ -74,7 +82,9 @@ function App() {
           path="/Map/level/:levelNumber"
           element={
             <ProtectedRoute requireClassMembership>
-              <LevelRoutePage />
+              <Suspense fallback={gameRouteFallback}>
+                <LevelRoutePage />
+              </Suspense>
             </ProtectedRoute>
           }
         />
@@ -124,7 +134,9 @@ function App() {
           path="/teacher/classrooms/:classroomId/levels"
           element={
             <TeacherRoute>
-              <TeacherLevelEditorPage />
+              <Suspense fallback={gameRouteFallback}>
+                <TeacherLevelEditorPage />
+              </Suspense>
             </TeacherRoute>
           }
         />

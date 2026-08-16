@@ -497,7 +497,8 @@ function LessonMap({
   const stage2Nodes = orderedNodes.filter((n) => n.levelNumber > 5);
   const stage1Done = stage1Nodes.filter((n) => n.status === "completed").length;
   const stage2Done = stage2Nodes.filter((n) => n.status === "completed").length;
-  const stage2Locked = stage2Nodes.every((n) => n.status === "locked");
+  const hasSecondStage = stages.length > 1 && stage2Nodes.length > 0;
+  const stage2Locked = hasSecondStage && stage2Nodes.every((n) => n.status === "locked");
   const totalDone = stage1Done + stage2Done;
   const totalLevelsLabel = toRoman(orderedNodes.length) || orderedNodes.length;
 
@@ -660,7 +661,11 @@ function LessonMap({
             </div>
           </header>
 
-          <div className={styles.mapCanvas}>
+          <div
+            className={`${styles.mapCanvas} ${
+              !hasSecondStage ? styles.singleStageMap : ""
+            }`}
+          >
             {/* Parchment corner decorations */}
             <div className={styles.cornerTL} aria-hidden="true" />
             <div className={styles.cornerTR} aria-hidden="true" />
@@ -674,12 +679,16 @@ function LessonMap({
 
             {/* Stage band backgrounds */}
             <div className={`${styles.stageBand} ${styles.stageBandOne}`} />
-            <div
-              className={`${styles.stageBand} ${styles.stageBandTwo} ${
-                stage2Locked ? styles.stageBandLocked : ""
-              }`}
-            />
-            <div className={styles.stageDivider} />
+            {hasSecondStage && (
+              <>
+                <div
+                  className={`${styles.stageBand} ${styles.stageBandTwo} ${
+                    stage2Locked ? styles.stageBandLocked : ""
+                  }`}
+                />
+                <div className={styles.stageDivider} />
+              </>
+            )}
 
             {/* Stage headers */}
             {stages.map((stage, idx) => (
@@ -762,7 +771,7 @@ function LessonMap({
             )}
 
             {/* Stage 2 locked overlay */}
-            {stage2Locked && (
+            {hasSecondStage && stage2Locked && (
               <div className={styles.stage2Overlay}>
                 <LockOutlinedIcon sx={{ fontSize: 22, color: "#8b6f3f" }} />
                 <span className={styles.overlayText}>

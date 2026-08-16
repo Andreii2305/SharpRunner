@@ -602,6 +602,11 @@
   box-shadow: inset 0 0 20px rgba(139, 44, 26, 0.05);
 }
 
+.singleStageMap .stageBandOne {
+  top: 32%;
+  height: 34%;
+}
+
 .stageBandTwo {
   top: 54%;
   height: 34%;

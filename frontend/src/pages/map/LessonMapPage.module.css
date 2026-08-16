@@ -13,22 +13,271 @@
 .lessonMapContent {
   flex: 1;
   min-width: 0;
-  padding: 16px 20px 16px 8px;
+  padding: 8px 12px 12px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
+.regionTabs {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  min-height: 46px;
+  gap: 16px;
+  padding: 6px 10px 6px 16px;
+  border: 3px solid #1a0f08;
+  border-bottom: 1px solid #8b6f3f;
+  border-radius: 10px 10px 0 0;
+  color: #d7bc78;
+  background: linear-gradient(180deg, #352216 0%, #24170e 100%);
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+  box-sizing: border-box;
+}
+
+.regionTabsLabel {
+  flex: none;
+  color: #c9a662;
+  font: 700 0.68rem Georgia, serif;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.regionTabList {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid #6f5531;
+  border-radius: 7px;
+  background: #160e09;
+}
+
+.regionTabList button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 142px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #c9b178;
+  background: transparent;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.regionTabList button:hover {
+  color: #fff0bd;
+  background: rgba(201, 166, 98, 0.12);
+}
+
+.regionTabList .activeRegionTab {
+  color: #2a1810;
+  background: linear-gradient(180deg, #f4e2ab 0%, #cfad68 100%);
+  border-color: #fff0bd;
+  box-shadow: inset 0 0 0 1px #96733c;
+}
+
+.regionOrder {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #d7bc78;
+  background: #4a321f;
+  font-size: 0.64rem;
+}
+
+.activeRegionTab .regionOrder {
+  color: #fff0bd;
+  background: #563820;
+}
+
+.regionName { font-size: 0.78rem; }
+
+.regionProgress {
+  margin-left: auto;
+  color: #9f8758;
+  font-size: 0.66rem;
+}
+
+.activeRegionTab .regionProgress { color: #63451f; }
+
+.arraysLayout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 268px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.arraysInfoPanel,
+.arraysRegion {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 3px solid #1a0f08;
+  border-radius: 10px;
+  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.2);
+}
+
+.arraysInfoPanel {
+  color: #3d2817;
+  background:
+    repeating-linear-gradient(0deg, rgba(139, 111, 63, 0.045) 0 2px, transparent 2px 4px),
+    #e8d4a0;
+}
+
+.arraysRegion {
+  min-width: 0;
+  background: #17261c;
+}
+
+.arraysHero {
+  position: relative;
+  min-height: 150px;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border-bottom: 3px double #8b6f3f;
+  color: #ffefb5;
+  background:
+    linear-gradient(180deg, rgba(24, 45, 31, 0.1), rgba(15, 26, 18, 0.94)),
+    radial-gradient(circle at 75% 30%, #467c5a 0 3%, transparent 3.5%),
+    linear-gradient(145deg, #7ca68e, #274a36 58%, #162a1e);
+}
+
+.arraysHero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 42%;
+  opacity: 0.5;
+  background: repeating-linear-gradient(135deg, transparent 0 18px, #13281c 19px 26px);
+}
+
+.regionBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  padding: 4px 9px;
+  border: 2px solid #1a0f08;
+  color: #ffeb99;
+  background: #8b2c1a;
+  font: 700 0.65rem Georgia, serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.arraysHeroText { position: relative; z-index: 1; }
+.arraysHero h1 { margin: 3px 0; font: 700 1.08rem/1.05 Georgia, serif; text-shadow: 1px 1px #000; }
+.arraysHero p { margin: 0; color: #e6c877; font: italic 0.72rem/1.35 Georgia, serif; }
+
+.arraysProgressBlock {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 13px;
+  border-bottom: 2px dashed #a4864e;
+}
+
+.progressSeal {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 68px;
+  height: 68px;
+  border: 3px double #5c3a1e;
+  border-radius: 50%;
+  background: conic-gradient(#8b2c1a var(--progress), #bda36c 0);
+  box-shadow: inset 0 0 0 7px #e8d4a0, 1px 2px 0 #5c3a1e;
+}
+
+.progressSeal span { font: 700 0.8rem Georgia, serif; }
+.arraysProgressBlock > div:last-child { display: flex; flex-direction: column; }
+.progressHeading { font: 700 0.63rem Georgia, serif; letter-spacing: 0.1em; text-transform: uppercase; }
+.arraysProgressBlock strong { color: #8b2c1a; font: 700 1.35rem Georgia, serif; }
+.arraysProgressBlock small { font: italic 0.67rem Georgia, serif; }
+
+.arraysNotes {
+  margin: 12px;
+  padding: 11px 12px;
+  border: 2px solid #8b6f3f;
+  background: rgba(255, 239, 190, 0.5);
+  box-shadow: inset 0 0 0 2px rgba(139, 111, 63, 0.2);
+}
+
+.arraysNotes h2 { margin: 0 0 8px; font: 700 0.72rem Georgia, serif; letter-spacing: 0.08em; text-align: center; text-transform: uppercase; }
+.arraysNotes p { position: relative; margin: 8px 0; padding-left: 13px; font: italic 0.68rem/1.45 Georgia, serif; }
+.arraysNotes p::before { content: "✦"; position: absolute; left: 0; color: #8b2c1a; font-style: normal; }
+
+.infoActions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px;
+  border-top: 2px dashed #8b6f3f;
+}
+
+.infoActions button {
+  flex: 1;
+  padding: 10px 6px;
+  border: 2px solid #175c91;
+  border-radius: 10px;
+  color: #175c91;
+  background: transparent;
+  font: 700 0.78rem Georgia, serif;
+  cursor: pointer;
+}
+
+.infoActions .continueButton { color: white; background: #175c91; }
+.infoActions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.arraysHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex: none;
+  padding: 13px 18px;
+  border-bottom: 3px double #8b6f3f;
+  color: #f6e6b6;
+  background: linear-gradient(#3d2817, #2a1810);
+}
+
+.arraysHeader h2 { margin: 0 0 3px; font: 700 1.05rem Georgia, serif; font-variant: small-caps; letter-spacing: 0.05em; }
+.arraysHeader p { margin: 0; color: #c9a662; font-size: 0.8rem; }
+.eyebrow { color: #d5bd7d; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
+
+.mapLegend { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.mapLegend span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid #8b6f3f; color: #ead8a6; font: 700 0.58rem Georgia, serif; letter-spacing: 0.05em; text-transform: uppercase; }
+.mapLegend i { display: block; width: 9px; height: 9px; border: 1px solid #1a0f08; }
+.legendCompleted { background: #2a6b34; }
+.legendCurrent { background: #9b3120; }
+.legendAvailable { background: #d5b56c; }
+.legendLocked { background: #453225; }
+
 /* The LessonMap root fills this container */
-.lessonMapContent > * {
+.lessonMapContent > *:not(.regionTabs) {
   flex: 1;
   min-height: 0;
 }
 
 @media (max-width: 1024px) {
   .lessonMapContent {
-    padding: 12px 14px 12px 6px;
+    padding: 6px 8px 8px;
   }
+
+  .arraysLayout { grid-template-columns: 230px minmax(0, 1fr); gap: 10px; }
+  .mapLegend { display: none; }
 }
 
 @media (max-width: 767px) {
@@ -37,8 +286,20 @@
   }
 
   .lessonMapContent {
-    padding: 12px;
+    padding: 6px;
     height: auto;
     overflow: auto;
   }
+
+  .regionTabs { align-items: stretch; flex-direction: column; gap: 5px; padding: 7px; }
+  .regionTabsLabel { padding-left: 3px; }
+  .regionTabList { width: 100%; box-sizing: border-box; }
+  .regionTabList button { flex: 1; min-width: 0; }
+  .regionOrder { display: none; }
+  .arraysLayout { display: flex; flex-direction: column; }
+  .arraysInfoPanel { flex: none; }
+  .arraysHero { min-height: 120px; }
+  .arraysNotes { display: none; }
+  .arraysHeader { align-items: flex-start; flex-direction: column; }
+  .arraysRegion { min-height: 70vh; }
 }

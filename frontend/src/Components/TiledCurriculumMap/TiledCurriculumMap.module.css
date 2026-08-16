@@ -1,0 +1,252 @@
+.viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  cursor: grab;
+  background: #17261c;
+  scrollbar-color: #8b6f3f #24170e;
+  touch-action: pan-x pan-y;
+}
+
+.viewport:active { cursor: grabbing; }
+
+.world {
+  position: relative;
+  isolation: isolate;
+  flex: none;
+  margin-inline: auto;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.tileLayer,
+.nodeLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.tileLayer { pointer-events: none; }
+.nodeLayer { z-index: 100; pointer-events: none; }
+
+.levelNode {
+  position: absolute;
+  width: 124px;
+  min-height: 78px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* Tiled marker coordinates remain the center of the shield, not the label. */
+  transform: translate(-50%, -25px);
+  pointer-events: auto;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  cursor: pointer;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.nodeShield {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 51px;
+  color: #fff3c9;
+  filter: drop-shadow(1px 2px 0 rgba(0, 0, 0, 0.55));
+  transition: transform 120ms ease;
+}
+
+.shieldOuter,
+.shieldInner {
+  position: absolute;
+  clip-path: polygon(50% 0%, 100% 15%, 100% 60%, 50% 100%, 0% 60%, 0% 15%);
+}
+
+.shieldOuter {
+  inset: 0;
+  background: #160e09;
+}
+
+.shieldInner {
+  inset: 3px;
+  background: linear-gradient(180deg, #fff3d4 0%, #c9a662 100%);
+  box-shadow: inset 0 0 0 1px #ffeb99;
+}
+
+.nodeContent {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3d2817;
+  font-weight: 800;
+  font-size: 12px;
+  text-shadow: none;
+}
+
+.levelNode:not(:disabled):hover .nodeShield,
+.levelNode:focus-visible .nodeShield { transform: translateY(-3px) scale(1.08); }
+.levelNode:focus-visible { outline: 2px solid #fff0b8; outline-offset: 3px; border-radius: 4px; }
+.levelNode:disabled { cursor: not-allowed; }
+.locked .shieldInner { background: linear-gradient(#5c4635, #34261d); box-shadow: inset 0 0 0 1px #80694c; }
+.locked .nodeContent { color: #9e8768; }
+.completed .shieldInner { background: linear-gradient(#4a9a4a, #2a5a2a); box-shadow: inset 0 0 0 1px #7ec87e; }
+.completed .nodeContent { color: #efffe7; }
+.current .shieldInner { background: linear-gradient(#c44a36, #8b2c1a); box-shadow: inset 0 0 0 1px #ffb89a; }
+.current .nodeContent { color: #fff4ce; text-shadow: 1px 1px #000; }
+
+.pulseRing {
+  position: absolute;
+  inset: -5px;
+  z-index: -1;
+  clip-path: polygon(50% 0%, 100% 15%, 100% 60%, 50% 100%, 0% 60%, 0% 15%);
+  background: #d3583e;
+  animation: shieldPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes shieldPulse {
+  0%, 100% { transform: scale(0.92); opacity: 0.45; }
+  50% { transform: scale(1.14); opacity: 0; }
+}
+
+.currentFlag {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% - 2px);
+  transform: translateX(-50%);
+  padding: 1px 5px;
+  border: 1px solid #2a1810;
+  border-radius: 3px;
+  color: #fff4ce;
+  background: #8b2c1a;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+  box-shadow: 1px 1px 0 #140c07;
+}
+
+.nodeTitle {
+  display: block;
+  width: auto;
+  max-width: 118px;
+  padding: 3px 6px;
+  border: 1px solid rgba(240, 210, 140, 0.72);
+  border-radius: 4px;
+  color: #fff8dc;
+  background: rgba(24, 18, 11, 0.9);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  text-shadow: none;
+}
+
+.locked .nodeTitle { color: #b8aa8d; border-color: #73644d; background: rgba(35, 29, 23, 0.9); }
+.current .nodeTitle { color: #fff5cc; border-color: #e49b78; background: rgba(93, 31, 21, 0.94); }
+
+.scoreBadge {
+  display: inline-flex;
+  align-items: center;
+  min-width: 70px;
+  min-height: 20px;
+  padding: 1px 3px;
+  border: 1px solid #1a0f08;
+  border-radius: 4px;
+  color: #30200f;
+  background: #e7d7a5;
+  box-shadow: 1px 1px 0 #1a0f08;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.1;
+  box-sizing: border-box;
+}
+
+.scoreBadge strong {
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 18px;
+  margin-left: 3px;
+  border-radius: 3px;
+  color: #fff8db;
+  background: #6c4b24;
+  font-size: 11px;
+}
+
+.gradeLabel {
+  margin-left: 3px;
+  color: #4d391e;
+  font-size: 7px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scoreValue {
+  margin-left: auto;
+  padding: 0 3px 0 5px;
+  border-left: 1px solid rgba(45, 31, 16, 0.35);
+  font-size: 9px;
+}
+
+.gradeS { border-color: #7f5a16; background: linear-gradient(#fff1ad, #d9b858); }
+.gradeS strong { background: #8b5b12; }
+.gradeA { border-color: #285c35; background: linear-gradient(#dff0c5, #9fc776); }
+.gradeA strong { background: #2f7040; }
+.gradeB { border-color: #315d76; background: linear-gradient(#d9ebf2, #9bc1d0); }
+.gradeB strong { background: #356b85; }
+
+
+.tooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  display: none;
+  width: max-content;
+  max-width: 230px;
+  padding: 9px 11px;
+  transform: translateX(-50%);
+  border: 2px solid #8b6f3f;
+  border-radius: 5px;
+  color: #f8e8b8;
+  background: rgba(36, 23, 14, 0.96);
+  box-shadow: 2px 3px 0 rgba(0, 0, 0, 0.45);
+  text-align: left;
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.tooltip strong,
+.tooltip span { display: block; }
+.tooltip strong { color: #fff3c9; margin-bottom: 3px; }
+.tooltip span + span { margin-top: 2px; color: #cfb679; }
+.levelNode:hover .tooltip,
+.levelNode:focus-visible .tooltip { display: block; }
+
+.loading,
+.fallback {
+  flex: 1;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  color: #ead8a6;
+  background: #17261c;
+  text-align: center;
+}
+
+.fallback span { color: #c9a662; font-size: 0.85rem; }

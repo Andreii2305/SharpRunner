@@ -97,6 +97,7 @@
 }
 .confirmBtn:hover { transform: translateY(-1px); }
 .confirmBtn:active { transform: translateY(0); }
+.confirmBtn:disabled { opacity: 0.6; cursor: wait; transform: none; }
 
 .confirmPrimary {
   background: linear-gradient(135deg, #26547c 0%, #1a3a5c 100%);

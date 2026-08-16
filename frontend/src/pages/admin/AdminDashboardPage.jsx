@@ -8,6 +8,7 @@ import {
   FiGrid,
   FiPlus,
   FiSearch,
+  FiTrash2,
   FiUserCheck,
   FiUsers,
   FiXCircle,
@@ -19,6 +20,7 @@ import {
   getAuthHeaders,
   getUser,
 } from "../../utils/auth";
+import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import styles from "./AdminDashboardPage.module.css";
 
 const INITIAL_FORM = {
@@ -58,6 +60,8 @@ function AdminDashboardPage() {
   const [teacherForm, setTeacherForm] = useState(INITIAL_FORM);
   const [isCreatingTeacher, setIsCreatingTeacher] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState(null);
+  const [userPendingDeletion, setUserPendingDeletion] = useState(null);
+  const [deletingUserId, setDeletingUserId] = useState(null);
   const [showTeacherForm, setShowTeacherForm] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
 
@@ -225,6 +229,37 @@ function AdminDashboardPage() {
     } finally {
       setUpdatingUserId(null);
     }
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userPendingDeletion || deletingUserId) return;
+
+    const user = userPendingDeletion;
+    setErrorMessage("");
+    setSuccessMessage("");
+    setDeletingUserId(user.id);
+
+    try {
+      const response = await axios.delete(
+        buildApiUrl(`/api/admin/users/${user.id}`),
+        { headers: getAuthHeaders() },
+      );
+      setUserPendingDeletion(null);
+      setSuccessMessage(response.data.message ?? "User permanently deleted.");
+      await fetchDashboardData();
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message ?? "Failed to delete user");
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+
+  const getDeleteWarning = (user) => {
+    if (!user) return "";
+    const relatedData = user.role === "teacher"
+      ? "their classrooms and related class data"
+      : "their progress and classroom membership data";
+    return `Delete ${user.username}? This permanently removes the account and ${relatedData}. This action cannot be undone.`;
   };
 
   const onSignOut = () => {
@@ -541,42 +576,55 @@ function AdminDashboardPage() {
                         </span>
                       </td>
                       <td>
-                        {user.role === "admin" ? (
-                          <button
-                            type="button"
-                            className={styles.tableActionButton}
-                            disabled
-                          >
-                            <FiEdit2 size={12} />
-                            Edit
-                          </button>
-                        ) : user.status === "pending" ? (
-                          <span className={styles.pendingAction}>Awaiting email</span>
-                        ) : user.status === "inactive" ? (
-                          <button
-                            type="button"
-                            className={`${styles.tableActionButton} ${styles.activateButton}`}
-                            onClick={() => onChangeUserStatus(user, "active")}
-                            disabled={updatingUserId === user.id}
-                          >
-                            <FiPlus size={12} />
-                            {updatingUserId === user.id
-                              ? "Updating..."
-                              : "Activate"}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            className={`${styles.tableActionButton} ${styles.deactivateButton}`}
-                            onClick={() => onChangeUserStatus(user, "inactive")}
-                            disabled={updatingUserId === user.id}
-                          >
-                            <FiXCircle size={12} />
-                            {updatingUserId === user.id
-                              ? "Updating..."
-                              : "Deactivate"}
-                          </button>
-                        )}
+                        <div className={styles.userActions}>
+                          {user.role === "admin" ? (
+                            <button
+                              type="button"
+                              className={styles.tableActionButton}
+                              disabled
+                            >
+                              <FiEdit2 size={12} />
+                              Edit
+                            </button>
+                          ) : user.status === "pending" ? (
+                            <span className={styles.pendingAction}>Awaiting email</span>
+                          ) : user.status === "inactive" ? (
+                            <button
+                              type="button"
+                              className={`${styles.tableActionButton} ${styles.activateButton}`}
+                              onClick={() => onChangeUserStatus(user, "active")}
+                              disabled={updatingUserId === user.id}
+                            >
+                              <FiPlus size={12} />
+                              {updatingUserId === user.id
+                                ? "Updating..."
+                                : "Activate"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`${styles.tableActionButton} ${styles.deactivateButton}`}
+                              onClick={() => onChangeUserStatus(user, "inactive")}
+                              disabled={updatingUserId === user.id}
+                            >
+                              <FiXCircle size={12} />
+                              {updatingUserId === user.id
+                                ? "Updating..."
+                                : "Deactivate"}
+                            </button>
+                          )}
+                          {user.role !== "admin" && (
+                            <button
+                              type="button"
+                              className={`${styles.tableActionButton} ${styles.deleteButton}`}
+                              onClick={() => setUserPendingDeletion(user)}
+                              disabled={deletingUserId === user.id}
+                            >
+                              <FiTrash2 size={12} />
+                              Remove
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -586,6 +634,18 @@ function AdminDashboardPage() {
           )}
         </section>
       </div>
+      <ConfirmModal
+        open={Boolean(userPendingDeletion)}
+        title="Permanently delete user?"
+        message={getDeleteWarning(userPendingDeletion)}
+        confirmLabel={deletingUserId ? "Deleting..." : "Delete user"}
+        danger
+        confirmDisabled={Boolean(deletingUserId)}
+        onConfirm={confirmDeleteUser}
+        onCancel={() => {
+          if (!deletingUserId) setUserPendingDeletion(null);
+        }}
+      />
     </div>
   );
 }

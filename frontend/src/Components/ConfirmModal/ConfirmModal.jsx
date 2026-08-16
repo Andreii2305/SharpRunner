@@ -19,6 +19,7 @@ export default function ConfirmModal({
   confirmLabel = "Confirm",
   cancelLabel  = "Cancel",
   danger = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }) {
@@ -42,6 +43,7 @@ export default function ConfirmModal({
             type="button"
             className={`${s.confirmBtn} ${danger ? s.confirmDanger : s.confirmPrimary}`}
             onClick={onConfirm}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
           </button>

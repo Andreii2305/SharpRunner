@@ -467,6 +467,24 @@
   border-color: color-mix(in srgb, var(--color-accent-1) 78%, #000000);
 }
 
+.userActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.deleteButton {
+  color: #b42318;
+  border-color: #f0a19b;
+  background: #fff5f4;
+}
+
+.deleteButton:hover {
+  color: #8f1c13;
+  border-color: #d92d20;
+}
+
 .rowCheckbox {
   width: 14px;
   height: 14px;

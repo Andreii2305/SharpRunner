@@ -197,6 +197,47 @@ router.patch("/users/:id/status", async (req, res) => {
   }
 });
 
+router.delete("/users/:id", async (req, res) => {
+  try {
+    const userId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ message: "Invalid user id" });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (user.role === "admin") {
+      return res.status(403).json({
+        message: "Admin accounts cannot be deleted from the dashboard",
+      });
+    }
+
+    const deletedUsername = user.username;
+    const deletedRole = user.role;
+    const actorUsername = await getActorUsername(req.userId);
+
+    await user.destroy();
+
+    await logAdminActivity({
+      actorUserId: req.userId,
+      actorUsername,
+      role: req.userRole ?? "admin",
+      targetUsername: deletedUsername,
+      activity: "Deleted user account",
+      details: `${deletedUsername} (${deletedRole})`,
+      status: "success",
+    });
+
+    return res.json({ message: `User ${deletedUsername} was permanently deleted` });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Failed to delete user" });
+  }
+});
+
 router.post("/users/teacher", teacherCreationRateLimit, async (req, res) => {
   try {
     const firstName = normalizeString(req.body.firstName);

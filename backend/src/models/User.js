@@ -20,6 +20,18 @@ const User = sequelize.define("Users", {
     unique: true,
     allowNull: false
   },
+  emailVerifiedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  authProvider: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "password",
+    validate: {
+      isIn: [["password", "google"]],
+    },
+  },
   role: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -33,7 +45,7 @@ const User = sequelize.define("Users", {
     allowNull: false,
     defaultValue: "active",
     validate: {
-      isIn: [["active", "inactive"]],
+      isIn: [["active", "inactive", "pending"]],
     },
   },
   isPlayingGame: {

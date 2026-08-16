@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useToast } from "../Toast/ToastProvider.jsx";
@@ -16,6 +16,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const toast = useToast();
+  const googleErrorShown = useRef(false);
   const [formData, setFormData] = useState({
     identifier: "",
     password: "",
@@ -26,10 +27,14 @@ const Login = () => {
       navigate(getHomeRouteForCurrentUser(), { replace: true });
       return;
     }
-    if (searchParams.get("error") === "google_auth_failed") {
+    if (
+      searchParams.get("error") === "google_auth_failed" &&
+      !googleErrorShown.current
+    ) {
+      googleErrorShown.current = true;
       toast.error("Google sign-in failed. Please try again.");
     }
-  }, [navigate]);
+  }, [navigate, searchParams, toast]);
 
   const handleChange = (e) => {
     setFormData({
@@ -51,6 +56,11 @@ const Login = () => {
       setUser(res.data.user);
       navigate(getHomeRouteByRole(res.data.user?.role), { replace: true });
     } catch (err) {
+      if (err.response?.data?.code === "EMAIL_NOT_VERIFIED") {
+        const email = err.response.data.email || formData.identifier;
+        navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       toast.error(err.response?.data?.message || "Login failed.");
     }
   };

@@ -35,6 +35,8 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
               placeholder="First name"
               value={formData.firstName}
               onChange={handleChange}
+              autoComplete="given-name"
+              required
             />
           </div>
           <div className={styles.inputGroup}>
@@ -44,6 +46,8 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
               placeholder="Last name"
               value={formData.lastName}
               onChange={handleChange}
+              autoComplete="family-name"
+              required
             />
           </div>
           <div className={styles.inputGroup}>
@@ -53,6 +57,8 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
               placeholder="Username"
               value={formData.username}
               onChange={handleChange}
+              autoComplete="username"
+              required
             />
           </div>
 
@@ -63,6 +69,8 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
               placeholder="Email"
               value={formData.email}
               onChange={handleChange}
+              autoComplete="email"
+              required
             />
           </div>
 
@@ -73,6 +81,9 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
               placeholder="Password (min 6 characters)"
               value={formData.password}
               onChange={handleChange}
+              autoComplete="new-password"
+              minLength={6}
+              required
             />
           </div>
 
@@ -83,6 +94,9 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
               placeholder="Confirm Password"
               value={formData.confirmPassword}
               onChange={handleChange}
+              autoComplete="new-password"
+              minLength={6}
+              required
             />
           </div>
 

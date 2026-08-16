@@ -485,6 +485,16 @@
   color: var(--color-accent-1);
 }
 
+.pendingText,
+.pendingAction {
+  color: #997114;
+}
+
+.pendingAction {
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .feedback,
 .error,
 .success {

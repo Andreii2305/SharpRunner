@@ -8,7 +8,7 @@ const USER_IS_PLAYING_GAME_COLUMN_NAME = "isPlayingGame";
 const USER_LAST_GAME_HEARTBEAT_AT_COLUMN_NAME = "lastGameHeartbeatAt";
 const USER_LAST_LOGIN_AT_COLUMN_NAME = "lastLoginAt";
 const ALLOWED_ROLES = ["student", "teacher", "admin"];
-const ALLOWED_STATUSES = ["active", "inactive"];
+const ALLOWED_STATUSES = ["active", "inactive", "pending"];
 
 const ensureUserRoleColumn = async () => {
   const queryInterface = sequelize.getQueryInterface();

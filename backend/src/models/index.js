@@ -9,6 +9,18 @@ const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
 const UserNotificationView = require("./UserNotificationView");
 const LevelDeadline = require("./LevelDeadline");
 const LevelContentOverride = require("./LevelContentOverride");
+const EmailVerificationToken = require("./EmailVerificationToken");
+
+User.hasMany(EmailVerificationToken, {
+  foreignKey: "userId",
+  as: "emailVerificationTokens",
+  onDelete: "CASCADE",
+});
+
+EmailVerificationToken.belongsTo(User, {
+  foreignKey: "userId",
+  as: "user",
+});
 
 User.hasMany(UserProgress, {
   foreignKey: "userId",
@@ -176,4 +188,5 @@ module.exports = {
   UserNotificationView,
   LevelDeadline,
   LevelContentOverride,
+  EmailVerificationToken,
 };

@@ -391,6 +391,7 @@ function AdminDashboardPage() {
               >
                 <option value="all">Status: All</option>
                 <option value="active">Status: Active</option>
+                <option value="pending">Status: Pending verification</option>
                 <option value="inactive">Status: Inactive</option>
               </select>
             </div>
@@ -527,10 +528,16 @@ function AdminDashboardPage() {
                           className={
                             user.status === "inactive"
                               ? styles.errorText
-                              : styles.successText
+                              : user.status === "pending"
+                                ? styles.pendingText
+                                : styles.successText
                           }
                         >
-                          {user.status === "inactive" ? "Inactive" : "Active"}
+                          {user.status === "inactive"
+                            ? "Inactive"
+                            : user.status === "pending"
+                              ? "Pending verification"
+                              : "Active"}
                         </span>
                       </td>
                       <td>
@@ -543,6 +550,8 @@ function AdminDashboardPage() {
                             <FiEdit2 size={12} />
                             Edit
                           </button>
+                        ) : user.status === "pending" ? (
+                          <span className={styles.pendingAction}>Awaiting email</span>
                         ) : user.status === "inactive" ? (
                           <button
                             type="button"

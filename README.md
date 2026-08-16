@@ -142,6 +142,24 @@ GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_CLIENT_SECRET=your_google_client_secret
 ```
 
+Manual student and teacher accounts require inbox verification. Configure an
+SMTP account so the backend can send the single-use verification links:
+
+```env
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your_smtp_username
+SMTP_PASS=your_smtp_password
+EMAIL_FROM="SharpRunner <no-reply@your-domain.com>"
+```
+
+Use `SMTP_SECURE=true` with port `465`. The sender address must be authorized by
+your email provider. Verification links use `FRONTEND_URL`, expire after 30
+minutes, and can be resent from `/verify-email`. Without SMTP configuration,
+manual student and teacher registration returns a service-unavailable error;
+Google sign-in continues to work when configured.
+
 Run the backend:
 
 ```bash
@@ -217,6 +235,7 @@ or provider backup.
 - `/` - landing page
 - `/login` - login
 - `/signup` - student registration
+- `/verify-email` - manual email verification and link resend
 - `/dashboard` - student dashboard
 - `/join-class` - student class join
 - `/Map` - lesson map

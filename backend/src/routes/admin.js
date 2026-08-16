@@ -6,9 +6,18 @@ const AdminActivityLog = require("../models/AdminActivityLog");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const { logAdminActivity } = require("../services/adminActivityLogService");
+const { validateEmailAddress } = require("../services/emailValidationService");
+const { issueEmailVerification } = require("../services/emailVerificationService");
+const { createRateLimit } = require("../middleware/rateLimit");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
-const ALLOWED_STATUSES = new Set(["active", "inactive"]);
+const ALLOWED_STATUSES = new Set(["active", "inactive", "pending"]);
+const teacherCreationRateLimit = createRateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `teacher-create:${req.userId}`,
+  message: "Too many teacher account requests. Please try again later.",
+});
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -24,6 +33,7 @@ const sanitizeUser = (user) => ({
   email: user.email,
   role: user.role,
   status: user.status,
+  emailVerifiedAt: user.emailVerifiedAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -147,6 +157,12 @@ router.patch("/users/:id/status", async (req, res) => {
       });
     }
 
+    if (nextStatus === "active" && !user.emailVerifiedAt) {
+      return res.status(400).json({
+        message: "The user must verify their email before activation",
+      });
+    }
+
     if (user.status === nextStatus) {
       return res.json({
         message: `User is already ${nextStatus}`,
@@ -181,7 +197,7 @@ router.patch("/users/:id/status", async (req, res) => {
   }
 });
 
-router.post("/users/teacher", async (req, res) => {
+router.post("/users/teacher", teacherCreationRateLimit, async (req, res) => {
   try {
     const firstName = normalizeString(req.body.firstName);
     const lastName = normalizeString(req.body.lastName);
@@ -197,6 +213,11 @@ router.post("/users/teacher", async (req, res) => {
       return res.status(400).json({
         message: "Password must be at least 6 characters",
       });
+    }
+
+    const emailValidation = await validateEmailAddress(email);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ message: emailValidation.reason });
     }
 
     const existingUser = await User.findOne({
@@ -220,9 +241,18 @@ router.post("/users/teacher", async (req, res) => {
       username,
       email,
       role: "teacher",
-      status: "active",
+      status: "pending",
+      emailVerifiedAt: null,
+      authProvider: "password",
       password: hashedPassword,
     });
+
+    try {
+      await issueEmailVerification(user);
+    } catch (error) {
+      await user.destroy();
+      throw error;
+    }
 
     const actorUsername = await getActorUsername(req.userId);
 
@@ -232,18 +262,20 @@ router.post("/users/teacher", async (req, res) => {
       role: req.userRole ?? "admin",
       targetUserId: user.id,
       targetUsername: user.username,
-      activity: "Created teacher account",
+      activity: "Invited teacher account",
       details: `${user.username} (${user.email})`,
       status: "success",
     });
 
     return res.status(201).json({
-      message: "Teacher account created successfully",
+      message: "Teacher account created. A verification email was sent.",
       user: sanitizeUser(user),
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : "Server error",
+    });
   }
 });
 

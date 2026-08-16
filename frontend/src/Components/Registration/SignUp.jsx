@@ -7,8 +7,6 @@ import {
   buildApiUrl,
   getHomeRouteForCurrentUser,
   isAuthenticated,
-  setToken,
-  setUser,
 } from "../../utils/auth";
 
 
@@ -63,9 +61,10 @@ const SignUp = () => {
         role: "student",
       });
 
-      setToken(res.data.token);
-      setUser(res.data.user);
-      navigate(getHomeRouteForCurrentUser(), { replace: true });
+      toast.success(res.data.message);
+      navigate(`/verify-email?email=${encodeURIComponent(res.data.email)}&sent=1`, {
+        replace: true,
+      });
     } catch (err) {
       toast.error(err.response?.data?.message || "Registration failed.");
     }

@@ -8,6 +8,13 @@ const User = require("../models/User");
 const AdminInvite = require("../models/AdminInvite");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const authMiddleware = require("../middleware/authMiddleware");
+const EmailVerificationToken = require("../models/EmailVerificationToken");
+const { validateEmailAddress } = require("../services/emailValidationService");
+const {
+  issueEmailVerification,
+  verifyEmailToken,
+} = require("../services/emailVerificationService");
+const { createRateLimit } = require("../middleware/rateLimit");
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -17,6 +24,25 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const isGoogleAuthConfigured = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
 );
+
+const registerRateLimit = createRateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `register:${req.ip}`,
+  message: "Too many registration attempts. Please try again later.",
+});
+const resendRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `resend:${req.ip}:${normalizeEmail(req.body?.email)}`,
+  message: "Too many verification requests. Please try again later.",
+});
+const verifyRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `verify:${req.ip}`,
+  message: "Too many verification attempts. Please try again later.",
+});
 
 passport.serializeUser((user, done) => done(null, user.id));
 passport.deserializeUser(async (id, done) => {
@@ -39,16 +65,23 @@ if (isGoogleAuthConfigured) {
       try {
         const googleId = profile.id;
         const email = profile.emails?.[0]?.value ?? null;
+        const isEmailVerified = profile.emails?.[0]?.verified === true ||
+          profile._json?.email_verified === true;
         const firstName = profile.name?.givenName || profile.displayName?.split(" ")[0] || "User";
         const lastName = profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || "";
+
+        if (!email || !isEmailVerified) {
+          return done(null, false);
+        }
 
         let user = await User.findOne({ where: { googleId } });
 
         if (!user && email) {
-          user = await User.findOne({ where: { email } });
+          user = await User.findOne({
+            where: where(fn("lower", col("email")), email.toLowerCase()),
+          });
           if (user) {
             user.googleId = googleId;
-            await user.save();
           }
         }
 
@@ -63,15 +96,19 @@ if (isGoogleAuthConfigured) {
             firstName,
             lastName,
             username,
-            email: email || `${googleId}@googleauth.com`,
+            email: email.toLowerCase(),
             googleId,
             password: null,
+            emailVerifiedAt: new Date(),
+            authProvider: "google",
             role: "student",
             status: "active",
           });
           await ensureProgressRowsForUser(user.id);
         }
 
+        if (!user.emailVerifiedAt) user.emailVerifiedAt = new Date();
+        if (user.status === "pending") user.status = "active";
         if (user.status === "inactive") return done(null, false);
 
         user.lastLoginAt = new Date();
@@ -152,6 +189,14 @@ router.post("/login", async (req, res) => {
       });
     }
 
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({
+        code: "EMAIL_NOT_VERIFIED",
+        message: "Please verify your email before signing in.",
+        email: user.email,
+      });
+    }
+
     user.lastLoginAt = new Date();
     user.isPlayingGame = false;
     await user.save();
@@ -178,7 +223,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/register", async (req, res) => {
+router.post("/register", registerRateLimit, async (req, res) => {
   try {
     const firstName = normalizeString(req.body.firstName);
     const lastName = normalizeString(req.body.lastName);
@@ -205,6 +250,11 @@ router.post("/register", async (req, res) => {
       });
     }
 
+    const emailValidation = await validateEmailAddress(email);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ message: emailValidation.reason });
+    }
+
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({ message: "Auth is not configured" });
     }
@@ -225,30 +275,93 @@ router.post("/register", async (req, res) => {
       username,
       email,
       role: "student",
-      status: "active",
+      status: "pending",
+      emailVerifiedAt: null,
+      authProvider: "password",
       password: hashedPassword
     });
-    await ensureProgressRowsForUser(user.id);
 
-    const token = createAuthToken(user.id, user.role ?? "student");
+    try {
+      await issueEmailVerification(user);
+    } catch (error) {
+      await user.destroy();
+      throw error;
+    }
 
     res.status(201).json({
-      message: "Registration successful",
-      token,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        email: user.email,
-        role: user.role ?? "student",
-        status: user.status ?? "active",
-      }
+      message: "Account created. Check your email to verify your account.",
+      requiresEmailVerification: true,
+      email: user.email,
     });
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(err.statusCode || 500).json({
+      message: err.statusCode ? err.message : "Server error",
+    });
+  }
+});
+
+router.post("/verify-email", verifyRateLimit, async (req, res) => {
+  try {
+    const result = await verifyEmailToken(normalizeString(req.body.token));
+    if (!result.ok) {
+      return res.status(400).json({
+        message: "This verification link is invalid or has expired.",
+      });
+    }
+
+    const user = await User.findByPk(result.tokenRecord.userId);
+    if (!user) {
+      return res.status(400).json({
+        message: "This verification link is invalid or has expired.",
+      });
+    }
+
+    user.emailVerifiedAt = user.emailVerifiedAt || new Date();
+    if (user.status === "pending") user.status = "active";
+    result.tokenRecord.usedAt = new Date();
+    await user.save();
+    await result.tokenRecord.save();
+    await EmailVerificationToken.update(
+      { usedAt: new Date() },
+      { where: { userId: user.id, usedAt: null } },
+    );
+
+    if (user.role === "student") {
+      await ensureProgressRowsForUser(user.id);
+    }
+
+    return res.json({
+      message: "Email verified successfully. You can now sign in.",
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/resend-verification", resendRateLimit, async (req, res) => {
+  const genericResponse = {
+    message: "If that address has an unverified account, a new verification email has been sent.",
+  };
+
+  try {
+    const email = normalizeEmail(req.body.email);
+    if (!email) return res.json(genericResponse);
+
+    const user = await User.findOne({
+      where: where(fn("lower", col("email")), email),
+    });
+    if (!user || user.emailVerifiedAt || !user.password) {
+      return res.json(genericResponse);
+    }
+
+    await issueEmailVerification(user);
+    return res.json(genericResponse);
+  } catch (error) {
+    console.error("Failed to resend verification email", error);
+    return res.json(genericResponse);
   }
 });
 
@@ -314,6 +427,8 @@ router.post("/register-admin-invite", async (req, res) => {
       email,
       role: "admin",
       status: "active",
+      emailVerifiedAt: new Date(),
+      authProvider: "password",
       password: hashedPassword,
     });
 
@@ -427,6 +542,8 @@ router.post("/bootstrap-admin", async (req, res) => {
       email,
       role: "admin",
       status: "active",
+      emailVerifiedAt: new Date(),
+      authProvider: "password",
       password: hashedPassword,
     });
 

@@ -61,6 +61,28 @@
 
 .form label { font-size: 0.82rem; font-weight: 700; }
 
+.emailSummary {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  margin-bottom: 4px;
+  border: 1px solid #c9dbe8;
+  border-radius: 8px;
+  background: #f3f7fa;
+  text-align: center;
+}
+
+.emailSummary span {
+  color: #718096;
+  font-size: 0.75rem;
+}
+
+.emailSummary strong {
+  color: #26547c;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
 .form input {
   width: 100%;
   padding: 13px;

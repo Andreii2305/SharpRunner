@@ -7,12 +7,13 @@ import styles from "./EmailVerificationPage.module.css";
 function EmailVerificationPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
-  const [email, setEmail] = useState(searchParams.get("email") || "");
+  const emailFromSignup = searchParams.get("email") || "";
+  const [email, setEmail] = useState(emailFromSignup);
   const [code, setCode] = useState("");
   const [status, setStatus] = useState(token ? "verifying" : "waiting");
   const [message, setMessage] = useState(
     searchParams.get("sent") === "1"
-      ? "We sent a six-digit verification code to your email address."
+      ? "Enter the six-digit code below to activate your account."
       : "Enter the code from your email, or request a new one.",
   );
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
@@ -92,15 +93,24 @@ function EmailVerificationPage() {
 
         {status !== "success" && status !== "verifying" && (
           <form onSubmit={verifyCode} className={styles.form}>
-            <label htmlFor="verification-email">Email address</label>
-            <input
-              id="verification-email"
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              required
-            />
+            {emailFromSignup ? (
+              <div className={styles.emailSummary}>
+                <span>Code sent to</span>
+                <strong>{email}</strong>
+              </div>
+            ) : (
+              <>
+                <label htmlFor="verification-email">Email address</label>
+                <input
+                  id="verification-email"
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  autoComplete="email"
+                  required
+                />
+              </>
+            )}
             <label htmlFor="verification-code">Six-digit code</label>
             <input
               id="verification-code"

@@ -3,7 +3,14 @@ import styles from "./login.module.css";
 import { FaGoogle } from "react-icons/fa";
 import { Link } from "react-router-dom";
 
-function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }) {
+function SignUpComp({
+  user,
+  formData,
+  handleChange,
+  handleSubmit,
+  onGoogleLogin,
+  isSubmitting,
+}) {
   return (
     <div className={styles.loginContainer}>
       {/* Brand Logo */}
@@ -27,7 +34,11 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
         </p>
 
         {/* Sign Up Form */}
-        <form onSubmit={handleSubmit} className={styles.loginForm}>
+        <form
+          onSubmit={handleSubmit}
+          className={styles.loginForm}
+          aria-busy={isSubmitting}
+        >
           <div className={styles.inputGroup}>
             <input
               type="text"
@@ -100,8 +111,12 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
             />
           </div>
 
-          <button type="submit" className={styles.loginBtn}>
-            Sign Up
+          <button
+            type="submit"
+            className={styles.loginBtn}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Creating account..." : "Sign Up"}
           </button>
 
           <div className={styles.formFooter}>
@@ -119,6 +134,7 @@ function SignUpComp({ user, formData, handleChange, handleSubmit, onGoogleLogin 
             type="button"
             className={`${styles.socialBtn} ${styles.google}`}
             onClick={onGoogleLogin}
+            disabled={isSubmitting}
           >
             <FaGoogle />
           </button>

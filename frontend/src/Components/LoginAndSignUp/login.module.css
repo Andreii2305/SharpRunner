@@ -121,6 +121,12 @@
   background-color: #1a3b5c;
 }
 
+.loginBtn:disabled,
+.socialBtn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 /* Footer Links */
 .formFooter {
   display: flex;

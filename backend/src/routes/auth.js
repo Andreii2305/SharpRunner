@@ -262,6 +262,18 @@ router.post("/register", registerRateLimit, async (req, res) => {
     const existingUser = await findUserByEmailOrUsername(email, username);
 
     if (existingUser) {
+      if (
+        existingUser.status === "pending" &&
+        !existingUser.emailVerifiedAt &&
+        existingUser.email.toLowerCase() === email
+      ) {
+        return res.status(409).json({
+          code: "EMAIL_VERIFICATION_PENDING",
+          message: "This account is waiting for email verification.",
+          email: existingUser.email,
+        });
+      }
+
       return res.status(409).json({
         message: "Username or email already exists"
       });

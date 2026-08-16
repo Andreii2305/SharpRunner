@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../Toast/ToastProvider.jsx";
@@ -13,6 +13,8 @@ import {
 const SignUp = () => {
   const navigate = useNavigate();
   const toast = useToast();
+  const submittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -34,6 +36,7 @@ const SignUp = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
 
     if (
       !formData.firstName.trim() ||
@@ -51,6 +54,9 @@ const SignUp = () => {
       return;
     }
 
+    submittingRef.current = true;
+    setIsSubmitting(true);
+
     try {
       const res = await axios.post(buildApiUrl("/api/auth/register"), {
         firstName: formData.firstName,
@@ -66,7 +72,15 @@ const SignUp = () => {
         replace: true,
       });
     } catch (err) {
+      if (err.response?.data?.code === "EMAIL_VERIFICATION_PENDING") {
+        const email = err.response.data.email || formData.email;
+        navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       toast.error(err.response?.data?.message || "Registration failed.");
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -81,6 +95,7 @@ const SignUp = () => {
       handleChange={handleChange}
       handleSubmit={handleSubmit}
       onGoogleLogin={handleGoogleLogin}
+      isSubmitting={isSubmitting}
     />
   );
 };

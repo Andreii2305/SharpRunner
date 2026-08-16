@@ -8,12 +8,14 @@ function EmailVerificationPage() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") || "";
   const [email, setEmail] = useState(searchParams.get("email") || "");
+  const [code, setCode] = useState("");
   const [status, setStatus] = useState(token ? "verifying" : "waiting");
   const [message, setMessage] = useState(
     searchParams.get("sent") === "1"
-      ? "We sent a verification link to your email address."
-      : "Enter your email to request a new verification link.",
+      ? "We sent a six-digit verification code to your email address."
+      : "Enter the code from your email, or request a new one.",
   );
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const verificationStarted = useRef(false);
 
@@ -35,6 +37,28 @@ function EmailVerificationPage() {
       });
   }, [token]);
 
+  const verifyCode = async (event) => {
+    event.preventDefault();
+    if (!email.trim() || code.length !== 6) return;
+    setIsVerifyingCode(true);
+
+    try {
+      const response = await axios.post(
+        buildApiUrl("/api/auth/verify-email-code"),
+        { email: email.trim(), code },
+      );
+      setStatus("success");
+      setMessage(response.data.message);
+    } catch (error) {
+      setStatus("error");
+      setMessage(
+        error.response?.data?.message || "We could not verify that code.",
+      );
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
   const resend = async (event) => {
     event.preventDefault();
     if (!email.trim()) return;
@@ -45,6 +69,7 @@ function EmailVerificationPage() {
         buildApiUrl("/api/auth/resend-verification"),
         { email: email.trim() },
       );
+      setCode("");
       setStatus("waiting");
       setMessage(response.data.message);
     } catch (error) {
@@ -66,7 +91,7 @@ function EmailVerificationPage() {
         </p>
 
         {status !== "success" && status !== "verifying" && (
-          <form onSubmit={resend} className={styles.form}>
+          <form onSubmit={verifyCode} className={styles.form}>
             <label htmlFor="verification-email">Email address</label>
             <input
               id="verification-email"
@@ -76,15 +101,41 @@ function EmailVerificationPage() {
               autoComplete="email"
               required
             />
-            <button type="submit" disabled={isResending}>
-              {isResending ? "Sending..." : "Resend verification email"}
+            <label htmlFor="verification-code">Six-digit code</label>
+            <input
+              id="verification-code"
+              className={styles.codeInput}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              value={code}
+              onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+              autoComplete="one-time-code"
+              placeholder="000000"
+              required
+            />
+            <button
+              type="submit"
+              disabled={isVerifyingCode || code.length !== 6}
+            >
+              {isVerifyingCode ? "Verifying..." : "Verify code"}
+            </button>
+            <div className={styles.divider}><span>Didn’t receive a code?</span></div>
+            <button
+              type="button"
+              className={styles.secondaryButton}
+              onClick={resend}
+              disabled={isResending || !email.trim()}
+            >
+              {isResending ? "Sending..." : "Send a new code"}
             </button>
           </form>
         )}
 
         <div className={styles.footer}>
           <Link to="/login">Back to sign in</Link>
-          {status !== "success" && <span>Links expire after 30 minutes.</span>}
+          {status !== "success" && <span>Codes expire after 30 minutes.</span>}
         </div>
       </section>
     </main>

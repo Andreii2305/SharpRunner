@@ -75,6 +75,14 @@
   border-color: #26547c;
 }
 
+.form .codeInput {
+  text-align: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.45rem;
+  color: #26547c;
+}
+
 .form button {
   margin-top: 6px;
   padding: 13px;
@@ -88,6 +96,33 @@
 }
 
 .form button:disabled { opacity: 0.6; cursor: wait; }
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  color: #718096;
+  font-size: 0.75rem;
+  text-align: center;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #dce4ea;
+}
+
+.divider span { white-space: nowrap; }
+
+.form .secondaryButton {
+  margin-top: 0;
+  color: #26547c;
+  background: #eaf2f8;
+  border: 1px solid #c9dbe8;
+}
 
 .footer {
   display: flex;

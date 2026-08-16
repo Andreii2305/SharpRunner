@@ -11,6 +11,10 @@ const EmailVerificationToken = sequelize.define("EmailVerificationTokens", {
     allowNull: false,
     unique: true,
   },
+  codeHash: {
+    type: DataTypes.STRING(64),
+    allowNull: true,
+  },
   expiresAt: {
     type: DataTypes.DATE,
     allowNull: false,

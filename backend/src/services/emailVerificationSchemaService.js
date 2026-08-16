@@ -24,6 +24,14 @@ const ensureEmailVerificationColumns = async () => {
       defaultValue: "password",
     });
   }
+
+  const tokenColumns = await queryInterface.describeTable("EmailVerificationTokens");
+  if (!tokenColumns.codeHash) {
+    await queryInterface.addColumn("EmailVerificationTokens", "codeHash", {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+    });
+  }
 };
 
 module.exports = { ensureEmailVerificationColumns };

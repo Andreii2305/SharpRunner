@@ -12,6 +12,7 @@ const EmailVerificationToken = require("../models/EmailVerificationToken");
 const { validateEmailAddress } = require("../services/emailValidationService");
 const {
   issueEmailVerification,
+  verifyEmailCode,
   verifyEmailToken,
 } = require("../services/emailVerificationService");
 const { createRateLimit } = require("../middleware/rateLimit");
@@ -42,6 +43,12 @@ const verifyRateLimit = createRateLimit({
   max: 20,
   keyGenerator: (req) => `verify:${req.ip}`,
   message: "Too many verification attempts. Please try again later.",
+});
+const verifyCodeRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `verify-code:${req.ip}:${normalizeEmail(req.body?.email)}`,
+  message: "Too many code attempts. Please wait before trying again.",
 });
 
 passport.serializeUser((user, done) => done(null, user.id));
@@ -142,6 +149,33 @@ const findUserByEmailOrUsername = (email, username) =>
       ]
     }
   });
+
+const completeEmailVerification = async (result, res) => {
+  const user = await User.findByPk(result.tokenRecord.userId);
+  if (!user) {
+    return res.status(400).json({
+      message: "This verification code or link is invalid or has expired.",
+    });
+  }
+
+  user.emailVerifiedAt = user.emailVerifiedAt || new Date();
+  if (user.status === "pending") user.status = "active";
+  result.tokenRecord.usedAt = new Date();
+  await user.save();
+  await result.tokenRecord.save();
+  await EmailVerificationToken.update(
+    { usedAt: new Date() },
+    { where: { userId: user.id, usedAt: null } },
+  );
+
+  if (user.role === "student") {
+    await ensureProgressRowsForUser(user.id);
+  }
+
+  return res.json({
+    message: "Email verified successfully. You can now sign in.",
+  });
+};
 
 router.post("/login", async (req, res) => {
   try {
@@ -301,7 +335,7 @@ router.post("/register", registerRateLimit, async (req, res) => {
     }
 
     res.status(201).json({
-      message: "Account created. Check your email to verify your account.",
+      message: "Account created. Check your email for the six-digit verification code.",
       requiresEmailVerification: true,
       email: user.email,
     });
@@ -319,34 +353,36 @@ router.post("/verify-email", verifyRateLimit, async (req, res) => {
     const result = await verifyEmailToken(normalizeString(req.body.token));
     if (!result.ok) {
       return res.status(400).json({
-        message: "This verification link is invalid or has expired.",
+        message: "This verification code or link is invalid or has expired.",
       });
     }
 
-    const user = await User.findByPk(result.tokenRecord.userId);
-    if (!user) {
-      return res.status(400).json({
-        message: "This verification link is invalid or has expired.",
-      });
-    }
+    return await completeEmailVerification(result, res);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
 
-    user.emailVerifiedAt = user.emailVerifiedAt || new Date();
-    if (user.status === "pending") user.status = "active";
-    result.tokenRecord.usedAt = new Date();
-    await user.save();
-    await result.tokenRecord.save();
-    await EmailVerificationToken.update(
-      { usedAt: new Date() },
-      { where: { userId: user.id, usedAt: null } },
-    );
-
-    if (user.role === "student") {
-      await ensureProgressRowsForUser(user.id);
-    }
-
-    return res.json({
-      message: "Email verified successfully. You can now sign in.",
+router.post("/verify-email-code", verifyCodeRateLimit, async (req, res) => {
+  try {
+    const email = normalizeEmail(req.body.email);
+    const code = normalizeString(req.body.code).replace(/\s+/g, "");
+    const invalidResponse = () => res.status(400).json({
+      message: "This verification code is invalid or has expired.",
     });
+
+    if (!email || !/^\d{6}$/.test(code)) return invalidResponse();
+
+    const user = await User.findOne({
+      where: where(fn("lower", col("email")), email),
+    });
+    if (!user || user.emailVerifiedAt) return invalidResponse();
+
+    const result = await verifyEmailCode(user.id, code);
+    if (!result.ok) return invalidResponse();
+
+    return await completeEmailVerification(result, res);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -355,7 +391,7 @@ router.post("/verify-email", verifyRateLimit, async (req, res) => {
 
 router.post("/resend-verification", resendRateLimit, async (req, res) => {
   const genericResponse = {
-    message: "If that address has an unverified account, a new verification email has been sent.",
+    message: "If that address has an unverified account, a new verification code and link have been sent.",
   };
 
   try {

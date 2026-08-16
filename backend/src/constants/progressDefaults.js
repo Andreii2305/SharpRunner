@@ -28,6 +28,24 @@ const LESSON_DEFINITIONS = [
 
 const DEFAULT_LEVEL_PROGRESS = [];
 
+// This is the actual playable route order. The Functions curriculum has 12
+// progress rows, but its final game scene covers levels 11 and 12 together.
+const PLAYABLE_LEVEL_KEYS = [
+  ...Array.from({ length: 5 }, (_, index) => `tutorial-level-${index + 1}`),
+  ...Array.from({ length: 8 }, (_, index) => `arrays-level-${index + 1}`),
+  ...Array.from({ length: 11 }, (_, index) => `functions-level-${index + 1}`),
+  ...Array.from(
+    { length: 4 },
+    (_, index) => `functions-with-arrays-level-${index + 1}`,
+  ),
+  "final-level-1",
+];
+
+const getPreviousPlayableLevelKey = (levelKey) => {
+  const index = PLAYABLE_LEVEL_KEYS.indexOf(levelKey);
+  return index > 0 ? PLAYABLE_LEVEL_KEYS[index - 1] : null;
+};
+
 let orderIndex = 1;
 
 for (const lesson of LESSON_DEFINITIONS) {
@@ -44,4 +62,6 @@ for (const lesson of LESSON_DEFINITIONS) {
 module.exports = {
   LESSON_DEFINITIONS,
   DEFAULT_LEVEL_PROGRESS,
+  PLAYABLE_LEVEL_KEYS,
+  getPreviousPlayableLevelKey,
 };

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Editor from "@monaco-editor/react";
 import { FiRefreshCw, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
 import axios from "axios";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
 import Game from "./Game.jsx";
@@ -16,7 +16,6 @@ import {
   GAME_LEVEL_RESET,
 } from "./gameEvents";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
-import { getLevelConfig } from "./levels/levelConfigs";
 import { buildValidatorFromConfig } from "./levels/buildValidator";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
@@ -75,10 +74,8 @@ const renderEmphasizedText = (text) =>
       return part;
     });
 
-function GamePage() {
+function GamePage({ levelConfig }) {
   const navigate = useNavigate();
-  const { levelNumber } = useParams();
-  const parsedLevelNumber = Number(levelNumber);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
 
   useEffect(() => {
@@ -86,11 +83,6 @@ function GamePage() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
-
-  const levelConfig = useMemo(
-    () => getLevelConfig(parsedLevelNumber),
-    [parsedLevelNumber],
-  );
 
   const nextLevelTimerRef = useRef(null);
   const completionRequestRef = useRef(null);

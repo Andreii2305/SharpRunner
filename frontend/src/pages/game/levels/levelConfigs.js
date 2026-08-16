@@ -476,7 +476,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     scene: LevelFiveScene,
     sceneKey: "LevelFiveScene",
     progressKey: `${LESSON_KEY}-level-5`,
-    nextRoute: "/Map/level/6",
+    nextRoute: "/array/level/1",
     nextDelayMs: 1200,
     startWithDialogue: false,
     defaultCode:
@@ -576,7 +576,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     scene: ArraysLevelOneScene,
     sceneKey: "ArraysLevelOneScene",
     progressKey: `${ARRAYS_LESSON_KEY}-level-1`,
-    nextRoute: "/Map/level/7",
+    nextRoute: "/array/level/2",
     nextDelayMs: 1200,
     startWithDialogue: true,
     defaultCode:
@@ -3669,6 +3669,55 @@ const LEVEL_CONFIG_BY_NUMBER = {
 
 export const getLevelConfig = (levelNumber) =>
   LEVEL_CONFIG_BY_NUMBER[Number(levelNumber)] ?? null;
+
+const LEVEL_ROUTE_GROUPS = [
+  { slug: "tutorial", globalLevelNumbers: [1, 2, 3, 4, 5] },
+  { slug: "array", globalLevelNumbers: [6, 7, 8, 9, 10, 11, 12, 13] },
+  {
+    slug: "function",
+    globalLevelNumbers: [14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
+  },
+  { slug: "function-with-array", globalLevelNumbers: [26, 27, 28, 29, 30] },
+];
+
+export const getGlobalLevelNumber = (lessonSlug, lessonLevelNumber) => {
+  const group = LEVEL_ROUTE_GROUPS.find(({ slug }) => slug === lessonSlug);
+  const localIndex = Number(lessonLevelNumber) - 1;
+  if (!group || !Number.isInteger(localIndex) || localIndex < 0) return null;
+  return group.globalLevelNumbers[localIndex] ?? null;
+};
+
+export const getLevelConfigByRoute = (lessonSlug, lessonLevelNumber) => {
+  const globalLevelNumber = getGlobalLevelNumber(lessonSlug, lessonLevelNumber);
+  return globalLevelNumber == null ? null : getLevelConfig(globalLevelNumber);
+};
+
+export const getLevelRoute = (globalLevelNumber) => {
+  const numericLevelNumber = Number(globalLevelNumber);
+  for (const group of LEVEL_ROUTE_GROUPS) {
+    const localIndex = group.globalLevelNumbers.indexOf(numericLevelNumber);
+    if (localIndex >= 0) return `/${group.slug}/level/${localIndex + 1}`;
+  }
+  return null;
+};
+
+const PLAYABLE_GLOBAL_LEVEL_NUMBERS = LEVEL_ROUTE_GROUPS.flatMap(
+  ({ globalLevelNumbers }) => globalLevelNumbers,
+);
+
+export const getPreviousLevelConfig = (globalLevelNumber) => {
+  const index = PLAYABLE_GLOBAL_LEVEL_NUMBERS.indexOf(Number(globalLevelNumber));
+  return index > 0
+    ? getLevelConfig(PLAYABLE_GLOBAL_LEVEL_NUMBERS[index - 1])
+    : null;
+};
+
+export const getAvailableLessonRoutes = () =>
+  LEVEL_ROUTE_GROUPS.flatMap((group) =>
+    group.globalLevelNumbers.map(
+      (_, index) => `/${group.slug}/level/${index + 1}`,
+    ),
+  );
 
 export const isLevelAvailable = (levelNumber) =>
   Boolean(getLevelConfig(levelNumber));

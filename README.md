@@ -220,7 +220,11 @@ or provider backup.
 - `/dashboard` - student dashboard
 - `/join-class` - student class join
 - `/Map` - lesson map
-- `/Map/level/:levelNumber` - playable level route
+- `/tutorial/level/:levelNumber` - tutorial levels 1–5
+- `/array/level/:levelNumber` - array levels 1–8
+- `/function/level/:levelNumber` - function levels 1–11
+- `/function-with-array/level/:levelNumber` - functions-with-arrays levels 1–5
+- `/Map/level/:levelNumber` - legacy global-level URL that redirects to the lesson route
 - `/teacher` - teacher dashboard
 - `/teacher/classes` - teacher classes
 - `/teacher/students` - teacher student progress

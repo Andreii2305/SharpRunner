@@ -6,7 +6,6 @@ const requireActiveClassMembership = require("../middleware/requireActiveClassMe
 const {
   ensureProgressRowsForUser,
   buildProgressSummary,
-  DEFAULT_LEVEL_PROGRESS,
   getParTimeSeconds,
   computeFinalScore,
 } = require("../services/progressService");
@@ -15,11 +14,33 @@ const {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
 } = require("../services/studentClassService");
+const {
+  PLAYABLE_LEVEL_KEYS,
+  getPreviousPlayableLevelKey,
+} = require("../constants/progressDefaults");
 
-const LEVEL_KEYS = new Set(DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey));
+const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
 const normalizeLevelKey = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const findUnfinishedPrerequisite = async (userId, levelKey) => {
+  const prerequisiteLevelKey = getPreviousPlayableLevelKey(levelKey);
+  if (!prerequisiteLevelKey) return null;
+
+  const prerequisite = await UserProgress.findOne({
+    where: { userId, levelKey: prerequisiteLevelKey },
+    attributes: ["isCompleted"],
+  });
+  return prerequisite?.isCompleted ? null : prerequisiteLevelKey;
+};
+
+const sendLockedLevelResponse = (res, prerequisiteLevelKey) =>
+  res.status(403).json({
+    code: "LEVEL_LOCKED",
+    message: "Complete the previous level before opening this level.",
+    prerequisiteLevelKey,
+  });
 
 const parseProgressValue = (value) => {
   if (value === undefined) {
@@ -83,6 +104,14 @@ router.post("/level/:levelKey/start", async (req, res) => {
 
     await ensureProgressRowsForUser(req.userId);
 
+    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+      req.userId,
+      levelKey,
+    );
+    if (unfinishedPrerequisite) {
+      return sendLockedLevelResponse(res, unfinishedPrerequisite);
+    }
+
     const levelRow = await UserProgress.findOne({
       where: { userId: req.userId, levelKey },
     });
@@ -120,6 +149,15 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
     const levelKey = normalizeLevelKey(req.params.levelKey);
     if (!LEVEL_KEYS.has(levelKey)) {
       return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    await ensureProgressRowsForUser(req.userId);
+    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+      req.userId,
+      levelKey,
+    );
+    if (unfinishedPrerequisite) {
+      return sendLockedLevelResponse(res, unfinishedPrerequisite);
     }
 
     const levelRow = await UserProgress.findOne({
@@ -160,6 +198,14 @@ router.put("/level/:levelKey", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
+
+    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+      req.userId,
+      levelKey,
+    );
+    if (unfinishedPrerequisite) {
+      return sendLockedLevelResponse(res, unfinishedPrerequisite);
+    }
 
     const levelRow = await UserProgress.findOne({
       where: {
@@ -236,6 +282,15 @@ router.get("/level/:levelKey/content", async (req, res) => {
     const levelKey = normalizeLevelKey(req.params.levelKey);
     if (!LEVEL_KEYS.has(levelKey)) {
       return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    await ensureProgressRowsForUser(req.userId);
+    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+      req.userId,
+      levelKey,
+    );
+    if (unfinishedPrerequisite) {
+      return sendLockedLevelResponse(res, unfinishedPrerequisite);
     }
 
     const primaryMembership = await findPrimaryActiveMembership(req.userId);

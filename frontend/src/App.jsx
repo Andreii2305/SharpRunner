@@ -79,6 +79,16 @@ function App() {
           }
         />
         <Route
+          path="/:lessonSlug/level/:levelNumber"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <Suspense fallback={gameRouteFallback}>
+                <LevelRoutePage />
+              </Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/Map/level/:levelNumber"
           element={
             <ProtectedRoute requireClassMembership>

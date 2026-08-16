@@ -94,7 +94,7 @@ function LessonMapPage() {
       return {
         ...node,
         status,
-        route: `/Map/level/${node.levelNumber}`,
+        route: `/tutorial/level/${node.levelNumber}`,
         finalScore: row?.finalScore ?? null,
       };
     });
@@ -116,7 +116,7 @@ function LessonMapPage() {
         levelNumber,
         title: config?.title ?? `Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Arrays",
-        route: `/Map/level/${levelNumber}`,
+        route: `/array/level/${index + 1}`,
         status,
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
@@ -144,7 +144,7 @@ function LessonMapPage() {
         displayLevelNumber: config?.mapLevelLabel ?? levelNumber,
         title: config?.title ?? `Functions ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions and Methods",
-        route: `/Map/level/${levelNumber}`,
+        route: `/function/level/${index + 1}`,
         status,
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
@@ -176,7 +176,7 @@ function LessonMapPage() {
         levelNumber,
         title: config?.title ?? `Functions with Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions with Arrays",
-        route: `/Map/level/${levelNumber}`,
+        route: `/function-with-array/level/${index + 1}`,
         status,
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
@@ -240,7 +240,7 @@ function LessonMapPage() {
     return (
       candidates.find((node) => node.status === "current")?.route ??
       [...candidates].reverse().find((node) => node.status === "completed")?.route ??
-      "/Map/level/1"
+      "/tutorial/level/1"
     );
   }, [activeRegion, arrayNodes, functionNodes, functionsArraysNodes, mapNodes]);
 
@@ -268,7 +268,7 @@ function LessonMapPage() {
           totalCount: FUNCTIONS_ARRAYS_NODE_COUNT,
           unlocked: functionsComplete,
           badge: "Region IV",
-          eyebrow: "Functions with Arrays · Levels 26–30",
+          eyebrow: "Functions with Arrays · Levels 1–5",
           title: "The Final Rituals",
           summary: "Carry arrays through reusable methods, restore the final wards, and face Bakunawa.",
           headerDescription: functionsComplete
@@ -290,7 +290,7 @@ function LessonMapPage() {
           totalCount: FUNCTIONS_LEVEL_COUNT,
           unlocked: arraysComplete,
           badge: "Region III",
-          eyebrow: "Functions & Methods · Levels 14–25",
+          eyebrow: "Functions & Methods · Levels 1–11",
           title: "Functions & Methods",
           summary: "Name reusable actions, pass values, return results, and master recursive methods.",
           headerDescription: arraysComplete

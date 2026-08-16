@@ -10,11 +10,20 @@ The renderer reads the map width, height, tile size, visibility, opacity, layer 
 
 ## Current Functions map
 
-The Functions export is `frontend/public/game/assets/curriculum_map_level/functions.tmj`. Its 11 local `levelNumber` markers map to SharpRunner routes 14 through 24. The final marker uses local number 11 and displays `24-25`, because the existing `/Map/level/24` scene covers both curriculum levels 24 and 25. Functions progress continues to use `functions-level-1` through `functions-level-11`.
+The Functions export is `frontend/public/game/assets/curriculum_map_level/functions.tmj`. Its 11 local `levelNumber` markers open `/function/level/1` through `/function/level/11`. Internally these resolve to global configurations 14 through 24. The final marker uses local number 11 and displays `24-25`, because that scene covers both curriculum levels 24 and 25. Functions progress continues to use `functions-level-1` through `functions-level-11`.
 
 ## Current Functions with Arrays map
 
-The export is `frontend/public/game/assets/curriculum_map_level/function_with_arrays.tmj`. Local markers 1 through 5 map to routes 26 through 30. Markers 1–4 use `functions-with-arrays-level-1` through `functions-with-arrays-level-4`; marker 5 uses the separate `final-level-1` progress row and opens the Bakunawa route at `/Map/level/30`.
+The export is `frontend/public/game/assets/curriculum_map_level/function_with_arrays.tmj`. Local markers 1 through 5 open `/function-with-array/level/1` through `/function-with-array/level/5` and resolve internally to global configurations 26 through 30. Markers 1–4 use `functions-with-arrays-level-1` through `functions-with-arrays-level-4`; marker 5 uses the separate `final-level-1` progress row and opens the Bakunawa finale at `/function-with-array/level/5`.
+
+All playable level URLs use lesson-local numbering:
+
+- `/tutorial/level/1` through `/tutorial/level/5`
+- `/array/level/1` through `/array/level/8`
+- `/function/level/1` through `/function/level/11`
+- `/function-with-array/level/1` through `/function-with-array/level/5`
+
+Legacy `/Map/level/:globalLevelNumber` URLs redirect to their canonical lesson URL.
 
 ## `level_nodes`
 

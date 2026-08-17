@@ -3,6 +3,7 @@ import axios from "axios";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   buildApiUrl,
+  clearToken,
   getAuthHeaders,
 } from "../../utils/auth";
 import styles from "./JoinClassPage.module.css";
@@ -28,6 +29,11 @@ function JoinClassPage() {
       ? fromPath
       : "/dashboard";
   }, [location.state]);
+
+  const onLogout = () => {
+    clearToken();
+    navigate("/login", { replace: true });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -106,6 +112,16 @@ function JoinClassPage() {
     return (
       <main className={styles.page}>
         <section className={styles.card}>
+          <div className={styles.cardHeader}>
+            <p className={styles.badge}>Student Onboarding</p>
+            <button
+              type="button"
+              className={styles.logoutButton}
+              onClick={onLogout}
+            >
+              Logout
+            </button>
+          </div>
           <h1>Checking your classroom status...</h1>
         </section>
       </main>
@@ -115,7 +131,16 @@ function JoinClassPage() {
   return (
     <main className={styles.page}>
       <section className={styles.card}>
-        <p className={styles.badge}>Student Onboarding</p>
+        <div className={styles.cardHeader}>
+          <p className={styles.badge}>Student Onboarding</p>
+          <button
+            type="button"
+            className={styles.logoutButton}
+            onClick={onLogout}
+          >
+            Logout
+          </button>
+        </div>
         <h1>Join Your Class</h1>
         <p className={styles.description}>
           Enter the class code shared by your teacher to unlock dashboard,

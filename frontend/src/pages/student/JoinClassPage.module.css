@@ -16,6 +16,13 @@
   padding: 24px;
 }
 
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .badge {
   margin: 0;
   display: inline-flex;
@@ -28,6 +35,30 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 4px 10px;
+}
+
+.logoutButton {
+  border: 1px solid #c3d2e0;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4f5963;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 11px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.logoutButton:hover {
+  border-color: #ef476f;
+  background: #fff7f9;
+  color: #d6385e;
+}
+
+.logoutButton:focus-visible {
+  outline: 3px solid rgba(38, 84, 124, 0.2);
+  outline-offset: 2px;
 }
 
 .card h1 {

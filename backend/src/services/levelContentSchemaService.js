@@ -30,6 +30,13 @@ const ensureLevelContentOverridesTable = async () => {
       instructionItems: { type: DataTypes.JSONB, allowNull: true },
       defaultCode: { type: DataTypes.TEXT, allowNull: true },
       validatorConfig: { type: DataTypes.JSONB, allowNull: true },
+      isEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+      displayOrder: { type: DataTypes.INTEGER, allowNull: true },
+      unlockAt: { type: DataTypes.DATE, allowNull: true },
+      dueAt: { type: DataTypes.DATE, allowNull: true },
+      hintsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+      wrongAttemptDeduction: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 5 },
+      lateDeductionPerDay: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 3 },
       createdAt: { type: DataTypes.DATE, allowNull: false },
       updatedAt: { type: DataTypes.DATE, allowNull: false },
     });
@@ -38,6 +45,22 @@ const ensureLevelContentOverridesTable = async () => {
       unique: true,
       name: "level_content_overrides_classroom_level_unique",
     });
+    return;
+  }
+
+  const table = await queryInterface.describeTable(TABLE);
+  const columns = {
+    isEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    displayOrder: { type: DataTypes.INTEGER, allowNull: true },
+    unlockAt: { type: DataTypes.DATE, allowNull: true },
+    dueAt: { type: DataTypes.DATE, allowNull: true },
+    hintsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    wrongAttemptDeduction: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 5 },
+    lateDeductionPerDay: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 3 },
+  };
+
+  for (const [name, definition] of Object.entries(columns)) {
+    if (!table[name]) await queryInterface.addColumn(TABLE, name, definition);
   }
 };
 

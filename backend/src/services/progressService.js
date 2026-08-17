@@ -262,17 +262,22 @@ const computeFinalScore = ({
   parTimeSeconds,
   deadlineAt,
   completedAt,
+  wrongAttemptDeduction = ATTEMPT_DEDUCTION,
+  lateDeductionPerDay = DEADLINE_DEDUCTION_PER_DAY,
 }) => {
   let score = 100;
 
-  score -= attemptCount * ATTEMPT_DEDUCTION;
+  score -= attemptCount * wrongAttemptDeduction;
 
   if (deadlineAt && completedAt) {
     const deadlineMs = new Date(deadlineAt).getTime();
     const completedMs = new Date(completedAt).getTime();
     if (completedMs > deadlineMs) {
-      const daysLate = Math.floor((completedMs - deadlineMs) / (1000 * 60 * 60 * 24));
-      score -= daysLate * DEADLINE_DEDUCTION_PER_DAY;
+      const daysLate = Math.max(
+        1,
+        Math.ceil((completedMs - deadlineMs) / (1000 * 60 * 60 * 24)),
+      );
+      score -= daysLate * lateDeductionPerDay;
     }
   } else if (timeSpentSeconds > parTimeSeconds) {
     const minutesOver = (timeSpentSeconds - parTimeSeconds) / 60;

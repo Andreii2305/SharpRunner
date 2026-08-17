@@ -13,6 +13,21 @@ const LevelContentOverride = sequelize.define(
     instructionItems: { type: DataTypes.JSONB, allowNull: true },
     defaultCode: { type: DataTypes.TEXT, allowNull: true },
     validatorConfig: { type: DataTypes.JSONB, allowNull: true },
+    isEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    displayOrder: { type: DataTypes.INTEGER, allowNull: true },
+    unlockAt: { type: DataTypes.DATE, allowNull: true },
+    dueAt: { type: DataTypes.DATE, allowNull: true },
+    hintsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    wrongAttemptDeduction: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 5,
+    },
+    lateDeductionPerDay: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 3,
+    },
   },
   {
     indexes: [{ unique: true, fields: ["classroomId", "levelKey"] }],

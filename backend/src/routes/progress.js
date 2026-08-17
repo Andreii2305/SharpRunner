@@ -9,38 +9,66 @@ const {
   getParTimeSeconds,
   computeFinalScore,
 } = require("../services/progressService");
-const { LevelDeadline, LevelContentOverride } = require("../models");
+const { LevelDeadline } = require("../models");
 const {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
 } = require("../services/studentClassService");
 const {
   PLAYABLE_LEVEL_KEYS,
-  getPreviousPlayableLevelKey,
 } = require("../constants/progressDefaults");
+const {
+  getClassroomLevelSettings,
+} = require("../services/classroomLevelSettingsService");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
 const normalizeLevelKey = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
-const findUnfinishedPrerequisite = async (userId, levelKey) => {
-  const prerequisiteLevelKey = getPreviousPlayableLevelKey(levelKey);
+const findLevelAccessRestriction = async (userId, levelKey) => {
+  const membership = await findPrimaryActiveMembership(userId);
+  const settings = await getClassroomLevelSettings(membership?.classroomId);
+  const targetIndex = settings.findIndex((setting) => setting.levelKey === levelKey);
+  const target = settings[targetIndex];
+
+  if (!target?.isEnabled) {
+    return {
+      code: "LEVEL_DISABLED",
+      message: "Your teacher has disabled this level for the classroom.",
+    };
+  }
+
+  if (target.unlockAt && new Date(target.unlockAt).getTime() > Date.now()) {
+    return {
+      code: "LEVEL_SCHEDULED",
+      message: `This level unlocks on ${new Date(target.unlockAt).toLocaleString()}.`,
+      unlockAt: target.unlockAt,
+    };
+  }
+
+  const enabledSettings = settings.filter((setting) => setting.isEnabled);
+  const enabledIndex = enabledSettings.findIndex((setting) => setting.levelKey === levelKey);
+  const prerequisiteLevelKey = enabledIndex > 0
+    ? enabledSettings[enabledIndex - 1].levelKey
+    : null;
   if (!prerequisiteLevelKey) return null;
 
   const prerequisite = await UserProgress.findOne({
     where: { userId, levelKey: prerequisiteLevelKey },
     attributes: ["isCompleted"],
   });
-  return prerequisite?.isCompleted ? null : prerequisiteLevelKey;
+  return prerequisite?.isCompleted
+    ? null
+    : {
+        code: "LEVEL_LOCKED",
+        message: "Complete the previous assigned level before opening this level.",
+        prerequisiteLevelKey,
+      };
 };
 
-const sendLockedLevelResponse = (res, prerequisiteLevelKey) =>
-  res.status(403).json({
-    code: "LEVEL_LOCKED",
-    message: "Complete the previous level before opening this level.",
-    prerequisiteLevelKey,
-  });
+const sendLevelRestrictionResponse = (res, restriction) =>
+  res.status(403).json(restriction);
 
 const parseProgressValue = (value) => {
   if (value === undefined) {
@@ -83,7 +111,46 @@ const buildProgressPayloadForUser = async (userId) => {
     classSize = leaderboardData.classSize;
   }
 
-  return buildProgressSummary(rows, { classRank, classSize });
+  const levelSettings = await getClassroomLevelSettings(
+    primaryMembership?.classroomId,
+  );
+  const rowByKey = new Map(rows.map((row) => [row.levelKey, row]));
+  const enabledSettings = levelSettings.filter((setting) => setting.isEnabled);
+  const activeRows = enabledSettings
+    .map((setting) => rowByKey.get(setting.levelKey))
+    .filter(Boolean);
+  const payload = buildProgressSummary(activeRows, { classRank, classSize });
+  const completedByKey = new Map(
+    activeRows.map((row) => [row.levelKey, Boolean(row.isCompleted)]),
+  );
+  const settingsByKey = new Map(
+    enabledSettings.map((setting) => [setting.levelKey, setting]),
+  );
+
+  payload.levels = payload.levels.map((level, index) => {
+    const setting = settingsByKey.get(level.levelKey);
+    const prerequisiteLevelKey = index > 0 ? payload.levels[index - 1].levelKey : null;
+    const scheduleOpen = !setting?.unlockAt || new Date(setting.unlockAt).getTime() <= Date.now();
+    const prerequisiteComplete = !prerequisiteLevelKey || completedByKey.get(prerequisiteLevelKey);
+    return {
+      ...level,
+      displayOrder: setting?.displayOrder ?? index + 1,
+      unlockAt: setting?.unlockAt ?? null,
+      dueAt: setting?.dueAt ?? null,
+      hintsEnabled: setting?.hintsEnabled ?? true,
+      wrongAttemptDeduction: setting?.wrongAttemptDeduction ?? 5,
+      lateDeductionPerDay: setting?.lateDeductionPerDay ?? 3,
+      prerequisiteLevelKey,
+      isAccessible: level.isCompleted || (scheduleOpen && prerequisiteComplete),
+      lockReason: !scheduleOpen
+        ? "scheduled"
+        : prerequisiteComplete
+          ? null
+          : "prerequisite",
+    };
+  });
+
+  return payload;
 };
 
 router.get("/me", async (req, res) => {
@@ -104,12 +171,12 @@ router.post("/level/:levelKey/start", async (req, res) => {
 
     await ensureProgressRowsForUser(req.userId);
 
-    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+    const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
     );
-    if (unfinishedPrerequisite) {
-      return sendLockedLevelResponse(res, unfinishedPrerequisite);
+    if (accessRestriction) {
+      return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
     const levelRow = await UserProgress.findOne({
@@ -152,12 +219,12 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
-    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+    const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
     );
-    if (unfinishedPrerequisite) {
-      return sendLockedLevelResponse(res, unfinishedPrerequisite);
+    if (accessRestriction) {
+      return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
     const levelRow = await UserProgress.findOne({
@@ -199,12 +266,12 @@ router.put("/level/:levelKey", async (req, res) => {
 
     await ensureProgressRowsForUser(req.userId);
 
-    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+    const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
     );
-    if (unfinishedPrerequisite) {
-      return sendLockedLevelResponse(res, unfinishedPrerequisite);
+    if (accessRestriction) {
+      return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
     const levelRow = await UserProgress.findOne({
@@ -246,11 +313,17 @@ router.put("/level/:levelKey", async (req, res) => {
 
       const primaryMembership = await findPrimaryActiveMembership(req.userId);
       let deadlineAt = null;
+      let wrongAttemptDeduction = 5;
+      let lateDeductionPerDay = 3;
       if (primaryMembership) {
         const deadlineRow = await LevelDeadline.findOne({
           where: { classroomId: primaryMembership.classroomId, levelKey },
         });
-        deadlineAt = deadlineRow?.deadlineAt ?? null;
+        const levelSettings = await getClassroomLevelSettings(primaryMembership.classroomId);
+        const levelSetting = levelSettings.find((setting) => setting.levelKey === levelKey);
+        deadlineAt = levelSetting?.dueAt ?? deadlineRow?.deadlineAt ?? null;
+        wrongAttemptDeduction = levelSetting?.wrongAttemptDeduction ?? 5;
+        lateDeductionPerDay = levelSetting?.lateDeductionPerDay ?? 3;
       }
 
       const parTimeSeconds = getParTimeSeconds(levelRow.orderIndex);
@@ -260,6 +333,8 @@ router.put("/level/:levelKey", async (req, res) => {
         parTimeSeconds,
         deadlineAt,
         completedAt,
+        wrongAttemptDeduction,
+        lateDeductionPerDay,
       });
 
       levelRow.attemptCount = attemptCount;
@@ -285,12 +360,12 @@ router.get("/level/:levelKey/content", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
-    const unfinishedPrerequisite = await findUnfinishedPrerequisite(
+    const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
     );
-    if (unfinishedPrerequisite) {
-      return sendLockedLevelResponse(res, unfinishedPrerequisite);
+    if (accessRestriction) {
+      return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
     const primaryMembership = await findPrimaryActiveMembership(req.userId);
@@ -298,11 +373,10 @@ router.get("/level/:levelKey/content", async (req, res) => {
       return res.json({ override: null });
     }
 
-    const override = await LevelContentOverride.findOne({
-      where: { classroomId: primaryMembership.classroomId, levelKey },
-    });
+    const levelSettings = await getClassroomLevelSettings(primaryMembership.classroomId);
+    const setting = levelSettings.find((row) => row.levelKey === levelKey) ?? null;
 
-    return res.json({ override: override ?? null });
+    return res.json({ override: setting });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

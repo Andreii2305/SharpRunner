@@ -17,6 +17,10 @@ import {
 } from "./gameEvents";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { buildValidatorFromConfig } from "./levels/buildValidator";
+import {
+  getLevelConfigByProgressKey,
+  getLevelRoute,
+} from "./levels/levelConfigs";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const AUDIO_PREFERENCE_KEY = "sharprunner:game-audio-muted";
@@ -92,6 +96,7 @@ function GamePage({ levelConfig }) {
   const gradeButtonRef = useRef(null);
   const elapsedSecondsRef = useRef(0);
   const failedAttemptsRef = useRef(0);
+  const hintsEnabledRef = useRef(true);
   const [startedAt, setStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [, setFailedAttempts] = useState(0);
@@ -153,6 +158,7 @@ function GamePage({ levelConfig }) {
     setIsCodeLocked(isCodeLockedByDialogue(levelConfig));
     setFailedAttempts(0);
     setShowHint(false);
+    hintsEnabledRef.current = true;
     failedAttemptsRef.current = 0;
     setStartedAt(null);
     setElapsedSeconds(0);
@@ -183,6 +189,14 @@ function GamePage({ levelConfig }) {
         if (!override) return;
 
         const merged = { ...levelConfig };
+
+        if (override.hintsEnabled === false) {
+          merged.hint = null;
+          hintsEnabledRef.current = false;
+          setShowHint(false);
+        } else {
+          hintsEnabledRef.current = true;
+        }
 
         if (override.lessonCardTitle != null) {
           merged.lessonCard = { ...merged.lessonCard, title: override.lessonCardTitle };
@@ -254,7 +268,7 @@ function GamePage({ levelConfig }) {
         const dbAttempts = attemptCount ?? 0;
         failedAttemptsRef.current = dbAttempts;
         setFailedAttempts(dbAttempts);
-        if (dbAttempts >= 3 && levelConfig?.hint) setShowHint(true);
+        if (dbAttempts >= 3 && hintsEnabledRef.current && levelConfig?.hint) setShowHint(true);
       })
       .catch((err) => console.error("Failed to start level timer", err));
 
@@ -416,6 +430,10 @@ function GamePage({ levelConfig }) {
               attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
               timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
               isFinalLevel: levelConfig.levelNumber === 30,
+              nextLevelKey:
+                progressPayload.summary?.currentLevelKey === levelConfig.progressKey
+                  ? null
+                  : progressPayload.summary?.currentLevelKey ?? null,
             });
           })();
         }
@@ -426,7 +444,7 @@ function GamePage({ levelConfig }) {
       const nextCount = failedAttemptsRef.current + 1;
       failedAttemptsRef.current = nextCount;
       setFailedAttempts(nextCount);
-      if (nextCount === 3 && levelConfig?.hint) setShowHint(true);
+      if (nextCount === 3 && mergedLevelConfig?.hint) setShowHint(true);
 
       if (levelConfig?.progressKey) {
         axios
@@ -438,7 +456,7 @@ function GamePage({ levelConfig }) {
           .then((res) => {
             failedAttemptsRef.current = res.data.attemptCount;
             setFailedAttempts(res.data.attemptCount);
-            if (res.data.attemptCount >= 3 && levelConfig?.hint) setShowHint(true);
+            if (res.data.attemptCount >= 3 && mergedLevelConfig?.hint) setShowHint(true);
           })
           .catch(() => {});
       }
@@ -455,7 +473,7 @@ function GamePage({ levelConfig }) {
       gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
       clearNextLevelTimer();
     };
-  }, [clearNextLevelTimer, levelConfig, markLevelAsCompleted]);
+  }, [clearNextLevelTimer, levelConfig, markLevelAsCompleted, mergedLevelConfig]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -741,14 +759,14 @@ function GamePage({ levelConfig }) {
               sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
               isMuted={isMuted}
             />
-            {showHint && levelConfig.hint && (
+            {showHint && mergedLevelConfig?.hint && (
               <div className={styles.hintOverlay} role="presentation">
                 <div className={styles.hintBox} role="dialog" aria-modal="true" aria-labelledby="level-hint-title">
                   <div className={styles.hintHeader}>
                     <span id="level-hint-title" className={styles.hintTitle}>Hint</span>
                     <button ref={hintButtonRef} type="button" className={styles.hintClose} onClick={() => setShowHint(false)} aria-label="Close hint">✕</button>
                   </div>
-                  <p className={styles.hintText}>{levelConfig.hint}</p>
+                  <p className={styles.hintText}>{mergedLevelConfig.hint}</p>
                   <button type="button" className={styles.hintDismiss} onClick={() => setShowHint(false)}>Got it</button>
                 </div>
               </div>
@@ -1001,7 +1019,10 @@ function GamePage({ levelConfig }) {
               className={`${styles.gradeContinueBtn} ${styles[`gradeContinueBtn${gradeModal.grade}`]}`}
               onClick={() => {
                 setGradeModal(null);
-                navigate(levelConfig.nextRoute ?? "/Map");
+                const nextConfig = getLevelConfigByProgressKey(gradeModal.nextLevelKey);
+                navigate(
+                  nextConfig ? getLevelRoute(nextConfig.levelNumber) : "/Map",
+                );
               }}
             >
               {gradeModal.isFinalLevel ? "Return to Map" : "Continue"}

@@ -1,468 +1,325 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
-import Editor from "@monaco-editor/react";
+import {
+  FiArrowDown,
+  FiArrowUp,
+  FiCalendar,
+  FiCheckCircle,
+  FiClock,
+  FiEye,
+  FiHelpCircle,
+  FiLock,
+  FiPlus,
+  FiRotateCcw,
+  FiSave,
+  FiSliders,
+} from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
-import { getLevelConfig, getAvailableLevelNumbers } from "../game/levels/levelConfigs.js";
+import {
+  getAvailableLevelNumbers,
+  getLevelConfig,
+} from "../game/levels/levelConfigs.js";
 import styles from "./TeacherPage.module.css";
 import s from "./TeacherLevelEditorPage.module.css";
 
 const AVAILABLE_LEVELS = getAvailableLevelNumbers();
 
-const toFormData = (levelConfig, override) => {
-  const vc = override?.validatorConfig ?? levelConfig?.validatorConfig ?? {};
-  const isExact = vc.type === "exactGoal";
-  const g0 = isExact ? (vc.goals?.[0] ?? {}) : {};
-  return {
-    lessonCardTitle:       override?.lessonCardTitle       ?? levelConfig?.lessonCard?.title       ?? "",
-    lessonCardDescription: override?.lessonCardDescription ?? levelConfig?.lessonCard?.description ?? "",
-    goalTitle:             override?.goalTitle             ?? levelConfig?.goal?.title             ?? "",
-    goalDescription:       override?.goalDescription       ?? levelConfig?.goal?.description       ?? "",
-    instructionItems:      override?.instructionItems      ?? levelConfig?.instruction?.items      ?? [""],
-    defaultCode:           override?.defaultCode           ?? levelConfig?.defaultCode             ?? "",
-    validatorType:         vc.type ?? "singleInteger",
-    variableName:          isExact ? (g0.name ?? "") : (vc.variableName ?? ""),
-    minValue:              vc.minValue != null ? String(vc.minValue) : "",
-    maxValue:              vc.maxValue != null ? String(vc.maxValue) : "",
-    goalAllowedType:       isExact ? ([...(g0.allowedTypes ?? [])][0] ?? "string") : "string",
-    goalRequiredValue:     isExact ? (g0.requiredValue ?? "") : "",
-    successMessage:        vc.successMessage ?? "",
-    errorMessage:          vc.errorMessage ?? "",
-    unexpectedVariableMessage: vc.unexpectedVariableMessage ?? "",
-  };
+const toDateTimeInput = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 };
 
-const buildValidatorConfig = (form) => {
-  const base = { type: form.validatorType };
-  if (form.successMessage.trim())            base.successMessage = form.successMessage.trim();
-  if (form.errorMessage.trim())              base.errorMessage   = form.errorMessage.trim();
-  if (form.unexpectedVariableMessage.trim()) base.unexpectedVariableMessage = form.unexpectedVariableMessage.trim();
+const buildDefaultSettings = () =>
+  AVAILABLE_LEVELS.map((levelNumber, index) => {
+    const config = getLevelConfig(levelNumber);
+    return {
+      levelNumber,
+      levelKey: config.progressKey,
+      isEnabled: true,
+      displayOrder: index + 1,
+      unlockAt: "",
+      dueAt: "",
+      hintsEnabled: true,
+      wrongAttemptDeduction: 5,
+      lateDeductionPerDay: 3,
+    };
+  });
 
-  if (form.validatorType === "singleInteger") {
-    base.variableName = form.variableName.trim();
-    if (form.minValue !== "") base.minValue = Number(form.minValue);
-    if (form.maxValue !== "") base.maxValue = Number(form.maxValue);
-    return base;
-  }
-  if (form.validatorType === "exactGoal") {
-    base.goals = [{ name: form.variableName.trim(), allowedTypes: [form.goalAllowedType], requiredValue: form.goalRequiredValue.trim() }];
-    return base;
-  }
-  return null;
+const mergeSettings = (rows) => {
+  const overrides = new Map((rows ?? []).map((row) => [row.levelKey, row]));
+  return buildDefaultSettings()
+    .map((setting) => {
+      const row = overrides.get(setting.levelKey);
+      return row
+        ? {
+            ...setting,
+            isEnabled: row.isEnabled ?? true,
+            displayOrder: Number.isInteger(row.displayOrder)
+              ? row.displayOrder
+              : setting.displayOrder,
+            unlockAt: toDateTimeInput(row.unlockAt),
+            dueAt: toDateTimeInput(row.dueAt),
+            hintsEnabled: row.hintsEnabled ?? true,
+            wrongAttemptDeduction: Number(row.wrongAttemptDeduction ?? 5),
+            lateDeductionPerDay: Number(row.lateDeductionPerDay ?? 3),
+          }
+        : setting;
+    })
+    .sort((a, b) => a.displayOrder - b.displayOrder)
+    .map((setting, index) => ({ ...setting, displayOrder: index + 1 }));
 };
 
-/* ── Small reusable bits ── */
-function SCard({ icon, iconCls, title, children }) {
-  return (
-    <div className={s.card}>
-      <div className={s.cardHead}>
-        <div className={`${s.cardIcon} ${iconCls}`}>{icon}</div>
-        <span className={s.cardTitle}>{title}</span>
-      </div>
-      <div className={s.cardBody}>{children}</div>
-    </div>
-  );
-}
-
-function F({ label, children, half }) {
-  return (
-    <div className={half ? s.fieldHalf : s.field}>
-      {label && <span className={s.label}>{label}</span>}
-      {children}
-    </div>
-  );
-}
-
-/* ── Page ── */
 function TeacherLevelEditorPage() {
   const { classroomId } = useParams();
   const navigate = useNavigate();
-
-  const [overridesMap, setOverridesMap] = useState({});
-  const [selectedLevel, setSelectedLevel] = useState(AVAILABLE_LEVELS[0] ?? 1);
-  const [form, setForm] = useState({});
+  const initialSettings = useMemo(buildDefaultSettings, []);
+  const [settings, setSettings] = useState(initialSettings);
+  const [selectedLevelKey, setSelectedLevelKey] = useState(
+    initialSettings[0]?.levelKey ?? "",
+  );
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [editorHeight, setEditorHeight] = useState(200);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const editorRef = useRef(null);
 
-  const fetchOverrides = useCallback(async () => {
-    try {
-      const res = await axios.get(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/level-overrides`),
-        { headers: getAuthHeaders() },
-      );
-      const map = {};
-      for (const row of res.data) map[row.levelKey] = row;
-      setOverridesMap(map);
-      return map;
-    } catch {
-      return {};
-    }
+  const fetchSettings = useCallback(async () => {
+    const response = await axios.get(
+      buildApiUrl(`/api/teacher/classrooms/${classroomId}/level-overrides`),
+      { headers: getAuthHeaders() },
+    );
+    const merged = mergeSettings(response.data);
+    setSettings(merged);
+    setSelectedLevelKey((current) =>
+      merged.some((row) => row.levelKey === current)
+        ? current
+        : merged[0]?.levelKey ?? "",
+    );
   }, [classroomId]);
 
   useEffect(() => {
     setLoading(true);
-    fetchOverrides().then((map) => {
-      const cfg = getLevelConfig(selectedLevel);
-      setForm(toFormData(cfg, map[cfg?.progressKey ?? ""]));
-      setLoading(false);
-    });
-  }, [classroomId, fetchOverrides]);
+    fetchSettings()
+      .catch(() => setStatus({ ok: false, text: "Unable to load classroom levels." }))
+      .finally(() => setLoading(false));
+  }, [fetchSettings]);
 
-  const pick = (num) => {
-    setSelectedLevel(num);
+  const selectedIndex = settings.findIndex(
+    (setting) => setting.levelKey === selectedLevelKey,
+  );
+  const selected = settings[selectedIndex] ?? settings[0];
+  const config = getLevelConfig(selected?.levelNumber);
+
+  const updateSelected = (updates) => {
     setStatus(null);
-    const cfg = getLevelConfig(num);
-    setForm(toFormData(cfg, overridesMap[cfg?.progressKey ?? ""]));
+    setSettings((current) =>
+      current.map((setting) =>
+        setting.levelKey === selectedLevelKey
+          ? { ...setting, ...updates }
+          : setting,
+      ),
+    );
   };
 
-  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const moveSelected = (direction) => {
+    const nextIndex = selectedIndex + direction;
+    if (selectedIndex < 0 || nextIndex < 0 || nextIndex >= settings.length) return;
+    setSettings((current) => {
+      const next = [...current];
+      [next[selectedIndex], next[nextIndex]] = [next[nextIndex], next[selectedIndex]];
+      return next.map((setting, index) => ({ ...setting, displayOrder: index + 1 }));
+    });
+    setStatus(null);
+  };
 
-  const setInstr = (i, v) =>
-    setForm((p) => { const arr = [...p.instructionItems]; arr[i] = v; return { ...p, instructionItems: arr }; });
-
-  const handleSave = async () => {
-    setSaving(true); setStatus(null);
+  const saveSettings = async () => {
+    setSaving(true);
+    setStatus(null);
     try {
-      const cfg = getLevelConfig(selectedLevel);
-      const lk = cfg?.progressKey ?? "";
       await axios.put(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/level-overrides/${lk}`),
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/level-settings`),
         {
-          lessonCardTitle:       form.lessonCardTitle.trim()       || null,
-          lessonCardDescription: form.lessonCardDescription.trim() || null,
-          goalTitle:             form.goalTitle.trim()             || null,
-          goalDescription:       form.goalDescription.trim()       || null,
-          instructionItems:      form.instructionItems.filter((x) => x.trim()),
-          defaultCode:           form.defaultCode.trim()           || null,
-          validatorConfig:       buildValidatorConfig(form),
+          settings: settings.map((setting) => ({
+            levelKey: setting.levelKey,
+            isEnabled: setting.isEnabled,
+            unlockAt: setting.unlockAt
+              ? new Date(setting.unlockAt).toISOString()
+              : null,
+            dueAt: setting.dueAt
+              ? new Date(setting.dueAt).toISOString()
+              : null,
+            hintsEnabled: setting.hintsEnabled,
+            wrongAttemptDeduction: Number(setting.wrongAttemptDeduction),
+            lateDeductionPerDay: Number(setting.lateDeductionPerDay),
+          })),
         },
         { headers: getAuthHeaders() },
       );
-      const map = await fetchOverrides();
-      setForm(toFormData(cfg, map[lk]));
-      setStatus({ ok: true, text: "Saved successfully" });
-    } catch (err) {
-      setStatus({ ok: false, text: err.response?.data?.message ?? "Save failed" });
-    } finally { setSaving(false); }
+      await fetchSettings();
+      setStatus({ ok: true, text: "Classroom level settings saved." });
+    } catch (error) {
+      setStatus({
+        ok: false,
+        text: error.response?.data?.message ?? "Unable to save classroom settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleReset = () => setConfirmOpen(true);
-
-  const doReset = async () => {
+  const resetSettings = async () => {
     setConfirmOpen(false);
-    setSaving(true); setStatus(null);
+    setSaving(true);
+    setStatus(null);
     try {
-      const cfg = getLevelConfig(selectedLevel);
-      const lk = cfg?.progressKey ?? "";
       await axios.delete(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/level-overrides/${lk}`),
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/level-settings`),
         { headers: getAuthHeaders() },
       );
-      const map = await fetchOverrides();
-      setForm(toFormData(cfg, map[lk]));
-      setStatus({ ok: true, text: "Reset to default" });
-    } catch (err) {
-      setStatus({ ok: false, text: err.response?.data?.message ?? "Reset failed" });
-    } finally { setSaving(false); }
+      await fetchSettings();
+      setStatus({ ok: true, text: "Classroom levels reset to system defaults." });
+    } catch (error) {
+      setStatus({
+        ok: false,
+        text: error.response?.data?.message ?? "Unable to reset classroom settings.",
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const cfg = getLevelConfig(selectedLevel);
-  const lk  = cfg?.progressKey ?? "";
-  const hasOverride = Boolean(overridesMap[lk]);
+  const enabledCount = useMemo(
+    () => settings.filter((setting) => setting.isEnabled).length,
+    [settings],
+  );
 
   return (
     <div className={styles.root}>
       <Sidebar />
       <div className={styles.main}>
-        {/* header */}
         <div className={styles.pageHeader}>
-          <button type="button" className={s.backBtn} onClick={() => navigate("/teacher/classes")}>
-            ← Back to Classes
-          </button>
-          <div className={styles.pageTitle} style={{ marginLeft: 4 }}>
-            Level Editor — Classroom #{classroomId}
-          </div>
+          <button type="button" className={s.backBtn} onClick={() => navigate("/teacher/classes")}>← Back to Classes</button>
+          <div className={styles.pageTitle}>Classroom Level Manager — Classroom #{classroomId}</div>
         </div>
 
         {loading ? (
-          <div className={s.loading}>
-            <div className={s.spinner} />
-            Loading level data…
-          </div>
+          <div className={s.loading}><div className={s.spinner} />Loading classroom levels…</div>
         ) : (
           <div className={s.editorLayout}>
-            {/* sidebar */}
-            <nav className={s.sidebar}>
-              <div className={s.sidebarLabel}>Levels</div>
-              {AVAILABLE_LEVELS.map((num) => {
-                const c = getLevelConfig(num);
-                const overridden = Boolean(overridesMap[c?.progressKey ?? ""]);
+            <nav className={s.sidebar} aria-label="Classroom levels">
+              <div className={s.sidebarLabel}>Levels · {enabledCount}/{settings.length} enabled</div>
+              {settings.map((setting, index) => {
+                const level = getLevelConfig(setting.levelNumber);
                 return (
                   <button
-                    key={num}
+                    key={setting.levelKey}
                     type="button"
-                    className={`${s.sidebarItem} ${num === selectedLevel ? s.sidebarItemActive : ""}`}
-                    onClick={() => pick(num)}
+                    className={`${s.sidebarItem} ${setting.levelKey === selectedLevelKey ? s.sidebarItemActive : ""}`}
+                    onClick={() => { setSelectedLevelKey(setting.levelKey); setStatus(null); }}
                   >
-                    <div className={s.sidebarNum}>{num}</div>
-                    <div className={s.sidebarInfo}>
-                      <span className={s.sidebarName}>Level {num}</span>
-                      {overridden && <span className={s.sidebarTag}>● Customized</span>}
-                    </div>
+                    <span className={s.sidebarNum}>{index + 1}</span>
+                    <span className={s.sidebarInfo}>
+                      <span className={s.sidebarName}>{level?.title ?? `Level ${setting.levelNumber}`}</span>
+                      <span className={setting.isEnabled ? s.enabledTag : s.disabledTag}>{setting.isEnabled ? "Enabled" : "Disabled"}</span>
+                    </span>
                   </button>
                 );
               })}
             </nav>
 
-            {/* main form */}
-            <div className={s.formPanel}>
-              {/* banner */}
-              <div className={s.banner}>
+            <main className={s.formPanel}>
+              <div className={s.managerHeader}>
                 <div>
-                  <div className={s.bannerTitle}>{cfg?.title ?? `Level ${selectedLevel}`}</div>
-                  <div className={s.bannerSub}>{cfg?.subtitle ?? cfg?.progressKey ?? ""}</div>
+                  <span className={s.eyebrow}>Assigned position {selectedIndex + 1}</span>
+                  <h1>{config?.title ?? "Level preview"}</h1>
+                  <p>{config?.subtitle ?? selected?.levelKey}</p>
                 </div>
-                {hasOverride
-                  ? <span className={s.badgeCustom}>✦ Customized</span>
-                  : <span className={s.badgeDefault}>Default</span>}
+                <div className={s.headerActions}>
+                  <button type="button" className={s.orderButton} onClick={() => moveSelected(-1)} disabled={selectedIndex <= 0}><FiArrowUp /> Move up</button>
+                  <button type="button" className={s.orderButton} onClick={() => moveSelected(1)} disabled={selectedIndex >= settings.length - 1}><FiArrowDown /> Move down</button>
+                  <button type="button" className={s.customButton} disabled title="Custom challenge templates are coming soon"><FiPlus /> Custom challenge · Coming soon</button>
+                </div>
               </div>
 
-              {/* Lesson Card */}
-              <SCard icon="📖" iconCls={s.iBlue} title="Lesson Card">
-                <F label="Title">
-                  <input
-                    className={s.input}
-                    value={form.lessonCardTitle ?? ""}
-                    onChange={(e) => set("lessonCardTitle", e.target.value)}
-                    placeholder={cfg?.lessonCard?.title ?? "Lesson title"}
-                  />
-                </F>
-                <F label="Description">
-                  <textarea
-                    className={s.textarea}
-                    value={form.lessonCardDescription ?? ""}
-                    onChange={(e) => set("lessonCardDescription", e.target.value)}
-                    placeholder={cfg?.lessonCard?.description ?? "Lesson description"}
-                  />
-                </F>
-              </SCard>
-
-              {/* Goal */}
-              <SCard icon="🎯" iconCls={s.iGreen} title="Goal">
-                <F label="Title">
-                  <input
-                    className={s.input}
-                    value={form.goalTitle ?? ""}
-                    onChange={(e) => set("goalTitle", e.target.value)}
-                    placeholder={cfg?.goal?.title ?? "Goal"}
-                  />
-                </F>
-                <F label="Description">
-                  <textarea
-                    className={s.textarea}
-                    value={form.goalDescription ?? ""}
-                    onChange={(e) => set("goalDescription", e.target.value)}
-                    placeholder={cfg?.goal?.description ?? "Goal description"}
-                  />
-                </F>
-              </SCard>
-
-              {/* Instructions */}
-              <SCard icon="📋" iconCls={s.iPurple} title="Instructions">
-                <div className={s.instrList}>
-                  {(form.instructionItems ?? []).map((item, i) => (
-                    <div key={i} className={s.instrRow}>
-                      <div className={s.instrBullet}>{i + 1}</div>
-                      <input
-                        className={s.input}
-                        style={{ flex: 1 }}
-                        value={item}
-                        onChange={(e) => setInstr(i, e.target.value)}
-                        placeholder={`Instruction ${i + 1}`}
-                      />
-                      <button
-                        type="button"
-                        className={s.removeBtn}
-                        onClick={() => setForm((p) => ({ ...p, instructionItems: p.instructionItems.filter((_, idx) => idx !== i) }))}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className={s.addBtn}
-                  onClick={() => setForm((p) => ({ ...p, instructionItems: [...p.instructionItems, ""] }))}
-                >
-                  + Add instruction
-                </button>
-              </SCard>
-
-              {/* Starter Code */}
-              <SCard icon="💻" iconCls={s.iSlate} title="Starter Code">
-                <span className={s.label}>C# code shown to students when they open this level</span>
-                <div className={s.monacoWrap} style={{ height: editorHeight }}>
-                  <Editor
-                    height={editorHeight}
-                    language="csharp"
-                    theme="vs-dark"
-                    value={form.defaultCode ?? ""}
-                    onChange={(val) => set("defaultCode", val ?? "")}
-                    onMount={(editor) => {
-                      editorRef.current = editor;
-                      const updateHeight = () => {
-                        const contentHeight = Math.max(120, editor.getContentHeight());
-                        setEditorHeight(contentHeight);
-                        editor.layout();
-                      };
-                      updateHeight();
-                      editor.onDidContentSizeChange(updateHeight);
-                    }}
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 13,
-                      fontFamily: "'Fira Code', 'Consolas', 'Courier New', monospace",
-                      fontLigatures: true,
-                      lineNumbers: "on",
-                      scrollBeyondLastLine: false,
-                      tabSize: 2,
-                      insertSpaces: true,
-                      wordWrap: "on",
-                      renderLineHighlight: "line",
-                      bracketPairColorization: { enabled: true },
-                      padding: { top: 12, bottom: 12 },
-                      overviewRulerLanes: 0,
-                      scrollbar: { vertical: "hidden", horizontal: "hidden" },
-                    }}
-                  />
-                </div>
-              </SCard>
-
-              {/* Validator */}
-              <SCard icon="⚙️" iconCls={s.iAmber} title="Validator Configuration">
-                <div className={s.warning}>
-                  <span className={s.warnIcon}>⚠️</span>
-                  <span>
-                    Changing the variable name updates what the validator checks.
-                    Ensure your starter code uses the exact same variable name.
-                  </span>
-                </div>
-
-                <F label="Validator type">
-                  <div className={s.typePills}>
-                    <button
-                      type="button"
-                      className={`${s.pill} ${form.validatorType === "singleInteger" ? s.pillActive : ""}`}
-                      onClick={() => set("validatorType", "singleInteger")}
-                    >
-                      <div className={s.pillName}>Single Integer</div>
-                      <div className={s.pillSub}>int steps = 7;</div>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${s.pill} ${form.validatorType === "exactGoal" ? s.pillActive : ""}`}
-                      onClick={() => set("validatorType", "exactGoal")}
-                    >
-                      <div className={s.pillName}>Exact Goal</div>
-                      <div className={s.pillSub}>string myName = "Kai";</div>
-                    </button>
+              <div className={s.managerGrid}>
+                <section className={s.previewPanel}>
+                  <div className={s.sectionHeading}>
+                    <FiEye />
+                    <div><h2>Student preview</h2><p>System curriculum is read-only and cannot be changed by teachers.</p></div>
+                    <span className={s.readOnlyBadge}><FiLock /> Read only</span>
                   </div>
-                </F>
+                  <article className={s.previewCard}><span className={s.previewLabel}>Lesson</span><h3>{config?.lessonCard?.title ?? "Lesson"}</h3><p>{config?.lessonCard?.description ?? "No lesson description."}</p></article>
+                  <article className={s.previewCard}><span className={s.previewLabel}>Goal</span><h3>{config?.goal?.title ?? "Goal"}</h3><p>{config?.goal?.description ?? "Complete the coding objective."}</p></article>
+                  <article className={s.previewCard}>
+                    <span className={s.previewLabel}>Instructions</span>
+                    <ol>{(config?.instruction?.items ?? []).map((item) => <li key={item}>{item}</li>)}</ol>
+                  </article>
+                  <article className={s.previewCard}><span className={s.previewLabel}>Starter code</span><pre><code>{config?.defaultCode ?? "// No starter code"}</code></pre></article>
+                  {selected?.hintsEnabled && config?.hint ? <article className={`${s.previewCard} ${s.hintPreview}`}><span className={s.previewLabel}>Hint shown after repeated mistakes</span><p>{config.hint}</p></article> : null}
+                </section>
 
-                <div className={s.divider} />
-
-                <F label="Variable name">
-                  <input
-                    className={s.input}
-                    value={form.variableName ?? ""}
-                    onChange={(e) => set("variableName", e.target.value)}
-                    placeholder={form.validatorType === "singleInteger" ? "steps" : "myName"}
-                  />
-                </F>
-
-                {form.validatorType === "singleInteger" && (
-                  <div className={s.fieldHalf}>
-                    <div className={s.field}>
-                      <span className={s.label}>Min value</span>
-                      <input type="number" className={s.input} value={form.minValue ?? ""} onChange={(e) => set("minValue", e.target.value)} placeholder="1" />
-                    </div>
-                    <div className={s.field}>
-                      <span className={s.label}>Max value</span>
-                      <input type="number" className={s.input} value={form.maxValue ?? ""} onChange={(e) => set("maxValue", e.target.value)} placeholder="40" />
-                    </div>
+                <aside className={s.settingsPanel}>
+                  <div className={s.sectionHeading}><FiSliders /><div><h2>Level settings</h2><p>These settings apply only to this classroom.</p></div></div>
+                  <label className={s.toggleRow}>
+                    <span><strong><FiCheckCircle /> Level availability</strong><small>Students can access this level in the assigned sequence.</small></span>
+                    <input type="checkbox" checked={selected?.isEnabled ?? true} onChange={(event) => updateSelected({ isEnabled: event.target.checked })} />
+                  </label>
+                  <label className={s.settingField}>
+                    <span><FiClock /> Unlock date and time</span>
+                    <input type="datetime-local" value={selected?.unlockAt ?? ""} onChange={(event) => updateSelected({ unlockAt: event.target.value })} />
+                    <small>Leave empty to unlock according to the assigned order.</small>
+                  </label>
+                  <label className={s.settingField}>
+                    <span><FiCalendar /> Due date and time</span>
+                    <input type="datetime-local" value={selected?.dueAt ?? ""} onChange={(event) => updateSelected({ dueAt: event.target.value })} />
+                    <small>Late deductions begin immediately after this deadline.</small>
+                  </label>
+                  <label className={s.toggleRow}>
+                    <span><strong><FiHelpCircle /> Student hints</strong><small>Show the built-in hint after three wrong attempts.</small></span>
+                    <input type="checkbox" checked={selected?.hintsEnabled ?? true} onChange={(event) => updateSelected({ hintsEnabled: event.target.checked })} />
+                  </label>
+                  <div className={s.gradingBox}>
+                    <h3>Grading policy</h3>
+                    <p>Scores begin at 100 points. Set either deduction to 0 to disable it.</p>
+                    <label className={s.settingField}>
+                      <span>Points deducted per wrong attempt</span>
+                      <input type="number" min="0" max="100" step="0.5" value={selected?.wrongAttemptDeduction ?? 5} onChange={(event) => updateSelected({ wrongAttemptDeduction: event.target.value })} />
+                      <small>System default: −5 points.</small>
+                    </label>
+                    <label className={s.settingField}>
+                      <span>Points deducted per late day</span>
+                      <input type="number" min="0" max="100" step="0.5" value={selected?.lateDeductionPerDay ?? 3} onChange={(event) => updateSelected({ lateDeductionPerDay: event.target.value })} />
+                      <small>Example: enter 2 to deduct 2 points for every late day.</small>
+                    </label>
                   </div>
-                )}
+                </aside>
+              </div>
 
-                {form.validatorType === "exactGoal" && (
-                  <div className={s.fieldHalf}>
-                    <div className={s.field}>
-                      <span className={s.label}>Allowed type</span>
-                      <select className={s.select} value={form.goalAllowedType ?? "string"} onChange={(e) => set("goalAllowedType", e.target.value)}>
-                        <option value="int">int</option>
-                        <option value="string">string</option>
-                        <option value="double">double</option>
-                        <option value="float">float</option>
-                        <option value="bool">bool</option>
-                        <option value="char">char</option>
-                      </select>
-                    </div>
-                    <div className={s.field}>
-                      <span className={s.label}>Required value</span>
-                      <input className={s.input} value={form.goalRequiredValue ?? ""} onChange={(e) => set("goalRequiredValue", e.target.value)} placeholder={`"Kai"`} />
-                    </div>
-                  </div>
-                )}
-
-                <div className={s.divider} />
-
-                <F label="Success message">
-                  <input className={s.input} value={form.successMessage ?? ""} onChange={(e) => set("successMessage", e.target.value)} placeholder="Code accepted. Executing…" />
-                </F>
-                <F label="Error / failure message">
-                  <input className={s.input} value={form.errorMessage ?? ""} onChange={(e) => set("errorMessage", e.target.value)} placeholder="You failed. Check your declaration." />
-                </F>
-                <F label="Unexpected variable message">
-                  <input className={s.input} value={form.unexpectedVariableMessage ?? ""} onChange={(e) => set("unexpectedVariableMessage", e.target.value)} placeholder='Only "steps" is allowed in this level.' />
-                </F>
-              </SCard>
-
-              {/* Action bar */}
               <div className={s.actionBar}>
-                <button type="button" className={s.saveBtn} onClick={handleSave} disabled={saving}>
-                  {saving ? "Saving…" : "💾 Save Changes"}
-                </button>
-                {hasOverride && (
-                  <button type="button" className={s.resetBtn} onClick={handleReset} disabled={saving}>
-                    ↺ Reset to Default
-                  </button>
-                )}
-                <div className={s.spacer} />
-                {status && (
-                  <div className={status.ok ? s.statusOk : s.statusErr}>
-                    {status.ok ? "✓" : "✕"} {status.text}
-                  </div>
-                )}
+                <button type="button" className={s.saveBtn} onClick={saveSettings} disabled={saving}><FiSave /> {saving ? "Saving…" : "Save classroom settings"}</button>
+                <button type="button" className={s.resetBtn} onClick={() => setConfirmOpen(true)} disabled={saving}><FiRotateCcw /> Reset to default</button>
+                <span className={s.spacer} />
+                {status ? <span className={status.ok ? s.statusOk : s.statusErr}>{status.ok ? "✓" : "!"} {status.text}</span> : null}
               </div>
-            </div>
+            </main>
           </div>
         )}
       </div>
 
       <ConfirmModal
         open={confirmOpen}
-        title="Reset to Default?"
-        message="All customizations for this level will be removed and the default content will be restored."
-        confirmLabel="Yes, Reset"
+        title="Reset all classroom level settings?"
+        message="This restores the system order, enables every level, clears schedules and due dates, enables hints, and restores the default grading deductions."
+        confirmLabel="Reset all settings"
         danger
-        onConfirm={doReset}
-        onCancel={() => setConfirmOpen(false)}
+        confirmDisabled={saving}
+        onConfirm={resetSettings}
+        onCancel={() => !saving && setConfirmOpen(false)}
       />
     </div>
   );

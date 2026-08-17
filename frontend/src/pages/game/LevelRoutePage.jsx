@@ -7,9 +7,9 @@ import styles from "./LevelRoutePage.module.css";
 import {
   getAvailableLessonRoutes,
   getLevelConfig,
+  getLevelConfigByProgressKey,
   getLevelConfigByRoute,
   getLevelRoute,
-  getPreviousLevelConfig,
 } from "./levels/levelConfigs";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 
@@ -22,21 +22,20 @@ function LevelRoutePage() {
   const levelConfig = lessonSlug
     ? getLevelConfigByRoute(lessonSlug, parsedLevelNumber)
     : getLevelConfig(parsedLevelNumber);
-  const prerequisiteConfig = levelConfig
-    ? getPreviousLevelConfig(levelConfig.levelNumber)
-    : null;
   const [checkVersion, setCheckVersion] = useState(0);
   const [accessCheck, setAccessCheck] = useState({
     levelKey: null,
     status: "loading",
+    message: "",
+    prerequisiteLevelKey: null,
   });
 
   useEffect(() => {
     let isMounted = true;
     const levelKey = levelConfig?.progressKey ?? null;
 
-    if (!lessonSlug || !levelConfig || !prerequisiteConfig) {
-      setAccessCheck({ levelKey, status: "allowed" });
+    if (!lessonSlug || !levelConfig) {
+      setAccessCheck({ levelKey, status: "allowed", message: "", prerequisiteLevelKey: null });
       return () => {
         isMounted = false;
       };
@@ -47,12 +46,17 @@ function LevelRoutePage() {
       .get(buildApiUrl("/api/progress/me"), { headers: getAuthHeaders() })
       .then((response) => {
         if (!isMounted) return;
-        const prerequisite = response.data?.levels?.find(
-          (row) => row.levelKey === prerequisiteConfig.progressKey,
-        );
+        const level = response.data?.levels?.find((row) => row.levelKey === levelKey);
+        const isScheduled = level?.lockReason === "scheduled";
         setAccessCheck({
           levelKey,
-          status: prerequisite?.isCompleted ? "allowed" : "locked",
+          status: level?.isAccessible || level?.isCompleted ? "allowed" : "locked",
+          message: !level
+            ? "Your teacher has disabled this level for the classroom."
+            : isScheduled
+              ? `This level unlocks on ${new Date(level.unlockAt).toLocaleString()}.`
+              : "Complete the previous assigned level before opening this level.",
+          prerequisiteLevelKey: level?.prerequisiteLevelKey ?? null,
         });
       })
       .catch(() => {
@@ -62,7 +66,7 @@ function LevelRoutePage() {
     return () => {
       isMounted = false;
     };
-  }, [checkVersion, lessonSlug, levelConfig, prerequisiteConfig]);
+  }, [checkVersion, lessonSlug, levelConfig]);
 
   if (!lessonSlug && levelConfig) {
     return <Navigate to={getLevelRoute(levelConfig.levelNumber)} replace />;
@@ -89,21 +93,23 @@ function LevelRoutePage() {
   }
 
   if (levelConfig && accessStatus === "locked") {
+    const prerequisiteConfig = getLevelConfigByProgressKey(
+      accessCheck.prerequisiteLevelKey,
+    );
     return (
       <div className={styles.placeholderPage}>
         <div className={styles.placeholderCard}>
           <h1>Level locked</h1>
-          <p>
-            Complete <strong>{prerequisiteConfig.title}</strong> before opening
-            this level.
-          </p>
+          <p>{accessCheck.message}</p>
           <div className={styles.placeholderActions}>
-            <Button
-              label="Go to Previous Level"
-              variant="primary"
-              size="md"
-              onClick={() => navigate(getLevelRoute(prerequisiteConfig.levelNumber))}
-            />
+            {prerequisiteConfig ? (
+              <Button
+                label="Go to Previous Assigned Level"
+                variant="primary"
+                size="md"
+                onClick={() => navigate(getLevelRoute(prerequisiteConfig.levelNumber))}
+              />
+            ) : null}
             <Button
               label="Back to Map"
               variant="outline"

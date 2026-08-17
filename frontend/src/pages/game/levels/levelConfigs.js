@@ -3670,6 +3670,11 @@ const LEVEL_CONFIG_BY_NUMBER = {
 export const getLevelConfig = (levelNumber) =>
   LEVEL_CONFIG_BY_NUMBER[Number(levelNumber)] ?? null;
 
+export const getLevelConfigByProgressKey = (progressKey) =>
+  Object.values(LEVEL_CONFIG_BY_NUMBER).find(
+    (config) => config?.progressKey === progressKey,
+  ) ?? null;
+
 const LEVEL_ROUTE_GROUPS = [
   { slug: "tutorial", globalLevelNumbers: [1, 2, 3, 4, 5] },
   { slug: "array", globalLevelNumbers: [6, 7, 8, 9, 10, 11, 12, 13] },

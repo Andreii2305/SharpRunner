@@ -10,6 +10,7 @@ const requireRole = require("../middleware/requireRole");
 const {
   LESSON_DEFINITIONS,
   DEFAULT_LEVEL_PROGRESS,
+  PLAYABLE_LEVEL_KEYS,
 } = require("../constants/progressDefaults");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const LevelContentOverride = require("../models/LevelContentOverride");
@@ -24,6 +25,7 @@ const MAX_ANNOUNCEMENT_LENGTH = 1000;
 const EXPECTED_PROGRESS_ROWS_PER_STUDENT = DEFAULT_LEVEL_PROGRESS.length;
 const DEFAULT_LEVEL_KEYS = DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey);
 const LEVEL_KEY_SET = new Set(DEFAULT_LEVEL_KEYS);
+const PLAYABLE_LEVEL_KEY_SET = new Set(PLAYABLE_LEVEL_KEYS);
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -1018,6 +1020,107 @@ router.get("/classrooms/:classroomId/level-overrides", async (req, res) => {
 
     const overrides = await LevelContentOverride.findAll({ where: { classroomId } });
     return res.json(overrides);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const settings = req.body?.settings;
+    if (!Array.isArray(settings) || settings.length !== PLAYABLE_LEVEL_KEYS.length) {
+      return res.status(400).json({ message: "Settings must include every playable level" });
+    }
+
+    const seen = new Set();
+    const normalized = [];
+    const parseOptionalDate = (value, field) => {
+      if (value === null || value === undefined || value === "") return null;
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) throw new Error(`${field} must be a valid date`);
+      return date;
+    };
+    const parseDeduction = (value, field, fallback) => {
+      const number = value === "" || value == null ? fallback : Number(value);
+      if (!Number.isFinite(number) || number < 0 || number > 100) {
+        throw new Error(`${field} must be between 0 and 100`);
+      }
+      return Math.round(number * 100) / 100;
+    };
+
+    try {
+      settings.forEach((setting, index) => {
+        const levelKey = normalizeString(setting?.levelKey).toLowerCase();
+        if (!PLAYABLE_LEVEL_KEY_SET.has(levelKey) || seen.has(levelKey)) {
+          throw new Error("Settings contain an unknown or duplicate level");
+        }
+        seen.add(levelKey);
+        normalized.push({
+          levelKey,
+          isEnabled: setting.isEnabled !== false,
+          displayOrder: index + 1,
+          unlockAt: parseOptionalDate(setting.unlockAt, "unlockAt"),
+          dueAt: parseOptionalDate(setting.dueAt, "dueAt"),
+          hintsEnabled: setting.hintsEnabled !== false,
+          wrongAttemptDeduction: parseDeduction(
+            setting.wrongAttemptDeduction,
+            "wrongAttemptDeduction",
+            5,
+          ),
+          lateDeductionPerDay: parseDeduction(
+            setting.lateDeductionPerDay,
+            "lateDeductionPerDay",
+            3,
+          ),
+        });
+      });
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
+    }
+
+    for (const setting of normalized) {
+      const [row] = await LevelContentOverride.findOrCreate({
+        where: { classroomId, levelKey: setting.levelKey },
+        defaults: { classroomId, ...setting },
+      });
+      Object.assign(row, setting);
+      await row.save();
+    }
+
+    const saved = await LevelContentOverride.findAll({
+      where: { classroomId },
+      order: [["displayOrder", "ASC"]],
+    });
+    return res.json({ message: "Classroom level settings saved", settings: saved });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.delete("/classrooms/:classroomId/level-settings", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    await LevelContentOverride.destroy({ where: { classroomId } });
+    return res.json({ message: "Classroom levels reset to system defaults" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

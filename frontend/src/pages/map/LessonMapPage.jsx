@@ -74,23 +74,12 @@ function LessonMapPage() {
     [progressData],
   );
 
-  const tutorialComplete = useMemo(
-    () =>
-      Array.from({ length: 5 }, (_, index) =>
-        progressByKey.get(`tutorial-level-${index + 1}`),
-      ).every((row) => row?.isCompleted),
-    [progressByKey],
-  );
-
   const mapNodes = useMemo(() => {
-    const firstIncompleteIndex = LESSON_ONE_MAP_CONFIG.nodes.findIndex(
-      (node) => !progressByKey.get(getProgressKeyForMapNode(node))?.isCompleted,
-    );
-    return LESSON_ONE_MAP_CONFIG.nodes.map((node, index) => {
+    return LESSON_ONE_MAP_CONFIG.nodes.map((node) => {
       const row = progressByKey.get(getProgressKeyForMapNode(node));
       let status = "locked";
       if (row?.isCompleted) status = "completed";
-      else if (index === firstIncompleteIndex) status = "current";
+      else if (row?.isAccessible) status = "current";
       return {
         ...node,
         status,
@@ -104,13 +93,12 @@ function LessonMapPage() {
     const rows = Array.from({ length: ARRAYS_LEVEL_COUNT }, (_, index) =>
       progressByKey.get(`arrays-level-${index + 1}`),
     );
-    const firstIncompleteIndex = rows.findIndex((row) => !row?.isCompleted);
     return rows.map((row, index) => {
       const levelNumber = ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
       let status = "locked";
       if (row?.isCompleted) status = "completed";
-      else if (tutorialComplete && index === firstIncompleteIndex) status = "current";
+      else if (row?.isAccessible) status = "current";
       return {
         id: `arrays-level-${index + 1}`,
         levelNumber,
@@ -123,21 +111,20 @@ function LessonMapPage() {
         attemptCount: row?.attemptCount ?? 0,
       };
     });
-  }, [progressByKey, tutorialComplete]);
+  }, [progressByKey]);
 
-  const arraysComplete = arrayNodes.every((node) => node.status === "completed");
+  const arraysAvailable = arrayNodes.some((node) => node.status !== "locked");
 
   const functionNodes = useMemo(() => {
     const rows = Array.from({ length: FUNCTIONS_LEVEL_COUNT }, (_, index) =>
       progressByKey.get(`functions-level-${index + 1}`),
     );
-    const firstIncompleteIndex = rows.findIndex((row) => !row?.isCompleted);
     return rows.map((row, index) => {
       const levelNumber = FUNCTIONS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
       let status = "locked";
       if (row?.isCompleted) status = "completed";
-      else if (arraysComplete && index === firstIncompleteIndex) status = "current";
+      else if (row?.isAccessible) status = "current";
       return {
         id: `functions-level-${index + 1}`,
         levelNumber,
@@ -151,11 +138,9 @@ function LessonMapPage() {
         attemptCount: row?.attemptCount ?? 0,
       };
     });
-  }, [arraysComplete, progressByKey]);
+  }, [progressByKey]);
 
-  const functionsComplete = functionNodes.every(
-    (node) => node.status === "completed",
-  );
+  const functionsAvailable = functionNodes.some((node) => node.status !== "locked");
 
   const functionsArraysNodes = useMemo(() => {
     const rows = [
@@ -164,13 +149,12 @@ function LessonMapPage() {
       ),
       progressByKey.get("final-level-1"),
     ];
-    const firstIncompleteIndex = rows.findIndex((row) => !row?.isCompleted);
     return rows.map((row, index) => {
       const levelNumber = FUNCTIONS_ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
       let status = "locked";
       if (row?.isCompleted) status = "completed";
-      else if (functionsComplete && index === firstIncompleteIndex) status = "current";
+      else if (row?.isAccessible) status = "current";
       return {
         id: index < 4 ? `functions-with-arrays-level-${index + 1}` : "final-level-1",
         levelNumber,
@@ -183,15 +167,22 @@ function LessonMapPage() {
         attemptCount: row?.attemptCount ?? 0,
       };
     });
-  }, [functionsComplete, progressByKey]);
+  }, [progressByKey]);
+  const functionsArraysAvailable = functionsArraysNodes.some(
+    (node) => node.status !== "locked",
+  );
 
-  const inferredRegion = !tutorialComplete
-    ? "tutorial"
-    : arraysComplete
-      ? functionsComplete
-        ? "functions-arrays"
-        : "functions"
-      : "arrays";
+  const nextAssignedLevel = (progressData?.levels ?? []).find(
+    (level) => !level.isCompleted && level.isAccessible,
+  ) ?? (progressData?.levels ?? []).find((level) => !level.isCompleted);
+  const inferredRegion = nextAssignedLevel?.levelKey?.startsWith("arrays-")
+    ? "arrays"
+    : nextAssignedLevel?.levelKey?.startsWith("functions-with-arrays-") ||
+        nextAssignedLevel?.levelKey?.startsWith("final-")
+      ? "functions-arrays"
+      : nextAssignedLevel?.levelKey?.startsWith("functions-")
+        ? "functions"
+        : "tutorial";
   const activeRegion = selectedRegion ?? inferredRegion;
   const selectRegion = (region) => {
     setSelectedRegion(region);
@@ -266,14 +257,14 @@ function LessonMapPage() {
           progress: functionsArraysProgress,
           completedCount: functionsArraysCompletedCount,
           totalCount: FUNCTIONS_ARRAYS_NODE_COUNT,
-          unlocked: functionsComplete,
+          unlocked: functionsArraysAvailable,
           badge: "Region IV",
           eyebrow: "Functions with Arrays · Levels 1–5",
           title: "The Final Rituals",
           summary: "Carry arrays through reusable methods, restore the final wards, and face Bakunawa.",
-          headerDescription: functionsComplete
-            ? "Follow the final ritual path and select an available node to continue."
-            : "Complete the Functions & Methods region to unseal these final trials.",
+          headerDescription: functionsArraysAvailable
+            ? "Follow the teacher-assigned sequence and select an available node."
+            : "No level in this region is currently available.",
           notes: [
             "Pass one-dimensional arrays into methods and process every item.",
             "Restore two-dimensional grids through reusable method logic.",
@@ -288,14 +279,14 @@ function LessonMapPage() {
           progress: functionsProgress,
           completedCount: functionsCompletedCount,
           totalCount: FUNCTIONS_LEVEL_COUNT,
-          unlocked: arraysComplete,
+          unlocked: functionsAvailable,
           badge: "Region III",
           eyebrow: "Functions & Methods · Levels 1–11",
           title: "Functions & Methods",
           summary: "Name reusable actions, pass values, return results, and master recursive methods.",
-          headerDescription: arraysComplete
-            ? "Follow the ritual path and select an available Functions node to continue."
-            : "Complete all eight Arrays levels to unseal the Functions region.",
+          headerDescription: functionsAvailable
+            ? "Follow the teacher-assigned sequence and select an available Functions node."
+            : "No level in this region is currently available.",
           notes: [
             "Define and call reusable methods for protective rituals.",
             "Use parameters and return values to carry information between actions.",
@@ -309,14 +300,14 @@ function LessonMapPage() {
           progress: arraysProgress,
           completedCount: arraysCompletedCount,
           totalCount: ARRAYS_LEVEL_COUNT,
-          unlocked: tutorialComplete,
+          unlocked: arraysAvailable,
           badge: "Region II",
           eyebrow: "Arrays · Levels 6–13",
           title: "The Cursed Collections",
           summary: "Journey through Barangay Malumay and break the curse binding its collections.",
-          headerDescription: tutorialComplete
-            ? "Follow Kai through Barangay Malumay. Select an available node to continue."
-            : "Complete all five tutorial levels to unseal the first Arrays node.",
+          headerDescription: arraysAvailable
+            ? "Follow the teacher-assigned sequence and select an available Arrays node."
+            : "No level in this region is currently available.",
           notes: [
             "Build collections, read indexes, restore two-dimensional grids, and traverse every item.",
             "Level nodes use your current SharpRunner progress and unlock in curriculum order.",

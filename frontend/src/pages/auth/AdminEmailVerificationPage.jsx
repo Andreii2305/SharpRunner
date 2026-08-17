@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { Link, useSearchParams } from "react-router-dom";
 import { buildApiUrl } from "../../utils/auth";
+import useResendCooldown from "../../hooks/useResendCooldown";
 import styles from "./AdminInviteRegisterPage.module.css";
 
 function AdminEmailVerificationPage() {
@@ -11,6 +12,9 @@ function AdminEmailVerificationPage() {
   const [code, setCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const { secondsRemaining, startCooldown } = useResendCooldown(
+    searchParams.get("sent") === "1",
+  );
   const [isVerified, setIsVerified] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [notice, setNotice] = useState(
@@ -53,7 +57,13 @@ function AdminEmailVerificationPage() {
       );
       setCode("");
       setNotice(response.data.message);
+      startCooldown();
     } catch (error) {
+      if (error.response?.status === 429) {
+        startCooldown(
+          error.response.data?.retryAfter || error.response.headers?.["retry-after"],
+        );
+      }
       setErrorMessage(error.response?.data?.message || "Unable to send a new code.");
     } finally {
       setIsResending(false);
@@ -119,9 +129,13 @@ function AdminEmailVerificationPage() {
               type="button"
               className={styles.secondaryButton}
               onClick={resendCode}
-              disabled={isResending || !email.trim()}
+              disabled={isResending || secondsRemaining > 0 || !email.trim()}
             >
-              {isResending ? "Sending..." : "Send New Code"}
+              {isResending
+                ? "Sending..."
+                : secondsRemaining > 0
+                  ? `Send New Code (${secondsRemaining}s)`
+                  : "Send New Code"}
             </button>
           </form>
         )}

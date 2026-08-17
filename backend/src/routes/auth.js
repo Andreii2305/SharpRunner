@@ -25,6 +25,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const isGoogleAuthConfigured = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
 );
+const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
 
 const registerRateLimit = createRateLimit({
   windowMs: 60 * 60 * 1000,
@@ -404,6 +405,24 @@ router.post("/resend-verification", resendRateLimit, async (req, res) => {
     });
     if (!user || user.emailVerifiedAt || !user.password) {
       return res.json(genericResponse);
+    }
+
+    const latestVerification = await EmailVerificationToken.findOne({
+      where: { userId: user.id },
+      attributes: ["createdAt"],
+      order: [["createdAt", "DESC"]],
+    });
+    if (latestVerification?.createdAt) {
+      const elapsedMs = Date.now() - new Date(latestVerification.createdAt).getTime();
+      const remainingMs = VERIFICATION_RESEND_COOLDOWN_MS - elapsedMs;
+      if (remainingMs > 0) {
+        const retryAfter = Math.ceil(remainingMs / 1000);
+        res.set("Retry-After", String(retryAfter));
+        return res.status(429).json({
+          message: `Please wait ${retryAfter} seconds before requesting another code.`,
+          retryAfter,
+        });
+      }
     }
 
     await issueEmailVerification(user);

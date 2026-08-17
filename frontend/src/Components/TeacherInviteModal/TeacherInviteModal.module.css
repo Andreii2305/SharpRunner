@@ -1,0 +1,210 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 31, 47, 0.56);
+  backdrop-filter: blur(3px);
+  box-sizing: border-box;
+  animation: fadeIn 0.16s ease-out;
+}
+
+.dialog {
+  position: relative;
+  width: min(540px, 100%);
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  border: 1px solid #d6dce2;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 24px 70px rgba(17, 40, 61, 0.25);
+  padding: 28px;
+  box-sizing: border-box;
+  animation: popIn 0.2s ease-out;
+}
+
+.closeButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d9e1ea;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #65717c;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  border-color: #8da4b8;
+  color: #26547c;
+}
+
+.iconWrap {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  background: #e8f2fb;
+  color: #26547c;
+}
+
+.dialog h2 {
+  margin: 0;
+  color: #1e3d5b;
+  font-size: 1.4rem;
+}
+
+.description {
+  margin: 8px 34px 20px 0;
+  color: #65717c;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.nameRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+}
+
+.form label > span {
+  color: #4f5963;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.form input {
+  width: 100%;
+  border: 1px solid #c3d2e0;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #3f4a54;
+  font: inherit;
+  padding: 10px 11px;
+  box-sizing: border-box;
+}
+
+.form input:focus {
+  outline: none;
+  border-color: #26547c;
+  box-shadow: 0 0 0 3px rgba(38, 84, 124, 0.16);
+}
+
+.form input:disabled,
+.closeButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.form small {
+  color: #7b8792;
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.error {
+  margin: 0;
+  border-radius: 8px;
+  background: #fff1f3;
+  color: #c52d51;
+  font-size: 0.82rem;
+  padding: 9px 10px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.cancelButton,
+.inviteButton {
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.cancelButton {
+  border: 1px solid #d6dce2;
+  background: #ffffff;
+  color: #59636d;
+}
+
+.inviteButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #26547c;
+  background: #26547c;
+  color: #ffffff;
+}
+
+.cancelButton:hover {
+  border-color: #8da4b8;
+}
+
+.inviteButton:hover {
+  background: #1f4668;
+}
+
+.cancelButton:disabled,
+.inviteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 560px) {
+  .backdrop {
+    padding: 12px;
+  }
+
+  .dialog {
+    max-height: calc(100vh - 24px);
+    padding: 22px 18px;
+  }
+
+  .nameRow {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+  }
+
+  .cancelButton,
+  .inviteButton {
+    width: 100%;
+  }
+}

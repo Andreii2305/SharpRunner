@@ -300,21 +300,6 @@
   font-size: 0.82rem;
 }
 
-.teacherGrid input {
-  border: 1px solid var(--color-border-light);
-  border-radius: 8px;
-  padding: 9px 10px;
-  background: #ffffff;
-  font-size: 0.9rem;
-  color: var(--color-text-normal);
-}
-
-.teacherGrid input:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(38, 84, 124, 0.19);
-}
-
 .searchBox:focus-within,
 .filterWrap:focus-within {
   border-color: var(--color-primary);
@@ -338,57 +323,6 @@
 
 .addUserButton:hover {
   border-color: var(--color-slate);
-}
-
-.teacherForm {
-  border: 1px solid var(--color-slate);
-  background: var(--color-bg-soft);
-  border-radius: 10px;
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.teacherForm h3 {
-  margin: 0 0 10px;
-  color: var(--color-primary);
-  font-size: 0.98rem;
-}
-
-.teacherGrid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.teacherGrid label {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.teacherGrid span {
-  font-size: 0.76rem;
-  color: var(--color-text-normal);
-}
-
-.submitTeacherButton {
-  margin-top: 10px;
-  border: none;
-  background: var(--color-primary);
-  color: #ffffff;
-  border-radius: 8px;
-  padding: 9px 14px;
-  font-size: 0.86rem;
-  cursor: pointer;
-}
-
-.submitTeacherButton:hover {
-  background: color-mix(in srgb, var(--color-primary) 86%, #000000);
-}
-
-.submitTeacherButton:disabled {
-  cursor: not-allowed;
-  opacity: 0.7;
 }
 
 .tableWrap {
@@ -541,10 +475,6 @@
     min-width: unset;
   }
 
-  .teacherGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .statGrid {
     grid-template-columns: 1fr;
   }
@@ -585,7 +515,4 @@
     width: 100%;
   }
 
-  .teacherGrid {
-    grid-template-columns: 1fr;
-  }
 }

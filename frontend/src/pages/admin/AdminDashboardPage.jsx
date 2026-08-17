@@ -21,15 +21,8 @@ import {
   getUser,
 } from "../../utils/auth";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
+import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInviteModal.jsx";
 import styles from "./AdminDashboardPage.module.css";
-
-const INITIAL_FORM = {
-  firstName: "",
-  lastName: "",
-  username: "",
-  email: "",
-  password: "",
-};
 
 const formatLastUpdated = (timestamp) =>
   new Date(timestamp).toLocaleString(undefined, {
@@ -57,12 +50,12 @@ function AdminDashboardPage() {
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchText, setSearchText] = useState("");
-  const [teacherForm, setTeacherForm] = useState(INITIAL_FORM);
   const [isCreatingTeacher, setIsCreatingTeacher] = useState(false);
+  const [teacherInviteError, setTeacherInviteError] = useState("");
   const [updatingUserId, setUpdatingUserId] = useState(null);
   const [userPendingDeletion, setUserPendingDeletion] = useState(null);
   const [deletingUserId, setDeletingUserId] = useState(null);
-  const [showTeacherForm, setShowTeacherForm] = useState(false);
+  const [showTeacherInviteModal, setShowTeacherInviteModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
 
   const fetchDashboardData = useCallback(async () => {
@@ -158,27 +151,10 @@ function AdminDashboardPage() {
     }));
   }, [activityLogs]);
 
-  const onTeacherFieldChange = (event) => {
-    const { name, value } = event.target;
-    setTeacherForm((current) => ({
-      ...current,
-      [name]: value,
-    }));
-  };
-
-  const createTeacher = async (event) => {
-    event.preventDefault();
+  const createTeacher = async (teacherForm) => {
     setSuccessMessage("");
     setErrorMessage("");
-
-    const requiredValues = Object.values(teacherForm).every((value) =>
-      value.trim(),
-    );
-
-    if (!requiredValues) {
-      setErrorMessage("Please complete all teacher account fields.");
-      return;
-    }
+    setTeacherInviteError("");
 
     setIsCreatingTeacher(true);
 
@@ -192,14 +168,13 @@ function AdminDashboardPage() {
       );
 
       setSuccessMessage(
-        response.data.message ?? "Teacher account created successfully.",
+        response.data.message ?? "Teacher invitation sent successfully.",
       );
-      setTeacherForm(INITIAL_FORM);
-      setShowTeacherForm(false);
+      setShowTeacherInviteModal(false);
       await fetchDashboardData();
     } catch (error) {
-      setErrorMessage(
-        error.response?.data?.message ?? "Failed to create teacher account",
+      setTeacherInviteError(
+        error.response?.data?.message ?? "Failed to send teacher invitation",
       );
     } finally {
       setIsCreatingTeacher(false);
@@ -448,10 +423,13 @@ function AdminDashboardPage() {
             <button
               type="button"
               className={styles.addUserButton}
-              onClick={() => setShowTeacherForm((current) => !current)}
+              onClick={() => {
+                setTeacherInviteError("");
+                setShowTeacherInviteModal(true);
+              }}
             >
               <FiPlus size={15} />
-              {showTeacherForm ? "Close" : "Add user"}
+              Add user
             </button>
 
             <button
@@ -462,66 +440,6 @@ function AdminDashboardPage() {
               Refresh
             </button>
           </div>
-
-          {showTeacherForm && (
-            <form onSubmit={createTeacher} className={styles.teacherForm}>
-              <h3>Create Instructor Account</h3>
-              <div className={styles.teacherGrid}>
-                <label>
-                  <span>First name</span>
-                  <input
-                    type="text"
-                    name="firstName"
-                    value={teacherForm.firstName}
-                    onChange={onTeacherFieldChange}
-                  />
-                </label>
-                <label>
-                  <span>Last name</span>
-                  <input
-                    type="text"
-                    name="lastName"
-                    value={teacherForm.lastName}
-                    onChange={onTeacherFieldChange}
-                  />
-                </label>
-                <label>
-                  <span>Username</span>
-                  <input
-                    type="text"
-                    name="username"
-                    value={teacherForm.username}
-                    onChange={onTeacherFieldChange}
-                  />
-                </label>
-                <label>
-                  <span>Email</span>
-                  <input
-                    type="email"
-                    name="email"
-                    value={teacherForm.email}
-                    onChange={onTeacherFieldChange}
-                  />
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    name="password"
-                    value={teacherForm.password}
-                    onChange={onTeacherFieldChange}
-                  />
-                </label>
-              </div>
-              <button
-                type="submit"
-                className={styles.submitTeacherButton}
-                disabled={isCreatingTeacher}
-              >
-                {isCreatingTeacher ? "Creating..." : "Create Instructor"}
-              </button>
-            </form>
-          )}
 
           {errorMessage && <p className={styles.error}>{errorMessage}</p>}
           {successMessage && <p className={styles.success}>{successMessage}</p>}
@@ -646,6 +564,18 @@ function AdminDashboardPage() {
           if (!deletingUserId) setUserPendingDeletion(null);
         }}
       />
+      {showTeacherInviteModal && (
+        <TeacherInviteModal
+          isSubmitting={isCreatingTeacher}
+          errorMessage={teacherInviteError}
+          onInvite={createTeacher}
+          onClose={() => {
+            if (isCreatingTeacher) return;
+            setTeacherInviteError("");
+            setShowTeacherInviteModal(false);
+          }}
+        />
+      )}
     </div>
   );
 }

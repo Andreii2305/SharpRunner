@@ -7,7 +7,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const { logAdminActivity } = require("../services/adminActivityLogService");
 const { validateEmailAddress } = require("../services/emailValidationService");
-const { issueEmailVerification } = require("../services/emailVerificationService");
+const { sendTeacherInviteEmail } = require("../services/emailService");
 const { createRateLimit } = require("../middleware/rateLimit");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
@@ -289,7 +289,12 @@ router.post("/users/teacher", teacherCreationRateLimit, async (req, res) => {
     });
 
     try {
-      await issueEmailVerification(user);
+      await sendTeacherInviteEmail({
+        email: user.email,
+        firstName: user.firstName,
+        username: user.username,
+        temporaryPassword: password,
+      });
     } catch (error) {
       await user.destroy();
       throw error;
@@ -309,7 +314,7 @@ router.post("/users/teacher", teacherCreationRateLimit, async (req, res) => {
     });
 
     return res.status(201).json({
-      message: "Teacher account created. A verification email was sent.",
+      message: "Teacher account created. Login details were emailed.",
       user: sanitizeUser(user),
     });
   } catch (error) {

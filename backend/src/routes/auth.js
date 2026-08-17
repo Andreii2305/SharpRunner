@@ -225,11 +225,42 @@ router.post("/login", async (req, res) => {
     }
 
     if (!user.emailVerifiedAt) {
+      let verificationSent = false;
+
+      if (user.role === "teacher") {
+        const activeVerification = await EmailVerificationToken.findOne({
+          where: {
+            userId: user.id,
+            usedAt: null,
+            expiresAt: { [Op.gt]: new Date() },
+          },
+          order: [["createdAt", "DESC"]],
+        });
+
+        if (!activeVerification) {
+          try {
+            await issueEmailVerification(user);
+          } catch (error) {
+            console.error("Failed to start teacher email verification", error);
+            return res.status(error.statusCode || 503).json({
+              message: error.statusCode
+                ? error.message
+                : "Unable to send the verification code. Please try again.",
+            });
+          }
+        }
+
+        verificationSent = true;
+      }
+
       return res.status(403).json({
         code: "EMAIL_NOT_VERIFIED",
-        message: "Please verify your email before signing in.",
+        message: verificationSent
+          ? "A verification code was sent to your email."
+          : "Please verify your email before signing in.",
         email: user.email,
         role: user.role,
+        verificationSent,
       });
     }
 
@@ -412,6 +443,13 @@ router.post("/resend-verification", resendRateLimit, async (req, res) => {
       attributes: ["createdAt"],
       order: [["createdAt", "DESC"]],
     });
+
+    // Teacher OTP verification begins only after the first successful
+    // username/password login, not from the public resend form.
+    if (user.role === "teacher" && !latestVerification) {
+      return res.json(genericResponse);
+    }
+
     if (latestVerification?.createdAt) {
       const elapsedMs = Date.now() - new Date(latestVerification.createdAt).getTime();
       const remainingMs = VERIFICATION_RESEND_COOLDOWN_MS - elapsedMs;

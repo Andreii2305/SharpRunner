@@ -89,8 +89,8 @@ export default function TeacherInviteModal({
         </div>
         <h2 id="teacher-invite-title">Invite a Teacher</h2>
         <p className={styles.description}>
-          Create the teacher account and send a six-digit verification code to
-          their email. The account stays pending until they verify it.
+          Create the teacher account and email their login details. A
+          six-digit verification code will be sent after their first login.
         </p>
 
         <form className={styles.form} onSubmit={onSubmit}>
@@ -156,7 +156,7 @@ export default function TeacherInviteModal({
               autoComplete="new-password"
               disabled={isSubmitting}
             />
-            <small>Share this password with the teacher through a secure channel.</small>
+            <small>This temporary password will be included in the invitation email.</small>
           </label>
 
           {(validationMessage || errorMessage) && (

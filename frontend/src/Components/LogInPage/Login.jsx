@@ -61,7 +61,10 @@ const Login = () => {
         const verificationRoute = err.response.data.role === "admin"
           ? "/admin-verify-email"
           : "/verify-email";
-        navigate(`${verificationRoute}?email=${encodeURIComponent(email)}`);
+        const sentQuery = err.response.data.verificationSent ? "&sent=1" : "";
+        navigate(
+          `${verificationRoute}?email=${encodeURIComponent(email)}${sentQuery}`,
+        );
         return;
       }
       toast.error(err.response?.data?.message || "Login failed.");

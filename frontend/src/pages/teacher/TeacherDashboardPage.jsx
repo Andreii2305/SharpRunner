@@ -18,18 +18,6 @@ import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherDashboardPage.module.css";
 
 /* ─── Shared helpers ──────────────────────────────────────────── */
-const SECTION_OPTIONS = [
-  "BSIT 1A",
-  "BSIT 1B",
-  "BSIT 1C",
-  "BSIT 1D",
-  "BSIT 1E",
-  "BSIT 2A",
-  "BSIT 2B",
-  "BSIT 3A",
-  "BSIT 4A",
-];
-
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
 
 export const clampPercent = (v) => {
@@ -94,14 +82,14 @@ export function CreateClassModal({
           </label>
           <label className={styles.modalLabel}>
             <span>Section</span>
-            <select name="section" value={form.section} onChange={onChange}>
-              <option value="">Choose section</option>
-              {SECTION_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
+            <input
+              type="text"
+              name="section"
+              value={form.section}
+              onChange={onChange}
+              placeholder="e.g. BSIT 1A"
+              autoComplete="off"
+            />
           </label>
           <label className={styles.modalLabel}>
             <span>School year</span>

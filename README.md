@@ -237,6 +237,7 @@ or provider backup.
 - `/login` - login
 - `/signup` - student registration
 - `/verify-email` - manual email verification and link resend
+- `/admin-verify-email` - admin-invite OTP verification
 - `/dashboard` - student dashboard
 - `/join-class` - student class join
 - `/Map` - lesson map

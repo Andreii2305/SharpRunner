@@ -19,6 +19,7 @@ import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
 import GoogleCallbackPage from "./pages/auth/GoogleCallbackPage.jsx";
 import EmailVerificationPage from "./pages/auth/EmailVerificationPage.jsx";
+import AdminEmailVerificationPage from "./pages/auth/AdminEmailVerificationPage.jsx";
 import { ToastProvider } from "./Components/Toast/ToastProvider.jsx";
 
 const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
@@ -170,6 +171,7 @@ function App() {
         <Route path="/admin-invite" element={<AdminInviteRegisterPage />} />
         <Route path="/auth/callback" element={<GoogleCallbackPage />} />
         <Route path="/verify-email" element={<EmailVerificationPage />} />
+        <Route path="/admin-verify-email" element={<AdminEmailVerificationPage />} />
       </Routes>
     </BrowserRouter>
     </ToastProvider>

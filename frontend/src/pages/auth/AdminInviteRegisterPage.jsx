@@ -1,16 +1,12 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  buildApiUrl,
-  getHomeRouteByRole,
-  setToken,
-  setUser,
-} from "../../utils/auth";
+import { buildApiUrl } from "../../utils/auth";
 import styles from "./AdminInviteRegisterPage.module.css";
 
 function AdminInviteRegisterPage() {
   const navigate = useNavigate();
+  const submittingRef = useRef(false);
   const [formData, setFormData] = useState({
     inviteCode: "",
     firstName: "",
@@ -34,6 +30,7 @@ function AdminInviteRegisterPage() {
 
   const onSubmit = async (event) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     setErrorMessage("");
     setSuccessMessage("");
 
@@ -54,6 +51,7 @@ function AdminInviteRegisterPage() {
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
 
     try {
@@ -66,15 +64,22 @@ function AdminInviteRegisterPage() {
         password: formData.password,
       });
 
-      setToken(response.data.token);
-      setUser(response.data.user);
-      setSuccessMessage("Admin account created successfully.");
-      navigate(getHomeRouteByRole(response.data.user?.role), { replace: true });
+      setSuccessMessage(response.data.message);
+      navigate(
+        `/admin-verify-email?email=${encodeURIComponent(response.data.email)}&sent=1`,
+        { replace: true },
+      );
     } catch (error) {
+      if (error.response?.data?.code === "EMAIL_VERIFICATION_PENDING") {
+        const email = error.response.data.email || formData.email;
+        navigate(`/admin-verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       setErrorMessage(
         error.response?.data?.message ?? "Unable to create admin account."
       );
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

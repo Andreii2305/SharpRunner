@@ -124,6 +124,40 @@
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+.emailSummary {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  text-align: center;
+}
+
+.emailSummary span {
+  font-family: var(--mono);
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.emailSummary strong {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  overflow-wrap: anywhere;
+}
+
+.form .otpInput {
+  text-align: center;
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0.5rem;
+}
+
 /* ── Name Row ────────────────────────────────────────────── */
 .row {
   display: grid;
@@ -176,6 +210,32 @@
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+.form .secondaryButton {
+  margin-top: 4px;
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 1px solid rgba(59,130,246,0.3);
+  box-shadow: none;
+}
+
+.verifiedPanel {
+  display: grid;
+  gap: 16px;
+}
+
+.primaryLink {
+  display: block;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
 }
 
 /* ── Alerts ──────────────────────────────────────────────── */

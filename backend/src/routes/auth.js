@@ -228,6 +228,7 @@ router.post("/login", async (req, res) => {
         code: "EMAIL_NOT_VERIFIED",
         message: "Please verify your email before signing in.",
         email: user.email,
+        role: user.role,
       });
     }
 
@@ -413,7 +414,7 @@ router.post("/resend-verification", resendRateLimit, async (req, res) => {
   }
 });
 
-router.post("/register-admin-invite", async (req, res) => {
+router.post("/register-admin-invite", registerRateLimit, async (req, res) => {
   try {
     const firstName = normalizeString(req.body.firstName);
     const lastName = normalizeString(req.body.lastName);
@@ -434,6 +435,11 @@ router.post("/register-admin-invite", async (req, res) => {
       });
     }
 
+    const emailValidation = await validateEmailAddress(email);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ message: emailValidation.reason });
+    }
+
     if (!process.env.JWT_SECRET) {
       return res.status(500).json({ message: "Auth is not configured" });
     }
@@ -447,6 +453,22 @@ router.post("/register-admin-invite", async (req, res) => {
     }
 
     if (invite.usedAt) {
+      const invitedUser = invite.usedByUserId
+        ? await User.findByPk(invite.usedByUserId)
+        : null;
+      if (
+        invitedUser?.role === "admin" &&
+        invitedUser.status === "pending" &&
+        !invitedUser.emailVerifiedAt &&
+        invitedUser.email.toLowerCase() === email
+      ) {
+        return res.status(409).json({
+          code: "EMAIL_VERIFICATION_PENDING",
+          message: "This admin account is waiting for email verification.",
+          email: invitedUser.email,
+          role: "admin",
+        });
+      }
       return res.status(409).json({ message: "Invite code has already been used" });
     }
 
@@ -454,7 +476,7 @@ router.post("/register-admin-invite", async (req, res) => {
       return res.status(410).json({ message: "Invite code has expired" });
     }
 
-    if (invite.invitedEmail && invite.invitedEmail !== email) {
+    if (invite.invitedEmail && normalizeEmail(invite.invitedEmail) !== email) {
       return res.status(403).json({
         message: "This invite code is restricted to a different email",
       });
@@ -474,34 +496,39 @@ router.post("/register-admin-invite", async (req, res) => {
       username,
       email,
       role: "admin",
-      status: "active",
-      emailVerifiedAt: new Date(),
+      status: "pending",
+      emailVerifiedAt: null,
       authProvider: "password",
       password: hashedPassword,
     });
 
+    try {
+      await issueEmailVerification(user);
+    } catch (error) {
+      await user.destroy();
+      throw error;
+    }
+
     invite.usedAt = new Date();
     invite.usedByUserId = user.id;
-    await invite.save();
-
-    const token = createAuthToken(user.id, user.role ?? "admin");
+    try {
+      await invite.save();
+    } catch (error) {
+      await user.destroy();
+      throw error;
+    }
 
     return res.status(201).json({
-      message: "Admin account created successfully from invite",
-      token,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        email: user.email,
-        role: user.role ?? "admin",
-        status: user.status ?? "active",
-      },
+      message: "Admin account created. Check your email for the verification code.",
+      requiresEmailVerification: true,
+      email: user.email,
+      role: "admin",
     });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(err.statusCode || 500).json({
+      message: err.statusCode ? err.message : "Server error",
+    });
   }
 });
 

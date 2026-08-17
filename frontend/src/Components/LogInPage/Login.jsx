@@ -58,7 +58,10 @@ const Login = () => {
     } catch (err) {
       if (err.response?.data?.code === "EMAIL_NOT_VERIFIED") {
         const email = err.response.data.email || formData.identifier;
-        navigate(`/verify-email?email=${encodeURIComponent(email)}`);
+        const verificationRoute = err.response.data.role === "admin"
+          ? "/admin-verify-email"
+          : "/verify-email";
+        navigate(`${verificationRoute}?email=${encodeURIComponent(email)}`);
         return;
       }
       toast.error(err.response?.data?.message || "Login failed.");

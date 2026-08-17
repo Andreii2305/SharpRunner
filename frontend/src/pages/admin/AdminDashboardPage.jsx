@@ -22,6 +22,7 @@ import {
 } from "../../utils/auth";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInviteModal.jsx";
+import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import styles from "./AdminDashboardPage.module.css";
 
 const formatLastUpdated = (timestamp) =>
@@ -41,6 +42,7 @@ const formatTime = (timestamp) =>
 
 function AdminDashboardPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const adminUser = getUser();
   const [allUsers, setAllUsers] = useState([]);
   const [activityLogs, setActivityLogs] = useState([]);
@@ -170,6 +172,7 @@ function AdminDashboardPage() {
       setSuccessMessage(
         response.data.message ?? "Teacher invitation sent successfully.",
       );
+      toast.success(`Teacher invitation sent to ${teacherForm.email}.`);
       setShowTeacherInviteModal(false);
       await fetchDashboardData();
     } catch (error) {

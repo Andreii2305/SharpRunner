@@ -59,8 +59,8 @@ function TeacherClassesPage() {
     description: "",
   });
   const [rosterModal, setRosterModal] = useState(null);
-  const [rosterStudents, setRosterStudents] = useState([]);
-  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterStudents] = useState([]);
+  const [rosterLoading] = useState(false);
   const [rosterTab, setRosterTab] = useState("students");
   const rosterClassCode = useRef("");
 
@@ -88,25 +88,7 @@ function TeacherClassesPage() {
     fetchData();
   }, []);
 
-  const openRoster = async (classId, className, classCode) => {
-    setRosterModal({ classId, className, accent: classAccents.get(classId) ?? ACCENTS[0] });
-    rosterClassCode.current = classCode;
-    setRosterStudents([]);
-    setRosterTab("students");
-    setRosterLoading(true);
-    try {
-      const res = await axios.get(
-        buildApiUrl(`/api/teacher/classrooms/${classId}/students`),
-        { headers: getAuthHeaders() },
-      );
-      setRosterStudents(res.data?.students ?? []);
-    } catch {
-      toast.error("Failed to load roster.");
-      setRosterModal(null);
-    } finally {
-      setRosterLoading(false);
-    }
-  };
+  const openRoster = (classId) => navigate(`/teacher/classrooms/${classId}`);
 
   const onCreateClass = async (e) => {
     e.preventDefault();
@@ -299,9 +281,9 @@ function TeacherClassesPage() {
                           <button
                             type="button"
                             className={pgStyles.cardBtn}
-                            onClick={() => openRoster(item.classId, item.className, item.classCode)}
+                            onClick={() => openRoster(item.classId)}
                           >
-                            <FiList size={11} /> View Roster
+                            <FiList size={11} /> Open Class
                           </button>
                           <button
                             type="button"

@@ -12,6 +12,7 @@ import TeacherClassesPage from "./pages/teacher/TeacherClassesPage.jsx";
 import TeacherStudentsPage from "./pages/teacher/TeacherStudentsPage.jsx";
 import TeacherAnalyticsPage from "./pages/teacher/TeacherAnalyticsPage.jsx";
 import TeacherAnnouncementsPage from "./pages/teacher/TeacherAnnouncementsPage.jsx";
+import TeacherClassDetailPage from "./pages/teacher/TeacherClassDetailPage.jsx";
 import JoinClassPage from "./pages/student/JoinClassPage.jsx";
 import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
 import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
@@ -139,6 +140,14 @@ function App() {
           element={
             <TeacherRoute>
               <TeacherAnnouncementsPage />
+            </TeacherRoute>
+          }
+        />
+        <Route
+          path="/teacher/classrooms/:classroomId"
+          element={
+            <TeacherRoute>
+              <TeacherClassDetailPage />
             </TeacherRoute>
           }
         />

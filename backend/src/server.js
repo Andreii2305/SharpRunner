@@ -11,6 +11,7 @@ const { ensureProgressGradingColumns } = require("./services/progressSchemaServi
 const { ensureLevelContentOverridesTable } = require("./services/levelContentSchemaService");
 const { ensureGoogleAuthColumns } = require("./services/googleAuthSchemaService");
 const { ensureEmailVerificationColumns } = require("./services/emailVerificationSchemaService");
+const { ensureClassroomLessonsTable } = require("./services/classroomLessonSchemaService");
 
 const startServer = async () => {
   try {
@@ -23,6 +24,7 @@ const startServer = async () => {
     await ensureLevelContentOverridesTable();
     await ensureGoogleAuthColumns();
     await ensureEmailVerificationColumns();
+    await ensureClassroomLessonsTable();
     console.log("Database synced");
 
     const PORT = process.env.PORT || 5000;

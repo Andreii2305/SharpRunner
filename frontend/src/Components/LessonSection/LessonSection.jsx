@@ -301,6 +301,7 @@ function LessonSection() {
   const toast = useToast();
   const [progressLessons, setProgressLessons] = useState([]);
   const [lessonSeed, setLessonSeed] = useState([]);
+  const [classroomLessons, setClassroomLessons] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -328,9 +329,11 @@ function LessonSection() {
 
       if (lessonResult.status === "fulfilled") {
         setLessonSeed(lessonResult.value.data?.lessons ?? []);
+        setClassroomLessons(lessonResult.value.data?.classroomLessons ?? []);
       } else {
         console.error("Failed to load lesson content", lessonResult.reason);
         setLessonSeed([]);
+        setClassroomLessons([]);
       }
     };
 
@@ -397,6 +400,37 @@ function LessonSection() {
             />
           ))}
         </div>
+
+        {classroomLessons.length > 0 && (
+          <>
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionTitle}>Lessons from your teacher</div>
+              <div className={styles.sectionCount}>{classroomLessons.length} assigned</div>
+            </div>
+            <div className={styles.lessonsGrid}>
+              {classroomLessons.map((lesson) => (
+                <div className={`${styles.lessonCard} ${styles.cardActive}`} key={`class-${lesson.id}`}>
+                  <div className={`${styles.cardIcon} ${styles.iconWrapActive}`}>
+                    <LessonIcon status="active" />
+                  </div>
+                  <div className={styles.cardBody}>
+                    <div className={styles.cardTop}>
+                      <span className={styles.cardTitle}>{lesson.title}</span>
+                      <span className={`${styles.cardBadge} ${styles.badgeActive}`}>Assigned</span>
+                    </div>
+                    <p className={styles.cardRegion}>Your classroom</p>
+                    <p className={styles.cardDesc}>{lesson.description || "No additional instructions."}</p>
+                    {lesson.dueAt && (
+                      <div className={styles.progressLabel}>
+                        Due {new Date(lesson.dueAt).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

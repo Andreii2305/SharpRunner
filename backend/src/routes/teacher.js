@@ -14,6 +14,7 @@ const {
 } = require("../constants/progressDefaults");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const LevelContentOverride = require("../models/LevelContentOverride");
+const ClassroomLesson = require("../models/ClassroomLesson");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -22,6 +23,8 @@ const CLASS_CODE_LENGTH = 6;
 const CLASS_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
 const MAX_ANNOUNCEMENT_LENGTH = 1000;
+const MAX_LESSON_TITLE_LENGTH = 160;
+const MAX_LESSON_DESCRIPTION_LENGTH = 4000;
 const EXPECTED_PROGRESS_ROWS_PER_STUDENT = DEFAULT_LEVEL_PROGRESS.length;
 const DEFAULT_LEVEL_KEYS = DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey);
 const LEVEL_KEY_SET = new Set(DEFAULT_LEVEL_KEYS);
@@ -1001,6 +1004,94 @@ router.get("/classrooms/:classroomId/students", async (req, res) => {
       .sort((a, b) => b.progressPercent - a.progressPercent);
 
     return res.json({ classroom: sanitizeClassroom(classroom), students: studentsData });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/classrooms/:classroomId/lessons", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const lessons = await ClassroomLesson.findAll({
+      where: { classroomId },
+      order: [["createdAt", "DESC"]],
+    });
+
+    return res.json({ classroom: sanitizeClassroom(classroom), lessons });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/classrooms/:classroomId/lessons", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const title = normalizeString(req.body?.title);
+    const description = normalizeString(req.body?.description);
+    if (!title) return res.status(400).json({ message: "Lesson title is required" });
+    if (title.length > MAX_LESSON_TITLE_LENGTH) {
+      return res.status(400).json({ message: `Lesson title must not exceed ${MAX_LESSON_TITLE_LENGTH} characters` });
+    }
+    if (description.length > MAX_LESSON_DESCRIPTION_LENGTH) {
+      return res.status(400).json({ message: `Lesson description must not exceed ${MAX_LESSON_DESCRIPTION_LENGTH} characters` });
+    }
+
+    let dueAt = null;
+    if (req.body?.dueAt) {
+      dueAt = new Date(req.body.dueAt);
+      if (Number.isNaN(dueAt.getTime())) {
+        return res.status(400).json({ message: "Due date must be valid" });
+      }
+    }
+
+    const lesson = await ClassroomLesson.create({
+      classroomId,
+      title,
+      description: description || null,
+      dueAt,
+      isPublished: true,
+    });
+
+    return res.status(201).json({ message: "Lesson added to classroom", lesson });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.delete("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const lessonId = parseInteger(req.params.lessonId);
+    if (!classroomId || !lessonId) return res.status(400).json({ message: "Invalid lesson id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const deleted = await ClassroomLesson.destroy({ where: { id: lessonId, classroomId } });
+    if (!deleted) return res.status(404).json({ message: "Lesson not found" });
+    return res.json({ message: "Lesson removed" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

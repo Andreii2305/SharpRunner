@@ -32,6 +32,24 @@ const formatFileSize = (value) => {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 };
 const getFileExtension = (name = "") => name.includes(".") ? name.split(".").pop().toUpperCase() : "FILE";
+const emptyContentForm = (contentType = "lesson") => ({ contentType, title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100, rubric: [], feedbackReleaseAt: "", allowLateSubmissions: true, maxAttempts: 0, allowedFileTypes: "", maxFileSizeMb: 100, assignedStudentIds: [] });
+
+function AssignmentSettings({ form, setForm, students }) {
+  if (form.contentType !== "assignment") return null;
+  const updateRubric = (index, changes) => setForm((current) => ({ ...current, rubric: current.rubric.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item) }));
+  return <div className={detailStyles.assignmentSettings}>
+    <fieldset><legend>Submission policies</legend><div className={detailStyles.settingsGrid}><label>Maximum attempts <input type="number" min="0" max="100" value={form.maxAttempts} onChange={(event) => setForm((current) => ({ ...current, maxAttempts: event.target.value }))} /><small>0 means unlimited</small></label><label>Maximum file size <span><input type="number" min="1" max="100" value={form.maxFileSizeMb} onChange={(event) => setForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))} /> MB</span></label><label>Accepted extensions <input value={form.allowedFileTypes} onChange={(event) => setForm((current) => ({ ...current, allowedFileTypes: event.target.value }))} placeholder="pdf, docx, png (blank = any safe type)" /></label><label className={detailStyles.checkSetting}><input type="checkbox" checked={form.allowLateSubmissions} onChange={(event) => setForm((current) => ({ ...current, allowLateSubmissions: event.target.checked }))} /> Accept late submissions</label><label>Release grades and feedback <input type="datetime-local" value={form.feedbackReleaseAt} onChange={(event) => setForm((current) => ({ ...current, feedbackReleaseAt: event.target.value }))} /><small>Blank releases feedback immediately</small></label></div></fieldset>
+    <fieldset><legend>Audience</legend><label className={detailStyles.audienceAll}><input type="checkbox" checked={!form.assignedStudentIds.length} onChange={(event) => event.target.checked && setForm((current) => ({ ...current, assignedStudentIds: [] }))} /> Entire class</label><div className={detailStyles.audienceList}>{students.map((student) => <label key={student.userId}><input type="checkbox" checked={!form.assignedStudentIds.length || form.assignedStudentIds.includes(student.userId)} onChange={() => setForm((current) => { const currentIds = current.assignedStudentIds.length ? current.assignedStudentIds : students.map((item) => item.userId); const next = currentIds.includes(student.userId) ? currentIds.filter((id) => id !== student.userId) : [...currentIds, student.userId]; return { ...current, assignedStudentIds: next.length === students.length ? [] : next }; })} /> {student.studentName}</label>)}</div></fieldset>
+    <fieldset><legend>Rubric</legend>{form.rubric.map((criterion, index) => <div className={detailStyles.rubricRow} key={criterion.id}><input value={criterion.title} onChange={(event) => updateRubric(index, { title: event.target.value })} placeholder="Criterion" /><input type="number" min="1" value={criterion.points} onChange={(event) => updateRubric(index, { points: event.target.value })} aria-label={`Points for criterion ${index + 1}`} /><button type="button" onClick={() => setForm((current) => ({ ...current, rubric: current.rubric.filter((_, itemIndex) => itemIndex !== index) }))}><FiTrash2 /></button></div>)}<button type="button" className={detailStyles.addCriterion} onClick={() => setForm((current) => ({ ...current, rubric: [...current.rubric, { id: `criterion-${Date.now()}`, title: "", points: 10 }] }))}><FiPlus /> Add criterion</button>{form.rubric.length > 0 && <small>Rubric total: {form.rubric.reduce((sum, item) => sum + (Number(item.points) || 0), 0)} points</small>}</fieldset>
+  </div>;
+}
+
+function RubricScoring({ rubric, value, onChange }) {
+  if (!rubric?.length) return null;
+  const scores = value ?? [];
+  const update = (criterion, score) => onChange(rubric.map((item) => item.id === criterion.id ? { id: item.id, score: Math.min(Number(item.points) || 0, Math.max(0, Number(score) || 0)) } : scores.find((entry) => entry.id === item.id) ?? { id: item.id, score: 0 }));
+  return <div className={detailStyles.rubricScoring}><strong>Rubric scoring</strong>{rubric.map((criterion) => <label key={criterion.id}><span>{criterion.title}</span><span><input type="number" min="0" max={criterion.points} value={scores.find((entry) => entry.id === criterion.id)?.score ?? 0} onChange={(event) => update(criterion, event.target.value)} /> / {criterion.points}</span></label>)}</div>;
+}
 
 function TeacherClassDetailPage() {
   const { classroomId } = useParams();
@@ -48,10 +66,10 @@ function TeacherClassDetailPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [attachingLessonId, setAttachingLessonId] = useState(null);
   const [formError, setFormError] = useState("");
-  const [lessonForm, setLessonForm] = useState({ contentType: "lesson", title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
+  const [lessonForm, setLessonForm] = useState(emptyContentForm());
   const [lessonFiles, setLessonFiles] = useState([]);
   const [editingLesson, setEditingLesson] = useState(null);
-  const [editForm, setEditForm] = useState({ contentType: "lesson", title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
+  const [editForm, setEditForm] = useState(emptyContentForm());
   const [editError, setEditError] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -61,7 +79,10 @@ function TeacherClassDetailPage() {
   const [reviewLoading, setReviewLoading] = useState(false);
   const [contentFilter, setContentFilter] = useState("all");
   const [selectedSubmission, setSelectedSubmission] = useState(null);
-  const [gradeForm, setGradeForm] = useState({ grade: "", feedback: "" });
+  const [gradeForm, setGradeForm] = useState({ grade: "", feedback: "", rubricScores: [] });
+  const [management, setManagement] = useState({ storage: null, audits: [], insights: null });
+  const [historyLesson, setHistoryLesson] = useState(null);
+  const [versions, setVersions] = useState([]);
   const [publishTarget, setPublishTarget] = useState(null);
   const [draggedLessonId, setDraggedLessonId] = useState(null);
 
@@ -69,13 +90,15 @@ function TeacherClassDetailPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const [rosterResult, lessonResult] = await Promise.all([
+      const [rosterResult, lessonResult, managementResult] = await Promise.all([
         axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/students`), { headers: getAuthHeaders() }),
         axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons`), { headers: getAuthHeaders() }),
+        axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/classwork-management`), { headers: getAuthHeaders() }).catch(() => ({ data: null })),
       ]);
       setClassroom(rosterResult.data?.classroom ?? lessonResult.data?.classroom ?? null);
       setStudents(rosterResult.data?.students ?? []);
       setLessons(lessonResult.data?.lessons ?? []);
+      setManagement(managementResult.data ?? { storage: null, audits: [], insights: null });
     } catch (error) {
       setLoadError(error.response?.data?.message ?? "Failed to load classroom.");
     } finally {
@@ -84,6 +107,18 @@ function TeacherClassDetailPage() {
   }, [classroomId]);
 
   useEffect(() => { loadClass(); }, [loadClass]);
+  useEffect(() => {
+    if (!showAddLesson) return undefined;
+    const timer = window.setTimeout(() => window.localStorage.setItem(`classwork-draft:${classroomId}:${lessonForm.contentType}`, JSON.stringify(lessonForm)), 500);
+    return () => window.clearTimeout(timer);
+  }, [showAddLesson, classroomId, lessonForm]);
+  useEffect(() => {
+    if (!selectedSubmission || !reviewLesson) return;
+    setGradeForm({
+      grade: selectedSubmission.grade ?? "", feedback: selectedSubmission.feedback ?? "",
+      rubricScores: (reviewLesson.rubric ?? []).map((criterion) => selectedSubmission.rubricScores?.find((score) => score.id === criterion.id) ?? { id: criterion.id, score: 0 }),
+    });
+  }, [selectedSubmission, reviewLesson]);
 
   const analytics = useMemo(() => {
     const average = (values) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
@@ -112,6 +147,13 @@ function TeacherClassDetailPage() {
       if (lessonForm.publishAt) payload.append("publishAt", new Date(lessonForm.publishAt).toISOString());
       payload.append("isPublished", String(lessonForm.isPublished));
       payload.append("maxScore", String(lessonForm.maxScore));
+      payload.append("rubric", JSON.stringify(lessonForm.rubric));
+      payload.append("assignedStudentIds", JSON.stringify(lessonForm.assignedStudentIds));
+      payload.append("allowedFileTypes", JSON.stringify(lessonForm.allowedFileTypes.split(",").map((item) => item.trim()).filter(Boolean)));
+      payload.append("allowLateSubmissions", String(lessonForm.allowLateSubmissions));
+      payload.append("maxAttempts", String(lessonForm.maxAttempts));
+      payload.append("maxFileSizeMb", String(lessonForm.maxFileSizeMb));
+      if (lessonForm.feedbackReleaseAt) payload.append("feedbackReleaseAt", new Date(lessonForm.feedbackReleaseAt).toISOString());
       lessonFiles.forEach((file) => payload.append("files", file));
       const response = await axios.post(
         buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons`),
@@ -124,7 +166,8 @@ function TeacherClassDetailPage() {
         },
       );
       setLessons((current) => [response.data.lesson, ...current]);
-      setLessonForm({ contentType: "lesson", title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
+      window.localStorage.removeItem(`classwork-draft:${classroomId}:${lessonForm.contentType}`);
+      setLessonForm(emptyContentForm());
       setLessonFiles([]);
       setShowAddLesson(false);
       toast.success(`${lessonForm.contentType === "assignment" ? "Assignment" : "Lesson"} added to this class.`);
@@ -212,6 +255,10 @@ function TeacherClassDetailPage() {
       publishAt: toDateTimeLocal(lesson.publishAt),
       isPublished: lesson.isPublished,
       maxScore: lesson.maxScore ?? 100,
+      rubric: lesson.rubric ?? [], feedbackReleaseAt: toDateTimeLocal(lesson.feedbackReleaseAt),
+      allowLateSubmissions: lesson.allowLateSubmissions !== false, maxAttempts: lesson.maxAttempts ?? 0,
+      allowedFileTypes: (lesson.allowedFileTypes ?? []).join(", "), maxFileSizeMb: lesson.maxFileSizeMb ?? 100,
+      assignedStudentIds: lesson.assignedStudentIds ?? [],
     });
     setEditError("");
   };
@@ -232,6 +279,10 @@ function TeacherClassDetailPage() {
           publishAt: editForm.publishAt ? new Date(editForm.publishAt).toISOString() : null,
           isPublished: editForm.isPublished,
           maxScore: Number(editForm.maxScore) || 100,
+          rubric: editForm.rubric, feedbackReleaseAt: editForm.feedbackReleaseAt ? new Date(editForm.feedbackReleaseAt).toISOString() : null,
+          allowLateSubmissions: editForm.allowLateSubmissions, maxAttempts: Number(editForm.maxAttempts) || 0,
+          allowedFileTypes: editForm.allowedFileTypes.split(",").map((item) => item.trim()).filter(Boolean),
+          maxFileSizeMb: Number(editForm.maxFileSizeMb) || 100, assignedStudentIds: editForm.assignedStudentIds,
         },
         { headers: getAuthHeaders() },
       );
@@ -299,6 +350,18 @@ function TeacherClassDetailPage() {
     catch { toast.error("Unable to reorder classwork."); loadClass(); }
   };
 
+  const moveLesson = (lessonId, direction) => {
+    const index = lessons.findIndex((item) => item.id === lessonId);
+    const target = lessons[index + direction];
+    if (index >= 0 && target) reorderLessons(lessonId, target.id);
+  };
+
+  const moveAttachment = (lesson, attachmentId, direction) => {
+    const index = (lesson.attachments || []).findIndex((item) => item.id === attachmentId);
+    const target = lesson.attachments?.[index + direction];
+    if (index >= 0 && target) reorderAttachments(lesson, attachmentId, target.id);
+  };
+
   const duplicateLesson = async (lesson) => {
     try {
       const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/duplicate`), {}, { headers: getAuthHeaders() });
@@ -306,11 +369,39 @@ function TeacherClassDetailPage() {
     } catch (error) { toast.error(error.response?.data?.message ?? "Unable to duplicate classwork."); }
   };
 
+  const openVersionHistory = async (lesson) => {
+    setHistoryLesson(lesson); setVersions([]);
+    try {
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/versions`), { headers: getAuthHeaders() });
+      setVersions(response.data?.versions ?? []);
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to load version history."); }
+  };
+
+  const restoreVersion = async (version) => {
+    if (!historyLesson) return;
+    try {
+      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${historyLesson.id}/versions/${version.id}/restore`), {}, { headers: getAuthHeaders() });
+      setLessons((current) => current.map((item) => item.id === historyLesson.id ? { ...item, ...response.data.lesson, stats: item.stats } : item));
+      setHistoryLesson(null); toast.success(`Version ${version.versionNumber} restored.`); loadClass();
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to restore this version."); }
+  };
+
+  const releaseFeedback = async (lesson) => {
+    try {
+      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/release-feedback`), {}, { headers: getAuthHeaders() });
+      setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, feedbackReleaseAt: response.data.feedbackReleaseAt ?? null } : item));
+      toast.success("Grades and feedback are now visible to students.");
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to release feedback."); }
+  };
+
   const setPublication = async (lesson, isPublished) => {
     try {
       const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}`), {
         title: lesson.title, description: lesson.description || "", contentType: lesson.contentType,
         dueAt: lesson.dueAt, publishAt: isPublished ? lesson.publishAt : null, isPublished, maxScore: lesson.maxScore,
+        rubric: lesson.rubric, feedbackReleaseAt: lesson.feedbackReleaseAt, allowLateSubmissions: lesson.allowLateSubmissions,
+        maxAttempts: lesson.maxAttempts, allowedFileTypes: lesson.allowedFileTypes, maxFileSizeMb: lesson.maxFileSizeMb,
+        assignedStudentIds: lesson.assignedStudentIds,
       }, { headers: getAuthHeaders() });
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, ...response.data.lesson, stats: item.stats } : item));
       toast.success(isPublished ? "Published to the class." : "Classwork moved to drafts.");
@@ -324,7 +415,7 @@ function TeacherClassDetailPage() {
     try {
       const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/submissions`), { headers: getAuthHeaders() });
       const loaded = response.data?.submissions ?? []; setSubmissions(loaded);
-      if (loaded[0]) { setSelectedSubmission(loaded[0]); setGradeForm({ grade: loaded[0].grade ?? "", feedback: loaded[0].feedback ?? "" }); }
+      if (loaded[0]) { setSelectedSubmission(loaded[0]); setGradeForm({ grade: loaded[0].grade ?? "", feedback: loaded[0].feedback ?? "", rubricScores: lesson.rubric?.map((criterion) => loaded[0].rubricScores?.find((score) => score.id === criterion.id) ?? { id: criterion.id, score: 0 }) ?? [] }); }
     } catch (error) { toast.error(error.response?.data?.message ?? "Unable to load submissions."); }
     finally { setReviewLoading(false); }
   };
@@ -332,7 +423,7 @@ function TeacherClassDetailPage() {
   const gradeSubmission = async (status = "graded") => {
     if (!selectedSubmission) return;
     try {
-      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${reviewLesson.id}/submissions/${selectedSubmission.id}/grade`), { grade: Number(gradeForm.grade), feedback: gradeForm.feedback, status }, { headers: getAuthHeaders() });
+      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${reviewLesson.id}/submissions/${selectedSubmission.id}/grade`), { grade: Number(gradeForm.grade), feedback: gradeForm.feedback, rubricScores: gradeForm.rubricScores, status }, { headers: getAuthHeaders() });
       const updated = { ...selectedSubmission, ...response.data.submission }; setSelectedSubmission(updated);
       const nextSubmissions = submissions.map((item) => item.id === updated.id ? updated : item); setSubmissions(nextSubmissions);
       setLessons((current) => current.map((item) => item.id === reviewLesson.id ? { ...item, stats: { ...item.stats, graded: nextSubmissions.filter((entry) => entry.status === "graded").length } } : item));
@@ -359,7 +450,9 @@ function TeacherClassDetailPage() {
   };
 
   const openCreateContent = (contentType) => {
-    setLessonForm({ contentType, title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
+    let restored = null;
+    try { restored = JSON.parse(window.localStorage.getItem(`classwork-draft:${classroomId}:${contentType}`)); } catch { restored = null; }
+    setLessonForm(restored ? { ...emptyContentForm(contentType), ...restored, contentType } : emptyContentForm(contentType));
     setLessonFiles([]); setFormError(""); setShowAddLesson(true);
   };
 
@@ -420,12 +513,14 @@ function TeacherClassDetailPage() {
                 </table></div>
               ) : <div className={detailStyles.emptyState}><FiUsers /><h2>No students enrolled yet</h2><p>Share class code <strong>{classroom?.classCode}</strong> so students can join.</p></div>
             ) : activeTab === "analytics" ? (
-              <div className={detailStyles.analyticsGrid}>
+              <div className={detailStyles.analyticsDashboard}><div className={detailStyles.analyticsGrid}>
                 <div><FiTrendingUp /><strong>{analytics.avgProgress}%</strong><span>Average progress</span></div>
                 <div><FiAward /><strong>{analytics.avgScore}</strong><span>Average score</span></div>
-                <div><FiBarChart2 /><strong>{analytics.completions}</strong><span>Total completions</span></div>
-                <div><FiUsers /><strong>{analytics.playing}</strong><span>Playing now</span></div>
-              </div>
+                <div><FiBarChart2 /><strong>{management.insights?.submissions ?? 0}</strong><span>Assignment submissions</span></div>
+                <div><FiCheckCircle /><strong>{management.insights?.graded ?? 0}</strong><span>Graded submissions</span></div>
+                <div><FiCalendar /><strong>{management.insights?.late ?? 0}</strong><span>Late submissions</span></div>
+                <div><FiFile /><strong>{formatFileSize(management.storage?.usedBytes)}</strong><span>Classwork storage</span></div>
+              </div><div className={detailStyles.managementGrid}><section><h3>Students needing attention</h3>{management.insights?.attention?.slice(0, 8).map((entry) => { const student = students.find((item) => item.userId === entry.studentId); return <div key={entry.studentId}><span>{student?.studentName ?? `Student ${entry.studentId}`}</span><small>{entry.missing} missing · {entry.submitted} submitted{entry.averageGrade != null ? ` · ${entry.averageGrade} avg` : ""}</small></div>; })}</section><section><h3>Recent classwork activity</h3>{management.audits?.slice(0, 8).map((audit) => <div key={audit.id}><span>{String(audit.action || "updated").replaceAll("_", " ")}</span><small>{new Date(audit.createdAt).toLocaleString()} · {audit.actor?.firstName || audit.actor?.username || "Teacher"}</small></div>)}</section></div></div>
             ) : (
               <div>
                 <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Lessons are view-only materials. Assignments collect and grade student work.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("lesson")}><FiPlus /> Add lesson</button><button className={styles.btnPrimary} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button></div></div>
@@ -437,7 +532,7 @@ function TeacherClassDetailPage() {
                       {lesson.contentType === "assignment" && <button type="button" onClick={() => openSubmissions(lesson)}><FiCheckCircle /> Review ({lesson.stats?.submitted ?? 0})</button>}
                       <button type="button" onClick={() => previewLesson(lesson)}><FiEye /> Preview</button>
                       <button type="button" onClick={() => openEditLesson(lesson)}><FiEdit2 /> Edit</button>
-                      <details className={detailStyles.cardMenu}><summary aria-label={`More actions for ${lesson.title}`}><FiMoreVertical /></summary><div><button type="button" onClick={() => duplicateLesson(lesson)}><FiCopy /> Duplicate</button><button type="button" onClick={() => lesson.isPublished ? setPublication(lesson, false) : setPublishTarget({ kind: "publish", lesson, title: lesson.title, contentType: lesson.contentType })}>{lesson.isPublished ? <><FiEyeOff /> Unpublish</> : <><FiEye /> Publish</>}</button><button type="button" className={detailStyles.menuDanger} onClick={() => setDeleteTarget(lesson)}><FiTrash2 /> Delete</button></div></details>
+                      <details className={detailStyles.cardMenu}><summary aria-label={`More actions for ${lesson.title}`}><FiMoreVertical /></summary><div><button type="button" onClick={() => moveLesson(lesson.id, -1)}><FiMove /> Move earlier</button><button type="button" onClick={() => moveLesson(lesson.id, 1)}><FiMove /> Move later</button><button type="button" onClick={() => openVersionHistory(lesson)}><FiList /> Version history</button><button type="button" onClick={() => duplicateLesson(lesson)}><FiCopy /> Duplicate</button>{lesson.contentType === "assignment" && lesson.feedbackReleaseAt && new Date(lesson.feedbackReleaseAt) > new Date() && <button type="button" onClick={() => releaseFeedback(lesson)}><FiCheckCircle /> Release feedback now</button>}<button type="button" onClick={() => lesson.isPublished ? setPublication(lesson, false) : setPublishTarget({ kind: "publish", lesson, title: lesson.title, contentType: lesson.contentType })}>{lesson.isPublished ? <><FiEyeOff /> Unpublish</> : <><FiEye /> Publish</>}</button><button type="button" className={detailStyles.menuDanger} onClick={() => setDeleteTarget(lesson)}><FiTrash2 /> Delete</button></div></details>
                     </div>
                   </div>
                 ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>{lessons.length ? "Nothing in this filter" : "No class content yet"}</h2><p>{lessons.length ? "Choose another filter or create new classwork." : "Add a lesson material or publish an assignment for this class."}</p><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("lesson")}><FiPlus /> Add lesson</button><button className={styles.btnPrimary} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button></div></div>}
@@ -456,6 +551,7 @@ function TeacherClassDetailPage() {
           {lessonForm.contentType === "assignment" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={lessonForm.dueAt} onChange={(event) => setLessonForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>}
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={lessonForm.publishAt} onChange={(event) => setLessonForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
           <div className={detailStyles.optionRow}><label><input type="checkbox" checked={lessonForm.isPublished} onChange={(event) => setLessonForm((current) => ({ ...current, isPublished: event.target.checked }))} /> Publish {lessonForm.contentType}</label>{lessonForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={lessonForm.maxScore} onChange={(event) => setLessonForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
+          <AssignmentSettings form={lessonForm} setForm={setLessonForm} students={students} />
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Attachments (optional)
             <span className={detailStyles.filePicker}><FiUpload /><span><strong>Choose files</strong><small>MP4, PDF, Word, images, archives, or any other file · up to 100 MB each</small></span><input type="file" multiple onChange={(event) => setLessonFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></span>
           </label>
@@ -473,12 +569,16 @@ function TeacherClassDetailPage() {
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Instructions<textarea className={detailStyles.textarea} maxLength={4000} value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
           {editForm.contentType === "assignment" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={editForm.dueAt} onChange={(event) => setEditForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>}
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={editForm.publishAt} onChange={(event) => setEditForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
+          <AssignmentSettings form={editForm} setForm={setEditForm} students={students} />
           <div className={detailStyles.optionRow}><span>Publication: <strong>{editForm.isPublished ? "Published" : "Draft"}</strong> · change this from the classwork menu.</span>{editForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={editForm.maxScore} onChange={(event) => setEditForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
           <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={isEditing} onClick={() => setEditingLesson(null)}>Cancel</button><button className={styles.btnPrimary} disabled={isEditing} type="submit">{isEditing ? "Savingâ€¦" : "Save changes"}</button></div>
         </form>
       </div></div>}
 
+      {historyLesson && <div className={styles.modalBackdrop} onMouseDown={() => setHistoryLesson(null)}><div className={`${styles.modalCard} ${detailStyles.historyModal}`} onMouseDown={(event) => event.stopPropagation()}><div className={styles.modalHeader}><h3>Version history · {historyLesson.title}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setHistoryLesson(null)}><FiX /></button></div><div className={detailStyles.versionList}>{versions.length ? versions.map((version) => <article key={version.id}><div><strong>Version {version.versionNumber}</strong><span>{new Date(version.createdAt).toLocaleString()} · {version.editor?.firstName || version.editor?.username || "Teacher"}</span></div><p>{version.snapshot?.title || "Untitled"} · {version.snapshot?.isPublished ? "Published" : "Draft"}</p><button type="button" className={styles.btnOutline} onClick={() => restoreVersion(version)}>Restore</button></article>) : <p>No earlier versions yet.</p>}</div></div></div>}
+
       {reviewLesson && <div className={styles.modalBackdrop} onMouseDown={() => setReviewLesson(null)}><div className={`${styles.modalCard} ${detailStyles.reviewModal}`} onMouseDown={(event) => event.stopPropagation()}>
+        {selectedSubmission && <RubricScoring rubric={reviewLesson.rubric} value={gradeForm.rubricScores} onChange={(rubricScores) => setGradeForm((current) => ({ ...current, rubricScores, grade: rubricScores.reduce((sum, item) => sum + (Number(item.score) || 0), 0) }))} />}
         <div className={styles.modalHeader}><h3>Submissions · {reviewLesson.title}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setReviewLesson(null)}><FiX /></button></div>
         {reviewLoading ? <div className={detailStyles.reviewSkeleton}><span /><span /><span /></div> : <div className={detailStyles.gradingWorkspace}><aside><div className={detailStyles.gradingSummary}><strong>{submissions.length}/{students.length}</strong><span>submitted</span><strong>{submissions.filter((item) => item.status === "graded").length}</strong><span>graded</span></div>{submissions.map((submission) => <button type="button" key={submission.id} className={selectedSubmission?.id === submission.id ? detailStyles.submissionActive : ""} onClick={() => { setSelectedSubmission(submission); setGradeForm({ grade: submission.grade ?? "", feedback: submission.feedback ?? "" }); }}><span>{`${submission.student?.firstName ?? ""} ${submission.student?.lastName ?? ""}`.trim() || submission.student?.username || "Student"}</span><small>{reviewLesson.dueAt && new Date(submission.submittedAt) > new Date(reviewLesson.dueAt) ? "Late" : submission.status}</small></button>)}<div className={detailStyles.missingStudents}><strong>Missing ({Math.max(0, students.length - submissions.length)})</strong>{students.filter((student) => !submissions.some((item) => item.student?.id === student.userId)).map((student) => <span key={student.userId}>{student.studentName}</span>)}</div></aside><section>{selectedSubmission ? <><div className={detailStyles.submissionHeader}><div><h4>{`${selectedSubmission.student?.firstName ?? ""} ${selectedSubmission.student?.lastName ?? ""}`.trim() || selectedSubmission.student?.username}</h4><span>Submitted {new Date(selectedSubmission.submittedAt).toLocaleString()}</span></div><span>{reviewLesson.dueAt && new Date(selectedSubmission.submittedAt) > new Date(reviewLesson.dueAt) ? "Late" : selectedSubmission.status}</span></div><div className={detailStyles.submittedAnswer}>{selectedSubmission.comment || "No written response."}</div><div className={detailStyles.submittedFiles}>{selectedSubmission.attachments?.map((file) => <button type="button" key={file.id} onClick={() => openSubmissionAttachment(file)}><FiFile /> <span>{file.originalName}</span><small>{formatFileSize(file.sizeBytes)}</small></button>)}</div><div className={detailStyles.gradeFields}><label>Score <span><input type="number" min="0" max={reviewLesson.maxScore} value={gradeForm.grade} onChange={(event) => setGradeForm((current) => ({ ...current, grade: event.target.value }))} /> / {reviewLesson.maxScore}</span></label><label>Feedback<textarea value={gradeForm.feedback} onChange={(event) => setGradeForm((current) => ({ ...current, feedback: event.target.value }))} placeholder="Give clear, actionable feedback…" /></label><div><button type="button" className={styles.btnOutline} onClick={() => gradeSubmission("resubmit")}>Request resubmission</button><button type="button" className={styles.btnPrimary} onClick={() => gradeSubmission("graded")}>Save grade</button></div></div></> : <div className={detailStyles.gradingEmpty}><FiCheckCircle /><p>{submissions.length ? "Select a student to review." : "No submissions yet."}</p></div>}</section></div>}
       </div></div>}

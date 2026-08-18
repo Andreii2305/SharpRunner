@@ -11,6 +11,8 @@ const ClassroomLessonSubmission = sequelize.define("ClassroomLessonSubmissions",
   grade: { type: DataTypes.INTEGER, allowNull: true },
   feedback: { type: DataTypes.TEXT, allowNull: true },
   gradedAt: { type: DataTypes.DATE, allowNull: true },
+  attemptCount: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+  rubricScores: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
 });
 
 module.exports = ClassroomLessonSubmission;

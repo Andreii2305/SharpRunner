@@ -20,6 +20,24 @@ const formatFileSize = (value) => {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 };
 
+function AssignmentSubmissionPanel({ lesson, submission, comment, setComment, files, setFiles, submitting, onSubmit, onDownload }) {
+  const isPastDue = lesson.dueAt && new Date(lesson.dueAt) < new Date();
+  const attemptsUsed = submission?.attemptCount ?? 0;
+  const attemptsClosed = lesson.maxAttempts > 0 && attemptsUsed >= lesson.maxAttempts;
+  const lateClosed = isPastDue && lesson.allowLateSubmissions === false;
+  const accepted = (lesson.allowedFileTypes ?? []).map((type) => `.${String(type).replace(/^\./, "")}`).join(",");
+  return <form className={styles.submissionForm} onSubmit={onSubmit}>
+    <div className={styles.sectionLabel}>Submit your work</div>
+    <div className={styles.policySummary}><span>{lesson.maxAttempts > 0 ? `${attemptsUsed}/${lesson.maxAttempts} attempts used` : `${attemptsUsed} attempt${attemptsUsed === 1 ? "" : "s"} · unlimited`}</span><span>Up to {lesson.maxFileSizeMb ?? 100} MB per file</span>{accepted && <span>Accepted: {accepted}</span>}</div>
+    {isPastDue && <div className={styles.lateNotice}>{lateClosed ? "Past due · submissions are closed" : "Past due · submissions are marked late"}</div>}
+    <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add your answer or a note…" disabled={lateClosed || attemptsClosed} />
+    <label className={styles.submissionPicker}><FiUpload /> Attach files<input type="file" multiple accept={accepted || undefined} disabled={lateClosed || attemptsClosed} onChange={(event) => setFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></label>
+    {files.map((file) => <small key={`${file.name}-${file.lastModified}`}>{file.name}</small>)}
+    <button type="submit" disabled={submitting || lateClosed || attemptsClosed}>{submitting ? "Submitting…" : attemptsClosed ? "Attempt limit reached" : submission ? "Resubmit work" : "Submit work"}</button>
+    {submission && <div className={styles.feedbackBox}><strong>{submission.feedbackPending ? "Submitted · feedback will be released later" : submission.status === "graded" ? `Grade: ${submission.grade}/${lesson.maxScore}` : submission.status === "resubmit" ? "Changes requested" : "Submitted"}</strong>{submission.feedback && <p>{submission.feedback}</p>}{submission.rubricScores?.length > 0 && <div className={styles.rubricResult}>{submission.rubricScores.map((score) => { const criterion = lesson.rubric?.find((item) => item.id === score.id); return <span key={score.id}>{criterion?.title ?? "Criterion"}: {score.score}/{criterion?.points ?? "—"}</span>; })}</div>}{submission.attachments?.map((file) => <button type="button" key={file.id} onClick={() => onDownload(file)}><FiFile /> {file.originalName}</button>)}</div>}
+  </form>;
+}
+
 function ClassroomLessonPage() {
   const { lessonId } = useParams();
   const navigate = useNavigate();
@@ -201,7 +219,7 @@ function ClassroomLessonPage() {
                   </div>
                 )) : <div className={styles.noFiles}>This lesson has no attachments.</div>}
 
-                {!isTeacherPreview && lesson.contentType === "assignment" && <form className={styles.submissionForm} onSubmit={submitWork}><div className={styles.sectionLabel}>Submit your work</div>{lesson.dueAt && new Date(lesson.dueAt) < new Date() && <div className={styles.lateNotice}>Past due · submissions are marked late</div>}<textarea value={submissionComment} onChange={(event) => setSubmissionComment(event.target.value)} placeholder="Add your answer or a note…" /><label className={styles.submissionPicker}><FiUpload /> Attach files<input type="file" multiple onChange={(event) => setSubmissionFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></label>{submissionFiles.map((file) => <small key={`${file.name}-${file.lastModified}`}>{file.name}</small>)}<button type="submit" disabled={submitting}>{submitting ? "Submitting…" : submission ? "Resubmit work" : "Submit work"}</button>{submission && <div className={styles.feedbackBox}><strong>{submission.status === "graded" ? `Grade: ${submission.grade}/${lesson.maxScore}` : submission.status === "resubmit" ? "Changes requested" : "Submitted"}</strong>{submission.feedback && <p>{submission.feedback}</p>}{submission.attachments?.map((file) => <button type="button" key={file.id} onClick={() => downloadSubmissionFile(file)}><FiFile /> {file.originalName}</button>)}</div>}</form>}
+                {!isTeacherPreview && lesson.contentType === "assignment" && <AssignmentSubmissionPanel lesson={lesson} submission={submission} comment={submissionComment} setComment={setSubmissionComment} files={submissionFiles} setFiles={setSubmissionFiles} submitting={submitting} onSubmit={submitWork} onDownload={downloadSubmissionFile} />}
               </aside>
             </div>
           </>

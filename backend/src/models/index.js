@@ -15,6 +15,8 @@ const ClassroomLessonAttachment = require("./ClassroomLessonAttachment");
 const ClassroomLessonProgress = require("./ClassroomLessonProgress");
 const ClassroomLessonSubmission = require("./ClassroomLessonSubmission");
 const ClassroomLessonSubmissionAttachment = require("./ClassroomLessonSubmissionAttachment");
+const ClassroomLessonVersion = require("./ClassroomLessonVersion");
+const ClassroomLessonAudit = require("./ClassroomLessonAudit");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -115,6 +117,13 @@ User.hasMany(ClassroomLessonSubmission, { foreignKey: "studentId", as: "classroo
 ClassroomLessonSubmission.belongsTo(User, { foreignKey: "studentId", as: "student" });
 ClassroomLessonSubmission.hasMany(ClassroomLessonSubmissionAttachment, { foreignKey: "submissionId", as: "attachments", onDelete: "CASCADE" });
 ClassroomLessonSubmissionAttachment.belongsTo(ClassroomLessonSubmission, { foreignKey: "submissionId", as: "submission" });
+ClassroomLesson.hasMany(ClassroomLessonVersion, { foreignKey: "lessonId", as: "versions", onDelete: "CASCADE" });
+ClassroomLessonVersion.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
+User.hasMany(ClassroomLessonVersion, { foreignKey: "editorId", as: "lessonVersions" });
+ClassroomLessonVersion.belongsTo(User, { foreignKey: "editorId", as: "editor" });
+ClassroomLesson.hasMany(ClassroomLessonAudit, { foreignKey: "lessonId", as: "auditEntries", onDelete: "SET NULL" });
+ClassroomLessonAudit.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
+ClassroomLessonAudit.belongsTo(User, { foreignKey: "actorId", as: "actor" });
 
 Classroom.hasMany(ClassroomLessonAttachment, {
   foreignKey: "classroomId",
@@ -239,4 +248,6 @@ module.exports = {
   ClassroomLessonProgress,
   ClassroomLessonSubmission,
   ClassroomLessonSubmissionAttachment,
+  ClassroomLessonVersion,
+  ClassroomLessonAudit,
 };

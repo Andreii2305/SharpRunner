@@ -11,8 +11,9 @@ const supabaseConfig = () => {
 
 const uploadFile = async (file, scope = "lessons") => {
   const data = await fs.promises.readFile(file.path);
+  const sha256 = crypto.createHash("sha256").update(data).digest("hex");
   const config = supabaseConfig();
-  if (!config) return { data, storageProvider: "database", storageKey: null };
+  if (!config) return { data, storageProvider: "database", storageKey: null, sha256, scanStatus: file.securityScanStatus || "not_configured" };
   const extension = path.extname(file.originalname).slice(0, 20).toLowerCase();
   const storageKey = `${scope}/${crypto.randomUUID()}${extension}`;
   const response = await fetch(`${config.url}/storage/v1/object/${config.bucket}/${storageKey}`, {
@@ -21,7 +22,7 @@ const uploadFile = async (file, scope = "lessons") => {
     body: data,
   });
   if (!response.ok) throw new Error(`Supabase upload failed (${response.status})`);
-  return { data: null, storageProvider: "supabase", storageKey };
+  return { data: null, storageProvider: "supabase", storageKey, sha256, scanStatus: file.securityScanStatus || "not_configured" };
 };
 
 const readFile = async (record) => {

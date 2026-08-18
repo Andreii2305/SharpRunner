@@ -46,10 +46,14 @@
 .submissionForm > button { padding: 9px; border: 0; border-radius: 8px; background: #1e4f7a; color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
 .submissionForm > button:disabled { opacity: .6; }
 .submissionForm small { overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
+.policySummary { display: flex; flex-wrap: wrap; gap: 5px; }
+.policySummary span { padding: 4px 6px; border-radius: 99px; background: #eef4fb; color: #47627e; font-size: 8px; }
 .lateNotice { padding: 7px; border-radius: 7px; background: #fff7ed; color: #9a3412; font-size: 10px; }
 .feedbackBox { padding: 10px; border-radius: 9px; background: #eef5fc; color: #334155; font-size: 11px; }
 .feedbackBox p { margin: 5px 0; white-space: pre-wrap; }
 .feedbackBox button { display: flex; gap: 5px; padding: 4px 0; border: 0; background: transparent; color: #2563eb; cursor: pointer; font-size: 10px; }
+.rubricResult { display: grid; gap: 3px; margin: 7px 0; padding: 7px; border-radius: 7px; background: rgba(255,255,255,.7); }
+.rubricResult span { color: #475569; font-size: 9px; }
 .status { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b; }
 .status h1 { margin: 0; color: #1e3a5f; }
 .status p { margin: 7px 0 16px; }

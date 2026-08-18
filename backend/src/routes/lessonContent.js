@@ -16,6 +16,8 @@ const path = require("path");
 const { uploadDirectory, uploadLessonFiles, removeUploadedFiles } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
 const { isOfficeDocument, convertOfficeToPdf } = require("../services/officePreviewService");
+const { extensionAllowed } = require("../services/fileSecurityService");
+const { isStudentAssigned, submissionPolicyError } = require("../services/classroomLessonPolicyService");
 const { findPrimaryActiveMembership } = require("../services/studentClassService");
 
 const visibleLessonWhere = (classroomId) => ({
@@ -24,12 +26,15 @@ const visibleLessonWhere = (classroomId) => ({
   [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
 });
 
-const sanitizeSubmission = (submission) => submission ? {
+const sanitizeSubmission = (submission, { releaseFeedback = true } = {}) => submission ? {
   id: submission.id, comment: submission.comment, status: submission.status,
-  submittedAt: submission.submittedAt, grade: submission.grade, feedback: submission.feedback,
-  gradedAt: submission.gradedAt,
+  submittedAt: submission.submittedAt, attemptCount: submission.attemptCount,
+  grade: releaseFeedback ? submission.grade : null, feedback: releaseFeedback ? submission.feedback : null,
+  rubricScores: releaseFeedback ? submission.rubricScores : [], gradedAt: releaseFeedback ? submission.gradedAt : null,
+  feedbackPending: !releaseFeedback && ["graded", "resubmit"].includes(submission.status),
   attachments: (submission.attachments || []).map((file) => ({ id: file.id, originalName: file.originalName, mimeType: file.mimeType, sizeBytes: Number(file.sizeBytes) })),
 } : null;
+const isAssignedToStudent = isStudentAssigned;
 
 router.get("/", authMiddleware, async (req, res) => {
   try {
@@ -40,7 +45,7 @@ router.get("/", authMiddleware, async (req, res) => {
     const classroomLessons = membership
       ? await ClassroomLesson.findAll({
           where: visibleLessonWhere(membership.classroomId),
-          attributes: ["id", "title", "description", "contentType", "dueAt", "allowSubmissions", "createdAt"],
+          attributes: ["id", "title", "description", "contentType", "dueAt", "allowSubmissions", "assignedStudentIds", "createdAt"],
           include: [{
             model: ClassroomLessonAttachment,
             as: "attachments",
@@ -49,7 +54,7 @@ router.get("/", authMiddleware, async (req, res) => {
           order: [["createdAt", "DESC"]],
         })
       : [];
-    return res.json({ ...payload, classroomLessons });
+    return res.json({ ...payload, classroomLessons: classroomLessons.filter((lesson) => isAssignedToStudent(lesson, req.userId)) });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -64,7 +69,7 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     }
 
     const lesson = await ClassroomLesson.findByPk(lessonId, {
-      attributes: ["id", "classroomId", "title", "description", "contentType", "dueAt", "isPublished", "publishAt", "allowSubmissions", "maxScore", "createdAt", "updatedAt"],
+      attributes: ["id", "classroomId", "title", "description", "contentType", "dueAt", "isPublished", "publishAt", "allowSubmissions", "maxScore", "rubric", "feedbackReleaseAt", "allowLateSubmissions", "maxAttempts", "allowedFileTypes", "maxFileSizeMb", "assignedStudentIds", "createdAt", "updatedAt"],
       include: [{
         model: ClassroomLessonAttachment,
         as: "attachments",
@@ -72,7 +77,7 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
       }],
     });
     const currentlyVisible = lesson?.isPublished && (!lesson.publishAt || new Date(lesson.publishAt) <= new Date());
-    if (!lesson || (req.userRole === "student" && !currentlyVisible)) {
+    if (!lesson || (req.userRole === "student" && (!currentlyVisible || !isAssignedToStudent(lesson, req.userId)))) {
       return res.status(404).json({ message: "Lesson not found" });
     }
 
@@ -104,7 +109,8 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
       });
     }
     lesson.attachments?.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.id - b.id);
-    return res.json({ lesson, progress, submission: sanitizeSubmission(submission) });
+    const releaseFeedback = !lesson.feedbackReleaseAt || new Date(lesson.feedbackReleaseAt) <= new Date();
+    return res.json({ lesson, progress, submission: sanitizeSubmission(submission, { releaseFeedback }) });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -120,7 +126,7 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
 
     const attachment = await ClassroomLessonAttachment.findByPk(fileId, {
       attributes: ["id", "classroomId", "originalName", "storedName", "mimeType", "sizeBytes", "data", "storageProvider", "storageKey"],
-      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished", "publishAt"] }],
+      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished", "publishAt", "assignedStudentIds"] }],
     });
     if (!attachment) {
       return res.status(404).json({ message: "Attachment not found" });
@@ -137,7 +143,7 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
     }
     if (!allowed) return res.status(403).json({ message: "Access denied" });
 
-    if (req.userRole === "student" && (!attachment.lesson?.isPublished || (attachment.lesson.publishAt && new Date(attachment.lesson.publishAt) > new Date()))) {
+    if (req.userRole === "student" && (!attachment.lesson?.isPublished || !isAssignedToStudent(attachment.lesson, req.userId) || (attachment.lesson.publishAt && new Date(attachment.lesson.publishAt) > new Date()))) {
       return res.status(404).json({ message: "Attachment not found" });
     }
     const filePath = path.join(uploadDirectory, path.basename(attachment.storedName));
@@ -161,12 +167,12 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
 router.get("/classroom-files/:fileId/preview", authMiddleware, async (req, res) => {
   try {
     const attachment = await ClassroomLessonAttachment.findByPk(Number.parseInt(req.params.fileId, 10), {
-      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished", "publishAt"] }],
+      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished", "publishAt", "assignedStudentIds"] }],
     });
     if (!attachment || !isOfficeDocument(attachment.originalName)) return res.status(404).json({ message: "Preview not found" });
     let allowed = req.userRole === "admin";
     if (req.userRole === "teacher") allowed = Boolean(await Classroom.findOne({ where: { id: attachment.classroomId, teacherId: req.userId } }));
-    if (req.userRole === "student") allowed = attachment.lesson.isPublished && (!attachment.lesson.publishAt || new Date(attachment.lesson.publishAt) <= new Date()) && Boolean(await ClassroomMembership.findOne({ where: { classroomId: attachment.classroomId, studentId: req.userId, status: "active" } }));
+    if (req.userRole === "student") allowed = attachment.lesson.isPublished && isAssignedToStudent(attachment.lesson, req.userId) && (!attachment.lesson.publishAt || new Date(attachment.lesson.publishAt) <= new Date()) && Boolean(await ClassroomMembership.findOne({ where: { classroomId: attachment.classroomId, studentId: req.userId, status: "active" } }));
     if (!allowed) return res.status(403).json({ message: "Access denied" });
     const data = await lessonStorage.readFile(attachment);
     const pdf = data && await convertOfficeToPdf(data, attachment.originalName);
@@ -183,7 +189,7 @@ router.put("/classroom-lessons/:lessonId/completion", authMiddleware, async (req
     const lessonId = Number.parseInt(req.params.lessonId, 10);
     const lesson = await ClassroomLesson.findByPk(lessonId);
     const membership = lesson && await ClassroomMembership.findOne({ where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" } });
-    if (!lesson || !membership || lesson.contentType !== "lesson" || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
+    if (!lesson || !membership || !isAssignedToStudent(lesson, req.userId) || lesson.contentType !== "lesson" || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
     const [progress] = await ClassroomLessonProgress.findOrCreate({ where: { lessonId, studentId: req.userId }, defaults: { classroomId: lesson.classroomId, viewedAt: new Date() } });
     progress.viewedAt ||= new Date();
     progress.completedAt = req.body?.completed === false ? null : new Date();
@@ -198,16 +204,22 @@ router.post("/classroom-lessons/:lessonId/submission", authMiddleware, uploadLes
     const lessonId = Number.parseInt(req.params.lessonId, 10);
     const lesson = await ClassroomLesson.findByPk(lessonId);
     const membership = lesson && await ClassroomMembership.findOne({ where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" } });
-    if (!lesson || !membership || lesson.contentType !== "assignment" || !lesson.allowSubmissions || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) { await removeUploadedFiles(req.files); return res.status(404).json({ message: "Submissions are not available" }); }
+    if (!lesson || !membership || !isAssignedToStudent(lesson, req.userId) || lesson.contentType !== "assignment" || !lesson.allowSubmissions || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) { await removeUploadedFiles(req.files); return res.status(404).json({ message: "Submissions are not available" }); }
+    const existingSubmission = await ClassroomLessonSubmission.findOne({ where: { lessonId, studentId: req.userId } });
+    const policyError = submissionPolicyError(lesson, existingSubmission);
+    if (policyError) { await removeUploadedFiles(req.files); return res.status(400).json({ message: policyError }); }
+    if ((req.files || []).some((file) => file.size > lesson.maxFileSizeMb * 1024 * 1024)) { await removeUploadedFiles(req.files); return res.status(400).json({ message: `Each file must be ${lesson.maxFileSizeMb} MB or smaller` }); }
+    if ((req.files || []).some((file) => !extensionAllowed(file.originalname, lesson.allowedFileTypes))) { await removeUploadedFiles(req.files); return res.status(400).json({ message: `Accepted file types: ${lesson.allowedFileTypes.join(", ")}` }); }
     const comment = String(req.body?.comment || "").trim().slice(0, 4000);
     if (!comment && !req.files?.length) { await removeUploadedFiles(req.files); return res.status(400).json({ message: "Add a response or at least one file" }); }
-    const [submission] = await ClassroomLessonSubmission.findOrCreate({
+    const [submission, wasCreated] = await ClassroomLessonSubmission.findOrCreate({
       where: { lessonId, studentId: req.userId },
-      defaults: { classroomId: lesson.classroomId, comment: comment || null, submittedAt: new Date(), status: "submitted" },
+      defaults: { classroomId: lesson.classroomId, comment: comment || null, submittedAt: new Date(), status: "submitted", attemptCount: 1 },
     });
-    if (!submission.isNewRecord) {
+    if (!wasCreated) {
       submission.comment = comment || null; submission.submittedAt = new Date(); submission.status = "submitted";
-      submission.grade = null; submission.feedback = null; submission.gradedAt = null; await submission.save();
+      submission.grade = null; submission.feedback = null; submission.gradedAt = null; submission.rubricScores = [];
+      submission.attemptCount = (submission.attemptCount || 1) + 1; await submission.save();
     }
     for (const file of req.files || []) {
       const stored = await lessonStorage.uploadFile(file, `classrooms/${lesson.classroomId}/submissions/${submission.id}`);

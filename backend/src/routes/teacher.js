@@ -19,6 +19,8 @@ const ClassroomLessonAttachment = require("../models/ClassroomLessonAttachment")
 const ClassroomLessonProgress = require("../models/ClassroomLessonProgress");
 const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission");
 const ClassroomLessonSubmissionAttachment = require("../models/ClassroomLessonSubmissionAttachment");
+const ClassroomLessonVersion = require("../models/ClassroomLessonVersion");
+const ClassroomLessonAudit = require("../models/ClassroomLessonAudit");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -146,6 +148,7 @@ const sanitizeAttachment = (attachment) => ({
   mimeType: attachment.mimeType,
   sizeBytes: Number(attachment.sizeBytes),
   displayOrder: attachment.displayOrder ?? 0,
+  scanStatus: attachment.scanStatus,
 });
 
 const sanitizeClassroomLesson = (lesson) => ({
@@ -160,6 +163,14 @@ const sanitizeClassroomLesson = (lesson) => ({
   allowSubmissions: lesson.allowSubmissions,
   maxScore: lesson.maxScore,
   displayOrder: lesson.displayOrder ?? 0,
+  rubric: lesson.rubric ?? [],
+  feedbackReleaseAt: lesson.feedbackReleaseAt,
+  allowLateSubmissions: lesson.allowLateSubmissions,
+  maxAttempts: lesson.maxAttempts,
+  allowedFileTypes: lesson.allowedFileTypes ?? [],
+  maxFileSizeMb: lesson.maxFileSizeMb,
+  assignedStudentIds: lesson.assignedStudentIds ?? [],
+  version: lesson.version ?? 1,
   stats: lesson.stats,
   createdAt: lesson.createdAt,
   updatedAt: lesson.updatedAt,
@@ -170,14 +181,39 @@ const parseLessonOptions = (body) => {
   const contentType = body?.contentType === "assignment" ? "assignment" : "lesson";
   const isPublished = body?.isPublished === undefined ? true : String(body.isPublished) === "true";
   const allowSubmissions = contentType === "assignment";
-  const maxScore = Math.min(1000, Math.max(1, Number.parseInt(body?.maxScore, 10) || 100));
+  let maxScore = Math.min(1000, Math.max(1, Number.parseInt(body?.maxScore, 10) || 100));
   let publishAt = null;
   if (body?.publishAt) {
     publishAt = new Date(body.publishAt);
     if (Number.isNaN(publishAt.getTime())) throw new Error("Publish date must be valid");
   }
-  return { contentType, isPublished, allowSubmissions, maxScore, publishAt };
+  const parseArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== "string" || !value.trim()) return [];
+    try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return value.split(",").map((item) => item.trim()).filter(Boolean); }
+  };
+  const rubric = contentType === "assignment" ? parseArray(body?.rubric).slice(0, 20).map((item, index) => ({ id: String(item.id || `criterion-${index + 1}`), title: normalizeString(item.title).slice(0, 120), points: Math.max(1, Number.parseInt(item.points, 10) || 1) })).filter((item) => item.title) : [];
+  if (rubric.length) maxScore = Math.min(1000, rubric.reduce((sum, item) => sum + item.points, 0));
+  const assignedStudentIds = contentType === "assignment" ? [...new Set(parseArray(body?.assignedStudentIds).map(parseInteger).filter(Boolean))] : [];
+  const allowedFileTypes = contentType === "assignment" ? [...new Set(parseArray(body?.allowedFileTypes).map((item) => String(item).toLowerCase().replace(/^\./, "")).filter(Boolean))].slice(0, 30) : [];
+  let feedbackReleaseAt = null;
+  if (body?.feedbackReleaseAt) { feedbackReleaseAt = new Date(body.feedbackReleaseAt); if (Number.isNaN(feedbackReleaseAt.getTime())) throw new Error("Feedback release date must be valid"); }
+  return {
+    contentType, isPublished, allowSubmissions, maxScore, publishAt, rubric, assignedStudentIds, allowedFileTypes,
+    feedbackReleaseAt: contentType === "assignment" ? feedbackReleaseAt : null,
+    allowLateSubmissions: contentType === "assignment" ? String(body?.allowLateSubmissions) !== "false" : true,
+    maxAttempts: contentType === "assignment" ? Math.min(100, Math.max(0, Number.parseInt(body?.maxAttempts, 10) || 0)) : 0,
+    maxFileSizeMb: contentType === "assignment" ? Math.min(100, Math.max(1, Number.parseInt(body?.maxFileSizeMb, 10) || 100)) : 100,
+  };
 };
+
+const lessonSnapshot = (lesson) => ({
+  title: lesson.title, description: lesson.description, contentType: lesson.contentType, dueAt: lesson.dueAt,
+  isPublished: lesson.isPublished, publishAt: lesson.publishAt, maxScore: lesson.maxScore, rubric: lesson.rubric,
+  feedbackReleaseAt: lesson.feedbackReleaseAt, allowLateSubmissions: lesson.allowLateSubmissions, maxAttempts: lesson.maxAttempts,
+  allowedFileTypes: lesson.allowedFileTypes, maxFileSizeMb: lesson.maxFileSizeMb, assignedStudentIds: lesson.assignedStudentIds,
+});
+const recordLessonAudit = (req, classroomId, lessonId, action, metadata = {}) => ClassroomLessonAudit.create({ classroomId, lessonId, actorId: req.userId, action, metadata });
 
 const formatTeacherName = (user) => {
   if (!user) {
@@ -1103,6 +1139,64 @@ router.get("/classrooms/:classroomId/lessons", async (req, res) => {
   }
 });
 
+router.get("/classrooms/:classroomId/classwork-management", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId); const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const [lessonBytes, submissionBytes, audits, assignments, memberships, submissions] = await Promise.all([
+      ClassroomLessonAttachment.sum("sizeBytes", { where: { classroomId } }), ClassroomLessonSubmissionAttachment.sum("sizeBytes", { where: { classroomId } }),
+      ClassroomLessonAudit.findAll({ where: { classroomId }, include: [{ model: User, as: "actor", attributes: ["id", "firstName", "lastName", "username"] }], order: [["createdAt", "DESC"]], limit: 50 }),
+      ClassroomLesson.findAll({ where: { classroomId, contentType: "assignment" }, attributes: ["id", "title", "dueAt", "assignedStudentIds", "maxScore"] }),
+      ClassroomMembership.findAll({ where: { classroomId, status: "active" }, attributes: ["studentId"] }),
+      ClassroomLessonSubmission.findAll({ where: { classroomId }, attributes: ["lessonId", "studentId", "status", "grade", "submittedAt"] }),
+    ]);
+    const attention = memberships.map((membership) => {
+      const assigned = assignments.filter((assignment) => !assignment.assignedStudentIds?.length || assignment.assignedStudentIds.includes(membership.studentId));
+      const studentRows = submissions.filter((submission) => submission.studentId === membership.studentId);
+      return { studentId: membership.studentId, missing: assigned.filter((assignment) => !studentRows.some((submission) => submission.lessonId === assignment.id)).length, submitted: studentRows.length, averageGrade: studentRows.filter((row) => row.grade != null).length ? Math.round(studentRows.filter((row) => row.grade != null).reduce((sum, row) => sum + row.grade, 0) / studentRows.filter((row) => row.grade != null).length) : null };
+    }).sort((a, b) => b.missing - a.missing);
+    return res.json({ storage: { usedBytes: Number(lessonBytes || 0) + Number(submissionBytes || 0), lessonBytes: Number(lessonBytes || 0), submissionBytes: Number(submissionBytes || 0) }, audits, insights: { assignments: assignments.length, submissions: submissions.length, graded: submissions.filter((row) => row.status === "graded").length, late: submissions.filter((row) => { const assignment = assignments.find((item) => item.id === row.lessonId); return assignment?.dueAt && new Date(row.submittedAt) > new Date(assignment.dueAt); }).length, attention } });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+});
+
+router.get("/classrooms/:classroomId/lessons/:lessonId/versions", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId); const lessonId = parseInteger(req.params.lessonId); const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const versions = await ClassroomLessonVersion.findAll({ where: { classroomId, lessonId }, include: [{ model: User, as: "editor", attributes: ["id", "firstName", "lastName", "username"] }], order: [["versionNumber", "DESC"], ["createdAt", "DESC"]] });
+    return res.json({ versions });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+});
+
+router.post("/classrooms/:classroomId/lessons/:lessonId/versions/:versionId/restore", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId); const lessonId = parseInteger(req.params.lessonId); const versionId = parseInteger(req.params.versionId); const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const lesson = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId }, include: [{ model: ClassroomLessonAttachment, as: "attachments", attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder", "scanStatus"] }] });
+    const version = await ClassroomLessonVersion.findOne({ where: { id: versionId, lessonId, classroomId } });
+    if (!lesson || !version) return res.status(404).json({ message: "Version not found" });
+    await ClassroomLessonVersion.create({ classroomId, lessonId, editorId: req.userId, versionNumber: lesson.version || 1, snapshot: lessonSnapshot(lesson) });
+    Object.assign(lesson, version.snapshot, { version: (lesson.version || 1) + 1 }); await lesson.save();
+    await recordLessonAudit(req, classroomId, lessonId, "restored_version", { restoredVersion: version.versionNumber, newVersion: lesson.version });
+    return res.json({ message: "Version restored", lesson: sanitizeClassroomLesson(lesson) });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+});
+
+router.post("/classrooms/:classroomId/lessons/:lessonId/release-feedback", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId); const lessonId = parseInteger(req.params.lessonId); const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const lesson = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId, contentType: "assignment" } });
+    if (!lesson) return res.status(404).json({ message: "Assignment not found" });
+    lesson.feedbackReleaseAt = new Date(); await lesson.save(); await recordLessonAudit(req, classroomId, lessonId, "released_feedback");
+    return res.json({ message: "Feedback released", feedbackReleaseAt: lesson.feedbackReleaseAt });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+});
+
 router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, res) => {
   try {
     const classroomId = parseInteger(req.params.classroomId);
@@ -1150,6 +1244,10 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
       await removeUploadedFiles(req.files);
       return res.status(400).json({ message: optionError.message });
     }
+    if (options.assignedStudentIds.length) {
+      const audienceCount = await ClassroomMembership.count({ where: { classroomId, studentId: { [Op.in]: options.assignedStudentIds }, status: "active" } });
+      if (audienceCount !== options.assignedStudentIds.length) { await removeUploadedFiles(req.files); return res.status(400).json({ message: "Assignment audience contains students outside this class" }); }
+    }
     const lesson = await ClassroomLesson.create({
       classroomId,
       title,
@@ -1175,6 +1273,11 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
     }
     await removeUploadedFiles(req.files);
     lesson.attachments = attachments;
+
+    await Promise.all([
+      ClassroomLessonVersion.create({ classroomId, lessonId: lesson.id, editorId: req.userId, versionNumber: 1, snapshot: lessonSnapshot(lesson) }),
+      recordLessonAudit(req, classroomId, lesson.id, options.isPublished ? "created_and_published" : "created_draft", { contentType: options.contentType }),
+    ]);
 
     return res.status(201).json({ message: `${options.contentType === "assignment" ? "Assignment" : "Lesson"} added to classroom`, lesson: sanitizeClassroomLesson(lesson) });
   } catch (error) {
@@ -1211,6 +1314,9 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, 
       classroomId, title: `Copy of ${source.title}`.slice(0, MAX_LESSON_TITLE_LENGTH), description: source.description,
       contentType: source.contentType, dueAt: source.dueAt, publishAt: null, isPublished: false,
       allowSubmissions: source.allowSubmissions, maxScore: source.maxScore,
+      rubric: source.rubric, feedbackReleaseAt: source.feedbackReleaseAt, allowLateSubmissions: source.allowLateSubmissions,
+      maxAttempts: source.maxAttempts, allowedFileTypes: source.allowedFileTypes, maxFileSizeMb: source.maxFileSizeMb,
+      assignedStudentIds: source.assignedStudentIds, version: 1,
       displayOrder: await ClassroomLesson.count({ where: { classroomId } }),
     });
     const attachments = [];
@@ -1222,9 +1328,14 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, 
         storedName: `${crypto.randomUUID()}${path.extname(sourceFile.originalName).slice(0, 20)}`,
         mimeType: sourceFile.mimeType, sizeBytes: sourceFile.sizeBytes, data,
         storageProvider: "database", storageKey: null, displayOrder: sourceFile.displayOrder,
+        sha256: sourceFile.sha256, scanStatus: sourceFile.scanStatus,
       }));
     }
     copy.attachments = attachments;
+    await Promise.all([
+      ClassroomLessonVersion.create({ classroomId, lessonId: copy.id, editorId: req.userId, versionNumber: 1, snapshot: lessonSnapshot(copy) }),
+      recordLessonAudit(req, classroomId, copy.id, "duplicated", { sourceLessonId: source.id }),
+    ]);
     return res.status(201).json({ message: "Draft copy created", lesson: sanitizeClassroomLesson(copy) });
   } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
 });
@@ -1263,9 +1374,12 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLess
     }
 
     const attachments = [];
+    const duplicateNames = [];
     const currentCount = await ClassroomLessonAttachment.count({ where: { lessonId, classroomId } });
     for (const [index, file] of req.files.entries()) {
       const stored = await lessonStorage.uploadFile(file, `classrooms/${classroomId}/lessons/${lessonId}`);
+      const duplicate = stored.sha256 && await ClassroomLessonAttachment.findOne({ where: { lessonId, sha256: stored.sha256 }, attributes: ["id", "originalName"] });
+      if (duplicate) { duplicateNames.push(file.originalname); await lessonStorage.deleteFile(stored); continue; }
       attachments.push(await ClassroomLessonAttachment.create({
         classroomId,
         lessonId,
@@ -1287,6 +1401,7 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLess
       message: "Attachments added",
       attachments: savedAttachments.map(sanitizeAttachment),
       removedUnavailableCount: missingLegacyIds.length,
+      duplicateNames,
     });
   } catch (error) {
     await removeUploadedFiles(req.files);
@@ -1333,11 +1448,16 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
       if (Number.isNaN(dueAt.getTime())) return res.status(400).json({ message: "Due date must be valid" });
     }
 
+    await ClassroomLessonVersion.create({ classroomId, lessonId, editorId: req.userId, versionNumber: lesson.version || 1, snapshot: lessonSnapshot(lesson) });
     lesson.title = title;
     lesson.description = description || null;
     let options;
     try { options = parseLessonOptions(req.body); } catch (optionError) {
       return res.status(400).json({ message: optionError.message });
+    }
+    if (options.assignedStudentIds.length) {
+      const audienceCount = await ClassroomMembership.count({ where: { classroomId, studentId: { [Op.in]: options.assignedStudentIds }, status: "active" } });
+      if (audienceCount !== options.assignedStudentIds.length) return res.status(400).json({ message: "Assignment audience contains students outside this class" });
     }
     lesson.isPublished = options.isPublished;
     lesson.contentType = options.contentType;
@@ -1345,7 +1465,12 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
     lesson.publishAt = options.publishAt;
     lesson.allowSubmissions = options.allowSubmissions;
     lesson.maxScore = options.maxScore;
+    lesson.rubric = options.rubric; lesson.feedbackReleaseAt = options.feedbackReleaseAt;
+    lesson.allowLateSubmissions = options.allowLateSubmissions; lesson.maxAttempts = options.maxAttempts;
+    lesson.allowedFileTypes = options.allowedFileTypes; lesson.maxFileSizeMb = options.maxFileSizeMb;
+    lesson.assignedStudentIds = options.assignedStudentIds; lesson.version = (lesson.version || 1) + 1;
     await lesson.save();
+    await recordLessonAudit(req, classroomId, lessonId, "updated", { version: lesson.version, published: lesson.isPublished });
     return res.json({ message: "Lesson updated", lesson: sanitizeClassroomLesson(lesson) });
   } catch (error) {
     console.error(error);
@@ -1461,13 +1586,20 @@ router.put("/classrooms/:classroomId/lessons/:lessonId/submissions/:submissionId
     const submission = await ClassroomLessonSubmission.findOne({ where: { id: submissionId, lessonId, classroomId } });
     if (!lesson || lesson.contentType !== "assignment" || !submission) return res.status(404).json({ message: "Submission not found" });
     const requestedResubmit = req.body?.status === "resubmit";
-    const grade = Number.parseInt(req.body?.grade, 10);
+    const rubricScores = Array.isArray(lesson.rubric) && lesson.rubric.length ? lesson.rubric.map((criterion) => {
+      const submitted = Array.isArray(req.body?.rubricScores) ? req.body.rubricScores.find((item) => String(item.id) === String(criterion.id)) : null;
+      return { id: String(criterion.id), score: Math.min(Number(criterion.points) || 0, Math.max(0, Number(submitted?.score) || 0)) };
+    }) : [];
+    const rubricTotal = Array.isArray(lesson.rubric) && lesson.rubric.length ? rubricScores.reduce((sum, item) => sum + item.score, 0) : null;
+    const grade = rubricTotal ?? Number.parseInt(req.body?.grade, 10);
     if (!requestedResubmit && (!Number.isInteger(grade) || grade < 0 || grade > lesson.maxScore)) return res.status(400).json({ message: `Grade must be between 0 and ${lesson.maxScore}` });
     submission.grade = requestedResubmit ? null : grade;
     submission.feedback = normalizeString(req.body?.feedback).slice(0, 4000) || null;
+    submission.rubricScores = requestedResubmit ? [] : rubricScores;
     submission.status = requestedResubmit ? "resubmit" : "graded";
     submission.gradedAt = new Date();
     await submission.save();
+    await recordLessonAudit(req, classroomId, lessonId, requestedResubmit ? "resubmission_requested" : "graded_submission", { submissionId, studentId: submission.studentId, grade: submission.grade });
     return res.json({ message: "Feedback saved", submission });
   } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
 });
@@ -1488,6 +1620,7 @@ router.delete("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => 
       where: { lessonId, classroomId },
       attributes: ["storedName", "storageProvider", "storageKey"],
     });
+    await recordLessonAudit(req, classroomId, lessonId, "deleted", { title: (await ClassroomLesson.findByPk(lessonId, { attributes: ["title"] }))?.title });
     const deleted = await ClassroomLesson.destroy({ where: { id: lessonId, classroomId } });
     if (!deleted) return res.status(404).json({ message: "Lesson not found" });
     await Promise.all(attachments.map((attachment) => lessonStorage.deleteFile(attachment)));

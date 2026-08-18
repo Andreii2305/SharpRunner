@@ -99,10 +99,11 @@ router.get("/me", async (req, res) => {
           isPublished: true,
           [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
         },
-        attributes: ["id", "title", "contentType", "dueAt", "updatedAt"],
+        attributes: ["id", "title", "contentType", "dueAt", "assignedStudentIds", "updatedAt"],
         order: [["updatedAt", "DESC"]], limit: 10,
       });
       for (const lesson of lessons) {
+        if (Array.isArray(lesson.assignedStudentIds) && lesson.assignedStudentIds.length && !lesson.assignedStudentIds.includes(Number(req.userId))) continue;
         const dueAt = lesson.dueAt ? new Date(lesson.dueAt) : null;
         notifications.push({
           id: `lesson-${lesson.id}-${new Date(lesson.updatedAt).getTime()}`,
@@ -112,14 +113,17 @@ router.get("/me", async (req, res) => {
       }
       const graded = await ClassroomLessonSubmission.findAll({
         where: { studentId: req.userId, status: { [Op.in]: ["graded", "resubmit"] } },
-        include: [{ model: ClassroomLesson, as: "lesson", attributes: ["id", "title", "contentType"] }],
+        include: [{ model: ClassroomLesson, as: "lesson", attributes: ["id", "title", "contentType", "feedbackReleaseAt"] }],
         order: [["gradedAt", "DESC"]], limit: 10,
       });
-      for (const submission of graded) notifications.push({
+      for (const submission of graded) {
+        if (submission.lesson.feedbackReleaseAt && new Date(submission.lesson.feedbackReleaseAt) > new Date()) continue;
+        notifications.push({
         id: `feedback-${submission.id}-${new Date(submission.gradedAt || submission.updatedAt).getTime()}`,
         message: submission.status === "resubmit" ? `Your teacher requested changes for ${submission.lesson.title}.` : `Feedback is ready for ${submission.lesson.title}.`,
         isRead: false, createdAt: submission.gradedAt || submission.updatedAt, lessonId: submission.lesson.id, route: `/assignment/classroom/${submission.lesson.id}`,
-      });
+        });
+      }
     }
 
     if (notifications.length > 0) {

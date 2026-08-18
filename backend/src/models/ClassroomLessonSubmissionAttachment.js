@@ -12,6 +12,8 @@ const ClassroomLessonSubmissionAttachment = sequelize.define("ClassroomLessonSub
   data: { type: DataTypes.BLOB("long"), allowNull: true },
   storageProvider: { type: DataTypes.STRING(30), allowNull: false, defaultValue: "database" },
   storageKey: { type: DataTypes.STRING(500), allowNull: true },
+  sha256: { type: DataTypes.STRING(64), allowNull: true },
+  scanStatus: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "not_configured" },
 });
 
 module.exports = ClassroomLessonSubmissionAttachment;

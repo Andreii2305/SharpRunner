@@ -307,3 +307,28 @@
     grid-template-columns: 1fr;
   }
 }
+.classAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.classAttachments button {
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr) 15px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border: 1px solid #d7e3ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #3c5c7c;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+}
+
+.classAttachments button:hover { background: #edf5ff; border-color: #9bb9da; }
+.classAttachments button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

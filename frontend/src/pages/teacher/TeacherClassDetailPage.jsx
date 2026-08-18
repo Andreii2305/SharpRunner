@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiAward, FiBarChart2, FiBookOpen, FiCalendar,
-  FiList, FiPlus, FiSettings, FiTrendingUp, FiUsers, FiX,
+  FiDownload, FiFile, FiList, FiPaperclip, FiPlus, FiSettings, FiTrendingUp, FiUpload, FiUsers, FiX,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -31,8 +31,10 @@ function TeacherClassDetailPage() {
   const [loadError, setLoadError] = useState("");
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [formError, setFormError] = useState("");
   const [lessonForm, setLessonForm] = useState({ title: "", description: "", dueAt: "" });
+  const [lessonFiles, setLessonFiles] = useState([]);
 
   const loadClass = useCallback(async () => {
     setLoading(true);
@@ -69,25 +71,54 @@ function TeacherClassDetailPage() {
     event.preventDefault();
     if (!lessonForm.title.trim()) { setFormError("Lesson title is required."); return; }
     setSaving(true);
+    setUploadProgress(0);
     setFormError("");
     try {
+      const payload = new FormData();
+      payload.append("title", lessonForm.title.trim());
+      payload.append("description", lessonForm.description.trim());
+      if (lessonForm.dueAt) payload.append("dueAt", lessonForm.dueAt);
+      lessonFiles.forEach((file) => payload.append("files", file));
       const response = await axios.post(
         buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons`),
+        payload,
         {
-          title: lessonForm.title.trim(),
-          description: lessonForm.description.trim(),
-          dueAt: lessonForm.dueAt || null,
+          headers: getAuthHeaders(),
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) setUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
+          },
         },
-        { headers: getAuthHeaders() },
       );
       setLessons((current) => [response.data.lesson, ...current]);
       setLessonForm({ title: "", description: "", dueAt: "" });
+      setLessonFiles([]);
       setShowAddLesson(false);
       toast.success("Lesson added to this class.");
     } catch (error) {
       setFormError(error.response?.data?.message ?? "Failed to add lesson.");
     } finally {
       setSaving(false);
+      setUploadProgress(0);
+    }
+  };
+
+  const openAttachment = async (attachment) => {
+    const inline = /^(video\/|audio\/|image\/|application\/pdf$|text\/)/i.test(attachment.mimeType);
+    const previewWindow = inline ? window.open("", "_blank") : null;
+    try {
+      const response = await axios.get(buildApiUrl(`/api/lesson-content/classroom-files/${attachment.id}`), {
+        headers: getAuthHeaders(), responseType: "blob",
+      });
+      const url = URL.createObjectURL(response.data);
+      if (previewWindow) previewWindow.location.href = url;
+      else {
+        const link = document.createElement("a");
+        link.href = url; link.download = attachment.originalName; link.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      previewWindow?.close();
+      toast.error("Unable to open attachment.");
     }
   };
 
@@ -152,7 +183,7 @@ function TeacherClassDetailPage() {
               <div>
                 <div className={detailStyles.sectionHeader}><div><h2>Class lessons</h2><p>These lessons are visible only to students enrolled in {classroom?.className ?? "this class"}.</p></div><button className={styles.btnPrimary} type="button" onClick={() => { setShowAddLesson(true); setFormError(""); }}><FiPlus /> Add lesson</button></div>
                 {lessons.length ? <div className={detailStyles.lessonGrid}>{lessons.map((lesson) => (
-                  <article key={lesson.id} className={detailStyles.lessonCard}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span>Published</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}</div></article>
+                  <article key={lesson.id} className={detailStyles.lessonCard}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span>Published</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}{lesson.attachments?.length > 0 && <div className={detailStyles.attachmentList}>{lesson.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => openAttachment(attachment)}><FiFile /><span>{attachment.originalName}</span><FiDownload /></button>)}</div>}</div></article>
                 ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>No class lessons yet</h2><p>Add a lesson and it will appear only for students in this class.</p><button className={styles.btnPrimary} type="button" onClick={() => setShowAddLesson(true)}><FiPlus /> Add first lesson</button></div>}
               </div>
             )}
@@ -160,14 +191,19 @@ function TeacherClassDetailPage() {
         </div>
       </main>
 
-      {showAddLesson && <div className={styles.modalBackdrop} onMouseDown={() => setShowAddLesson(false)}><div className={styles.modalCard} onMouseDown={(event) => event.stopPropagation()}>
+      {showAddLesson && <div className={styles.modalBackdrop} onMouseDown={() => setShowAddLesson(false)}><div className={`${styles.modalCard} ${detailStyles.lessonModal}`} onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.modalHeader}><h3>Add lesson to {classroom?.className}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setShowAddLesson(false)}><FiX /></button></div>
         {formError && <div className={styles.modalError}>{formError}</div>}
         <form className={styles.modalForm} onSubmit={addLesson}>
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Lesson title<input autoFocus maxLength={160} value={lessonForm.title} onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} placeholder="e.g. Arrays review" /></label>
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Instructions<textarea className={detailStyles.textarea} maxLength={4000} value={lessonForm.description} onChange={(event) => setLessonForm((current) => ({ ...current, description: event.target.value }))} placeholder="What should students learn or complete?" /></label>
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={lessonForm.dueAt} onChange={(event) => setLessonForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>
-          <div className={styles.modalActions}><button className={styles.btnOutline} type="button" onClick={() => setShowAddLesson(false)}>Cancel</button><button className={styles.btnPrimary} disabled={saving} type="submit">{saving ? "Adding…" : "Add lesson"}</button></div>
+          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Attachments (optional)
+            <span className={detailStyles.filePicker}><FiUpload /><span><strong>Choose files</strong><small>MP4, PDF, Word, images, archives, or any other file · up to 100 MB each</small></span><input type="file" multiple onChange={(event) => setLessonFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></span>
+          </label>
+          {lessonFiles.length > 0 && <div className={detailStyles.selectedFiles}>{lessonFiles.map((file) => <span key={`${file.name}-${file.lastModified}`}><FiPaperclip /> {file.name}</span>)}</div>}
+          {saving && lessonFiles.length > 0 && <div className={detailStyles.uploadProgress}><span style={{ width: `${uploadProgress}%` }} /><small>Uploading {uploadProgress}%</small></div>}
+          <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={saving} onClick={() => setShowAddLesson(false)}>Cancel</button><button className={styles.btnPrimary} disabled={saving} type="submit">{saving ? "Adding…" : "Add lesson"}</button></div>
         </form>
       </div></div>}
     </div>

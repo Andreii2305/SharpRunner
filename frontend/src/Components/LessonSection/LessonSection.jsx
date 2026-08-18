@@ -8,6 +8,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { useToast } from "../Toast/ToastProvider.jsx";
+import { FiDownload, FiFile } from "react-icons/fi";
 
 const DEFAULT_LESSON_META = [
   {
@@ -364,6 +365,29 @@ function LessonSection() {
     toast.warning("This lesson is locked. Finish the current lesson to unlock it.");
   };
 
+  const openClassAttachment = async (attachment) => {
+    const inline = /^(video\/|audio\/|image\/|application\/pdf$|text\/)/i.test(attachment.mimeType);
+    const previewWindow = inline ? window.open("", "_blank") : null;
+    try {
+      const response = await axios.get(
+        buildApiUrl(`/api/lesson-content/classroom-files/${attachment.id}`),
+        { headers: getAuthHeaders(), responseType: "blob" },
+      );
+      const url = URL.createObjectURL(response.data);
+      if (previewWindow) previewWindow.location.href = url;
+      else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.originalName;
+        link.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      previewWindow?.close();
+      toast.error("Unable to open attachment.");
+    }
+  };
+
   const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;
 
   return (
@@ -423,6 +447,17 @@ function LessonSection() {
                     {lesson.dueAt && (
                       <div className={styles.progressLabel}>
                         Due {new Date(lesson.dueAt).toLocaleString()}
+                      </div>
+                    )}
+                    {lesson.attachments?.length > 0 && (
+                      <div className={styles.classAttachments}>
+                        {lesson.attachments.map((attachment) => (
+                          <button type="button" key={attachment.id} onClick={() => openClassAttachment(attachment)}>
+                            <FiFile />
+                            <span>{attachment.originalName}</span>
+                            <FiDownload />
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>

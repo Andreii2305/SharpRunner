@@ -15,6 +15,12 @@ const {
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const LevelContentOverride = require("../models/LevelContentOverride");
 const ClassroomLesson = require("../models/ClassroomLesson");
+const ClassroomLessonAttachment = require("../models/ClassroomLessonAttachment");
+const {
+  uploadLessonFiles,
+  removeUploadedFiles,
+  removeStoredFiles,
+} = require("../middleware/classroomLessonUpload");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -124,6 +130,25 @@ const sanitizeClassroom = (classroom, extra = {}) => ({
   createdAt: classroom.createdAt,
   updatedAt: classroom.updatedAt,
   ...extra,
+});
+
+const sanitizeAttachment = (attachment) => ({
+  id: attachment.id,
+  originalName: attachment.originalName,
+  mimeType: attachment.mimeType,
+  sizeBytes: Number(attachment.sizeBytes),
+});
+
+const sanitizeClassroomLesson = (lesson) => ({
+  id: lesson.id,
+  classroomId: lesson.classroomId,
+  title: lesson.title,
+  description: lesson.description,
+  dueAt: lesson.dueAt,
+  isPublished: lesson.isPublished,
+  createdAt: lesson.createdAt,
+  updatedAt: lesson.updatedAt,
+  attachments: (lesson.attachments ?? []).map(sanitizeAttachment),
 });
 
 const formatTeacherName = (user) => {
@@ -1023,34 +1048,47 @@ router.get("/classrooms/:classroomId/lessons", async (req, res) => {
 
     const lessons = await ClassroomLesson.findAll({
       where: { classroomId },
+      include: [{ model: ClassroomLessonAttachment, as: "attachments", attributes: ["id", "originalName", "mimeType", "sizeBytes"] }],
       order: [["createdAt", "DESC"]],
     });
 
-    return res.json({ classroom: sanitizeClassroom(classroom), lessons });
+    return res.json({ classroom: sanitizeClassroom(classroom), lessons: lessons.map(sanitizeClassroomLesson) });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
 });
 
-router.post("/classrooms/:classroomId/lessons", async (req, res) => {
+router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, res) => {
   try {
     const classroomId = parseInteger(req.params.classroomId);
-    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+    if (!classroomId) {
+      await removeUploadedFiles(req.files);
+      return res.status(400).json({ message: "Invalid classroom id" });
+    }
 
     const classroom = await Classroom.findByPk(classroomId);
-    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (!classroom) {
+      await removeUploadedFiles(req.files);
+      return res.status(404).json({ message: "Classroom not found" });
+    }
     if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      await removeUploadedFiles(req.files);
       return res.status(403).json({ message: "Access denied" });
     }
 
     const title = normalizeString(req.body?.title);
     const description = normalizeString(req.body?.description);
-    if (!title) return res.status(400).json({ message: "Lesson title is required" });
+    if (!title) {
+      await removeUploadedFiles(req.files);
+      return res.status(400).json({ message: "Lesson title is required" });
+    }
     if (title.length > MAX_LESSON_TITLE_LENGTH) {
+      await removeUploadedFiles(req.files);
       return res.status(400).json({ message: `Lesson title must not exceed ${MAX_LESSON_TITLE_LENGTH} characters` });
     }
     if (description.length > MAX_LESSON_DESCRIPTION_LENGTH) {
+      await removeUploadedFiles(req.files);
       return res.status(400).json({ message: `Lesson description must not exceed ${MAX_LESSON_DESCRIPTION_LENGTH} characters` });
     }
 
@@ -1058,6 +1096,7 @@ router.post("/classrooms/:classroomId/lessons", async (req, res) => {
     if (req.body?.dueAt) {
       dueAt = new Date(req.body.dueAt);
       if (Number.isNaN(dueAt.getTime())) {
+        await removeUploadedFiles(req.files);
         return res.status(400).json({ message: "Due date must be valid" });
       }
     }
@@ -1070,8 +1109,21 @@ router.post("/classrooms/:classroomId/lessons", async (req, res) => {
       isPublished: true,
     });
 
-    return res.status(201).json({ message: "Lesson added to classroom", lesson });
+    const attachments = req.files?.length
+      ? await ClassroomLessonAttachment.bulkCreate(req.files.map((file) => ({
+          classroomId,
+          lessonId: lesson.id,
+          originalName: file.originalname.slice(0, 255),
+          storedName: file.filename,
+          mimeType: file.mimetype || "application/octet-stream",
+          sizeBytes: file.size,
+        })))
+      : [];
+    lesson.attachments = attachments;
+
+    return res.status(201).json({ message: "Lesson added to classroom", lesson: sanitizeClassroomLesson(lesson) });
   } catch (error) {
+    await removeUploadedFiles(req.files);
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
@@ -1089,8 +1141,13 @@ router.delete("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => 
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const attachments = await ClassroomLessonAttachment.findAll({
+      where: { lessonId, classroomId },
+      attributes: ["storedName"],
+    });
     const deleted = await ClassroomLesson.destroy({ where: { id: lessonId, classroomId } });
     if (!deleted) return res.status(404).json({ message: "Lesson not found" });
+    await removeStoredFiles(attachments.map((attachment) => attachment.storedName));
     return res.json({ message: "Lesson removed" });
   } catch (error) {
     console.error(error);

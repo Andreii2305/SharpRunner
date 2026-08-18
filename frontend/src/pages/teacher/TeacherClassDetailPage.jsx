@@ -32,6 +32,7 @@ function TeacherClassDetailPage() {
   const [showAddLesson, setShowAddLesson] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [attachingLessonId, setAttachingLessonId] = useState(null);
   const [formError, setFormError] = useState("");
   const [lessonForm, setLessonForm] = useState({ title: "", description: "", dueAt: "" });
   const [lessonFiles, setLessonFiles] = useState([]);
@@ -122,6 +123,31 @@ function TeacherClassDetailPage() {
     }
   };
 
+  const addLessonAttachments = async (lessonId, selectedFiles) => {
+    const files = Array.from(selectedFiles ?? []).slice(0, 10);
+    if (!files.length) return;
+    setAttachingLessonId(lessonId);
+    try {
+      const payload = new FormData();
+      files.forEach((file) => payload.append("files", file));
+      const response = await axios.post(
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lessonId}/attachments`),
+        payload,
+        { headers: getAuthHeaders() },
+      );
+      setLessons((current) => current.map((lesson) =>
+        lesson.id === lessonId ? { ...lesson, attachments: response.data?.attachments ?? lesson.attachments } : lesson
+      ));
+      toast.success(response.data?.removedUnavailableCount
+        ? "Files re-uploaded and the unavailable copy was removed."
+        : "Files added to the lesson.");
+    } catch (error) {
+      toast.error(error.response?.data?.message ?? "Unable to add files.");
+    } finally {
+      setAttachingLessonId(null);
+    }
+  };
+
   return (
     <div className={styles.root}>
       <Sidebar />
@@ -183,7 +209,7 @@ function TeacherClassDetailPage() {
               <div>
                 <div className={detailStyles.sectionHeader}><div><h2>Class lessons</h2><p>These lessons are visible only to students enrolled in {classroom?.className ?? "this class"}.</p></div><button className={styles.btnPrimary} type="button" onClick={() => { setShowAddLesson(true); setFormError(""); }}><FiPlus /> Add lesson</button></div>
                 {lessons.length ? <div className={detailStyles.lessonGrid}>{lessons.map((lesson) => (
-                  <article key={lesson.id} className={detailStyles.lessonCard}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span>Published</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}{lesson.attachments?.length > 0 && <div className={detailStyles.attachmentList}>{lesson.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => openAttachment(attachment)}><FiFile /><span>{attachment.originalName}</span><FiDownload /></button>)}</div>}</div></article>
+                  <article key={lesson.id} className={detailStyles.lessonCard}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span>Published</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}{lesson.attachments?.length > 0 && <div className={detailStyles.attachmentList}>{lesson.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => openAttachment(attachment)}><FiFile /><span>{attachment.originalName}</span><FiDownload /></button>)}</div>}<label className={detailStyles.addFilesButton}><FiUpload /> {attachingLessonId === lesson.id ? "Uploading…" : lesson.attachments?.length ? "Add or re-upload files" : "Add files"}<input type="file" multiple disabled={attachingLessonId != null} onChange={(event) => { addLessonAttachments(lesson.id, event.target.files); event.target.value = ""; }} /></label></div></article>
                 ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>No class lessons yet</h2><p>Add a lesson and it will appear only for students in this class.</p><button className={styles.btnPrimary} type="button" onClick={() => setShowAddLesson(true)}><FiPlus /> Add first lesson</button></div>}
               </div>
             )}

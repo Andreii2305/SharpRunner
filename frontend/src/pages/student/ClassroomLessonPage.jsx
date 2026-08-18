@@ -41,8 +41,16 @@ function ClassroomLessonPage() {
       const url = URL.createObjectURL(response.data);
       previewUrlRef.current = url;
       setPreview({ attachment, url, loading: false, error: "" });
-    } catch {
-      setPreview({ attachment, url: "", loading: false, error: "Unable to preview this file." });
+    } catch (requestError) {
+      const unavailable = requestError.response?.status === 404;
+      setPreview({
+        attachment,
+        url: "",
+        loading: false,
+        error: unavailable
+          ? "This file is no longer available. Ask your teacher to re-upload it."
+          : "Unable to preview this file.",
+      });
     }
   }, []);
 
@@ -84,8 +92,10 @@ function ClassroomLessonPage() {
       link.download = attachment.originalName;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch {
-      toast.error("Unable to download attachment.");
+    } catch (requestError) {
+      toast.error(requestError.response?.status === 404
+        ? "This file is unavailable. Ask your teacher to re-upload it."
+        : "Unable to download attachment.");
     }
   };
 

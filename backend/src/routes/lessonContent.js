@@ -85,6 +85,7 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
     }
 
     const attachment = await ClassroomLessonAttachment.findByPk(fileId, {
+      attributes: ["id", "classroomId", "originalName", "storedName", "mimeType", "sizeBytes", "data"],
       include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished"] }],
     });
     if (!attachment || !attachment.lesson?.isPublished) {
@@ -106,6 +107,10 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
     const inlineType = /^(video\/|audio\/|image\/|application\/pdf$|text\/)/i.test(attachment.mimeType);
     res.setHeader("Content-Type", attachment.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `${inlineType ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(attachment.originalName)}`);
+    if (attachment.data) {
+      res.setHeader("Content-Length", String(attachment.data.length));
+      return res.send(attachment.data);
+    }
     return res.sendFile(filePath, (error) => {
       if (error && !res.headersSent) res.status(404).json({ message: "File not found" });
     });

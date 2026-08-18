@@ -8,6 +8,7 @@ const ClassroomLessonAttachment = sequelize.define("ClassroomLessonAttachments",
   storedName: { type: DataTypes.STRING(255), allowNull: false, unique: true },
   mimeType: { type: DataTypes.STRING(255), allowNull: false },
   sizeBytes: { type: DataTypes.BIGINT, allowNull: false },
+  data: { type: DataTypes.BLOB("long"), allowNull: true },
 });
 
 module.exports = ClassroomLessonAttachment;

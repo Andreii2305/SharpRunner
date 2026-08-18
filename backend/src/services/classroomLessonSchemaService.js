@@ -29,7 +29,13 @@ const ensureClassroomLessonsTable = async () => {
   });
 
   try {
-    await queryInterface.describeTable(ATTACHMENT_TABLE);
+    const attachmentTable = await queryInterface.describeTable(ATTACHMENT_TABLE);
+    if (!attachmentTable.data) {
+      await queryInterface.addColumn(ATTACHMENT_TABLE, "data", {
+        type: DataTypes.BLOB("long"),
+        allowNull: true,
+      });
+    }
   } catch {
     await queryInterface.createTable(ATTACHMENT_TABLE, {
       id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true, allowNull: false },
@@ -39,6 +45,7 @@ const ensureClassroomLessonsTable = async () => {
       storedName: { type: DataTypes.STRING(255), allowNull: false, unique: true },
       mimeType: { type: DataTypes.STRING(255), allowNull: false },
       sizeBytes: { type: DataTypes.BIGINT, allowNull: false },
+      data: { type: DataTypes.BLOB("long"), allowNull: true },
       createdAt: { type: DataTypes.DATE, allowNull: false },
       updatedAt: { type: DataTypes.DATE, allowNull: false },
     });

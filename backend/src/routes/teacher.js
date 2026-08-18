@@ -16,10 +16,13 @@ const { ensureProgressRowsForUser } = require("../services/progressService");
 const LevelContentOverride = require("../models/LevelContentOverride");
 const ClassroomLesson = require("../models/ClassroomLesson");
 const ClassroomLessonAttachment = require("../models/ClassroomLessonAttachment");
+const fs = require("fs");
+const path = require("path");
 const {
   uploadLessonFiles,
   removeUploadedFiles,
   removeStoredFiles,
+  uploadDirectory,
 } = require("../middleware/classroomLessonUpload");
 
 const LEVEL_KEY_SUFFIX = "-level-";
@@ -1109,19 +1112,85 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
       isPublished: true,
     });
 
-    const attachments = req.files?.length
-      ? await ClassroomLessonAttachment.bulkCreate(req.files.map((file) => ({
-          classroomId,
-          lessonId: lesson.id,
-          originalName: file.originalname.slice(0, 255),
-          storedName: file.filename,
-          mimeType: file.mimetype || "application/octet-stream",
-          sizeBytes: file.size,
-        })))
-      : [];
+    const attachments = [];
+    for (const file of req.files ?? []) {
+      attachments.push(await ClassroomLessonAttachment.create({
+        classroomId,
+        lessonId: lesson.id,
+        originalName: file.originalname.slice(0, 255),
+        storedName: file.filename,
+        mimeType: file.mimetype || "application/octet-stream",
+        sizeBytes: file.size,
+        data: await fs.promises.readFile(file.path),
+      }));
+    }
+    await removeUploadedFiles(req.files);
     lesson.attachments = attachments;
 
     return res.status(201).json({ message: "Lesson added to classroom", lesson: sanitizeClassroomLesson(lesson) });
+  } catch (error) {
+    await removeUploadedFiles(req.files);
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const lessonId = parseInteger(req.params.lessonId);
+    if (!classroomId || !lessonId) {
+      await removeUploadedFiles(req.files);
+      return res.status(400).json({ message: "Invalid lesson id" });
+    }
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom || (req.userRole !== "admin" && classroom.teacherId !== req.userId)) {
+      await removeUploadedFiles(req.files);
+      return res.status(classroom ? 403 : 404).json({ message: classroom ? "Access denied" : "Classroom not found" });
+    }
+
+    const lesson = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId } });
+    if (!lesson) {
+      await removeUploadedFiles(req.files);
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+    if (!req.files?.length) return res.status(400).json({ message: "Choose at least one file" });
+
+    const legacyAttachments = await ClassroomLessonAttachment.findAll({
+      where: { lessonId, classroomId, data: null },
+      attributes: ["id", "storedName"],
+    });
+    const missingLegacyIds = legacyAttachments
+      .filter((attachment) => !fs.existsSync(path.join(uploadDirectory, path.basename(attachment.storedName))))
+      .map((attachment) => attachment.id);
+    if (missingLegacyIds.length) {
+      await ClassroomLessonAttachment.destroy({ where: { id: { [Op.in]: missingLegacyIds } } });
+    }
+
+    const attachments = [];
+    for (const file of req.files) {
+      attachments.push(await ClassroomLessonAttachment.create({
+        classroomId,
+        lessonId,
+        originalName: file.originalname.slice(0, 255),
+        storedName: file.filename,
+        mimeType: file.mimetype || "application/octet-stream",
+        sizeBytes: file.size,
+        data: await fs.promises.readFile(file.path),
+      }));
+    }
+    await removeUploadedFiles(req.files);
+    const savedAttachments = await ClassroomLessonAttachment.findAll({
+      where: { lessonId, classroomId },
+      attributes: ["id", "originalName", "mimeType", "sizeBytes"],
+      order: [["createdAt", "ASC"]],
+    });
+    return res.status(201).json({
+      message: "Attachments added",
+      attachments: savedAttachments.map(sanitizeAttachment),
+      removedUnavailableCount: missingLegacyIds.length,
+    });
   } catch (error) {
     await removeUploadedFiles(req.files);
     console.error(error);

@@ -36,6 +36,9 @@
 .attachmentList button { display: grid; grid-template-columns: 16px minmax(0, 1fr) 16px; align-items: center; gap: 7px; width: 100%; padding: 7px 9px; border: 1px solid #dce6f1; border-radius: 8px; background: #fff; color: #475569; cursor: pointer; font: inherit; font-size: 10px; text-align: left; }
 .attachmentList button:hover { border-color: #93b4dc; color: #1e3a5f; }
 .attachmentList button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addFilesButton { position: relative; width: fit-content; margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px dashed #9fb7d1; border-radius: 8px; color: #47627e; background: #f8fbff; cursor: pointer; font-size: 10px; font-weight: 700; }
+.addFilesButton:hover { border-color: #5782ad; background: #eef5fc; }
+.addFilesButton input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .filePicker { position: relative; min-height: 76px; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 12px; border: 1.5px dashed #b8c8dc; border-radius: 10px; color: #64748b; background: #f8fafc; cursor: pointer; text-align: left; }
 .filePicker > svg { font-size: 23px; color: #2563eb; }
 .filePicker span { display: flex; flex-direction: column; gap: 3px; }

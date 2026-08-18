@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiAward, FiBarChart2, FiBookOpen, FiCalendar,
-  FiDownload, FiEdit2, FiFile, FiList, FiPaperclip, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
+  FiCheckCircle, FiDownload, FiEdit2, FiFile, FiList, FiPaperclip, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -41,14 +41,17 @@ function TeacherClassDetailPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [attachingLessonId, setAttachingLessonId] = useState(null);
   const [formError, setFormError] = useState("");
-  const [lessonForm, setLessonForm] = useState({ title: "", description: "", dueAt: "" });
+  const [lessonForm, setLessonForm] = useState({ contentType: "lesson", title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
   const [lessonFiles, setLessonFiles] = useState([]);
   const [editingLesson, setEditingLesson] = useState(null);
-  const [editForm, setEditForm] = useState({ title: "", description: "", dueAt: "" });
+  const [editForm, setEditForm] = useState({ contentType: "lesson", title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
   const [editError, setEditError] = useState("");
   const [isEditing, setIsEditing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [reviewLesson, setReviewLesson] = useState(null);
+  const [submissions, setSubmissions] = useState([]);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const loadClass = useCallback(async () => {
     setLoading(true);
@@ -90,8 +93,12 @@ function TeacherClassDetailPage() {
     try {
       const payload = new FormData();
       payload.append("title", lessonForm.title.trim());
+      payload.append("contentType", lessonForm.contentType);
       payload.append("description", lessonForm.description.trim());
       if (lessonForm.dueAt) payload.append("dueAt", new Date(lessonForm.dueAt).toISOString());
+      if (lessonForm.publishAt) payload.append("publishAt", new Date(lessonForm.publishAt).toISOString());
+      payload.append("isPublished", String(lessonForm.isPublished));
+      payload.append("maxScore", String(lessonForm.maxScore));
       lessonFiles.forEach((file) => payload.append("files", file));
       const response = await axios.post(
         buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons`),
@@ -104,7 +111,7 @@ function TeacherClassDetailPage() {
         },
       );
       setLessons((current) => [response.data.lesson, ...current]);
-      setLessonForm({ title: "", description: "", dueAt: "" });
+      setLessonForm({ contentType: "lesson", title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
       setLessonFiles([]);
       setShowAddLesson(false);
       toast.success("Lesson added to this class.");
@@ -136,6 +143,16 @@ function TeacherClassDetailPage() {
     }
   };
 
+  const openSubmissionAttachment = async (attachment) => {
+    const previewWindow = window.open("", "_blank");
+    try {
+      const response = await axios.get(buildApiUrl(`/api/lesson-content/submission-files/${attachment.id}`), { headers: getAuthHeaders(), responseType: "blob" });
+      const url = URL.createObjectURL(response.data);
+      previewWindow.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch { previewWindow?.close(); toast.error("Unable to open submitted file."); }
+  };
+
   const addLessonAttachments = async (lessonId, selectedFiles) => {
     const files = Array.from(selectedFiles ?? []).slice(0, 10);
     if (!files.length) return;
@@ -164,9 +181,13 @@ function TeacherClassDetailPage() {
   const openEditLesson = (lesson) => {
     setEditingLesson(lesson);
     setEditForm({
+      contentType: lesson.contentType ?? (lesson.allowSubmissions ? "assignment" : "lesson"),
       title: lesson.title ?? "",
       description: lesson.description ?? "",
       dueAt: toDateTimeLocal(lesson.dueAt),
+      publishAt: toDateTimeLocal(lesson.publishAt),
+      isPublished: lesson.isPublished,
+      maxScore: lesson.maxScore ?? 100,
     });
     setEditError("");
   };
@@ -181,8 +202,12 @@ function TeacherClassDetailPage() {
         buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${editingLesson.id}`),
         {
           title: editForm.title.trim(),
+          contentType: editForm.contentType,
           description: editForm.description.trim(),
           dueAt: editForm.dueAt ? new Date(editForm.dueAt).toISOString() : null,
+          publishAt: editForm.publishAt ? new Date(editForm.publishAt).toISOString() : null,
+          isPublished: editForm.isPublished,
+          maxScore: Number(editForm.maxScore) || 100,
         },
         { headers: getAuthHeaders() },
       );
@@ -196,6 +221,57 @@ function TeacherClassDetailPage() {
     } finally {
       setIsEditing(false);
     }
+  };
+
+  const updateAttachment = async (lesson, attachment, changes) => {
+    try {
+      const response = await axios.patch(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), changes, { headers: getAuthHeaders() });
+      setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.map((file) => file.id === attachment.id ? response.data.attachment : file).sort((a, b) => a.displayOrder - b.displayOrder) } : item));
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to update attachment."); }
+  };
+
+  const renameAttachment = (lesson, attachment) => {
+    const originalName = window.prompt("Attachment name", attachment.originalName)?.trim();
+    if (originalName && originalName !== attachment.originalName) updateAttachment(lesson, attachment, { originalName });
+  };
+
+  const deleteAttachment = async (lesson, attachment) => {
+    if (!window.confirm(`Remove ${attachment.originalName}?`)) return;
+    try {
+      await axios.delete(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), { headers: getAuthHeaders() });
+      setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.filter((file) => file.id !== attachment.id) } : item));
+      toast.success("Attachment removed.");
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to remove attachment."); }
+  };
+
+  const replaceAttachment = async (lesson, attachment, file) => {
+    if (!file) return;
+    const payload = new FormData(); payload.append("files", file);
+    try {
+      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}/file`), payload, { headers: getAuthHeaders() });
+      setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.map((entry) => entry.id === attachment.id ? response.data.attachment : entry) } : item));
+      toast.success("Attachment replaced.");
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to replace attachment."); }
+  };
+
+  const openSubmissions = async (lesson) => {
+    setReviewLesson(lesson); setReviewLoading(true); setSubmissions([]);
+    try {
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/submissions`), { headers: getAuthHeaders() });
+      setSubmissions(response.data?.submissions ?? []);
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to load submissions."); }
+    finally { setReviewLoading(false); }
+  };
+
+  const gradeSubmission = async (submission) => {
+    const gradeValue = window.prompt(`Grade out of ${reviewLesson.maxScore}`, submission.grade ?? "");
+    if (gradeValue == null) return;
+    const feedback = window.prompt("Feedback for the student", submission.feedback ?? "") ?? "";
+    try {
+      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${reviewLesson.id}/submissions/${submission.id}/grade`), { grade: Number(gradeValue), feedback }, { headers: getAuthHeaders() });
+      setSubmissions((current) => current.map((item) => item.id === submission.id ? { ...item, ...response.data.submission } : item));
+      toast.success("Grade and feedback saved.");
+    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to save grade."); }
   };
 
   const deleteLesson = async () => {
@@ -214,6 +290,11 @@ function TeacherClassDetailPage() {
     } finally {
       setIsDeleting(false);
     }
+  };
+
+  const openCreateContent = (contentType) => {
+    setLessonForm({ contentType, title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100 });
+    setLessonFiles([]); setFormError(""); setShowAddLesson(true);
   };
 
   return (
@@ -241,7 +322,7 @@ function TeacherClassDetailPage() {
             </div>
             <div className={detailStyles.heroStats}>
               <div><strong>{students.length}</strong><span>Students</span></div>
-              <div><strong>{lessons.length}</strong><span>Class lessons</span></div>
+              <div><strong>{lessons.length}</strong><span>Class content</span></div>
               <div><strong>{analytics.avgProgress}%</strong><span>Avg progress</span></div>
             </div>
           </section>
@@ -250,7 +331,7 @@ function TeacherClassDetailPage() {
             {[
               ["students", <FiList key="students" />, "Students"],
               ["analytics", <FiBarChart2 key="analytics" />, "Analytics"],
-              ["lessons", <FiBookOpen key="lessons" />, "Lessons"],
+              ["lessons", <FiBookOpen key="lessons" />, "Classwork"],
             ].map(([key, icon, label]) => (
               <button type="button" key={key} className={activeTab === key ? detailStyles.tabActive : detailStyles.tab} onClick={() => setActiveTab(key)}>{icon}{label}{key === "lessons" && <span>{lessons.length}</span>}</button>
             ))}
@@ -275,16 +356,17 @@ function TeacherClassDetailPage() {
               </div>
             ) : (
               <div>
-                <div className={detailStyles.sectionHeader}><div><h2>Class lessons</h2><p>These lessons are visible only to students enrolled in {classroom?.className ?? "this class"}.</p></div><button className={styles.btnPrimary} type="button" onClick={() => { setShowAddLesson(true); setFormError(""); }}><FiPlus /> Add lesson</button></div>
+                <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Lessons are view-only materials. Assignments collect and grade student work.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("lesson")}><FiPlus /> Add lesson</button><button className={styles.btnPrimary} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button></div></div>
                 {lessons.length ? <div className={detailStyles.lessonGrid}>{lessons.map((lesson) => (
                   <div className={detailStyles.lessonCardWrap} key={lesson.id}>
-                  <article key={lesson.id} className={detailStyles.lessonCard}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span>Published</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}{lesson.attachments?.length > 0 && <div className={detailStyles.attachmentList}>{lesson.attachments.map((attachment) => <button type="button" key={attachment.id} onClick={() => openAttachment(attachment)}><FiFile /><span>{attachment.originalName}</span><FiDownload /></button>)}</div>}<label className={detailStyles.addFilesButton}><FiUpload /> {attachingLessonId === lesson.id ? "Uploading…" : lesson.attachments?.length ? "Add or re-upload files" : "Add files"}<input type="file" multiple disabled={attachingLessonId != null} onChange={(event) => { addLessonAttachments(lesson.id, event.target.files); event.target.value = ""; }} /></label></div></article>
+                  <article key={lesson.id} className={detailStyles.lessonCard}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.contentKind}>{lesson.contentType === "assignment" ? "Assignment / activity" : "Lesson / material"}</div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span className={!lesson.isPublished ? detailStyles.draftBadge : ""}>{!lesson.isPublished ? "Draft" : lesson.publishAt && new Date(lesson.publishAt) > new Date() ? "Scheduled" : "Published"}</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.publishAt && <small><FiCalendar /> Publish {new Date(lesson.publishAt).toLocaleString()}</small>}{lesson.contentType === "assignment" && lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}<div className={detailStyles.lessonStats}><span>{lesson.stats?.viewed ?? 0} viewed</span>{lesson.contentType === "lesson" && <span>{lesson.stats?.completed ?? 0} completed</span>}{lesson.contentType === "assignment" && <span>{lesson.stats?.submitted ?? 0} submitted</span>}</div>{lesson.attachments?.length > 0 && <div className={detailStyles.attachmentList}>{lesson.attachments.map((attachment, index) => <div className={detailStyles.attachmentManageRow} key={attachment.id}><button type="button" onClick={() => openAttachment(attachment)}><FiFile /><span>{attachment.originalName}</span><FiDownload /></button><button type="button" title="Rename" onClick={() => renameAttachment(lesson, attachment)}><FiEdit2 /></button><label title="Replace"><FiUpload /><input type="file" onChange={(event) => { replaceAttachment(lesson, attachment, event.target.files?.[0]); event.target.value = ""; }} /></label><button type="button" title="Move up" disabled={!index} onClick={() => updateAttachment(lesson, attachment, { displayOrder: Math.max(0, (attachment.displayOrder ?? index) - 1) })}>↑</button><button type="button" title="Delete" onClick={() => deleteAttachment(lesson, attachment)}><FiTrash2 /></button></div>)}</div>}<label className={detailStyles.addFilesButton}><FiUpload /> {attachingLessonId === lesson.id ? "Uploading…" : "Add files"}<input type="file" multiple disabled={attachingLessonId != null} onChange={(event) => { addLessonAttachments(lesson.id, event.target.files); event.target.value = ""; }} /></label></div></article>
                     <div className={detailStyles.lessonActions}>
+                      {lesson.contentType === "assignment" && <button type="button" onClick={() => openSubmissions(lesson)}><FiCheckCircle /> Review ({lesson.stats?.submitted ?? 0})</button>}
                       <button type="button" onClick={() => openEditLesson(lesson)}><FiEdit2 /> Edit</button>
                       <button type="button" className={detailStyles.deleteLessonButton} onClick={() => setDeleteTarget(lesson)}><FiTrash2 /> Delete</button>
                     </div>
                   </div>
-                ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>No class lessons yet</h2><p>Add a lesson and it will appear only to students in this class.</p><button className={styles.btnPrimary} type="button" onClick={() => setShowAddLesson(true)}><FiPlus /> Add first lesson</button></div>}
+                ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>No class content yet</h2><p>Add a lesson material or publish an assignment for this class.</p><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("lesson")}><FiPlus /> Add lesson</button><button className={styles.btnPrimary} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button></div></div>}
               </div>
             )}
           </section>
@@ -292,30 +374,39 @@ function TeacherClassDetailPage() {
       </main>
 
       {showAddLesson && <div className={styles.modalBackdrop} onMouseDown={() => setShowAddLesson(false)}><div className={`${styles.modalCard} ${detailStyles.lessonModal}`} onMouseDown={(event) => event.stopPropagation()}>
-        <div className={styles.modalHeader}><h3>Add lesson to {classroom?.className}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setShowAddLesson(false)}><FiX /></button></div>
+        <div className={styles.modalHeader}><h3>Add {lessonForm.contentType === "assignment" ? "assignment" : "lesson"} to {classroom?.className}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setShowAddLesson(false)}><FiX /></button></div>
         {formError && <div className={styles.modalError}>{formError}</div>}
         <form className={styles.modalForm} onSubmit={addLesson}>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Lesson title<input autoFocus maxLength={160} value={lessonForm.title} onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} placeholder="e.g. Arrays review" /></label>
+          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>{lessonForm.contentType === "assignment" ? "Assignment title" : "Lesson title"}<input autoFocus maxLength={160} value={lessonForm.title} onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} placeholder={lessonForm.contentType === "assignment" ? "e.g. Arrays practice activity" : "e.g. Arrays review material"} /></label>
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Instructions<textarea className={detailStyles.textarea} maxLength={4000} value={lessonForm.description} onChange={(event) => setLessonForm((current) => ({ ...current, description: event.target.value }))} placeholder="What should students learn or complete?" /></label>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={lessonForm.dueAt} onChange={(event) => setLessonForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>
+          {lessonForm.contentType === "assignment" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={lessonForm.dueAt} onChange={(event) => setLessonForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>}
+          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={lessonForm.publishAt} onChange={(event) => setLessonForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
+          <div className={detailStyles.optionRow}><label><input type="checkbox" checked={lessonForm.isPublished} onChange={(event) => setLessonForm((current) => ({ ...current, isPublished: event.target.checked }))} /> Publish {lessonForm.contentType}</label>{lessonForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={lessonForm.maxScore} onChange={(event) => setLessonForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Attachments (optional)
             <span className={detailStyles.filePicker}><FiUpload /><span><strong>Choose files</strong><small>MP4, PDF, Word, images, archives, or any other file · up to 100 MB each</small></span><input type="file" multiple onChange={(event) => setLessonFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></span>
           </label>
           {lessonFiles.length > 0 && <div className={detailStyles.selectedFiles}>{lessonFiles.map((file) => <span key={`${file.name}-${file.lastModified}`}><FiPaperclip /> {file.name}</span>)}</div>}
           {saving && lessonFiles.length > 0 && <div className={detailStyles.uploadProgress}><span style={{ width: `${uploadProgress}%` }} /><small>Uploading {uploadProgress}%</small></div>}
-          <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={saving} onClick={() => setShowAddLesson(false)}>Cancel</button><button className={styles.btnPrimary} disabled={saving} type="submit">{saving ? "Adding…" : "Add lesson"}</button></div>
+          <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={saving} onClick={() => setShowAddLesson(false)}>Cancel</button><button className={styles.btnPrimary} disabled={saving} type="submit">{saving ? "Adding…" : `Add ${lessonForm.contentType}`}</button></div>
         </form>
       </div></div>}
 
       {editingLesson && <div className={styles.modalBackdrop} onMouseDown={() => !isEditing && setEditingLesson(null)}><div className={`${styles.modalCard} ${detailStyles.lessonModal}`} onMouseDown={(event) => event.stopPropagation()}>
-        <div className={styles.modalHeader}><h3>Edit lesson</h3><button type="button" className={styles.modalCloseBtn} disabled={isEditing} onClick={() => setEditingLesson(null)}><FiX /></button></div>
+        <div className={styles.modalHeader}><h3>Edit {editForm.contentType}</h3><button type="button" className={styles.modalCloseBtn} disabled={isEditing} onClick={() => setEditingLesson(null)}><FiX /></button></div>
         {editError && <div className={styles.modalError}>{editError}</div>}
         <form className={styles.modalForm} onSubmit={saveLessonChanges}>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Lesson title<input autoFocus maxLength={160} value={editForm.title} onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))} /></label>
+          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>{editForm.contentType === "assignment" ? "Assignment title" : "Lesson title"}<input autoFocus maxLength={160} value={editForm.title} onChange={(event) => setEditForm((current) => ({ ...current, title: event.target.value }))} /></label>
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Instructions<textarea className={detailStyles.textarea} maxLength={4000} value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={editForm.dueAt} onChange={(event) => setEditForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>
+          {editForm.contentType === "assignment" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={editForm.dueAt} onChange={(event) => setEditForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>}
+          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={editForm.publishAt} onChange={(event) => setEditForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
+          <div className={detailStyles.optionRow}><label><input type="checkbox" checked={editForm.isPublished} onChange={(event) => setEditForm((current) => ({ ...current, isPublished: event.target.checked }))} /> Publish {editForm.contentType}</label>{editForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={editForm.maxScore} onChange={(event) => setEditForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
           <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={isEditing} onClick={() => setEditingLesson(null)}>Cancel</button><button className={styles.btnPrimary} disabled={isEditing} type="submit">{isEditing ? "Savingâ€¦" : "Save changes"}</button></div>
         </form>
+      </div></div>}
+
+      {reviewLesson && <div className={styles.modalBackdrop} onMouseDown={() => setReviewLesson(null)}><div className={`${styles.modalCard} ${detailStyles.reviewModal}`} onMouseDown={(event) => event.stopPropagation()}>
+        <div className={styles.modalHeader}><h3>Submissions · {reviewLesson.title}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setReviewLesson(null)}><FiX /></button></div>
+        {reviewLoading ? <div className={styles.loadingText}>Loading submissions…</div> : submissions.length ? <div className={detailStyles.submissionList}>{submissions.map((submission) => <article key={submission.id}><div><strong>{`${submission.student?.firstName ?? ""} ${submission.student?.lastName ?? ""}`.trim() || submission.student?.username || "Student"}</strong><span>{new Date(submission.submittedAt).toLocaleString()} · {reviewLesson.dueAt && new Date(submission.submittedAt) > new Date(reviewLesson.dueAt) ? "late" : submission.status}</span></div>{submission.comment && <p>{submission.comment}</p>}{submission.attachments?.map((file) => <button type="button" key={file.id} onClick={() => openSubmissionAttachment(file)}><FiFile /> {file.originalName}</button>)}{submission.grade != null && <p><b>{submission.grade}/{reviewLesson.maxScore}</b> {submission.feedback}</p>}<button type="button" className={styles.btnPrimary} onClick={() => gradeSubmission(submission)}>Grade / feedback</button></article>)}</div> : <div className={detailStyles.emptyState}><FiCheckCircle /><h2>No submissions yet</h2></div>}
       </div></div>}
 
       <ConfirmModal

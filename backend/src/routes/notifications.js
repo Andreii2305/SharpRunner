@@ -3,6 +3,8 @@ const { Op } = require("sequelize");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const UserNotificationView = require("../models/UserNotificationView");
+const ClassroomLesson = require("../models/ClassroomLesson");
+const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission");
 const {
   ensureProgressRowsForUser,
   buildProgressSummary,
@@ -15,7 +17,7 @@ const {
 
 const MAX_NOTIFICATION_KEY_LENGTH = 255;
 const NOTIFICATION_KEY_PREFIX_REGEX =
-  /^(classroom|current-level|class-rank|levels-cleared)-/;
+  /^(classroom|current-level|class-rank|levels-cleared|lesson|feedback)-/;
 
 const normalizeNotificationKey = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -87,6 +89,36 @@ router.get("/me", async (req, res) => {
         } so far.`,
         isRead: true,
         createdAt: new Date().toISOString(),
+      });
+    }
+
+    if (primaryMembership) {
+      const lessons = await ClassroomLesson.findAll({
+        where: {
+          classroomId: primaryMembership.classroomId,
+          isPublished: true,
+          [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
+        },
+        attributes: ["id", "title", "contentType", "dueAt", "updatedAt"],
+        order: [["updatedAt", "DESC"]], limit: 10,
+      });
+      for (const lesson of lessons) {
+        const dueAt = lesson.dueAt ? new Date(lesson.dueAt) : null;
+        notifications.push({
+          id: `lesson-${lesson.id}-${new Date(lesson.updatedAt).getTime()}`,
+          message: dueAt && dueAt < new Date() ? `${lesson.title} is past due.` : `${lesson.contentType === "assignment" ? "Assignment" : "Class lesson"} available: ${lesson.title}.`,
+          isRead: false, createdAt: lesson.updatedAt, lessonId: lesson.id, route: `/${lesson.contentType === "assignment" ? "assignment" : "lesson"}/classroom/${lesson.id}`,
+        });
+      }
+      const graded = await ClassroomLessonSubmission.findAll({
+        where: { studentId: req.userId, status: { [Op.in]: ["graded", "resubmit"] } },
+        include: [{ model: ClassroomLesson, as: "lesson", attributes: ["id", "title", "contentType"] }],
+        order: [["gradedAt", "DESC"]], limit: 10,
+      });
+      for (const submission of graded) notifications.push({
+        id: `feedback-${submission.id}-${new Date(submission.gradedAt || submission.updatedAt).getTime()}`,
+        message: submission.status === "resubmit" ? `Your teacher requested changes for ${submission.lesson.title}.` : `Feedback is ready for ${submission.lesson.title}.`,
+        isRead: false, createdAt: submission.gradedAt || submission.updatedAt, lessonId: submission.lesson.id, route: `/assignment/classroom/${submission.lesson.id}`,
       });
     }
 

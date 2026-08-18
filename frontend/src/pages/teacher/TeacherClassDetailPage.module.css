@@ -24,6 +24,7 @@
 .sectionHeader { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
 .sectionHeader h2 { margin: 0 0 3px; color: #1e3a5f; font-size: 15px; }
 .sectionHeader p { margin: 0; color: #94a3b8; font-size: 11px; }
+.createActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .lessonGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 12px; }
 .lessonCardWrap { display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dce6f1; border-radius: 12px; background: #fbfdff; }
 .lessonCard { display: grid; grid-template-columns: 38px 1fr; gap: 12px; padding: 16px; border: 1px solid #dce6f1; border-radius: 12px; background: #fbfdff; }
@@ -36,13 +37,23 @@
 .lessonIcon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: #eaf2ff; color: #2563eb; }
 .lessonTop { display: flex; justify-content: space-between; gap: 8px; }
 .lessonTop h3 { margin: 1px 0 6px; color: #1e3a5f; font-size: 13px; }
+.contentKind { margin-bottom: 4px; color: #2563eb; font-size: 9px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .lessonTop span { height: fit-content; padding: 2px 7px; border-radius: 99px; background: #dcfce7; color: #16803a; font-size: 9px; font-weight: 700; }
+.lessonTop .draftBadge { background: #e2e8f0; color: #475569; }
+.lessonStats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.lessonStats span { padding: 3px 6px; border-radius: 99px; background: #eef4fb; color: #47627e; font-size: 9px; }
 .lessonCard p { margin: 0 0 10px; color: #64748b; line-height: 1.5; font-size: 11px; }
 .lessonCard small { display: flex; align-items: center; gap: 5px; color: #9a6700; font-size: 10px; }
 .attachmentList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .attachmentList button { display: grid; grid-template-columns: 16px minmax(0, 1fr) 16px; align-items: center; gap: 7px; width: 100%; padding: 7px 9px; border: 1px solid #dce6f1; border-radius: 8px; background: #fff; color: #475569; cursor: pointer; font: inherit; font-size: 10px; text-align: left; }
 .attachmentList button:hover { border-color: #93b4dc; color: #1e3a5f; }
 .attachmentList button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachmentManageRow { display: grid; grid-template-columns: minmax(0, 1fr) repeat(4, 28px); gap: 4px; }
+.attachmentManageRow > button { display: grid; grid-template-columns: none; place-items: center; padding: 5px; }
+.attachmentManageRow > button:first-child { grid-template-columns: 16px minmax(0, 1fr) 16px; padding: 7px 9px; }
+.attachmentManageRow > button:disabled { opacity: .35; cursor: default; }
+.attachmentManageRow > label { position: relative; display: grid; place-items: center; border: 1px solid #dce6f1; border-radius: 8px; background: #fff; color: #475569; cursor: pointer; }
+.attachmentManageRow > label input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
 .addFilesButton { position: relative; width: fit-content; margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px dashed #9fb7d1; border-radius: 8px; color: #47627e; background: #f8fbff; cursor: pointer; font-size: 10px; font-weight: 700; }
 .addFilesButton:hover { border-color: #5782ad; background: #eef5fc; }
 .addFilesButton input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
@@ -64,5 +75,15 @@
 .emptyState p { margin: 6px 0 16px; font-size: 11px; }
 .textarea { min-height: 110px; resize: vertical; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 10px; font: inherit; color: #374151; outline: none; }
 .textarea:focus { border-color: #26547c; box-shadow: 0 0 0 3px rgba(38,84,124,.1); }
+.optionRow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px; border-radius: 9px; background: #f8fafc; color: #475569; font-size: 11px; }
+.optionRow label { display: flex; align-items: center; gap: 6px; }
+.optionRow input[type="number"] { width: 72px; padding: 5px; border: 1px solid #cbd5e1; border-radius: 6px; }
+.reviewModal { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; }
+.submissionList { display: grid; gap: 10px; padding: 0 20px 20px; }
+.submissionList article { padding: 14px; border: 1px solid #dce6f1; border-radius: 10px; background: #fbfdff; }
+.submissionList article > div:first-child { display: flex; justify-content: space-between; gap: 10px; }
+.submissionList article span { color: #94a3b8; font-size: 10px; }
+.submissionList article p { color: #475569; font-size: 11px; white-space: pre-wrap; }
+.submissionList article > button { margin: 3px 5px 3px 0; }
 @media (max-width: 850px) { .heroStats { display: none; } .analyticsGrid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 600px) { .heroCard { align-items: flex-start; } .tabs { width: 100%; } .tab, .tabActive { flex: 1; justify-content: center; padding-inline: 8px; } .analyticsGrid { grid-template-columns: 1fr; } .sectionHeader { align-items: flex-start; } }

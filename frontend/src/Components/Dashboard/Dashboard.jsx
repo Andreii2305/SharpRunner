@@ -402,6 +402,7 @@ function StudentDashboardPage() {
   const onNotificationOpen = async (notification) => {
     setNotificationActionError("");
     await markNotificationAsViewed(notification);
+    if (notification?.route) navigate(notification.route);
   };
 
   /* ── Derived values ── */

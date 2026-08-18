@@ -10,6 +10,12 @@ const ClassroomLesson = sequelize.define("ClassroomLessons", {
     type: DataTypes.STRING(160),
     allowNull: false,
   },
+  contentType: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    defaultValue: "lesson",
+    validate: { isIn: [["lesson", "assignment"]] },
+  },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -23,6 +29,9 @@ const ClassroomLesson = sequelize.define("ClassroomLessons", {
     allowNull: false,
     defaultValue: true,
   },
+  publishAt: { type: DataTypes.DATE, allowNull: true },
+  allowSubmissions: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  maxScore: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
 });
 
 module.exports = ClassroomLesson;

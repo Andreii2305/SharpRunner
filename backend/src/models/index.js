@@ -12,6 +12,9 @@ const LevelContentOverride = require("./LevelContentOverride");
 const EmailVerificationToken = require("./EmailVerificationToken");
 const ClassroomLesson = require("./ClassroomLesson");
 const ClassroomLessonAttachment = require("./ClassroomLessonAttachment");
+const ClassroomLessonProgress = require("./ClassroomLessonProgress");
+const ClassroomLessonSubmission = require("./ClassroomLessonSubmission");
+const ClassroomLessonSubmissionAttachment = require("./ClassroomLessonSubmissionAttachment");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -100,6 +103,18 @@ ClassroomLessonAttachment.belongsTo(ClassroomLesson, {
   foreignKey: "lessonId",
   as: "lesson",
 });
+
+ClassroomLesson.hasMany(ClassroomLessonProgress, { foreignKey: "lessonId", as: "progress", onDelete: "CASCADE" });
+ClassroomLessonProgress.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
+User.hasMany(ClassroomLessonProgress, { foreignKey: "studentId", as: "classroomLessonProgress", onDelete: "CASCADE" });
+ClassroomLessonProgress.belongsTo(User, { foreignKey: "studentId", as: "student" });
+
+ClassroomLesson.hasMany(ClassroomLessonSubmission, { foreignKey: "lessonId", as: "submissions", onDelete: "CASCADE" });
+ClassroomLessonSubmission.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
+User.hasMany(ClassroomLessonSubmission, { foreignKey: "studentId", as: "classroomLessonSubmissions", onDelete: "CASCADE" });
+ClassroomLessonSubmission.belongsTo(User, { foreignKey: "studentId", as: "student" });
+ClassroomLessonSubmission.hasMany(ClassroomLessonSubmissionAttachment, { foreignKey: "submissionId", as: "attachments", onDelete: "CASCADE" });
+ClassroomLessonSubmissionAttachment.belongsTo(ClassroomLessonSubmission, { foreignKey: "submissionId", as: "submission" });
 
 Classroom.hasMany(ClassroomLessonAttachment, {
   foreignKey: "classroomId",
@@ -221,4 +236,7 @@ module.exports = {
   EmailVerificationToken,
   ClassroomLesson,
   ClassroomLessonAttachment,
+  ClassroomLessonProgress,
+  ClassroomLessonSubmission,
+  ClassroomLessonSubmissionAttachment,
 };

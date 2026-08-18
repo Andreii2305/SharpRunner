@@ -83,6 +83,14 @@ function App() {
           }
         />
         <Route
+          path="/assignment/classroom/:lessonId"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <ClassroomLessonPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/Map"
           element={
             <ProtectedRoute requireClassMembership>

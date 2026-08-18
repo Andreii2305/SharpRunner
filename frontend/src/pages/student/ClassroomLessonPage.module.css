@@ -8,6 +8,7 @@
 .heroIcon { width: 58px; height: 58px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,.2); border-radius: 14px; background: rgba(255,255,255,.12); font-size: 23px; }
 .heroCopy > span { color: #bdd4eb; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .heroCopy h1 { margin: 4px 0 8px; font-size: 24px; line-height: 1.2; }
+.completeButton { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.35); border-radius: 9px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
 .heroMeta { display: flex; flex-wrap: wrap; gap: 15px; }
 .heroMeta span { display: inline-flex; align-items: center; gap: 6px; color: #d7e5f3; font-size: 11px; }
 .contentGrid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; margin-top: 16px; align-items: start; }
@@ -38,6 +39,17 @@
 .downloadButton { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 7px; color: #64748b; background: transparent; cursor: pointer; }
 .downloadButton:hover { color: #1e3a5f; background: #e5edf6; }
 .noFiles { padding: 24px 8px; color: #94a3b8; font-size: 11px; text-align: center; }
+.submissionForm { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
+.submissionForm textarea { min-height: 90px; resize: vertical; padding: 9px; border: 1px solid #d7e3ef; border-radius: 8px; font: inherit; font-size: 11px; }
+.submissionPicker { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px dashed #9fb7d1; border-radius: 8px; color: #47627e; cursor: pointer; font-size: 10px; font-weight: 700; }
+.submissionPicker input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.submissionForm > button { padding: 9px; border: 0; border-radius: 8px; background: #1e4f7a; color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+.submissionForm > button:disabled { opacity: .6; }
+.submissionForm small { overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
+.lateNotice { padding: 7px; border-radius: 7px; background: #fff7ed; color: #9a3412; font-size: 10px; }
+.feedbackBox { padding: 10px; border-radius: 9px; background: #eef5fc; color: #334155; font-size: 11px; }
+.feedbackBox p { margin: 5px 0; white-space: pre-wrap; }
+.feedbackBox button { display: flex; gap: 5px; padding: 4px 0; border: 0; background: transparent; color: #2563eb; cursor: pointer; font-size: 10px; }
 .status { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b; }
 .status h1 { margin: 0; color: #1e3a5f; }
 .status p { margin: 7px 0 16px; }

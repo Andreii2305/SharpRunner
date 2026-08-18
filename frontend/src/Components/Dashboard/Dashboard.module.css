@@ -292,6 +292,23 @@
 }
 
 /* ── MAIN GRID ───────────────────────── */
+.teacherLessonsSection { flex-shrink: 0; }
+.teacherLessonsSub { margin-top: 3px; color: #9ca3af; font-size: 11px; }
+.teacherLessonGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.teacherLessonCard { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 11px; padding: 13px; border: 1px solid #d9e5f1; border-radius: 11px; background: linear-gradient(145deg, #fbfdff, #f5f9fd); min-width: 0; }
+.teacherLessonIcon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: #26547c; background: #e8f0fb; }
+.teacherLessonBody { min-width: 0; }
+.teacherLessonTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 7px; }
+.teacherLessonTop h3 { margin: 1px 0 5px; color: #1e3a5f; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teacherLessonTop > span { padding: 2px 7px; border-radius: 99px; color: #26547c; background: #e8f0fb; font-size: 9px; font-weight: 700; }
+.teacherLessonCard p { margin: 0; min-height: 30px; color: #6b7280; font-size: 10px; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.teacherLessonMeta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.teacherLessonMeta span { display: flex; align-items: center; gap: 4px; color: #7b8b9e; font-size: 9px; }
+.teacherLessonFiles { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+.teacherLessonFiles button { width: 100%; display: grid; grid-template-columns: 14px minmax(0, 1fr) 14px; align-items: center; gap: 6px; padding: 6px 7px; border: 1px solid #d7e3ef; border-radius: 7px; background: #fff; color: #47627e; cursor: pointer; font: inherit; font-size: 9px; text-align: left; }
+.teacherLessonFiles button:hover { border-color: #91b2d5; background: #f2f7fd; }
+.teacherLessonFiles button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .mainGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
@@ -952,6 +969,7 @@
 
 /* ── RESPONSIVE ──────────────────────── */
 @media (max-width: 1200px) {
+  .teacherLessonGrid { grid-template-columns: 1fr 1fr; }
   .mainGrid {
     grid-template-columns: 1fr;
   }
@@ -970,6 +988,7 @@
 }
 
 @media (max-width: 700px) {
+  .teacherLessonGrid { grid-template-columns: 1fr; }
   .main {
     padding: 14px 16px;
   }

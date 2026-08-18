@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth";
 import styles from "./Dashboard.module.css";
+import { FiBookOpen, FiCalendar, FiDownload, FiFile, FiPaperclip } from "react-icons/fi";
+import { useToast } from "../Toast/ToastProvider.jsx";
 
 /* ─── Region config ───────────────────────────────────────────── */
 const REGIONS = [
@@ -264,6 +266,7 @@ function LeaderboardRow({ rank, name, xp, levels, isMe }) {
 /* ─── Main component ──────────────────────────────────────────── */
 function StudentDashboardPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const user = getUser();
 
   const [progressData, setProgressData] = useState(null);
@@ -275,6 +278,7 @@ function StudentDashboardPage() {
   });
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [classroomLessons, setClassroomLessons] = useState([]);
   const [activeTab, setActiveTab] = useState("announcements");
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [announcementActionError, setAnnouncementActionError] = useState("");
@@ -286,13 +290,14 @@ function StudentDashboardPage() {
     const h = { headers: getAuthHeaders() };
 
     const fetchAll = async () => {
-      const [progressRes, classroomRes, lbRes, annRes, notifRes] =
+      const [progressRes, classroomRes, lbRes, annRes, notifRes, lessonRes] =
         await Promise.allSettled([
           axios.get(buildApiUrl("/api/progress/me"), h),
           axios.get(buildApiUrl("/api/classrooms/me"), h),
           axios.get(buildApiUrl("/api/classrooms/leaderboard"), h),
           axios.get(buildApiUrl("/api/classrooms/announcements"), h),
           axios.get(buildApiUrl("/api/notifications/me"), h),
+          axios.get(buildApiUrl("/api/lesson-content"), h),
         ]);
 
       if (!isMounted) return;
@@ -312,6 +317,8 @@ function StudentDashboardPage() {
         setAnnouncements(annRes.value.data?.announcements ?? []);
       if (notifRes.status === "fulfilled")
         setNotifications(notifRes.value.data?.notifications ?? []);
+      if (lessonRes.status === "fulfilled")
+        setClassroomLessons(lessonRes.value.data?.classroomLessons ?? []);
 
       setIsLoading(false);
     };
@@ -321,6 +328,29 @@ function StudentDashboardPage() {
       isMounted = false;
     };
   }, []);
+
+  const openClassAttachment = async (attachment) => {
+    const inline = /^(video\/|audio\/|image\/|application\/pdf$|text\/)/i.test(attachment.mimeType);
+    const previewWindow = inline ? window.open("", "_blank") : null;
+    try {
+      const response = await axios.get(
+        buildApiUrl(`/api/lesson-content/classroom-files/${attachment.id}`),
+        { headers: getAuthHeaders(), responseType: "blob" },
+      );
+      const url = URL.createObjectURL(response.data);
+      if (previewWindow) previewWindow.location.href = url;
+      else {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = attachment.originalName;
+        link.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      previewWindow?.close();
+      toast.error("Unable to open attachment.");
+    }
+  };
 
   const markAnnouncementAsViewed = async (announcement) => {
     if (!announcement?.id || announcement.isRead) {
@@ -435,7 +465,6 @@ function StudentDashboardPage() {
   const classSize =
     progressData?.summary?.classSize ?? leaderboardMeta.classSize ?? null;
   const totalTimePlayed = progressData?.summary?.totalTimePlayed ?? "—";
-  const mistakes = progressData?.summary?.commonMistakes ?? [];
 
   const myUserId = user?.id;
   const myRank =
@@ -583,6 +612,45 @@ function StudentDashboardPage() {
             sub="this session"
           />
         </div>
+
+        {classroomLessons.length > 0 && (
+          <section className={`${styles.card} ${styles.teacherLessonsSection}`}>
+            <div className={styles.sectionHead}>
+              <div>
+                <div className={styles.sectionTitle}>Lessons from your teacher</div>
+                <div className={styles.teacherLessonsSub}>Class materials and assignments shared with you</div>
+              </div>
+              <button className={styles.sectionLink} type="button" onClick={() => navigate("/lesson")}>See all →</button>
+            </div>
+            <div className={styles.teacherLessonGrid}>
+              {classroomLessons.slice(0, 3).map((lesson) => (
+                <article className={styles.teacherLessonCard} key={lesson.id}>
+                  <div className={styles.teacherLessonIcon}><FiBookOpen /></div>
+                  <div className={styles.teacherLessonBody}>
+                    <div className={styles.teacherLessonTop}>
+                      <h3>{lesson.title}</h3>
+                      <span>Assigned</span>
+                    </div>
+                    <p>{lesson.description || "No additional instructions."}</p>
+                    <div className={styles.teacherLessonMeta}>
+                      {lesson.dueAt && <span><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</span>}
+                      {lesson.attachments?.length > 0 && <span><FiPaperclip /> {lesson.attachments.length} file{lesson.attachments.length === 1 ? "" : "s"}</span>}
+                    </div>
+                    {lesson.attachments?.length > 0 && (
+                      <div className={styles.teacherLessonFiles}>
+                        {lesson.attachments.slice(0, 3).map((attachment) => (
+                          <button type="button" key={attachment.id} onClick={() => openClassAttachment(attachment)} title={`Open ${attachment.originalName}`}>
+                            <FiFile /><span>{attachment.originalName}</span><FiDownload />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* ── MAIN GRID ── */}
         <div className={styles.mainGrid}>

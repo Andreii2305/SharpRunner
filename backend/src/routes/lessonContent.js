@@ -37,6 +37,46 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
+router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
+  try {
+    const lessonId = Number.parseInt(req.params.lessonId, 10);
+    if (!Number.isInteger(lessonId) || lessonId <= 0) {
+      return res.status(400).json({ message: "Invalid lesson id" });
+    }
+
+    const lesson = await ClassroomLesson.findByPk(lessonId, {
+      attributes: ["id", "classroomId", "title", "description", "dueAt", "isPublished", "createdAt", "updatedAt"],
+      include: [{
+        model: ClassroomLessonAttachment,
+        as: "attachments",
+        attributes: ["id", "originalName", "mimeType", "sizeBytes"],
+      }],
+    });
+    if (!lesson || !lesson.isPublished) {
+      return res.status(404).json({ message: "Lesson not found" });
+    }
+
+    let allowed = req.userRole === "admin";
+    if (req.userRole === "teacher") {
+      allowed = Boolean(await Classroom.findOne({
+        where: { id: lesson.classroomId, teacherId: req.userId },
+        attributes: ["id"],
+      }));
+    } else if (req.userRole === "student") {
+      allowed = Boolean(await ClassroomMembership.findOne({
+        where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" },
+        attributes: ["id"],
+      }));
+    }
+    if (!allowed) return res.status(403).json({ message: "Access denied" });
+
+    return res.json({ lesson });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
   try {
     const fileId = Number.parseInt(req.params.fileId, 10);

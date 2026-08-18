@@ -15,6 +15,7 @@ import TeacherAnnouncementsPage from "./pages/teacher/TeacherAnnouncementsPage.j
 import TeacherClassDetailPage from "./pages/teacher/TeacherClassDetailPage.jsx";
 import JoinClassPage from "./pages/student/JoinClassPage.jsx";
 import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
+import ClassroomLessonPage from "./pages/student/ClassroomLessonPage.jsx";
 import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
 import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
 import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
@@ -70,6 +71,14 @@ function App() {
           element={
             <ProtectedRoute requireClassMembership>
               <StudentLeaderboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lesson/classroom/:lessonId"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <ClassroomLessonPage />
             </ProtectedRoute>
           }
         />

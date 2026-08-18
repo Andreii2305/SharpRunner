@@ -314,6 +314,11 @@
   margin-top: 12px;
 }
 
+.classAttachments > span { display: inline-flex; align-items: center; gap: 5px; color: #64748b; font-size: 10px; font-weight: 600; }
+.classLessonCard { cursor: pointer; }
+.classLessonCard:focus-visible { outline: 3px solid rgba(38, 84, 124, .2); outline-offset: 2px; }
+.classLessonOpen { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #1e3a5f; color: #fff; flex-shrink: 0; }
+
 .classAttachments button {
   max-width: 100%;
   display: grid;

@@ -1,0 +1,46 @@
+.root { display: flex; width: 100%; height: 100vh; overflow: hidden; background: #f0f4f8; font-family: "Segoe UI", system-ui, sans-serif; color: #334155; }
+.main { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px 32px; }
+.header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.backButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #47627e; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.backButton:hover { color: #1e3a5f; }
+.headerType { display: inline-flex; align-items: center; gap: 6px; color: #64748b; font-size: 11px; }
+.hero { display: flex; align-items: center; gap: 17px; padding: 24px 26px; border-radius: 16px; color: #fff; background: linear-gradient(120deg, #18385f, #285f96); box-shadow: 0 12px 28px rgba(30,58,95,.16); }
+.heroIcon { width: 58px; height: 58px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,.2); border-radius: 14px; background: rgba(255,255,255,.12); font-size: 23px; }
+.heroCopy > span { color: #bdd4eb; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.heroCopy h1 { margin: 4px 0 8px; font-size: 24px; line-height: 1.2; }
+.heroMeta { display: flex; flex-wrap: wrap; gap: 15px; }
+.heroMeta span { display: inline-flex; align-items: center; gap: 6px; color: #d7e5f3; font-size: 11px; }
+.contentGrid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; margin-top: 16px; align-items: start; }
+.lessonContent, .attachmentsPanel { padding: 21px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
+.sectionLabel { margin-bottom: 12px; color: #94a3b8; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.instructions { min-height: 80px; color: #334155; font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
+.previewSection { margin-top: 24px; padding-top: 20px; border-top: 1px solid #edf1f5; }
+.previewHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.previewHeader > div { display: flex; flex-direction: column; min-width: 0; }
+.previewHeader span { color: #94a3b8; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.previewHeader strong { margin-top: 2px; color: #1e3a5f; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.previewHeader button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #d7e3ef; border-radius: 8px; background: #fff; color: #47627e; font: inherit; font-size: 10px; cursor: pointer; }
+.previewCanvas { min-height: 390px; display: grid; place-items: center; overflow: hidden; border: 1px solid #dce5ef; border-radius: 11px; background: #f4f7fa; }
+.previewMessage { display: flex; flex-direction: column; align-items: center; gap: 8px; color: #94a3b8; font-size: 12px; }
+.previewMessage svg { font-size: 27px; }
+.imagePreview { max-width: 100%; max-height: 650px; object-fit: contain; }
+.mediaPreview { width: 100%; max-height: 650px; background: #0f172a; }
+.audioPreview { width: min(520px, calc(100% - 30px)); }
+.documentPreview { width: 100%; height: 650px; border: 0; background: #fff; }
+.attachmentsPanel { position: sticky; top: 0; }
+.fileRow { display: grid; grid-template-columns: minmax(0, 1fr) 34px; align-items: center; gap: 6px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; background: #fafcff; }
+.fileRowActive { border-color: #9ab8d8; background: #eef5fc; }
+.fileMain { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 3px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.fileIcon { width: 31px; height: 31px; display: grid; place-items: center; flex-shrink: 0; border-radius: 8px; background: #e8f0fb; color: #26547c; }
+.fileInfo { min-width: 0; display: flex; flex-direction: column; }
+.fileInfo strong { color: #334155; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileInfo small { margin-top: 2px; color: #94a3b8; font-size: 8px; }
+.downloadButton { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 7px; color: #64748b; background: transparent; cursor: pointer; }
+.downloadButton:hover { color: #1e3a5f; background: #e5edf6; }
+.noFiles { padding: 24px 8px; color: #94a3b8; font-size: 11px; text-align: center; }
+.status { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b; }
+.status h1 { margin: 0; color: #1e3a5f; }
+.status p { margin: 7px 0 16px; }
+.status button { padding: 8px 14px; border: 0; border-radius: 8px; background: #1e3a5f; color: #fff; cursor: pointer; }
+@media (max-width: 980px) { .contentGrid { grid-template-columns: 1fr; } .attachmentsPanel { position: static; } }
+@media (max-width: 700px) { .main { padding: 14px 16px 80px; } .hero { align-items: flex-start; padding: 20px; } .heroCopy h1 { font-size: 20px; } .previewCanvas { min-height: 260px; } .documentPreview { height: 480px; } }

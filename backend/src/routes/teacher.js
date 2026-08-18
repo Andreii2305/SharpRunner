@@ -1198,6 +1198,55 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLess
   }
 });
 
+router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const lessonId = parseInteger(req.params.lessonId);
+    if (!classroomId || !lessonId) return res.status(400).json({ message: "Invalid lesson id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const lesson = await ClassroomLesson.findOne({
+      where: { id: lessonId, classroomId },
+      include: [{
+        model: ClassroomLessonAttachment,
+        as: "attachments",
+        attributes: ["id", "originalName", "mimeType", "sizeBytes"],
+      }],
+    });
+    if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+
+    const title = normalizeString(req.body?.title);
+    const description = normalizeString(req.body?.description);
+    if (!title) return res.status(400).json({ message: "Lesson title is required" });
+    if (title.length > MAX_LESSON_TITLE_LENGTH) {
+      return res.status(400).json({ message: `Lesson title must not exceed ${MAX_LESSON_TITLE_LENGTH} characters` });
+    }
+    if (description.length > MAX_LESSON_DESCRIPTION_LENGTH) {
+      return res.status(400).json({ message: `Lesson description must not exceed ${MAX_LESSON_DESCRIPTION_LENGTH} characters` });
+    }
+
+    let dueAt = null;
+    if (req.body?.dueAt) {
+      dueAt = new Date(req.body.dueAt);
+      if (Number.isNaN(dueAt.getTime())) return res.status(400).json({ message: "Due date must be valid" });
+    }
+
+    lesson.title = title;
+    lesson.description = description || null;
+    lesson.dueAt = dueAt;
+    await lesson.save();
+    return res.json({ message: "Lesson updated", lesson: sanitizeClassroomLesson(lesson) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.delete("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
   try {
     const classroomId = parseInteger(req.params.classroomId);

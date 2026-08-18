@@ -32,6 +32,7 @@ const ClassroomLesson = sequelize.define("ClassroomLessons", {
   publishAt: { type: DataTypes.DATE, allowNull: true },
   allowSubmissions: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   maxScore: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
+  displayOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
 });
 
 module.exports = ClassroomLesson;

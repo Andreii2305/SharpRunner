@@ -7,7 +7,7 @@ import {
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
+import { buildApiUrl, getAuthHeaders, getUserRole } from "../../utils/auth.js";
 import styles from "./ClassroomLessonPage.module.css";
 
 const isOfficeFile = (name = "") => /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(name);
@@ -24,6 +24,7 @@ function ClassroomLessonPage() {
   const { lessonId } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
+  const isTeacherPreview = ["teacher", "admin"].includes(getUserRole());
   const previewUrlRef = useRef(null);
   const [lesson, setLesson] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -151,8 +152,8 @@ function ClassroomLessonPage() {
       <Sidebar />
       <main className={styles.main}>
         <header className={styles.header}>
-          <button type="button" className={styles.backButton} onClick={() => navigate("/lesson")}><FiArrowLeft /> Back to lessons</button>
-          <span className={styles.headerType}><FiBookOpen /> {lesson?.contentType === "assignment" ? "Assignment / activity" : "Lesson / material"}</span>
+          <button type="button" className={styles.backButton} onClick={() => navigate(isTeacherPreview && lesson?.classroomId ? `/teacher/classrooms/${lesson.classroomId}` : "/lesson")}><FiArrowLeft /> {isTeacherPreview ? "Back to classroom" : "Back to classwork"}</button>
+          <span className={styles.headerType}><FiBookOpen /> {isTeacherPreview ? "Teacher preview" : lesson?.contentType === "assignment" ? "Assignment / activity" : "Lesson / material"}</span>
         </header>
 
         {loading ? <div className={styles.status}>Loading lesson…</div> : error || !lesson ? (
@@ -169,7 +170,7 @@ function ClassroomLessonPage() {
                   <span><FiPaperclip /> {lesson.attachments?.length ?? 0} attachment{lesson.attachments?.length === 1 ? "" : "s"}</span>
                 </div>
               </div>
-              {lesson.contentType !== "assignment" && <button type="button" className={styles.completeButton} onClick={toggleCompletion}><FiCheckCircle /> {progress?.completedAt ? "Completed" : "Mark complete"}</button>}
+              {!isTeacherPreview && lesson.contentType !== "assignment" && <button type="button" className={styles.completeButton} onClick={toggleCompletion}><FiCheckCircle /> {progress?.completedAt ? "Completed" : "Mark complete"}</button>}
             </section>
 
             <div className={styles.contentGrid}>
@@ -200,7 +201,7 @@ function ClassroomLessonPage() {
                   </div>
                 )) : <div className={styles.noFiles}>This lesson has no attachments.</div>}
 
-                {lesson.contentType === "assignment" && <form className={styles.submissionForm} onSubmit={submitWork}><div className={styles.sectionLabel}>Submit your work</div>{lesson.dueAt && new Date(lesson.dueAt) < new Date() && <div className={styles.lateNotice}>Past due · submissions are marked late</div>}<textarea value={submissionComment} onChange={(event) => setSubmissionComment(event.target.value)} placeholder="Add your answer or a note…" /><label className={styles.submissionPicker}><FiUpload /> Attach files<input type="file" multiple onChange={(event) => setSubmissionFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></label>{submissionFiles.map((file) => <small key={`${file.name}-${file.lastModified}`}>{file.name}</small>)}<button type="submit" disabled={submitting}>{submitting ? "Submitting…" : submission ? "Resubmit work" : "Submit work"}</button>{submission && <div className={styles.feedbackBox}><strong>{submission.status === "graded" ? `Grade: ${submission.grade}/${lesson.maxScore}` : submission.status === "resubmit" ? "Changes requested" : "Submitted"}</strong>{submission.feedback && <p>{submission.feedback}</p>}{submission.attachments?.map((file) => <button type="button" key={file.id} onClick={() => downloadSubmissionFile(file)}><FiFile /> {file.originalName}</button>)}</div>}</form>}
+                {!isTeacherPreview && lesson.contentType === "assignment" && <form className={styles.submissionForm} onSubmit={submitWork}><div className={styles.sectionLabel}>Submit your work</div>{lesson.dueAt && new Date(lesson.dueAt) < new Date() && <div className={styles.lateNotice}>Past due · submissions are marked late</div>}<textarea value={submissionComment} onChange={(event) => setSubmissionComment(event.target.value)} placeholder="Add your answer or a note…" /><label className={styles.submissionPicker}><FiUpload /> Attach files<input type="file" multiple onChange={(event) => setSubmissionFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></label>{submissionFiles.map((file) => <small key={`${file.name}-${file.lastModified}`}>{file.name}</small>)}<button type="submit" disabled={submitting}>{submitting ? "Submitting…" : submission ? "Resubmit work" : "Submit work"}</button>{submission && <div className={styles.feedbackBox}><strong>{submission.status === "graded" ? `Grade: ${submission.grade}/${lesson.maxScore}` : submission.status === "resubmit" ? "Changes requested" : "Submitted"}</strong>{submission.feedback && <p>{submission.feedback}</p>}{submission.attachments?.map((file) => <button type="button" key={file.id} onClick={() => downloadSubmissionFile(file)}><FiFile /> {file.originalName}</button>)}</div>}</form>}
               </aside>
             </div>
           </>

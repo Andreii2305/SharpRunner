@@ -32,6 +32,7 @@ const ensureClassroomLessonsTable = async () => {
     publishAt: { type: DataTypes.DATE, allowNull: true },
     allowSubmissions: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     maxScore: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
+    displayOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     createdAt: { type: DataTypes.DATE, allowNull: false },
     updatedAt: { type: DataTypes.DATE, allowNull: false },
   });
@@ -44,6 +45,7 @@ const ensureClassroomLessonsTable = async () => {
     await addMissingColumn(queryInterface, TABLE, lessonTable, "publishAt", { type: DataTypes.DATE, allowNull: true });
     await addMissingColumn(queryInterface, TABLE, lessonTable, "allowSubmissions", { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
     await addMissingColumn(queryInterface, TABLE, lessonTable, "maxScore", { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 });
+    await addMissingColumn(queryInterface, TABLE, lessonTable, "displayOrder", { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 });
   }
   await queryInterface.bulkUpdate(TABLE, { contentType: "assignment" }, { allowSubmissions: true, contentType: "lesson" });
 

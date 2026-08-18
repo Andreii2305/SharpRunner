@@ -21,6 +21,7 @@ const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission")
 const ClassroomLessonSubmissionAttachment = require("../models/ClassroomLessonSubmissionAttachment");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const {
   uploadLessonFiles,
   removeUploadedFiles,
@@ -158,6 +159,7 @@ const sanitizeClassroomLesson = (lesson) => ({
   publishAt: lesson.publishAt,
   allowSubmissions: lesson.allowSubmissions,
   maxScore: lesson.maxScore,
+  displayOrder: lesson.displayOrder ?? 0,
   stats: lesson.stats,
   createdAt: lesson.createdAt,
   updatedAt: lesson.updatedAt,
@@ -605,7 +607,7 @@ router.get("/classrooms", async (req, res) => {
     const scopeWhere = buildScopeWhere(req);
     const classrooms = await Classroom.findAll({
       where: scopeWhere,
-      order: [["createdAt", "DESC"]],
+      order: [["displayOrder", "ASC"], ["createdAt", "DESC"]],
     });
 
     if (classrooms.length === 0) {
@@ -1089,6 +1091,7 @@ router.get("/classrooms/:classroomId/lessons", async (req, res) => {
         completed: progress.filter((row) => row.completedAt).length,
         submitted: submissions.length,
         graded: submissions.filter((row) => row.status === "graded").length,
+        late: lesson.dueAt ? submissions.filter((row) => new Date(row.submittedAt) > new Date(lesson.dueAt)).length : 0,
       };
       lesson.attachments?.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.id - b.id);
     }
@@ -1153,6 +1156,7 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
       description: description || null,
       dueAt: options.contentType === "assignment" ? dueAt : null,
       ...options,
+      displayOrder: await ClassroomLesson.count({ where: { classroomId } }),
     });
 
     const attachments = [];
@@ -1178,6 +1182,51 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
+});
+
+router.put("/classrooms/:classroomId/lessons/reorder", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const lessonIds = Array.isArray(req.body?.lessonIds) ? req.body.lessonIds.map(parseInteger).filter(Boolean) : [];
+    const existing = await ClassroomLesson.findAll({ where: { classroomId, id: { [Op.in]: lessonIds } }, attributes: ["id"] });
+    if (!lessonIds.length || existing.length !== new Set(lessonIds).size) return res.status(400).json({ message: "Invalid classwork order" });
+    await Promise.all(lessonIds.map((id, displayOrder) => ClassroomLesson.update({ displayOrder }, { where: { id, classroomId } })));
+    return res.json({ message: "Classwork reordered" });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+});
+
+router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const lessonId = parseInteger(req.params.lessonId);
+    const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const source = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId }, include: [{ model: ClassroomLessonAttachment, as: "attachments" }] });
+    if (!source) return res.status(404).json({ message: "Classwork not found" });
+    const copy = await ClassroomLesson.create({
+      classroomId, title: `Copy of ${source.title}`.slice(0, MAX_LESSON_TITLE_LENGTH), description: source.description,
+      contentType: source.contentType, dueAt: source.dueAt, publishAt: null, isPublished: false,
+      allowSubmissions: source.allowSubmissions, maxScore: source.maxScore,
+      displayOrder: await ClassroomLesson.count({ where: { classroomId } }),
+    });
+    const attachments = [];
+    for (const sourceFile of source.attachments || []) {
+      const data = await lessonStorage.readFile(sourceFile);
+      if (!data) continue;
+      attachments.push(await ClassroomLessonAttachment.create({
+        classroomId, lessonId: copy.id, originalName: sourceFile.originalName,
+        storedName: `${crypto.randomUUID()}${path.extname(sourceFile.originalName).slice(0, 20)}`,
+        mimeType: sourceFile.mimeType, sizeBytes: sourceFile.sizeBytes, data,
+        storageProvider: "database", storageKey: null, displayOrder: sourceFile.displayOrder,
+      }));
+    }
+    copy.attachments = attachments;
+    return res.status(201).json({ message: "Draft copy created", lesson: sanitizeClassroomLesson(copy) });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
 });
 
 router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
@@ -1304,6 +1353,20 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
   }
 });
 
+router.put("/classrooms/:classroomId/lessons/:lessonId/attachments/reorder", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId); const lessonId = parseInteger(req.params.lessonId);
+    const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
+    const attachmentIds = Array.isArray(req.body?.attachmentIds) ? req.body.attachmentIds.map(parseInteger).filter(Boolean) : [];
+    const existing = await ClassroomLessonAttachment.findAll({ where: { classroomId, lessonId, id: { [Op.in]: attachmentIds } }, attributes: ["id"] });
+    if (!attachmentIds.length || existing.length !== new Set(attachmentIds).size) return res.status(400).json({ message: "Invalid attachment order" });
+    await Promise.all(attachmentIds.map((id, displayOrder) => ClassroomLessonAttachment.update({ displayOrder }, { where: { id, classroomId, lessonId } })));
+    return res.json({ message: "Attachments reordered" });
+  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+});
+
 router.patch("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachmentId", async (req, res) => {
   try {
     const classroomId = parseInteger(req.params.classroomId);
@@ -1397,11 +1460,12 @@ router.put("/classrooms/:classroomId/lessons/:lessonId/submissions/:submissionId
     const lesson = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId } });
     const submission = await ClassroomLessonSubmission.findOne({ where: { id: submissionId, lessonId, classroomId } });
     if (!lesson || lesson.contentType !== "assignment" || !submission) return res.status(404).json({ message: "Submission not found" });
+    const requestedResubmit = req.body?.status === "resubmit";
     const grade = Number.parseInt(req.body?.grade, 10);
-    if (!Number.isInteger(grade) || grade < 0 || grade > lesson.maxScore) return res.status(400).json({ message: `Grade must be between 0 and ${lesson.maxScore}` });
-    submission.grade = grade;
+    if (!requestedResubmit && (!Number.isInteger(grade) || grade < 0 || grade > lesson.maxScore)) return res.status(400).json({ message: `Grade must be between 0 and ${lesson.maxScore}` });
+    submission.grade = requestedResubmit ? null : grade;
     submission.feedback = normalizeString(req.body?.feedback).slice(0, 4000) || null;
-    submission.status = req.body?.status === "resubmit" ? "resubmit" : "graded";
+    submission.status = requestedResubmit ? "resubmit" : "graded";
     submission.gradedAt = new Date();
     await submission.save();
     return res.json({ message: "Feedback saved", submission });

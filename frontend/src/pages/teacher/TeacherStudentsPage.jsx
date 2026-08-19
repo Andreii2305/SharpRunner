@@ -1,6 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { FiAward, FiX, FiDownload } from "react-icons/fi";
+import {
+  FiActivity,
+  FiAlertCircle,
+  FiAward,
+  FiBookOpen,
+  FiChevronLeft,
+  FiChevronRight,
+  FiDownload,
+  FiEye,
+  FiSearch,
+  FiTrendingUp,
+  FiUsers,
+  FiX,
+} from "react-icons/fi";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
@@ -20,10 +33,32 @@ const getLessonKey = (levelKey) => levelKey.split("-level-")[0];
 const getLessonTitle = (lessonKey) =>
   lessonKey.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
+const titleCase = (value = "") => value
+  .trim()
+  .split(/\s+/)
+  .map((word) => word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : "")
+  .join(" ");
+
+const getStudentName = (student) => titleCase(student.studentName || student.username || "Student");
+
+const getPerformance = (student) => {
+  const progress = clampPercent(student.progressPercent);
+  if (progress === 0) return { key: "attention", label: "Needs attention" };
+  if (progress === 100) return { key: "completed", label: "Completed" };
+  if (progress < 25) return { key: "behind", label: "Falling behind" };
+  return { key: "track", label: "On track" };
+};
+
+const PAGE_SIZE = 8;
+
 function TeacherStudentsPage() {
   const [students, setStudents]     = useState([]);
   const [isLoading, setIsLoading]   = useState(true);
   const [filter, setFilter]         = useState("all");
+  const [search, setSearch]         = useState("");
+  const [performanceFilter, setPerformanceFilter] = useState("all");
+  const [sortBy, setSortBy]         = useState("progress-desc");
+  const [page, setPage]             = useState(1);
   const [activeTab, setActiveTab]   = useState("list");
   const [allGrades, setAllGrades]   = useState(null);   // Map<userId, grades[]>
   const [tabLoading, setTabLoading] = useState(false);
@@ -45,8 +80,38 @@ function TeacherStudentsPage() {
     })();
   }, []);
 
-  const filtered = filter === "all" ? students : students.filter((s) => s.section === filter);
   const sections = [...new Set(students.map((s) => s.section).filter(Boolean))];
+  const sectionStudents = filter === "all" ? students : students.filter((s) => s.section === filter);
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const matching = sectionStudents.filter((student) => {
+      const matchesSearch = !query || [student.studentName, student.username, student.section, student.classroomName]
+        .some((value) => String(value || "").toLowerCase().includes(query));
+      const matchesPerformance = performanceFilter === "all" || getPerformance(student).key === performanceFilter;
+      return matchesSearch && matchesPerformance;
+    });
+    return [...matching].sort((a, b) => {
+      if (sortBy === "name-asc") return getStudentName(a).localeCompare(getStudentName(b));
+      if (sortBy === "score-desc") return (b.avgScore ?? -1) - (a.avgScore ?? -1);
+      if (sortBy === "activity-desc") return new Date(b.lastActivityAt || 0) - new Date(a.lastActivityAt || 0);
+      return clampPercent(b.progressPercent) - clampPercent(a.progressPercent)
+        || (b.completedLevels ?? 0) - (a.completedLevels ?? 0);
+    });
+  }, [sectionStudents, search, performanceFilter, sortBy]);
+
+  useEffect(() => setPage(1), [filter, search, performanceFilter, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const pagedStudents = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const scoredStudents = sectionStudents.filter((student) => student.avgScore != null);
+  const averageScore = scoredStudents.length
+    ? Math.round(scoredStudents.reduce((sum, student) => sum + Number(student.avgScore), 0) / scoredStudents.length)
+    : null;
+  const averageProgress = sectionStudents.length
+    ? Math.round(sectionStudents.reduce((sum, student) => sum + clampPercent(student.progressPercent), 0) / sectionStudents.length)
+    : 0;
+  const attentionStudents = sectionStudents.filter((student) => ["attention", "behind"].includes(getPerformance(student).key));
+  const activeNow = sectionStudents.filter((student) => student.isCurrentlyPlaying).length;
 
   // ── Shared grade data for tabs 2 & 3 ─────────────────────────────────────
   const ensureGradesLoaded = async (students) => {
@@ -76,7 +141,7 @@ function TeacherStudentsPage() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
-    if (tab !== "list" && allGrades === null) ensureGradesLoaded(filtered);
+    if (tab !== "list" && allGrades === null) ensureGradesLoaded(students);
   };
 
   // ── Column builders ───────────────────────────────────────────────────────
@@ -275,14 +340,14 @@ function TeacherStudentsPage() {
 
   // ── Grades modal ──────────────────────────────────────────────────────────
   const openGrades = async (student) => {
-    setGradesModal({ studentName: student.studentName || student.username, grades: [] });
+    setGradesModal({ student, studentName: getStudentName(student), grades: [] });
     setGradesLoading(true);
     try {
       const res = await axios.get(
         buildApiUrl(`/api/teacher/students/${student.userId}/grades`),
         { headers: getAuthHeaders() },
       );
-      setGradesModal({ studentName: res.data.studentName, grades: res.data.grades });
+      setGradesModal({ student, studentName: titleCase(res.data.studentName || getStudentName(student)), grades: res.data.grades });
     } catch {
       setGradesModal(null);
     } finally {
@@ -293,69 +358,52 @@ function TeacherStudentsPage() {
   // ── Tab content ───────────────────────────────────────────────────────────
   const renderList = () => (
     <div className={styles.tableWrap}>
-      <table className={styles.table}>
+      <table className={`${styles.table} ${pgStyles.studentTable}`}>
+        <caption className={pgStyles.srOnly}>Student progress, performance, awards, and activity</caption>
         <thead>
           <tr>
-            <th>Rank</th>
-            <th>Student name</th>
-            <th>Section</th>
-            <th>Progress</th>
-            <th>Avg. Score</th>
-            <th>Badges</th>
-            <th>Status</th>
-            <th></th>
+            <th>Student name</th><th>Section</th><th>Progress</th><th>Average score</th>
+            <th>Badges</th><th>Performance</th><th>Activity</th><th><span className={pgStyles.srOnly}>Actions</span></th>
           </tr>
         </thead>
         <tbody>
           {filtered.length === 0 ? (
-            <tr><td colSpan={8} className={styles.emptyRow}>No students found.</td></tr>
-          ) : (
-            filtered.map((s) => (
-              <tr key={s.userId}>
-                <td><span className={pgStyles.rankBadge}>{s.rank}</span></td>
-                <td>
-                  <div className={pgStyles.nameCell}>
-                    <div className={pgStyles.stuAv}>
-                      {(s.studentName || s.username || "?").slice(0, 2).toUpperCase()}
-                    </div>
-                    <span>{s.studentName || s.username}</span>
-                  </div>
-                </td>
-                <td>{s.section}</td>
-                <td>
-                  <div className={pgStyles.progressCell}>
-                    <div className={styles.miniBarTrack} style={{ width: 80 }}>
-                      <div className={styles.miniBarFill} style={{ width: `${clampPercent(s.progressPercent)}%` }} />
-                    </div>
-                    <span className={pgStyles.progressPct}>{clampPercent(s.progressPercent)}%</span>
-                  </div>
-                </td>
-                <td>
-                  {s.avgScore != null
-                    ? <span className={pgStyles.scoreChip}>{s.avgScore}</span>
-                    : <span className={pgStyles.scorePending}>—</span>}
-                </td>
-                <td>
-                  <div className={pgStyles.badges}>
-                    {Array.from({ length: Math.max(1, Math.min(s.badgesCount, 4)) }).map((_, i) => (
-                      <FiAward key={`${s.userId}-${i}`} size={13} />
-                    ))}
-                  </div>
-                </td>
-                <td>
-                  <div className={s.status === "inactive" ? pgStyles.statusInactive : pgStyles.statusOnline}>
-                    {s.statusLabel}
-                  </div>
-                  <div className={pgStyles.lastActive}>{s.lastActiveLabel}</div>
-                </td>
-                <td>
-                  <button className={pgStyles.gradesBtn} onClick={() => openGrades(s)}>Grades</button>
-                </td>
+            <tr><td colSpan={8} className={styles.emptyRow}>No students match the current filters.</td></tr>
+          ) : pagedStudents.map((student) => {
+            const performance = getPerformance(student);
+            return (
+              <tr key={student.userId} className={pgStyles.studentRow}>
+                <td><div className={pgStyles.nameCell}>
+                  <div className={pgStyles.stuAv}>{getStudentName(student).split(" ").map((part) => part[0]).join("").slice(0, 2)}</div>
+                  <button type="button" className={pgStyles.studentNameBtn} onClick={() => openGrades(student)}>{getStudentName(student)}</button>
+                </div></td>
+                <td>{student.section || "No section"}</td>
+                <td><div className={pgStyles.progressCell}>
+                  <div className={styles.miniBarTrack} style={{ width: 92 }} aria-hidden="true"><div className={styles.miniBarFill} style={{ width: `${clampPercent(student.progressPercent)}%` }} /></div>
+                  <span className={pgStyles.progressPct}>{clampPercent(student.progressPercent)}%</span>
+                </div></td>
+                <td>{student.avgScore != null
+                  ? <div><span className={pgStyles.scoreChip}>{student.avgScore}%</span><small className={pgStyles.metricContext}>{student.completedLevels} completed</small></div>
+                  : <span className={pgStyles.scorePending}>No graded work</span>}</td>
+                <td><div className={pgStyles.badges} title={`${student.badgesCount || 0} badge${student.badgesCount === 1 ? "" : "s"} earned`}>
+                  <FiAward size={14} aria-hidden="true" /><span>{student.badgesCount || 0} badge{student.badgesCount === 1 ? "" : "s"}</span>
+                </div></td>
+                <td><span className={`${pgStyles.performanceChip} ${pgStyles[`performance_${performance.key}`]}`}>{performance.label}</span></td>
+                <td>{student.isCurrentlyPlaying
+                  ? <span className={pgStyles.playingStatus}><span aria-hidden="true" /> Playing now</span>
+                  : <span className={pgStyles.lastActive}>Last active {student.lastActiveLabel || "unknown"}</span>}</td>
+                <td><button className={pgStyles.viewBtn} onClick={() => openGrades(student)} aria-label={`View ${getStudentName(student)} details`}><FiEye aria-hidden="true" /> View</button></td>
               </tr>
-            ))
-          )}
+            );
+          })}
         </tbody>
       </table>
+      {filtered.length > PAGE_SIZE && <div className={pgStyles.pagination}>
+        <span>Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}</span>
+        <div><button type="button" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1} aria-label="Previous page"><FiChevronLeft /></button>
+          <span>Page {page} of {totalPages}</span>
+          <button type="button" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={page === totalPages} aria-label="Next page"><FiChevronRight /></button></div>
+      </div>}
     </div>
   );
 
@@ -499,6 +547,14 @@ function TeacherStudentsPage() {
           </div>
 
           <div className={styles.body}>
+            <section className={pgStyles.summaryGrid} aria-label="Student overview">
+              <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiUsers /></span><div><strong>{sectionStudents.length}</strong><span>Total students</span><small>{filter === "all" ? `${sections.length} section${sections.length === 1 ? "" : "s"}` : filter}</small></div></div>
+              <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiTrendingUp /></span><div><strong>{averageProgress}%</strong><span>Average progress</span><small>Across assigned levels</small></div></div>
+              <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiBookOpen /></span><div><strong>{averageScore == null ? "—" : `${averageScore}%`}</strong><span>Class average</span><small>{scoredStudents.length} with graded work</small></div></div>
+              <div className={`${pgStyles.summaryCard} ${attentionStudents.length ? pgStyles.summaryWarning : ""}`}><span className={pgStyles.summaryIcon}><FiAlertCircle /></span><div><strong>{attentionStudents.length}</strong><span>Need attention</span><small>Below 25% progress</small></div></div>
+              <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiActivity /></span><div><strong>{activeNow}</strong><span>Playing now</span><small>Live game activity</small></div></div>
+            </section>
+
             <div className={styles.card}>
               {/* Tab navigation */}
               <div className={pgStyles.tabRow}>
@@ -534,6 +590,22 @@ function TeacherStudentsPage() {
                 </div>
               </div>
 
+              {activeTab === "list" && <div className={pgStyles.toolbar}>
+                <label className={pgStyles.searchBox}>
+                  <FiSearch aria-hidden="true" />
+                  <span className={pgStyles.srOnly}>Search students</span>
+                  <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search students or sections…" />
+                  {search && <button type="button" onClick={() => setSearch("")} aria-label="Clear search"><FiX /></button>}
+                </label>
+                <label><span className={pgStyles.srOnly}>Filter by performance</span><select className={pgStyles.filterSelect} value={performanceFilter} onChange={(event) => setPerformanceFilter(event.target.value)}>
+                  <option value="all">All performance</option><option value="attention">Needs attention</option><option value="behind">Falling behind</option><option value="track">On track</option><option value="completed">Completed</option>
+                </select></label>
+                <label><span className={pgStyles.srOnly}>Sort students</span><select className={pgStyles.filterSelect} value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                  <option value="progress-desc">Highest progress</option><option value="score-desc">Highest score</option><option value="activity-desc">Recent activity</option><option value="name-asc">Name A–Z</option>
+                </select></label>
+                {(search || performanceFilter !== "all") && <button type="button" className={pgStyles.clearFilters} onClick={() => { setSearch(""); setPerformanceFilter("all"); }}>Clear filters</button>}
+              </div>}
+
               {/* Tab content */}
               {isLoading ? (
                 <div className={styles.loadingText}>Loading students…</div>
@@ -545,6 +617,27 @@ function TeacherStudentsPage() {
                 </>
               )}
             </div>
+
+            {!isLoading && activeTab === "list" && sectionStudents.length > 0 && <section className={pgStyles.insightsGrid}>
+              <div className={pgStyles.insightCard}>
+                <div className={pgStyles.insightHeader}><div><strong>Students needing attention</strong><span>Prioritized by lowest progress</span></div><span className={pgStyles.attentionCount}>{attentionStudents.length}</span></div>
+                <div className={pgStyles.attentionList}>{attentionStudents.length === 0
+                  ? <div className={pgStyles.allClear}>Everyone is making steady progress.</div>
+                  : [...attentionStudents].sort((a, b) => clampPercent(a.progressPercent) - clampPercent(b.progressPercent)).slice(0, 4).map((student) => <button type="button" key={student.userId} onClick={() => openGrades(student)}>
+                    <span className={pgStyles.miniAvatar}>{getStudentName(student).slice(0, 2).toUpperCase()}</span><span><strong>{getStudentName(student)}</strong><small>{getPerformance(student).label} · {clampPercent(student.progressPercent)}% progress</small></span><FiChevronRight />
+                  </button>)}</div>
+              </div>
+              <div className={pgStyles.insightCard}>
+                <div className={pgStyles.insightHeader}><div><strong>Progress distribution</strong><span>Where the class currently stands</span></div></div>
+                <div className={pgStyles.distribution}>{[
+                  { label: "Not started", min: 0, max: 0, color: "#ef6b5b" },
+                  { label: "Getting started", min: 1, max: 24, color: "#f0a44b" },
+                  { label: "In progress", min: 25, max: 74, color: "#4f83b3" },
+                  { label: "Nearly there", min: 75, max: 99, color: "#6a72c9" },
+                  { label: "Completed", min: 100, max: 100, color: "#2f9b78" },
+                ].map((bucket) => { const count = sectionStudents.filter((student) => { const value = clampPercent(student.progressPercent); return value >= bucket.min && value <= bucket.max; }).length; return <div key={bucket.label}><span>{bucket.label}</span><div><i style={{ width: `${sectionStudents.length ? Math.max(count ? 5 : 0, count / sectionStudents.length * 100) : 0}%`, background: bucket.color }} /></div><strong>{count}</strong></div>; })}</div>
+              </div>
+            </section>}
           </div>
         </div>
       </div>
@@ -552,11 +645,18 @@ function TeacherStudentsPage() {
       {/* Grades modal */}
       {gradesModal && (
         <div className={pgStyles.modalBackdrop} onClick={() => setGradesModal(null)}>
-          <div className={pgStyles.modalCard} onClick={(e) => e.stopPropagation()}>
+          <div className={pgStyles.modalCard} onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="student-detail-title">
             <div className={pgStyles.modalHeader}>
-              <span className={pgStyles.modalTitle}>{gradesModal.studentName} — Grades</span>
-              <button className={pgStyles.modalClose} onClick={() => setGradesModal(null)}><FiX /></button>
+              <div><span className={pgStyles.modalEyebrow}>Student overview</span><h2 className={pgStyles.modalTitle} id="student-detail-title">{gradesModal.studentName}</h2></div>
+              <button className={pgStyles.modalClose} onClick={() => setGradesModal(null)} aria-label="Close student details"><FiX /></button>
             </div>
+            <div className={pgStyles.studentSnapshot}>
+              <div><span>Progress</span><strong>{clampPercent(gradesModal.student.progressPercent)}%</strong></div>
+              <div><span>Average score</span><strong>{gradesModal.student.avgScore == null ? "No grades" : `${gradesModal.student.avgScore}%`}</strong></div>
+              <div><span>Completed</span><strong>{gradesModal.student.completedLevels || 0} levels</strong></div>
+              <div><span>Badges</span><strong>{gradesModal.student.badgesCount || 0}</strong></div>
+            </div>
+            <div className={pgStyles.modalSectionHead}><strong>Completed level grades</strong><span>Score, attempts, and time spent</span></div>
             {gradesLoading ? (
               <div className={styles.loadingText}>Loading…</div>
             ) : (
@@ -582,7 +682,7 @@ function TeacherStudentsPage() {
                         >
                           {g.finalScore ?? "—"}
                         </span>
-                        <span>{g.attemptCount} fail{g.attemptCount !== 1 ? "s" : ""}</span>
+                        <span>{g.attemptCount} attempt{g.attemptCount !== 1 ? "s" : ""}</span>
                         <span>{mins}m {secs}s</span>
                       </div>
                     );

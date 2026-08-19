@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
 const extractBearerToken = (authorizationHeader) => {
   if (!authorizationHeader || typeof authorizationHeader !== "string") {
@@ -13,7 +14,7 @@ const extractBearerToken = (authorizationHeader) => {
   return token;
 };
 
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   if (!process.env.JWT_SECRET) {
     return res.status(500).json({ message: "Auth is not configured" });
   }
@@ -25,9 +26,25 @@ const authMiddleware = (req, res, next) => {
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.userId = payload.id;
+    const userId = Number(payload.id);
+    if (!Number.isInteger(userId)) {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
+
+    const user = await User.findByPk(userId, {
+      attributes: ["id", "role", "status"],
+    });
+    if (!user) {
+      return res.status(401).json({ message: "Account no longer exists" });
+    }
+    if (user.status !== "active") {
+      return res.status(403).json({ message: "Account is not active" });
+    }
+
+    req.user = user;
+    req.userId = user.id;
     req.userRole =
-      typeof payload.role === "string" ? payload.role.toLowerCase() : null;
+      typeof user.role === "string" ? user.role.toLowerCase() : null;
     return next();
   } catch (error) {
     return res.status(401).json({ message: "Invalid or expired token" });

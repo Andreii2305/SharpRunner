@@ -1,10 +1,10 @@
 # Teacher Dash Context
 
-Last updated: 2026-05-27
+Last updated: 2026-08-19
 
 ## Current Status
 
-The teacher experience is connected to live backend data. Teachers can create classrooms, monitor students, view performance, post announcements, and edit per-classroom level content overrides.
+The teacher experience is connected to live backend data. Teachers can create classrooms, monitor students, view performance, post announcements, manage classwork, and configure supported per-classroom level settings. Curriculum content and validators remain system-managed.
 
 ## Completed
 
@@ -30,7 +30,12 @@ The teacher experience is connected to live backend data. Teachers can create cl
 - Teacher students page with per-student grade/progress views.
 - Teacher analytics page.
 - Teacher announcements page.
-- Teacher level editor for classroom-specific level overrides.
+- Teacher level settings for classroom-specific availability, order, scheduling, hints, and grading deductions.
+- Classroom roster removal with retained progress and reversible membership history.
+- Classroom lifecycle controls for archive, reactivation, and class-code rotation.
+- Teacher account settings for profile and password updates.
+- Per-level availability, ordering, unlock dates, due dates, hints, and grading deductions.
+- Classroom lessons and assignments with scheduling, attachments, audience targeting, submission policies, rubrics, grading, feedback, and version history.
 
 ## Backend Files
 
@@ -70,8 +75,14 @@ The teacher experience is connected to live backend data. Teachers can create cl
   - Returns generated `classCode`.
 - `POST /api/teacher/classrooms/:classroomId/students`
   - Adds students by ids or usernames.
+- `PATCH /api/teacher/classrooms/:classroomId/students/:studentId`
+  - Removes or reactivates a membership without deleting saved student progress.
 - `GET /api/teacher/classrooms/:classroomId/students`
   - Returns classroom roster with progress and score summaries.
+- `PATCH /api/teacher/classrooms/:classroomId`
+  - Archives or reactivates a teacher-owned classroom.
+- `POST /api/teacher/classrooms/:classroomId/regenerate-code`
+  - Rotates the join code for an active classroom.
 - `GET /api/teacher/students/:studentId/grades`
   - Returns per-level grades, attempts, time spent, and completion data for a student in the teacher's class.
 - `GET /api/teacher/announcements`
@@ -79,11 +90,15 @@ The teacher experience is connected to live backend data. Teachers can create cl
 - `POST /api/teacher/announcements`
   - Creates a classroom announcement.
 - `GET /api/teacher/classrooms/:classroomId/level-overrides`
-  - Returns content overrides for a classroom.
-- `PUT /api/teacher/classrooms/:classroomId/level-overrides/:levelKey`
-  - Creates or updates a classroom level override.
-- `DELETE /api/teacher/classrooms/:classroomId/level-overrides/:levelKey`
-  - Removes a classroom level override.
+  - Returns the stored rows used to populate classroom level settings.
+- `PUT /api/teacher/classrooms/:classroomId/level-settings`
+  - Saves availability, order, scheduling, hints, and grading deductions for every playable level.
+- `DELETE /api/teacher/classrooms/:classroomId/level-settings`
+  - Restores the supported level settings to system defaults.
+- `PUT /api/auth/me/profile`
+  - Updates the current teacher's name and username.
+- `PUT /api/auth/me/password`
+  - Changes a password after current-password verification.
 - `GET /api/classrooms/me`
   - Returns a student's active classroom membership state.
 - `POST /api/classrooms/join`
@@ -91,17 +106,10 @@ The teacher experience is connected to live backend data. Teachers can create cl
 
 ## Remaining Gaps
 
-1. Add roster actions for removing or deactivating a student membership from a class.
-2. Add classroom lifecycle controls:
-   - archive classroom
-   - reactivate classroom
-   - regenerate class code
-3. Add teacher account/settings page:
-   - profile update
-   - password change
-4. Expose deadlines/par time settings in teacher tools.
-5. Expand level editor to support dialogue and result message overrides.
-6. Add API tests for teacher/classroom routes and membership gates.
+1. Add an explicit removed-members view if teachers need to reactivate students without entering their username again. The existing add-student endpoint already reactivates a removed membership.
+2. Add a configurable par-time field only if grading requirements expand beyond the currently supported due-date controls.
+3. Keep curriculum text, starter code, dialogue, result messages, and validators system-managed unless a later product decision explicitly expands teacher editing.
+4. Add browser-level end-to-end coverage for the teacher dashboard; API ownership coverage now includes roster, classwork, lifecycle, profile, and password routes.
 
 ## Suggested Next Focus
 

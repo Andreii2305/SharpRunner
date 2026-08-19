@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import axios from "axios";
 import {
   FiActivity,
@@ -358,8 +358,6 @@ function TeacherDashboardPage() {
   };
   const classPerformance = dashData?.classPerformance ?? [];
   const topStudents = (dashData?.studentPerformance ?? []).slice(0, 5);
-  const recentActivity = dashData?.recentActivity ?? [];
-
   const fallbackClassrooms = classPerformance.map((c) => ({
     id: c.classId,
     className: c.className,

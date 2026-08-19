@@ -113,9 +113,7 @@ Last updated: 2026-03-24
 6. Add invite usage analytics:
    - total generated, used, expired
    - average time-to-use
-7. Add tests:
-   - route tests for developer auth and invite creation
-   - auth tests for invite-based admin registration edge cases
+7. Expand the existing developer auth/invite route tests with invite-based admin registration edge cases.
 
 ## Suggested Next Focus
 

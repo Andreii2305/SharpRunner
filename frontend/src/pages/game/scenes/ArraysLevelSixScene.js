@@ -669,7 +669,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
     });
   }
 
-  highlightCheckpoint(checkpoint, rowIndex) {
+  highlightCheckpoint(checkpoint) {
     this.panelItems
       .filter((item) => item.colIndex === checkpoint - 1)
       .forEach(({ value, box, marker }) => {

@@ -1,13 +1,14 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "description": "SharpRunner API",
+  "main": "src/server.js",
   "scripts": {
     "dev": "node src/server.js",
     "dev:nodemon": "nodemon --legacy-watch src/server.js",
+    "db:migrate": "node src/migrate.js",
     "start": "node src/server.js",
-    "test": "node test/classroomLessonPolicies.test.js"
+    "test": "node test/runTests.js"
   },
   "keywords": [],
   "author": "",
@@ -17,7 +18,6 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "express-session": "^1.18.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "nodemailer": "^7.0.13",

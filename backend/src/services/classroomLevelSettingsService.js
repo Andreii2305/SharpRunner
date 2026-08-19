@@ -34,6 +34,7 @@ const getClassroomLevelSettings = async (classroomId) => {
         row?.lateDeductionPerDay,
         DEFAULT_LATE_DEDUCTION_PER_DAY,
       ),
+      validatorConfig: row?.validatorConfig ?? null,
     };
   }).sort((a, b) => a.displayOrder - b.displayOrder);
 };

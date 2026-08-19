@@ -6,8 +6,34 @@ const execFileAsync = promisify(execFile);
 const BLOCKED_EXTENSIONS = new Set([".exe", ".dll", ".bat", ".cmd", ".com", ".msi", ".ps1", ".scr", ".vbs", ".js", ".jar", ".apk"]);
 const isDangerousFilename = (name = "") => BLOCKED_EXTENSIONS.has(path.extname(name).toLowerCase());
 
+const hasDangerousSignature = async (filePath) => {
+  const handle = await require("fs").promises.open(filePath, "r");
+  try {
+    const buffer = Buffer.alloc(512);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const header = buffer.subarray(0, bytesRead);
+    const textHeader = header.toString("utf8");
+    return (
+      (header[0] === 0x4d && header[1] === 0x5a) || // Windows PE
+      (header[0] === 0x7f && header.subarray(1, 4).toString() === "ELF") ||
+      textHeader.startsWith("#!") ||
+      /<script\b|powershell\b|@echo\s+off/i.test(textHeader)
+    );
+  } finally {
+    await handle.close();
+  }
+};
+
 const scanFile = async (filePath) => {
-  if (!process.env.CLAMAV_BIN) return { safe: true, status: "not_configured" };
+  if (await hasDangerousSignature(filePath)) {
+    return { safe: false, status: "dangerous_signature" };
+  }
+  if (!process.env.CLAMAV_BIN) {
+    if (process.env.REQUIRE_FILE_SCANNING === "true") {
+      throw new Error("File security scanner is required but unavailable");
+    }
+    return { safe: true, status: "signature_checked" };
+  }
   try {
     await execFileAsync(process.env.CLAMAV_BIN, ["--no-summary", filePath], { timeout: 120_000, windowsHide: true });
     return { safe: true, status: "clean" };
@@ -23,4 +49,4 @@ const extensionAllowed = (filename, allowedFileTypes = []) => {
   return allowedFileTypes.map((item) => String(item).toLowerCase().replace(/^\./, "")).includes(extension);
 };
 
-module.exports = { BLOCKED_EXTENSIONS, isDangerousFilename, scanFile, extensionAllowed };
+module.exports = { BLOCKED_EXTENSIONS, isDangerousFilename, hasDangerousSignature, scanFile, extensionAllowed };

@@ -12,6 +12,7 @@ import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
 import detailStyles from "./TeacherClassDetailPage.module.css";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
+import { DEFAULT_UPLOAD_POLICY, normalizeUploadPolicy, validateUploadFiles } from "../../utils/uploadPolicy.js";
 
 const AVATAR_PALETTES = [
   { bg: "#e0e7ff", color: "#4338ca" }, { bg: "#fce7f3", color: "#9d174d" },
@@ -32,13 +33,13 @@ const formatFileSize = (value) => {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 };
 const getFileExtension = (name = "") => name.includes(".") ? name.split(".").pop().toUpperCase() : "FILE";
-const emptyContentForm = (contentType = "lesson") => ({ contentType, title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100, rubric: [], feedbackReleaseAt: "", allowLateSubmissions: true, maxAttempts: 0, allowedFileTypes: "", maxFileSizeMb: 100, assignedStudentIds: [] });
+const emptyContentForm = (contentType = "lesson", uploadPolicy = DEFAULT_UPLOAD_POLICY) => ({ contentType, title: "", description: "", dueAt: "", publishAt: "", isPublished: true, maxScore: 100, rubric: [], feedbackReleaseAt: "", allowLateSubmissions: true, maxAttempts: 0, allowedFileTypes: "", maxFileSizeMb: uploadPolicy.maxFileSizeMb, assignedStudentIds: [] });
 
-function AssignmentSettings({ form, setForm, students }) {
+function AssignmentSettings({ form, setForm, students, uploadPolicy }) {
   if (form.contentType !== "assignment") return null;
   const updateRubric = (index, changes) => setForm((current) => ({ ...current, rubric: current.rubric.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item) }));
   return <div className={detailStyles.assignmentSettings}>
-    <fieldset><legend>Submission policies</legend><div className={detailStyles.settingsGrid}><label>Maximum attempts <input type="number" min="0" max="100" value={form.maxAttempts} onChange={(event) => setForm((current) => ({ ...current, maxAttempts: event.target.value }))} /><small>0 means unlimited</small></label><label>Maximum file size <span><input type="number" min="1" max="100" value={form.maxFileSizeMb} onChange={(event) => setForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))} /> MB</span></label><label>Accepted extensions <input value={form.allowedFileTypes} onChange={(event) => setForm((current) => ({ ...current, allowedFileTypes: event.target.value }))} placeholder="pdf, docx, png (blank = any safe type)" /></label><label className={detailStyles.checkSetting}><input type="checkbox" checked={form.allowLateSubmissions} onChange={(event) => setForm((current) => ({ ...current, allowLateSubmissions: event.target.checked }))} /> Accept late submissions</label><label>Release grades and feedback <input type="datetime-local" value={form.feedbackReleaseAt} onChange={(event) => setForm((current) => ({ ...current, feedbackReleaseAt: event.target.value }))} /><small>Blank releases feedback immediately</small></label></div></fieldset>
+    <fieldset><legend>Submission policies</legend><div className={detailStyles.settingsGrid}><label>Maximum attempts <input type="number" min="0" max="100" value={form.maxAttempts} onChange={(event) => setForm((current) => ({ ...current, maxAttempts: event.target.value }))} /><small>0 means unlimited</small></label><label>Maximum file size <span><input type="number" min="1" max={uploadPolicy.maxFileSizeMb} value={form.maxFileSizeMb} onChange={(event) => setForm((current) => ({ ...current, maxFileSizeMb: event.target.value }))} /> MB</span><small>Server maximum: {uploadPolicy.maxFileSizeMb} MB</small></label><label>Accepted extensions <input value={form.allowedFileTypes} onChange={(event) => setForm((current) => ({ ...current, allowedFileTypes: event.target.value }))} placeholder="pdf, docx, png (blank = any safe type)" /></label><label className={detailStyles.checkSetting}><input type="checkbox" checked={form.allowLateSubmissions} onChange={(event) => setForm((current) => ({ ...current, allowLateSubmissions: event.target.checked }))} /> Accept late submissions</label><label>Release grades and feedback <input type="datetime-local" value={form.feedbackReleaseAt} onChange={(event) => setForm((current) => ({ ...current, feedbackReleaseAt: event.target.value }))} /><small>Blank releases feedback immediately</small></label></div></fieldset>
     <fieldset><legend>Audience</legend><label className={detailStyles.audienceAll}><input type="checkbox" checked={!form.assignedStudentIds.length} onChange={(event) => event.target.checked && setForm((current) => ({ ...current, assignedStudentIds: [] }))} /> Entire class</label><div className={detailStyles.audienceList}>{students.map((student) => <label key={student.userId}><input type="checkbox" checked={!form.assignedStudentIds.length || form.assignedStudentIds.includes(student.userId)} onChange={() => setForm((current) => { const currentIds = current.assignedStudentIds.length ? current.assignedStudentIds : students.map((item) => item.userId); const next = currentIds.includes(student.userId) ? currentIds.filter((id) => id !== student.userId) : [...currentIds, student.userId]; return { ...current, assignedStudentIds: next.length === students.length ? [] : next }; })} /> {student.studentName}</label>)}</div></fieldset>
     <fieldset><legend>Rubric</legend>{form.rubric.map((criterion, index) => <div className={detailStyles.rubricRow} key={criterion.id}><input value={criterion.title} onChange={(event) => updateRubric(index, { title: event.target.value })} placeholder="Criterion" /><input type="number" min="1" value={criterion.points} onChange={(event) => updateRubric(index, { points: event.target.value })} aria-label={`Points for criterion ${index + 1}`} /><button type="button" onClick={() => setForm((current) => ({ ...current, rubric: current.rubric.filter((_, itemIndex) => itemIndex !== index) }))}><FiTrash2 /></button></div>)}<button type="button" className={detailStyles.addCriterion} onClick={() => setForm((current) => ({ ...current, rubric: [...current.rubric, { id: `criterion-${Date.now()}`, title: "", points: 10 }] }))}><FiPlus /> Add criterion</button>{form.rubric.length > 0 && <small>Rubric total: {form.rubric.reduce((sum, item) => sum + (Number(item.points) || 0), 0)} points</small>}</fieldset>
   </div>;
@@ -58,6 +59,7 @@ function TeacherClassDetailPage() {
   const [classroom, setClassroom] = useState(null);
   const [students, setStudents] = useState([]);
   const [lessons, setLessons] = useState([]);
+  const [uploadPolicy, setUploadPolicy] = useState(DEFAULT_UPLOAD_POLICY);
   const [activeTab, setActiveTab] = useState("students");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -85,6 +87,9 @@ function TeacherClassDetailPage() {
   const [versions, setVersions] = useState([]);
   const [publishTarget, setPublishTarget] = useState(null);
   const [draggedLessonId, setDraggedLessonId] = useState(null);
+  const [studentRemoveTarget, setStudentRemoveTarget] = useState(null);
+  const [classActionTarget, setClassActionTarget] = useState(null);
+  const [classActionPending, setClassActionPending] = useState(false);
 
   const loadClass = useCallback(async () => {
     setLoading(true);
@@ -98,6 +103,7 @@ function TeacherClassDetailPage() {
       setClassroom(rosterResult.data?.classroom ?? lessonResult.data?.classroom ?? null);
       setStudents(rosterResult.data?.students ?? []);
       setLessons(lessonResult.data?.lessons ?? []);
+      setUploadPolicy(normalizeUploadPolicy(lessonResult.data?.uploadPolicy));
       setManagement(managementResult.data ?? { storage: null, audits: [], insights: null });
     } catch (error) {
       setLoadError(error.response?.data?.message ?? "Failed to load classroom.");
@@ -167,7 +173,7 @@ function TeacherClassDetailPage() {
       );
       setLessons((current) => [response.data.lesson, ...current]);
       window.localStorage.removeItem(`classwork-draft:${classroomId}:${lessonForm.contentType}`);
-      setLessonForm(emptyContentForm());
+      setLessonForm(emptyContentForm("lesson", uploadPolicy));
       setLessonFiles([]);
       setShowAddLesson(false);
       toast.success(`${lessonForm.contentType === "assignment" ? "Assignment" : "Lesson"} added to this class.`);
@@ -221,7 +227,8 @@ function TeacherClassDetailPage() {
   };
 
   const addLessonAttachments = async (lessonId, selectedFiles) => {
-    const files = Array.from(selectedFiles ?? []).slice(0, 10);
+    const { files, error } = validateUploadFiles(selectedFiles, uploadPolicy);
+    if (error) { toast.error(error); return; }
     if (!files.length) return;
     setAttachingLessonId(lessonId);
     try {
@@ -257,7 +264,7 @@ function TeacherClassDetailPage() {
       maxScore: lesson.maxScore ?? 100,
       rubric: lesson.rubric ?? [], feedbackReleaseAt: toDateTimeLocal(lesson.feedbackReleaseAt),
       allowLateSubmissions: lesson.allowLateSubmissions !== false, maxAttempts: lesson.maxAttempts ?? 0,
-      allowedFileTypes: (lesson.allowedFileTypes ?? []).join(", "), maxFileSizeMb: lesson.maxFileSizeMb ?? 100,
+      allowedFileTypes: (lesson.allowedFileTypes ?? []).join(", "), maxFileSizeMb: Math.min(lesson.maxFileSizeMb ?? uploadPolicy.maxFileSizeMb, uploadPolicy.maxFileSizeMb),
       assignedStudentIds: lesson.assignedStudentIds ?? [],
     });
     setEditError("");
@@ -282,7 +289,7 @@ function TeacherClassDetailPage() {
           rubric: editForm.rubric, feedbackReleaseAt: editForm.feedbackReleaseAt ? new Date(editForm.feedbackReleaseAt).toISOString() : null,
           allowLateSubmissions: editForm.allowLateSubmissions, maxAttempts: Number(editForm.maxAttempts) || 0,
           allowedFileTypes: editForm.allowedFileTypes.split(",").map((item) => item.trim()).filter(Boolean),
-          maxFileSizeMb: Number(editForm.maxFileSizeMb) || 100, assignedStudentIds: editForm.assignedStudentIds,
+          maxFileSizeMb: Number(editForm.maxFileSizeMb) || uploadPolicy.maxFileSizeMb, assignedStudentIds: editForm.assignedStudentIds,
         },
         { headers: getAuthHeaders() },
       );
@@ -321,6 +328,8 @@ function TeacherClassDetailPage() {
 
   const replaceAttachment = async (lesson, attachment, file) => {
     if (!file) return;
+    const validation = validateUploadFiles([file], uploadPolicy);
+    if (validation.error) { toast.error(validation.error); return; }
     const payload = new FormData(); payload.append("files", file);
     try {
       const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}/file`), payload, { headers: getAuthHeaders() });
@@ -354,12 +363,6 @@ function TeacherClassDetailPage() {
     const index = lessons.findIndex((item) => item.id === lessonId);
     const target = lessons[index + direction];
     if (index >= 0 && target) reorderLessons(lessonId, target.id);
-  };
-
-  const moveAttachment = (lesson, attachmentId, direction) => {
-    const index = (lesson.attachments || []).findIndex((item) => item.id === attachmentId);
-    const target = lesson.attachments?.[index + direction];
-    if (index >= 0 && target) reorderAttachments(lesson, attachmentId, target.id);
   };
 
   const duplicateLesson = async (lesson) => {
@@ -452,7 +455,9 @@ function TeacherClassDetailPage() {
   const openCreateContent = (contentType) => {
     let restored = null;
     try { restored = JSON.parse(window.localStorage.getItem(`classwork-draft:${classroomId}:${contentType}`)); } catch { restored = null; }
-    setLessonForm(restored ? { ...emptyContentForm(contentType), ...restored, contentType } : emptyContentForm(contentType));
+    const baseForm = emptyContentForm(contentType, uploadPolicy);
+    const restoredMax = Math.min(Number(restored?.maxFileSizeMb) || uploadPolicy.maxFileSizeMb, uploadPolicy.maxFileSizeMb);
+    setLessonForm(restored ? { ...baseForm, ...restored, contentType, maxFileSizeMb: restoredMax } : baseForm);
     setLessonFiles([]); setFormError(""); setShowAddLesson(true);
   };
 
@@ -460,6 +465,39 @@ function TeacherClassDetailPage() {
     const target = publishTarget; setPublishTarget(null);
     if (target?.kind === "create") await performAddLesson();
     if (target?.kind === "publish" && target.lesson) await setPublication(target.lesson, true);
+  };
+
+  const removeStudent = async () => {
+    if (!studentRemoveTarget) return;
+    try {
+      await axios.patch(
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/students/${studentRemoveTarget.userId}`),
+        { status: "removed" },
+        { headers: getAuthHeaders() },
+      );
+      setStudents((current) => current.filter((student) => student.userId !== studentRemoveTarget.userId));
+      toast.success(`${studentRemoveTarget.studentName} was removed from this classroom.`);
+      setStudentRemoveTarget(null);
+    } catch (error) {
+      toast.error(error.response?.data?.message ?? "Unable to remove student.");
+    }
+  };
+
+  const performClassAction = async () => {
+    if (!classActionTarget) return;
+    setClassActionPending(true);
+    try {
+      const response = classActionTarget === "rotate"
+        ? await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/regenerate-code`), {}, { headers: getAuthHeaders() })
+        : await axios.patch(buildApiUrl(`/api/teacher/classrooms/${classroomId}`), { isActive: classActionTarget === "reactivate" }, { headers: getAuthHeaders() });
+      setClassroom(response.data.classroom);
+      toast.success(response.data.message);
+      setClassActionTarget(null);
+    } catch (error) {
+      toast.error(error.response?.data?.message ?? "Unable to update classroom.");
+    } finally {
+      setClassActionPending(false);
+    }
   };
 
   return (
@@ -474,7 +512,12 @@ function TeacherClassDetailPage() {
               <div className={detailStyles.headerMeta}>{classroom ? `${classroom.section} · SY ${classroom.schoolYear} · ${classroom.classCode}` : "Loading class details…"}</div>
             </div>
           </div>
-          <button className={styles.btnOutline} type="button" onClick={() => navigate(`/teacher/classrooms/${classroomId}/levels`)}><FiSettings /> Edit levels</button>
+          <div className={detailStyles.headerActions}>
+            <span className={classroom?.isActive === false ? detailStyles.archivedBadge : detailStyles.activeBadge}>{classroom?.isActive === false ? "Archived" : "Active"}</span>
+            <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget("rotate")} disabled={classroom?.isActive === false}><FiCopy /> New code</button>
+            <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget(classroom?.isActive === false ? "reactivate" : "archive")}>{classroom?.isActive === false ? <FiCheckCircle /> : <FiEyeOff />} {classroom?.isActive === false ? "Reactivate" : "Archive"}</button>
+            <button className={styles.btnOutline} type="button" onClick={() => navigate(`/teacher/classrooms/${classroomId}/levels`)}><FiSettings /> Edit levels</button>
+          </div>
         </header>
 
         <div className={styles.body}>
@@ -506,9 +549,9 @@ function TeacherClassDetailPage() {
             {loading ? activeTab === "lessons" ? <div className={detailStyles.skeletonGrid}>{[1, 2, 3].map((item) => <span key={item} />)}</div> : <div className={styles.loadingText}>Loading classroom…</div> : activeTab === "students" ? (
               students.length ? (
                 <div className={detailStyles.tableScroll}><table className={pgStyles.rosterTable}>
-                  <thead><tr><th>#</th><th>Student</th><th>Progress</th><th>Levels Done</th><th>Avg Score</th><th>Last Active</th></tr></thead>
+                  <thead><tr><th>#</th><th>Student</th><th>Progress</th><th>Levels Done</th><th>Avg Score</th><th>Last Active</th><th>Actions</th></tr></thead>
                   <tbody>{students.map((student, index) => { const palette = AVATAR_PALETTES[index % AVATAR_PALETTES.length]; return (
-                    <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td></tr>
+                    <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td><td><button type="button" className={detailStyles.rosterRemoveButton} onClick={() => setStudentRemoveTarget(student)}><FiX /> Remove</button></td></tr>
                   ); })}</tbody>
                 </table></div>
               ) : <div className={detailStyles.emptyState}><FiUsers /><h2>No students enrolled yet</h2><p>Share class code <strong>{classroom?.classCode}</strong> so students can join.</p></div>
@@ -551,9 +594,9 @@ function TeacherClassDetailPage() {
           {lessonForm.contentType === "assignment" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={lessonForm.dueAt} onChange={(event) => setLessonForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>}
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={lessonForm.publishAt} onChange={(event) => setLessonForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
           <div className={detailStyles.optionRow}><label><input type="checkbox" checked={lessonForm.isPublished} onChange={(event) => setLessonForm((current) => ({ ...current, isPublished: event.target.checked }))} /> Publish {lessonForm.contentType}</label>{lessonForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={lessonForm.maxScore} onChange={(event) => setLessonForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
-          <AssignmentSettings form={lessonForm} setForm={setLessonForm} students={students} />
+          <AssignmentSettings form={lessonForm} setForm={setLessonForm} students={students} uploadPolicy={uploadPolicy} />
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Attachments (optional)
-            <span className={detailStyles.filePicker}><FiUpload /><span><strong>Choose files</strong><small>MP4, PDF, Word, images, archives, or any other file · up to 100 MB each</small></span><input type="file" multiple onChange={(event) => setLessonFiles(Array.from(event.target.files ?? []).slice(0, 10))} /></span>
+            <span className={detailStyles.filePicker}><FiUpload /><span><strong>Choose files</strong><small>Up to {uploadPolicy.maxFiles} safe files · {uploadPolicy.maxFileSizeMb} MB each</small></span><input type="file" multiple onChange={(event) => { const result = validateUploadFiles(event.target.files, uploadPolicy); setLessonFiles(result.files); setFormError(result.error); event.target.value = ""; }} /></span>
           </label>
           {lessonFiles.length > 0 && <div className={detailStyles.selectedFiles}>{lessonFiles.map((file) => <span key={`${file.name}-${file.lastModified}`}><FiPaperclip /> {file.name}</span>)}</div>}
           {saving && lessonFiles.length > 0 && <div className={detailStyles.uploadProgress}><span style={{ width: `${uploadProgress}%` }} /><small>Uploading {uploadProgress}%</small></div>}
@@ -569,7 +612,7 @@ function TeacherClassDetailPage() {
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Instructions<textarea className={detailStyles.textarea} maxLength={4000} value={editForm.description} onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value }))} /></label>
           {editForm.contentType === "assignment" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={editForm.dueAt} onChange={(event) => setEditForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>}
           <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={editForm.publishAt} onChange={(event) => setEditForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
-          <AssignmentSettings form={editForm} setForm={setEditForm} students={students} />
+          <AssignmentSettings form={editForm} setForm={setEditForm} students={students} uploadPolicy={uploadPolicy} />
           <div className={detailStyles.optionRow}><span>Publication: <strong>{editForm.isPublished ? "Published" : "Draft"}</strong> · change this from the classwork menu.</span>{editForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={editForm.maxScore} onChange={(event) => setEditForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
           <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={isEditing} onClick={() => setEditingLesson(null)}>Cancel</button><button className={styles.btnPrimary} disabled={isEditing} type="submit">{isEditing ? "Savingâ€¦" : "Save changes"}</button></div>
         </form>
@@ -595,6 +638,8 @@ function TeacherClassDetailPage() {
         onConfirm={deleteLesson}
         onCancel={() => !isDeleting && setDeleteTarget(null)}
       />
+      <ConfirmModal open={Boolean(studentRemoveTarget)} title="Remove student from this classroom?" message={studentRemoveTarget ? `${studentRemoveTarget.studentName} will lose access to this classroom. Saved progress is retained, and the student can be added again later.` : ""} confirmLabel="Remove student" danger onConfirm={removeStudent} onCancel={() => setStudentRemoveTarget(null)} />
+      <ConfirmModal open={Boolean(classActionTarget)} title={classActionTarget === "rotate" ? "Generate a new class code?" : classActionTarget === "archive" ? "Archive this classroom?" : "Reactivate this classroom?"} message={classActionTarget === "rotate" ? "The current code will stop working immediately. Existing students remain enrolled." : classActionTarget === "archive" ? "Students cannot join this classroom and new announcements are blocked until it is reactivated." : "Students can join and classroom activity can resume."} confirmLabel={classActionPending ? "Saving..." : classActionTarget === "rotate" ? "Generate new code" : classActionTarget === "archive" ? "Archive classroom" : "Reactivate classroom"} danger={classActionTarget === "archive" || classActionTarget === "rotate"} confirmDisabled={classActionPending} onConfirm={performClassAction} onCancel={() => !classActionPending && setClassActionTarget(null)} />
     </div>
   );
 }

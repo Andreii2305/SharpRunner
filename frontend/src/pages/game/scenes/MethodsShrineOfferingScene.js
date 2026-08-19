@@ -356,7 +356,7 @@ export default class MethodsShrineOfferingScene extends Phaser.Scene {
   startFailure(message) {
     const argument = this.extractOfferingArgument(this.lastSourceCode) ?? "?";
     this.parameterText.setText(`PlaceOffering(${argument})`).setColor("#ffb8c0");
-    this.statusText.setText("rejected").setColor("#ffb8c0");
+    this.statusText.setText(message || "rejected").setColor("#ffb8c0");
     this.diwataLabel.setText("").setColor("#ffd0d6");
     this.panTo(this.shrinePoint.x, 460);
     this.showRejectedArgument(argument);

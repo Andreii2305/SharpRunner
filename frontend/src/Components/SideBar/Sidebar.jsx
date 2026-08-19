@@ -9,6 +9,7 @@ import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
 import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
+import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { clearToken, getUser } from "../../utils/auth";
 
@@ -30,6 +31,7 @@ const TEACHER_NAV = [
     Icon: CampaignOutlinedIcon,
     label: "Announcements",
   },
+  { to: "/teacher/settings", Icon: SettingsOutlinedIcon, label: "Settings" },
 ];
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -81,19 +83,22 @@ function Sidebar() {
 
       {/* Nav */}
       <nav className={styles.nav}>
-        {navItems.map(({ to, Icon, label }) => (
-          <Link
-            key={to}
-            to={to}
-            className={`${styles.navItem} ${isActive(to) ? styles.navActive : ""}`}
-          >
-            <span className={styles.navIcon}>
-              <Icon sx={{ fontSize: 20 }} />
-            </span>
-            <span className={styles.navLabel}>{label}</span>
-            {isActive(to) && <span className={styles.activeIndicator} />}
-          </Link>
-        ))}
+        {navItems.map(({ to, Icon, label }) => {
+          const ItemIcon = Icon;
+          return (
+            <Link
+              key={to}
+              to={to}
+              className={`${styles.navItem} ${isActive(to) ? styles.navActive : ""}`}
+            >
+              <span className={styles.navIcon}>
+                <ItemIcon sx={{ fontSize: 20 }} />
+              </span>
+              <span className={styles.navLabel}>{label}</span>
+              {isActive(to) && <span className={styles.activeIndicator} />}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Bottom */}

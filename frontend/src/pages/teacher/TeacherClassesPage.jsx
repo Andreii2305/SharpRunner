@@ -9,7 +9,7 @@ import {
   clampPercent,
   CreateClassModal,
   SuccessModal,
-} from "./TeacherDashboardPage.jsx";
+} from "./TeacherShared.jsx";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
 
@@ -233,7 +233,7 @@ function TeacherClassesPage() {
                         <div className={pgStyles.classCardInfo}>
                           <div className={pgStyles.classCardName}>{item.className}</div>
                           <div className={pgStyles.classCardMeta}>
-                            {item.section} · SY {item.schoolYear}
+                            {item.section} · SY {item.schoolYear}{item.isActive === false ? " · Archived" : ""}
                           </div>
                         </div>
                       </div>
@@ -242,6 +242,7 @@ function TeacherClassesPage() {
                         className={pgStyles.codePillBtn}
                         onClick={() => handleCopyCode(item.classCode)}
                         title="Click to copy class code"
+                        disabled={item.isActive === false}
                       >
                         {item.classCode}
                         {copiedCode === item.classCode ? <FiCheck size={10} /> : <FiCopy size={10} />}

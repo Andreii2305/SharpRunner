@@ -20,6 +20,7 @@ const {
 const {
   getClassroomLevelSettings,
 } = require("../services/classroomLevelSettingsService");
+const { validateLevelCode } = require("../services/levelCodeValidationService");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
@@ -296,6 +297,23 @@ router.put("/level/:levelKey", async (req, res) => {
 
     const wasAlreadyCompleted = levelRow.isCompleted;
     const completedAt = isCompleted ? levelRow.completedAt ?? new Date() : null;
+
+    if (isCompleted && !wasAlreadyCompleted) {
+      const membership = await findPrimaryActiveMembership(req.userId);
+      const settings = await getClassroomLevelSettings(membership?.classroomId);
+      const setting = settings.find((row) => row.levelKey === levelKey);
+      const validation = await validateLevelCode({
+        levelKey,
+        sourceCode: body.sourceCode,
+        validatorConfig: setting?.validatorConfig ?? null,
+      });
+      if (!validation?.isCorrect) {
+        return res.status(422).json({
+          code: "LEVEL_VALIDATION_FAILED",
+          message: validation?.message ?? "The submitted code did not pass server validation.",
+        });
+      }
+    }
 
     levelRow.progressPercent = isCompleted ? 100 : newProgress;
     levelRow.isCompleted = isCompleted;

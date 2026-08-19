@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
 const { isDangerousFilename, scanFile } = require("../services/fileSecurityService");
+const lessonUploadPolicy = require("../config/lessonUploadPolicy");
 
 const uploadDirectory = process.env.LESSON_UPLOAD_DIR
   ? path.resolve(process.env.LESSON_UPLOAD_DIR)
@@ -17,17 +18,20 @@ const storage = multer.diskStorage({
   },
 });
 
+const maxUploadFiles = lessonUploadPolicy.maxFiles;
+const maxUploadBytes = lessonUploadPolicy.maxFileSizeBytes;
+
 const upload = multer({
   storage,
   fileFilter: (_req, file, callback) => callback(isDangerousFilename(file.originalname) ? new multer.MulterError("BLOCKED_FILE_TYPE") : null, !isDangerousFilename(file.originalname)),
   limits: {
-    files: 10,
-    fileSize: 100 * 1024 * 1024,
+    files: maxUploadFiles,
+    fileSize: maxUploadBytes,
   },
 });
 
 const uploadLessonFiles = (req, res, next) => {
-  upload.array("files", 10)(req, res, async (error) => {
+  upload.array("files", maxUploadFiles)(req, res, async (error) => {
     if (!error) {
       try {
         for (const file of req.files || []) {
@@ -40,9 +44,9 @@ const uploadLessonFiles = (req, res, next) => {
     }
     await removeUploadedFiles(req.files);
     const message = error.code === "BLOCKED_FILE_TYPE" ? "Executable and script files are not allowed" : error.code === "LIMIT_FILE_SIZE"
-      ? "Each attachment must be 100 MB or smaller"
+      ? `Each attachment must be ${maxUploadBytes / 1024 / 1024} MB or smaller`
       : error.code === "LIMIT_FILE_COUNT"
-        ? "A lesson can contain up to 10 attachments"
+        ? `You can upload up to ${maxUploadFiles} files at a time`
         : "Unable to upload lesson attachments";
     return res.status(400).json({ message });
   });
@@ -58,4 +62,4 @@ const removeStoredFiles = async (storedNames = []) => {
   ));
 };
 
-module.exports = { uploadDirectory, uploadLessonFiles, removeUploadedFiles, removeStoredFiles };
+module.exports = { uploadDirectory, uploadLessonFiles, removeUploadedFiles, removeStoredFiles, lessonUploadPolicy };

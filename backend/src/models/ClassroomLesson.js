@@ -1,5 +1,6 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const lessonUploadPolicy = require("../config/lessonUploadPolicy");
 
 const ClassroomLesson = sequelize.define("ClassroomLessons", {
   classroomId: {
@@ -38,7 +39,7 @@ const ClassroomLesson = sequelize.define("ClassroomLessons", {
   allowLateSubmissions: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   maxAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   allowedFileTypes: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
-  maxFileSizeMb: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 },
+  maxFileSizeMb: { type: DataTypes.INTEGER, allowNull: false, defaultValue: lessonUploadPolicy.maxFileSizeMb },
   assignedStudentIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
 });

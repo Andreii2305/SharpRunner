@@ -7,7 +7,7 @@ import {
   buildAnnouncementPayload,
   parseAnnouncementPayload,
   formatDateTime,
-} from "./TeacherDashboardPage.jsx";
+} from "./TeacherShared.jsx";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherAnnouncementsPage.module.css";
 

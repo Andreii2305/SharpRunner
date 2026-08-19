@@ -2,6 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const passport = require("passport");
+const crypto = require("crypto");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const { Op, col, fn, where } = require("sequelize");
 const User = require("../models/User");
@@ -33,6 +34,24 @@ const registerRateLimit = createRateLimit({
   keyGenerator: (req) => `register:${req.ip}`,
   message: "Too many registration attempts. Please try again later.",
 });
+const loginRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `login:${req.ip}:${normalizeString(req.body?.identifier || req.body?.email || req.body?.username).toLowerCase()}`,
+  message: "Too many login attempts. Please try again later.",
+});
+const passwordChangeRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `password-change:${req.userId}`,
+  message: "Too many password change attempts. Please try again later.",
+});
+const bootstrapRateLimit = createRateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `admin-bootstrap:${req.ip}`,
+  message: "Too many administrator bootstrap attempts. Please try again later.",
+});
 const resendRateLimit = createRateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -50,16 +69,6 @@ const verifyCodeRateLimit = createRateLimit({
   max: 10,
   keyGenerator: (req) => `verify-code:${req.ip}:${normalizeEmail(req.body?.email)}`,
   message: "Too many code attempts. Please wait before trying again.",
-});
-
-passport.serializeUser((user, done) => done(null, user.id));
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await User.findByPk(id, { attributes: ["id", "role", "status"] });
-    done(null, user);
-  } catch (err) {
-    done(err);
-  }
 });
 
 if (isGoogleAuthConfigured) {
@@ -138,6 +147,12 @@ const normalizeEmail = (value) =>
 const normalizeInviteCode = (value) =>
   normalizeString(value).toUpperCase().replace(/\s+/g, "");
 
+const secretsMatch = (provided, expected) => {
+  const providedDigest = crypto.createHash("sha256").update(provided).digest();
+  const expectedDigest = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(providedDigest, expectedDigest);
+};
+
 const createAuthToken = (userId, role = "student") =>
   jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
@@ -178,7 +193,7 @@ const completeEmailVerification = async (result, res) => {
   });
 };
 
-router.post("/login", async (req, res) => {
+router.post("/login", loginRateLimit, async (req, res) => {
   try {
     const identifier =
       normalizeString(req.body.identifier) ||
@@ -613,11 +628,11 @@ router.get("/google/callback", (req, res, next) => {
   })(req, res, next);
 }, (req, res) => {
     const token = createAuthToken(req.user.id, req.user.role);
-    res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
+    res.redirect(`${FRONTEND_URL}/auth/callback#token=${encodeURIComponent(token)}`);
   }
 );
 
-router.post("/bootstrap-admin", async (req, res) => {
+router.post("/bootstrap-admin", bootstrapRateLimit, async (req, res) => {
   try {
     const setupKey = normalizeString(req.body.setupKey);
     const expectedSetupKey = normalizeString(process.env.ADMIN_SETUP_KEY);
@@ -628,7 +643,7 @@ router.post("/bootstrap-admin", async (req, res) => {
       });
     }
 
-    if (setupKey !== expectedSetupKey) {
+    if (!setupKey || !secretsMatch(setupKey, expectedSetupKey)) {
       return res.status(403).json({ message: "Invalid setup key" });
     }
 
@@ -710,6 +725,75 @@ router.get("/me", authMiddleware, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/me/profile", authMiddleware, async (req, res) => {
+  try {
+    const firstName = normalizeString(req.body?.firstName);
+    const lastName = normalizeString(req.body?.lastName);
+    const username = normalizeString(req.body?.username).toLowerCase();
+    if (!firstName || !lastName || !username) {
+      return res.status(400).json({ message: "First name, last name, and username are required" });
+    }
+    if (firstName.length > 80 || lastName.length > 80 || username.length > 80) {
+      return res.status(400).json({ message: "Profile fields must be 80 characters or fewer" });
+    }
+
+    const duplicate = await User.findOne({
+      where: { username: { [Op.iLike]: username }, id: { [Op.ne]: req.userId } },
+      attributes: ["id"],
+    });
+    if (duplicate) return res.status(409).json({ message: "Username is already in use" });
+
+    const user = await User.findByPk(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    user.firstName = firstName;
+    user.lastName = lastName;
+    user.username = username;
+    await user.save();
+    return res.json({
+      message: "Profile updated",
+      user: {
+        id: user.id, firstName: user.firstName, lastName: user.lastName,
+        username: user.username, email: user.email, role: user.role, status: user.status,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/me/password", authMiddleware, passwordChangeRateLimit, async (req, res) => {
+  try {
+    const currentPassword = normalizeString(req.body?.currentPassword);
+    const newPassword = normalizeString(req.body?.newPassword);
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current and new passwords are required" });
+    }
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: "New password must be at least 8 characters" });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ message: "New password must be different" });
+    }
+
+    const user = await User.findByPk(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user.password || user.authProvider === "google") {
+      return res.status(400).json({ message: "Password changes are unavailable for Google Sign-In accounts" });
+    }
+    if (!(await bcrypt.compare(currentPassword, user.password))) {
+      return res.status(401).json({ message: "Current password is incorrect" });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    return res.json({ message: "Password updated" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

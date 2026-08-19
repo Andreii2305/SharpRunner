@@ -2,6 +2,8 @@ const router = require("express").Router();
 const jwt = require("jsonwebtoken");
 const { Op } = require("sequelize");
 const AdminInvite = require("../models/AdminInvite");
+const crypto = require("crypto");
+const { createRateLimit } = require("../middleware/rateLimit");
 
 const INVITE_CODE_LENGTH = 10;
 const INVITE_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -14,6 +16,19 @@ const normalizeString = (value) =>
 
 const normalizeEmail = (value) =>
   normalizeString(value).toLowerCase();
+
+const developerLoginRateLimit = createRateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `developer-login:${req.ip}`,
+  message: "Too many developer login attempts. Please try again later.",
+});
+
+const secretsMatch = (provided, expected) => {
+  const providedDigest = crypto.createHash("sha256").update(provided).digest();
+  const expectedDigest = crypto.createHash("sha256").update(expected).digest();
+  return crypto.timingSafeEqual(providedDigest, expectedDigest);
+};
 
 const isValidEmail = (value) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -33,7 +48,7 @@ const extractBearerToken = (authorizationHeader) => {
 
 const randomInviteCode = () =>
   Array.from({ length: INVITE_CODE_LENGTH }, () =>
-    INVITE_CODE_CHARS.charAt(Math.floor(Math.random() * INVITE_CODE_CHARS.length))
+    INVITE_CODE_CHARS.charAt(crypto.randomInt(INVITE_CODE_CHARS.length))
   ).join("");
 
 const createUniqueInviteCode = async () => {
@@ -97,7 +112,7 @@ const toInviteResponse = (invite) => {
   };
 };
 
-router.post("/login", async (req, res) => {
+router.post("/login", developerLoginRateLimit, async (req, res) => {
   const setupKey = normalizeString(req.body.setupKey);
   const expectedSetupKey = normalizeString(process.env.DEVELOPER_SETUP_KEY);
 
@@ -107,7 +122,7 @@ router.post("/login", async (req, res) => {
     });
   }
 
-  if (!setupKey || setupKey !== expectedSetupKey) {
+  if (!setupKey || !secretsMatch(setupKey, expectedSetupKey)) {
     return res.status(403).json({ message: "Invalid developer setup key" });
   }
 

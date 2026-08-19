@@ -356,7 +356,7 @@ function GamePage({ levelConfig }) {
       completionRequestRef.current = axios
         .put(
           buildApiUrl(`/api/progress/level/${levelConfig.progressKey}`),
-          { progressPercent: 100, isCompleted: true },
+          { progressPercent: 100, isCompleted: true, sourceCode: code ?? "" },
           { headers: getAuthHeaders() },
         )
         .then((response) => response.data)
@@ -371,7 +371,7 @@ function GamePage({ levelConfig }) {
     }
 
     return completionRequestRef.current;
-  }, [levelConfig]);
+  }, [code, levelConfig]);
 
   useEffect(() => {
     if (!levelConfig) {

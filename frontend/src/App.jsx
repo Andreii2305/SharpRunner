@@ -1,31 +1,32 @@
 import { lazy, Suspense } from "react";
 import LandingPage from "./Components/LandingPage/LandingPage.jsx";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import LessonSection from "./Components/LessonSection/LessonSection.jsx";
-import LoginPage from "./Components/LogInPage/Login.jsx";
-import SignUp from "./Components/Registration/SignUp.jsx";
 import ProtectedRoute from "./Components/ProtectedRoute/ProtectedRoute.jsx";
-import LessonMapPage from "./pages/map/LessonMapPage.jsx";
-import AdminDashboardPage from "./pages/admin/AdminDashboardPage.jsx";
-import TeacherDashboardPage from "./pages/teacher/TeacherDashboardPage.jsx";
-import TeacherClassesPage from "./pages/teacher/TeacherClassesPage.jsx";
-import TeacherStudentsPage from "./pages/teacher/TeacherStudentsPage.jsx";
-import TeacherAnalyticsPage from "./pages/teacher/TeacherAnalyticsPage.jsx";
-import TeacherAnnouncementsPage from "./pages/teacher/TeacherAnnouncementsPage.jsx";
-import TeacherClassDetailPage from "./pages/teacher/TeacherClassDetailPage.jsx";
-import JoinClassPage from "./pages/student/JoinClassPage.jsx";
-import StudentLeaderboardPage from "./pages/student/StudentLeaderboardPage.jsx";
-import ClassroomLessonPage from "./pages/student/ClassroomLessonPage.jsx";
-import StudentDashboardPage from "./Components/Dashboard/Dashboard.jsx";
-import DeveloperPage from "./pages/developer/DeveloperPage.jsx";
-import AdminInviteRegisterPage from "./pages/auth/AdminInviteRegisterPage.jsx";
-import GoogleCallbackPage from "./pages/auth/GoogleCallbackPage.jsx";
-import EmailVerificationPage from "./pages/auth/EmailVerificationPage.jsx";
-import AdminEmailVerificationPage from "./pages/auth/AdminEmailVerificationPage.jsx";
 import { ToastProvider } from "./Components/Toast/ToastProvider.jsx";
 
+const LessonSection = lazy(() => import("./Components/LessonSection/LessonSection.jsx"));
+const LoginPage = lazy(() => import("./Components/LogInPage/Login.jsx"));
+const SignUp = lazy(() => import("./Components/Registration/SignUp.jsx"));
+const LessonMapPage = lazy(() => import("./pages/map/LessonMapPage.jsx"));
+const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage.jsx"));
+const TeacherDashboardPage = lazy(() => import("./pages/teacher/TeacherDashboardPage.jsx"));
+const TeacherClassesPage = lazy(() => import("./pages/teacher/TeacherClassesPage.jsx"));
+const TeacherStudentsPage = lazy(() => import("./pages/teacher/TeacherStudentsPage.jsx"));
+const TeacherAnalyticsPage = lazy(() => import("./pages/teacher/TeacherAnalyticsPage.jsx"));
+const TeacherAnnouncementsPage = lazy(() => import("./pages/teacher/TeacherAnnouncementsPage.jsx"));
+const TeacherClassDetailPage = lazy(() => import("./pages/teacher/TeacherClassDetailPage.jsx"));
+const JoinClassPage = lazy(() => import("./pages/student/JoinClassPage.jsx"));
+const StudentLeaderboardPage = lazy(() => import("./pages/student/StudentLeaderboardPage.jsx"));
+const ClassroomLessonPage = lazy(() => import("./pages/student/ClassroomLessonPage.jsx"));
+const StudentDashboardPage = lazy(() => import("./Components/Dashboard/Dashboard.jsx"));
+const DeveloperPage = lazy(() => import("./pages/developer/DeveloperPage.jsx"));
+const AdminInviteRegisterPage = lazy(() => import("./pages/auth/AdminInviteRegisterPage.jsx"));
+const GoogleCallbackPage = lazy(() => import("./pages/auth/GoogleCallbackPage.jsx"));
+const EmailVerificationPage = lazy(() => import("./pages/auth/EmailVerificationPage.jsx"));
+const AdminEmailVerificationPage = lazy(() => import("./pages/auth/AdminEmailVerificationPage.jsx"));
 const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
 const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEditorPage.jsx"));
+const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPage.jsx"));
 
 const gameRouteFallback = (
   <div role="status" aria-live="polite" style={{ padding: "2rem", textAlign: "center" }}>
@@ -46,6 +47,7 @@ function App() {
   return (
     <ToastProvider>
     <BrowserRouter>
+      <Suspense fallback={gameRouteFallback}>
       <Routes>
         <Route path="/" element={<LandingPage />} />
 
@@ -178,6 +180,14 @@ function App() {
             </TeacherRoute>
           }
         />
+        <Route
+          path="/teacher/settings"
+          element={
+            <TeacherRoute>
+              <TeacherSettingsPage />
+            </TeacherRoute>
+          }
+        />
 
         {/* ── Admin ── */}
         <Route
@@ -199,6 +209,7 @@ function App() {
         <Route path="/verify-email" element={<EmailVerificationPage />} />
         <Route path="/admin-verify-email" element={<AdminEmailVerificationPage />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
     </ToastProvider>
   );

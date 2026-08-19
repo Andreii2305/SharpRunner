@@ -6,6 +6,7 @@ import {
   FiEdit2,
   FiFilter,
   FiGrid,
+  FiKey,
   FiPlus,
   FiSearch,
   FiTrash2,
@@ -59,23 +60,37 @@ function AdminDashboardPage() {
   const [deletingUserId, setDeletingUserId] = useState(null);
   const [showTeacherInviteModal, setShowTeacherInviteModal] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(Date.now());
+  const [summary, setSummary] = useState({ totalUsers: 0, activeTeachers: 0, activeStudents: 0, activeClassrooms: 0 });
+  const [userPage, setUserPage] = useState(1);
+  const [logPage, setLogPage] = useState(1);
+  const [userPagination, setUserPagination] = useState({ total: 0, totalPages: 1 });
+  const [logPagination, setLogPagination] = useState({ total: 0, totalPages: 1 });
+  const [passwordResetTarget, setPasswordResetTarget] = useState(null);
 
   const fetchDashboardData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage("");
 
     try {
-      const [usersResponse, logsResponse] = await Promise.all([
-        axios.get(buildApiUrl("/api/admin/users"), {
+      const userQuery = new URLSearchParams({ page: String(userPage), limit: "20" });
+      if (roleFilter !== "all") userQuery.set("role", roleFilter);
+      if (statusFilter !== "all") userQuery.set("status", statusFilter);
+      if (searchText.trim()) userQuery.set("search", searchText.trim());
+      const [usersResponse, logsResponse, summaryResponse] = await Promise.all([
+        axios.get(buildApiUrl(`/api/admin/users?${userQuery}`), {
           headers: getAuthHeaders(),
         }),
-        axios.get(buildApiUrl("/api/admin/logs?limit=20"), {
+        axios.get(buildApiUrl(`/api/admin/logs?page=${logPage}&limit=20`), {
           headers: getAuthHeaders(),
         }),
+        axios.get(buildApiUrl("/api/admin/summary"), { headers: getAuthHeaders() }),
       ]);
 
       setAllUsers(usersResponse.data.users ?? []);
       setActivityLogs(logsResponse.data.logs ?? []);
+      setUserPagination({ total: usersResponse.data.total ?? 0, totalPages: usersResponse.data.totalPages ?? 1 });
+      setLogPagination({ total: logsResponse.data.total ?? 0, totalPages: logsResponse.data.totalPages ?? 1 });
+      setSummary(summaryResponse.data ?? { totalUsers: 0, activeTeachers: 0, activeStudents: 0, activeClassrooms: 0 });
       setLastUpdated(Date.now());
     } catch (error) {
       setErrorMessage(
@@ -85,28 +100,11 @@ function AdminDashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [logPage, roleFilter, searchText, statusFilter, userPage]);
 
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
-
-  const usersByRole = useMemo(() => {
-    const roleSummary = {
-      all: allUsers.length,
-      admin: 0,
-      teacher: 0,
-      student: 0,
-    };
-
-    allUsers.forEach((user) => {
-      if (user.role && roleSummary[user.role] !== undefined) {
-        roleSummary[user.role] += 1;
-      }
-    });
-
-    return roleSummary;
-  }, [allUsers]);
 
   const usersWithStatus = useMemo(
     () =>
@@ -137,6 +135,8 @@ function AdminDashboardPage() {
       return matchesRole && matchesStatus && matchesSearch;
     });
   }, [usersWithStatus, roleFilter, statusFilter, searchText]);
+
+  useEffect(() => { setUserPage(1); }, [roleFilter, statusFilter, searchText]);
 
   const systemLogs = useMemo(() => {
     return activityLogs.map((log) => ({
@@ -232,6 +232,36 @@ function AdminDashboardPage() {
     }
   };
 
+  const onChangeUserRole = async (user, role) => {
+    if (role === user.role) return;
+    setUpdatingUserId(user.id);
+    setErrorMessage("");
+    try {
+      const response = await axios.patch(buildApiUrl(`/api/admin/users/${user.id}/role`), { role }, { headers: getAuthHeaders() });
+      toast.success(response.data.message ?? "User role updated.");
+      await fetchDashboardData();
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message ?? "Failed to update user role");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const confirmPasswordReset = async () => {
+    if (!passwordResetTarget || updatingUserId) return;
+    setUpdatingUserId(passwordResetTarget.id);
+    try {
+      const response = await axios.post(buildApiUrl(`/api/admin/users/${passwordResetTarget.id}/reset-password`), {}, { headers: getAuthHeaders() });
+      toast.success(response.data.message);
+      setPasswordResetTarget(null);
+      await fetchDashboardData();
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message ?? "Failed to reset password");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
   const getDeleteWarning = (user) => {
     if (!user) return "";
     const relatedData = user.role === "teacher"
@@ -301,14 +331,14 @@ function AdminDashboardPage() {
                 <FiUsers size={16} />
                 <span>Total of Users</span>
               </p>
-              <p className={styles.statValue}>{usersByRole.all}</p>
+              <p className={styles.statValue}>{summary.totalUsers}</p>
             </article>
             <article className={styles.statCard}>
               <p className={styles.statTitle}>
                 <FiUserCheck size={16} />
                 <span>Active Instructor</span>
               </p>
-              <p className={styles.statValue}>{usersByRole.teacher}</p>
+              <p className={styles.statValue}>{summary.activeTeachers}</p>
               <button type="button" className={styles.seeMoreButton}>
                 See more
               </button>
@@ -320,7 +350,7 @@ function AdminDashboardPage() {
                 <FiGrid size={16} />
                 <span>Active Classrooms</span>
               </p>
-              <p className={styles.statValue}>{usersByRole.teacher}</p>
+              <p className={styles.statValue}>{summary.activeClassrooms}</p>
               <button type="button" className={styles.seeMoreButton}>
                 See more
               </button>
@@ -372,6 +402,7 @@ function AdminDashboardPage() {
                 </table>
               </div>
             )}
+            <div className={styles.pagination}><span>{logPagination.total} log entries</span><div><button type="button" disabled={logPage <= 1} onClick={() => setLogPage((page) => page - 1)}>Previous</button><span>Page {logPage} of {logPagination.totalPages}</span><button type="button" disabled={logPage >= logPagination.totalPages} onClick={() => setLogPage((page) => page + 1)}>Next</button></div></div>
           </div>
         </section>
 
@@ -535,6 +566,15 @@ function AdminDashboardPage() {
                             </button>
                           )}
                           {user.role !== "admin" && (
+                            <select className={styles.roleActionSelect} value={user.role} disabled={updatingUserId === user.id} onChange={(event) => onChangeUserRole(user, event.target.value)} aria-label={`Change role for ${user.username}`}>
+                              <option value="student">Student</option>
+                              <option value="teacher">Instructor</option>
+                            </select>
+                          )}
+                          {user.role === "teacher" && user.authProvider !== "google" && (
+                            <button type="button" className={styles.tableActionButton} onClick={() => setPasswordResetTarget(user)} disabled={updatingUserId === user.id}><FiKey size={12} /> Reset password</button>
+                          )}
+                          {user.role !== "admin" && (
                             <button
                               type="button"
                               className={`${styles.tableActionButton} ${styles.deleteButton}`}
@@ -553,6 +593,7 @@ function AdminDashboardPage() {
               </table>
             </div>
           )}
+          <div className={styles.pagination}><span>{userPagination.total} matching users</span><div><button type="button" disabled={userPage <= 1} onClick={() => setUserPage((page) => page - 1)}>Previous</button><span>Page {userPage} of {userPagination.totalPages}</span><button type="button" disabled={userPage >= userPagination.totalPages} onClick={() => setUserPage((page) => page + 1)}>Next</button></div></div>
         </section>
       </div>
       <ConfirmModal
@@ -567,6 +608,7 @@ function AdminDashboardPage() {
           if (!deletingUserId) setUserPendingDeletion(null);
         }}
       />
+      <ConfirmModal open={Boolean(passwordResetTarget)} title="Reset this user's password?" message={passwordResetTarget ? `A new temporary password will be emailed to ${passwordResetTarget.email}. The password is never displayed in the dashboard.` : ""} confirmLabel={updatingUserId ? "Resetting..." : "Email temporary password"} danger confirmDisabled={Boolean(updatingUserId)} onConfirm={confirmPasswordReset} onCancel={() => !updatingUserId && setPasswordResetTarget(null)} />
       {showTeacherInviteModal && (
         <TeacherInviteModal
           isSubmitting={isCreatingTeacher}

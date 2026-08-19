@@ -524,7 +524,7 @@ export default class ArraysLevelSevenScene extends Phaser.Scene {
     this.playAnimation("player-idle-arrays-7");
   }
 
-  startSuccessSequence(visitedIndexes) {
+  startSuccessSequence() {
     this.sequenceMode = "checking";
     this.stopNameTagIdlePulse();
     this.manualCameraEnabled = false;

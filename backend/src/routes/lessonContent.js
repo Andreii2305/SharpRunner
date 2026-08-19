@@ -13,7 +13,7 @@ const ClassroomLessonSubmissionAttachment = require("../models/ClassroomLessonSu
 const Classroom = require("../models/Classroom");
 const ClassroomMembership = require("../models/ClassroomMembership");
 const path = require("path");
-const { uploadDirectory, uploadLessonFiles, removeUploadedFiles } = require("../middleware/classroomLessonUpload");
+const { uploadDirectory, uploadLessonFiles, removeUploadedFiles, lessonUploadPolicy } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
 const { isOfficeDocument, convertOfficeToPdf } = require("../services/officePreviewService");
 const { extensionAllowed } = require("../services/fileSecurityService");
@@ -110,7 +110,9 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     }
     lesson.attachments?.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.id - b.id);
     const releaseFeedback = !lesson.feedbackReleaseAt || new Date(lesson.feedbackReleaseAt) <= new Date();
-    return res.json({ lesson, progress, submission: sanitizeSubmission(submission, { releaseFeedback }) });
+    const lessonPayload = lesson.toJSON ? lesson.toJSON() : lesson;
+    lessonPayload.maxFileSizeMb = Math.min(lessonPayload.maxFileSizeMb || lessonUploadPolicy.maxFileSizeMb, lessonUploadPolicy.maxFileSizeMb);
+    return res.json({ lesson: lessonPayload, progress, submission: sanitizeSubmission(submission, { releaseFeedback }), uploadPolicy: lessonUploadPolicy });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

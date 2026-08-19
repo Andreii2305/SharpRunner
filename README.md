@@ -13,7 +13,7 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - The backend progress model supports 4 lessons with 10 levels each, for 40 total progress rows per student.
 - The playable game currently exposes Lesson 1 levels 1-5.
 - Student progress, attempts, time spent, final score, and grade label are saved through the backend.
-- Teachers can manage classrooms, view student progress, post announcements, and edit per-classroom level content overrides.
+- Teachers can manage classrooms, view student progress, post announcements, manage classwork, and configure the currently supported per-classroom level settings.
 - Admins can manage users, create teacher accounts, and view admin activity logs.
 - Developer tools can generate one-time admin invite codes.
 
@@ -35,13 +35,20 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Manage class rosters and view student performance.
 - Post classroom announcements.
 - View per-student level scores, attempts, and time spent.
-- Edit per-classroom level content such as lesson text, goals, instructions, starter code, and validator settings.
+- Configure per-classroom level availability, order, unlock and due dates, hints, and grading deductions.
+- Remove students from a roster without deleting their saved progress.
+- Archive/reactivate classrooms and rotate compromised class codes.
+- Update teacher profile details and password from `/teacher/settings`.
 
 ### Admin Experience
 
 - View and search users.
 - Create teacher accounts.
 - Activate or deactivate non-admin users.
+- Change student/teacher roles with ownership safeguards.
+- Email temporary-password resets to teacher accounts.
+- Browse paginated users and audit activity with accurate system totals.
+- Permanently delete non-admin accounts after confirmation.
 - View admin activity logs.
 - Bootstrap the first admin through a setup key, or create admins through developer-generated invite codes.
 
@@ -129,6 +136,9 @@ FRONTEND_URLS=http://localhost:5173,http://127.0.0.1:5173
 BACKEND_URL=http://localhost:5000
 ADMIN_SETUP_KEY=your_admin_setup_key
 DEVELOPER_SETUP_KEY=your_developer_setup_key
+LESSON_UPLOAD_MAX_FILES=5
+LESSON_UPLOAD_MAX_MB=25
+REQUIRE_FILE_SCANNING=false
 ```
 
 For local frontend development, `frontend/.env.development` points to
@@ -178,6 +188,36 @@ Build the frontend:
 ```bash
 npm --prefix frontend run build
 ```
+
+Apply pending database migrations without starting the API:
+
+```bash
+npm --prefix backend run db:migrate
+```
+
+Run the automated suites:
+
+```bash
+npm --prefix backend test
+npm --prefix frontend test
+```
+
+Before a presentation or manual QA session, run the combined demo preflight and
+then follow the role-by-role checklist in `docs/DEMO_QA_CHECKLIST.md`:
+
+```bash
+node scripts/demo-preflight.mjs
+```
+
+The backend suite starts the Express application on an ephemeral local port and
+tests authentication, classroom joining, progress validation and scoring,
+teacher/admin authorization, and developer invites without changing a real
+database. A future database-backed suite must use a disposable database through
+`TEST_DATABASE_URL`; never point it at development or production data.
+
+Set `REQUIRE_FILE_SCANNING=true` in production only when `CLAMAV_BIN` points to
+an available ClamAV executable. Executable signatures are rejected regardless
+of scanner configuration.
 
 ## Supabase + Render Deployment
 
@@ -251,7 +291,8 @@ or provider backup.
 - `/teacher/students` - teacher student progress
 - `/teacher/analytics` - teacher analytics
 - `/teacher/announcements` - teacher announcements
-- `/teacher/classrooms/:classroomId/levels` - teacher level editor
+- `/teacher/settings` - teacher profile and password settings
+- `/teacher/classrooms/:classroomId/levels` - teacher level settings for availability, order, scheduling, hints, and grading deductions
 - `/admin` - admin dashboard
 - `/developer` - developer admin-invite tools
 - `/admin-invite` - admin invite registration
@@ -271,8 +312,8 @@ or provider backup.
 
 1. Finish Lesson 1 levels 6-10 so the first lesson becomes a complete playable module.
 2. Keep backend grading as the single source of truth for scores shown in the game, map, dashboard, and teacher pages.
-3. Add a small manual QA checklist for demo preparation.
-4. Add automated tests for auth, progress saving, class joining, and teacher/admin APIs.
+3. Run the manual/demo QA checklist on each presentation build.
+4. Expand API coverage with disposable PostgreSQL-backed migration and transaction tests.
 5. Consider frontend code-splitting because the production bundle is currently large.
 
 ## Developer

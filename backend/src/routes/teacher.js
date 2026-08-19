@@ -29,6 +29,7 @@ const {
   removeUploadedFiles,
   removeStoredFiles,
   uploadDirectory,
+  lessonUploadPolicy,
 } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
 
@@ -168,7 +169,7 @@ const sanitizeClassroomLesson = (lesson) => ({
   allowLateSubmissions: lesson.allowLateSubmissions,
   maxAttempts: lesson.maxAttempts,
   allowedFileTypes: lesson.allowedFileTypes ?? [],
-  maxFileSizeMb: lesson.maxFileSizeMb,
+  maxFileSizeMb: Math.min(lesson.maxFileSizeMb || lessonUploadPolicy.maxFileSizeMb, lessonUploadPolicy.maxFileSizeMb),
   assignedStudentIds: lesson.assignedStudentIds ?? [],
   version: lesson.version ?? 1,
   stats: lesson.stats,
@@ -203,7 +204,9 @@ const parseLessonOptions = (body) => {
     feedbackReleaseAt: contentType === "assignment" ? feedbackReleaseAt : null,
     allowLateSubmissions: contentType === "assignment" ? String(body?.allowLateSubmissions) !== "false" : true,
     maxAttempts: contentType === "assignment" ? Math.min(100, Math.max(0, Number.parseInt(body?.maxAttempts, 10) || 0)) : 0,
-    maxFileSizeMb: contentType === "assignment" ? Math.min(100, Math.max(1, Number.parseInt(body?.maxFileSizeMb, 10) || 100)) : 100,
+    maxFileSizeMb: contentType === "assignment"
+      ? Math.min(lessonUploadPolicy.maxFileSizeMb, Math.max(1, Number.parseInt(body?.maxFileSizeMb, 10) || lessonUploadPolicy.maxFileSizeMb))
+      : lessonUploadPolicy.maxFileSizeMb,
   };
 };
 
@@ -245,6 +248,7 @@ const buildDashboardPayload = async (req) => {
       "description",
       "classCode",
       "teacherId",
+      "isActive",
       "createdAt",
     ],
     order: [["createdAt", "DESC"]],
@@ -507,6 +511,7 @@ const buildDashboardPayload = async (req) => {
       maxStudents: classroom.maxStudents,
       description: classroom.description,
       classCode: classroom.classCode,
+      isActive: classroom.isActive,
       studentCount: classStudentIds.length,
       averageProgressPercent,
     };
@@ -643,7 +648,7 @@ router.get("/classrooms", async (req, res) => {
     const scopeWhere = buildScopeWhere(req);
     const classrooms = await Classroom.findAll({
       where: scopeWhere,
-      order: [["displayOrder", "ASC"], ["createdAt", "DESC"]],
+      order: [["createdAt", "DESC"]],
     });
 
     if (classrooms.length === 0) {
@@ -758,6 +763,58 @@ router.post("/classrooms", async (req, res) => {
   }
 });
 
+router.patch("/classrooms/:classroomId", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "You are not allowed to update this classroom" });
+    }
+    if (typeof req.body?.isActive !== "boolean") {
+      return res.status(400).json({ message: "isActive must be a boolean" });
+    }
+
+    classroom.isActive = req.body.isActive;
+    await classroom.save();
+    return res.json({
+      message: classroom.isActive ? "Classroom reactivated" : "Classroom archived",
+      classroom: sanitizeClassroom(classroom),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/classrooms/:classroomId/regenerate-code", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    if (!classroomId) return res.status(400).json({ message: "Invalid classroom id" });
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "You are not allowed to update this classroom" });
+    }
+    if (!classroom.isActive) {
+      return res.status(409).json({ message: "Reactivate the classroom before rotating its code" });
+    }
+
+    classroom.classCode = await createUniqueClassCode();
+    await classroom.save();
+    return res.json({
+      message: "Class code regenerated. The previous code no longer works.",
+      classroom: sanitizeClassroom(classroom),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 router.post("/classrooms/:classroomId/students", async (req, res) => {
   try {
     const classroomId = parseInteger(req.params.classroomId);
@@ -838,6 +895,43 @@ router.post("/classrooms/:classroomId/students", async (req, res) => {
       message: "Students added to classroom",
       activatedCount,
       totalMatchedStudents: students.length,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.patch("/classrooms/:classroomId/students/:studentId", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const studentId = parseInteger(req.params.studentId);
+    if (!classroomId || !studentId) {
+      return res.status(400).json({ message: "Invalid classroom or student id" });
+    }
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "You are not allowed to update this classroom" });
+    }
+
+    const status = normalizeString(req.body?.status).toLowerCase();
+    if (!["active", "removed"].includes(status)) {
+      return res.status(400).json({ message: "status must be active or removed" });
+    }
+
+    const membership = await ClassroomMembership.findOne({
+      where: { classroomId, studentId },
+    });
+    if (!membership) return res.status(404).json({ message: "Classroom membership not found" });
+
+    membership.status = status;
+    if (status === "active") membership.joinedAt = membership.joinedAt ?? new Date();
+    await membership.save();
+    return res.json({
+      message: status === "active" ? "Student membership reactivated" : "Student removed from classroom",
+      membership: { classroomId, studentId, status: membership.status },
     });
   } catch (error) {
     console.error(error);
@@ -1132,7 +1226,7 @@ router.get("/classrooms/:classroomId/lessons", async (req, res) => {
       lesson.attachments?.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.id - b.id);
     }
 
-    return res.json({ classroom: sanitizeClassroom(classroom), lessons: lessons.map(sanitizeClassroomLesson), storageMode: lessonStorage.storageMode() });
+    return res.json({ classroom: sanitizeClassroom(classroom), lessons: lessons.map(sanitizeClassroomLesson), storageMode: lessonStorage.storageMode(), uploadPolicy: lessonUploadPolicy });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

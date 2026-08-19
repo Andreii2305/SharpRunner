@@ -6,11 +6,10 @@ import axios from "axios";
 export default function GoogleCallbackPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
+  const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
+  const error = params.get("error");
 
   useEffect(() => {
-    const token = params.get("token");
-    const error = params.get("error");
-
     if (error || !token) {
       navigate("/login?error=google_auth_failed", { replace: true });
       return;
@@ -29,7 +28,7 @@ export default function GoogleCallbackPage() {
       .catch(() => {
         navigate(getHomeRouteByRole(null), { replace: true });
       });
-  }, []);
+  }, [error, navigate, token]);
 
   return null;
 }

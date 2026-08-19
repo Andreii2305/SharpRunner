@@ -1,7 +1,7 @@
 # SharpRunner Feature Requirements
 
-> Last updated: 2026-05-27  
-> Source: Panel review feedback and current project implementation  
+> Last updated: 2026-08-19
+> Source: Panel review feedback and current project implementation
 > Status: Living project reference
 
 This document tracks the main panel-requested features and their current implementation status.
@@ -21,55 +21,57 @@ The current plan keeps the first 5 implemented levels as a tutorial/prologue, th
 
 This plan is pending review/approval before implementation.
 
-## Requirement 1 - Teacher-Editable Lesson Content Per Level
+## Requirement 1 - Teacher-Controlled Level Settings
 
-**Status: Partially implemented**
+**Status: Implemented with a deliberately limited editing scope**
 
-Teachers can edit per-classroom level content from the teacher level editor route:
+Teachers can configure the supported per-classroom level settings from the teacher level editor route. Teachers cannot currently rewrite curriculum text, starter code, dialogue, result messages, or validator behavior through the UI.
 
 - Frontend: `frontend/src/pages/teacher/TeacherLevelEditorPage.jsx`
 - Backend route: `backend/src/routes/teacher.js`
 - Model: `backend/src/models/LevelContentOverride.js`
 - Schema service: `backend/src/services/levelContentSchemaService.js`
 
-Current editable fields:
+Current teacher-editable settings:
 
-- lesson card title
-- lesson card description
-- goal title
-- goal description
-- instruction items
-- starter/default code
-- validator configuration
+- level availability
+- display order
+- unlock date and time
+- due date and time
+- hints enabled/disabled
+- points deducted per wrong attempt
+- points deducted per late day
 
-Current API endpoints:
+Teacher UI API endpoints:
 
 - `GET /api/teacher/classrooms/:classroomId/level-overrides`
-- `PUT /api/teacher/classrooms/:classroomId/level-overrides/:levelKey`
-- `DELETE /api/teacher/classrooms/:classroomId/level-overrides/:levelKey`
-- `GET /api/progress/level/:levelKey/content` for students to load their classroom override
+- `PUT /api/teacher/classrooms/:classroomId/level-settings`
+- `DELETE /api/teacher/classrooms/:classroomId/level-settings`
 
-Current data model:
+The `LevelContentOverrides` model also contains older content and validator columns. Those columns and the per-level content override endpoints are not exposed by the current teacher UI and must not be presented as completed teacher functionality.
+
+Settings used by the current teacher UI:
 
 ```text
 LevelContentOverrides
   classroomId
   levelKey
-  lessonCardTitle
-  lessonCardDescription
-  goalTitle
-  goalDescription
-  instructionItems
-  defaultCode
-  validatorConfig
+  isEnabled
+  displayOrder
+  unlockAt
+  dueAt
+  hintsEnabled
+  wrongAttemptDeduction
+  lateDeductionPerDay
 ```
 
-Remaining gaps:
+Out of scope for the current teacher editor:
 
-- NPC dialogue override is not yet editable.
-- Idle, success, and error result messages are not yet stored as override fields.
-- Par time/deadline configuration is not yet exposed in the teacher level editor.
-- The game currently uses level configs for Lesson 1 levels 1-5 only.
+- lesson, goal, and instruction text editing
+- starter-code editing
+- validator configuration
+- NPC dialogue and result-message editing
+- configurable par time (due dates are already supported)
 
 ## Requirement 2 - Teacher-Editable Boss Levels
 
@@ -207,8 +209,8 @@ Remaining gaps:
 | Priority | Work Item | Reason |
 |---|---|---|
 | 1 | Finish Lesson 1 levels 6-10 | Gives the project one complete playable module |
-| 2 | Add demo/manual QA checklist | Helps capstone presentation and regression checks |
-| 3 | Add automated API tests | Protects auth, progress, classroom, and teacher flows |
+| 2 | Run the demo/manual QA checklist on each presentation build | The repeatable preflight and role checks are documented in `docs/DEMO_QA_CHECKLIST.md` |
+| 3 | Add disposable-database integration tests | HTTP route coverage exists; PostgreSQL migrations and constraints still need isolated testing |
 | 4 | Add score breakdown UI | Makes grading easier for students and teachers to understand |
 | 5 | Add command-queue execution | Makes coding feel more directly game-controlled |
 | 6 | Add boss-level editing | Stretch goal after boss level defaults exist |

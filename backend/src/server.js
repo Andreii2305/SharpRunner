@@ -1,31 +1,13 @@
 require("dotenv").config();
 const app = require("./app");
 const sequelize = require("./config/database");
-const {
-  ensureUserRoleColumn,
-  ensureUserStatusColumn,
-  ensureUserActivityColumns,
-} = require("./services/userRoleSchemaService");
-const { ensureClassroomColumns } = require("./services/classroomSchemaService");
-const { ensureProgressGradingColumns } = require("./services/progressSchemaService");
-const { ensureLevelContentOverridesTable } = require("./services/levelContentSchemaService");
-const { ensureGoogleAuthColumns } = require("./services/googleAuthSchemaService");
-const { ensureEmailVerificationColumns } = require("./services/emailVerificationSchemaService");
-const { ensureClassroomLessonsTable } = require("./services/classroomLessonSchemaService");
+const { runMigrations } = require("./services/migrationService");
 
 const startServer = async () => {
   try {
-    await sequelize.sync();
-    await ensureUserRoleColumn();
-    await ensureUserStatusColumn();
-    await ensureUserActivityColumns();
-    await ensureClassroomColumns();
-    await ensureProgressGradingColumns();
-    await ensureLevelContentOverridesTable();
-    await ensureGoogleAuthColumns();
-    await ensureEmailVerificationColumns();
-    await ensureClassroomLessonsTable();
-    console.log("Database synced");
+    await sequelize.authenticate();
+    await runMigrations();
+    console.log("Database migrations are current");
 
     const PORT = process.env.PORT || 5000;
     app.listen(PORT, () =>

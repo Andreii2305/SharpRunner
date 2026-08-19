@@ -1,13 +1,15 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const { Op, col, fn, where } = require("sequelize");
 const User = require("../models/User");
 const AdminActivityLog = require("../models/AdminActivityLog");
+const Classroom = require("../models/Classroom");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const { logAdminActivity } = require("../services/adminActivityLogService");
 const { validateEmailAddress } = require("../services/emailValidationService");
-const { sendTeacherInviteEmail } = require("../services/emailService");
+const { sendTeacherInviteEmail, sendTemporaryPasswordEmail } = require("../services/emailService");
 const { createRateLimit } = require("../middleware/rateLimit");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
@@ -18,6 +20,22 @@ const teacherCreationRateLimit = createRateLimit({
   keyGenerator: (req) => `teacher-create:${req.userId}`,
   message: "Too many teacher account requests. Please try again later.",
 });
+const adminMutationRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  keyGenerator: (req) => `admin-mutation:${req.userId}`,
+  message: "Too many admin changes. Please try again later.",
+});
+
+const parsePagination = (query, defaultLimit = 20) => {
+  const requestedPage = Number.parseInt(query.page, 10);
+  const requestedLimit = Number.parseInt(query.limit, 10);
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const limit = Number.isInteger(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 100)
+    : defaultLimit;
+  return { page, limit, offset: (page - 1) * limit };
+};
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -33,6 +51,7 @@ const sanitizeUser = (user) => ({
   email: user.email,
   role: user.role,
   status: user.status,
+  authProvider: user.authProvider,
   emailVerifiedAt: user.emailVerifiedAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
@@ -96,14 +115,20 @@ router.get("/users", async (req, res) => {
       ];
     }
 
-    const users = await User.findAll({
+    const { page, limit, offset } = parsePagination(req.query, 20);
+    const result = await User.findAndCountAll({
       where: whereClause,
       order: [["createdAt", "DESC"]],
+      limit,
+      offset,
     });
 
     return res.json({
-      total: users.length,
-      users: users.map(sanitizeUser),
+      total: result.count,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(result.count / limit)),
+      users: result.rows.map(sanitizeUser),
     });
   } catch (error) {
     console.error(error);
@@ -113,19 +138,19 @@ router.get("/users", async (req, res) => {
 
 router.get("/logs", async (req, res) => {
   try {
-    const requestedLimit = Number.parseInt(req.query.limit, 10);
-    const limit = Number.isInteger(requestedLimit)
-      ? Math.min(Math.max(requestedLimit, 1), 100)
-      : 20;
-
-    const logs = await AdminActivityLog.findAll({
+    const { page, limit, offset } = parsePagination(req.query, 20);
+    const result = await AdminActivityLog.findAndCountAll({
       order: [["createdAt", "DESC"]],
       limit,
+      offset,
     });
 
     return res.json({
-      total: logs.length,
-      logs: logs.map(sanitizeActivityLog),
+      total: result.count,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(result.count / limit)),
+      logs: result.rows.map(sanitizeActivityLog),
     });
   } catch (error) {
     console.error(error);
@@ -133,7 +158,22 @@ router.get("/logs", async (req, res) => {
   }
 });
 
-router.patch("/users/:id/status", async (req, res) => {
+router.get("/summary", async (_req, res) => {
+  try {
+    const [totalUsers, activeTeachers, activeStudents, activeClassrooms] = await Promise.all([
+      User.count(),
+      User.count({ where: { role: "teacher", status: "active" } }),
+      User.count({ where: { role: "student", status: "active" } }),
+      Classroom.count({ where: { isActive: true } }),
+    ]);
+    return res.json({ totalUsers, activeTeachers, activeStudents, activeClassrooms });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.patch("/users/:id/status", adminMutationRateLimit, async (req, res) => {
   try {
     const userId = Number.parseInt(req.params.id, 10);
     const nextStatus = normalizeString(req.body.status).toLowerCase();
@@ -197,7 +237,66 @@ router.patch("/users/:id/status", async (req, res) => {
   }
 });
 
-router.delete("/users/:id", async (req, res) => {
+router.patch("/users/:id/role", adminMutationRateLimit, async (req, res) => {
+  try {
+    const userId = Number.parseInt(req.params.id, 10);
+    const nextRole = normalizeString(req.body?.role).toLowerCase();
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ message: "Invalid user id" });
+    if (!["student", "teacher"].includes(nextRole)) return res.status(400).json({ message: "Role must be student or teacher" });
+
+    const user = await User.findByPk(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.role === "admin") return res.status(403).json({ message: "Admin roles cannot be changed from the dashboard" });
+    if (user.role === nextRole) return res.json({ message: `User is already a ${nextRole}`, user: sanitizeUser(user) });
+    if (user.role === "teacher" && nextRole === "student") {
+      const classroomCount = await Classroom.count({ where: { teacherId: user.id } });
+      if (classroomCount > 0) return res.status(409).json({ message: "Reassign or remove this teacher's classrooms before changing the role" });
+    }
+
+    const previousRole = user.role;
+    user.role = nextRole;
+    await user.save();
+    const actorUsername = await getActorUsername(req.userId);
+    await logAdminActivity({ actorUserId: req.userId, actorUsername, role: req.userRole ?? "admin", targetUserId: user.id, targetUsername: user.username, activity: "Updated user role", details: `${user.username}: ${previousRole} -> ${nextRole}`, status: "success" });
+    return res.json({ message: "User role updated", user: sanitizeUser(user) });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/users/:id/reset-password", adminMutationRateLimit, async (req, res) => {
+  try {
+    const userId = Number.parseInt(req.params.id, 10);
+    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ message: "Invalid user id" });
+    const user = await User.findByPk(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.role === "admin") return res.status(403).json({ message: "Admin passwords cannot be reset from the dashboard" });
+    if (user.role !== "teacher") return res.status(400).json({ message: "Dashboard password resets are currently available for teacher accounts" });
+    if (user.authProvider === "google" || !user.password) return res.status(400).json({ message: "Google Sign-In accounts do not have a local password" });
+
+    const temporaryPassword = `Aa1!${crypto.randomBytes(9).toString("base64url")}`;
+    const previousPassword = user.password;
+    user.password = await bcrypt.hash(temporaryPassword, 10);
+    await user.save();
+    try {
+      await sendTemporaryPasswordEmail({ email: user.email, firstName: user.firstName, username: user.username, temporaryPassword });
+    } catch (error) {
+      user.password = previousPassword;
+      await user.save();
+      throw error;
+    }
+
+    const actorUsername = await getActorUsername(req.userId);
+    await logAdminActivity({ actorUserId: req.userId, actorUsername, role: req.userRole ?? "admin", targetUserId: user.id, targetUsername: user.username, activity: "Reset user password", details: `${user.username}: temporary password emailed`, status: "success" });
+    return res.json({ message: "A temporary password was emailed to the user" });
+  } catch (error) {
+    console.error(error);
+    return res.status(error.statusCode || 500).json({ message: error.statusCode ? error.message : "Failed to reset password" });
+  }
+});
+
+router.delete("/users/:id", adminMutationRateLimit, async (req, res) => {
   try {
     const userId = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(userId) || userId <= 0) {
@@ -250,9 +349,9 @@ router.post("/users/teacher", teacherCreationRateLimit, async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return res.status(400).json({
-        message: "Password must be at least 6 characters",
+        message: "Password must be at least 8 characters",
       });
     }
 

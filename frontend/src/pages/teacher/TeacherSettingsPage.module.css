@@ -1,0 +1,16 @@
+.settingsGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.card { padding: 22px; border: 1px solid #dce6f1; border-radius: 14px; background: #fff; box-shadow: 0 2px 8px rgba(30,58,95,.05); }
+.cardHeading { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 20px; color: #2563eb; }
+.cardHeading svg { font-size: 28px; }
+.cardHeading h1 { margin: 0 0 4px; color: #1e3a5f; font-size: 17px; }
+.cardHeading p { margin: 0; color: #64748b; font-size: 11px; line-height: 1.5; }
+.card form { display: grid; gap: 14px; }
+.card label { display: flex; flex-direction: column; gap: 5px; color: #475569; font-size: 11px; font-weight: 700; }
+.card input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e1; border-radius: 8px; color: #334155; font: inherit; font-size: 12px; outline: none; }
+.card input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.card input:disabled { background: #f1f5f9; color: #64748b; }
+.card small { color: #94a3b8; font-size: 9px; font-weight: 400; line-height: 1.5; }
+.card button { justify-self: end; }
+.twoColumns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 850px) { .settingsGrid { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .twoColumns { grid-template-columns: 1fr; } .card { padding: 16px; } }

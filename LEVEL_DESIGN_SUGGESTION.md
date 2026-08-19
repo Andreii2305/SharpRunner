@@ -58,4 +58,4 @@ Last updated: 2026-03-16
 
 - Lesson 1 can remain regex-strict for exact declarations.
 - Lessons 2-4 should move to parser/interpreter-style validation for reliability.
-- Keep per-level objective text in config so Teacher Dashboard can edit goals/instructions/dialogue later.
+- Keep per-level objective text in system-managed config. Teacher editing of goals, instructions, dialogue, starter code, and validators is outside the current product scope.

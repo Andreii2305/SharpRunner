@@ -1,10 +1,10 @@
 # Admin Dash Context
 
-Last updated: 2026-05-27
+Last updated: 2026-08-19
 
 ## Current Status
 
-The admin dashboard is connected to live backend data and supports user management, teacher creation, account activation/deactivation, and activity logs.
+The admin dashboard is connected to live backend data and supports paginated user management, accurate system summaries, teacher creation, account activation/deactivation, guarded role changes, teacher password resets, deletion, and activity logs.
 
 ## Completed
 
@@ -17,6 +17,13 @@ The admin dashboard is connected to live backend data and supports user manageme
 - Admin can activate or deactivate non-admin users.
 - Inactive users are blocked from login.
 - Admin invite registration exists through the developer invite flow.
+- Server-side pagination and filtering for users and activity logs.
+- Accurate totals for users, active teachers, active students, and active classrooms.
+- Student/teacher role changes with admin-account protection and classroom-ownership safeguards.
+- Teacher password reset through an emailed temporary password; credentials are never returned to the dashboard.
+- Permanent deletion for non-admin users with an explicit confirmation.
+- Audit entries for status, role, teacher invitation, password-reset, and deletion actions.
+- Rate limiting for teacher creation and admin mutation endpoints.
 
 ## Backend Files
 
@@ -38,14 +45,22 @@ The admin dashboard is connected to live backend data and supports user manageme
 ## Current API Contract
 
 - `GET /api/admin/users`
-  - Returns users with `id`, `firstName`, `lastName`, `username`, `email`, `role`, `status`, `createdAt`, and `updatedAt`.
-- `GET /api/admin/logs?limit=20`
-  - Returns recent admin activity logs.
+  - Supports `page`, `limit`, `role`, `status`, and `search`; returns pagination metadata and sanitized users.
+- `GET /api/admin/logs?page=1&limit=20`
+  - Returns paginated admin activity logs.
+- `GET /api/admin/summary`
+  - Returns total users, active teachers/students, and active classrooms.
 - `POST /api/admin/users/teacher`
   - Creates a teacher account.
 - `PATCH /api/admin/users/:id/status`
   - Body: `{ "status": "active" | "inactive" }`
   - Prevents admin accounts from being set inactive.
+- `PATCH /api/admin/users/:id/role`
+  - Changes a non-admin account between student and teacher; teacher demotion is blocked while classrooms remain assigned.
+- `POST /api/admin/users/:id/reset-password`
+  - Emails a temporary password to a local-password teacher account and never returns the password in the API.
+- `DELETE /api/admin/users/:id`
+  - Permanently deletes a non-admin account and records the action.
 - `POST /api/auth/bootstrap-admin`
   - Creates the first admin when `ADMIN_SETUP_KEY` is configured and no admin exists.
 - `POST /api/auth/register-admin-invite`
@@ -53,15 +68,11 @@ The admin dashboard is connected to live backend data and supports user manageme
 
 ## Remaining Gaps
 
-1. Add pagination to admin users and logs.
-2. Add optional admin actions:
-   - reset password
-   - update role
-   - archive/delete user
-3. Add stronger audit coverage for more admin actions.
-4. Add API tests for admin users, logs, teacher creation, and status changes.
-5. Add rate limiting or other hardening for production auth endpoints.
+1. Add a reversible archive/restore flow if permanent deletion is too destructive for production policy.
+2. Add forced sign-out/token revocation after password reset if the project later stores session or token-version state.
+3. Add student self-service password settings before enabling dashboard password reset for student accounts; current resets intentionally support teachers only.
+4. Add browser-level end-to-end coverage for the admin dashboard. API coverage now includes pagination, summaries, status, roles, password reset, deletion, and auditing.
 
 ## Suggested Next Focus
 
-Admin is stable enough for the current capstone loop. Return to it after completing the playable Lesson 1 path, unless the panel specifically asks for more admin controls.
+Admin is stable enough for the current capstone loop. The next admin work should be driven by an explicit retention/session policy rather than adding more destructive controls by default.

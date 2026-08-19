@@ -6,7 +6,7 @@ import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
-import { clampPercent } from "./TeacherDashboardPage.jsx";
+import { clampPercent } from "./TeacherShared.jsx";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherStudentsPage.module.css";
 
@@ -24,7 +24,6 @@ function TeacherStudentsPage() {
   const [students, setStudents]     = useState([]);
   const [isLoading, setIsLoading]   = useState(true);
   const [filter, setFilter]         = useState("all");
-  const [classrooms, setClassrooms] = useState([]);
   const [activeTab, setActiveTab]   = useState("list");
   const [allGrades, setAllGrades]   = useState(null);   // Map<userId, grades[]>
   const [tabLoading, setTabLoading] = useState(false);
@@ -40,7 +39,6 @@ function TeacherStudentsPage() {
           headers: getAuthHeaders(),
         });
         setStudents(res.data?.studentPerformance ?? []);
-        setClassrooms(res.data?.classPerformance ?? []);
       } finally {
         setIsLoading(false);
       }

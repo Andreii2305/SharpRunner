@@ -3,7 +3,7 @@ import axios from "axios";
 import { FiAlertCircle, FiBookOpen, FiClock } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
-import { clampPercent } from "./TeacherDashboardPage.jsx";
+import { clampPercent } from "./TeacherShared.jsx";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherAnalyticsPage.module.css";
 
@@ -44,7 +44,10 @@ function TeacherAnalyticsPage() {
     })();
   }, []);
 
-  const chartSeries = insights.difficultyByLesson ?? [];
+  const chartSeries = useMemo(
+    () => insights.difficultyByLesson ?? [],
+    [insights.difficultyByLesson],
+  );
   const chartPath = useMemo(() => buildChartPath(chartSeries), [chartSeries]);
 
   return (

@@ -166,6 +166,7 @@
   font-family: inherit;
 }
 .codePillBtn:hover { background: #dbeafe; }
+.codePillBtn:disabled { cursor: not-allowed; opacity: .55; background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
 
 /* ── Student count row ────────────────── */
 .studentCountRow {

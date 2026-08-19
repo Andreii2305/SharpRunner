@@ -103,15 +103,17 @@ Relevant files:
 - `backend/src/models/UserProgress.js`
 - `frontend/src/pages/game/GamePage.jsx`
 
-## Teacher Overrides
+## Teacher Level Settings
 
-Teachers can override selected level content per classroom:
+Teachers can currently configure these per-classroom level settings:
 
-- lesson title/description
-- goal title/description
-- instruction items
-- starter code
-- validator config
+- availability and display order
+- unlock date and time
+- due date and time
+- hints enabled/disabled
+- wrong-attempt and late-day grading deductions
+
+The current teacher UI does not edit lesson text, goals, instructions, starter code, dialogue, result messages, or validator configuration. Although the backend model retains older content-override columns, they are not supported teacher-facing functionality.
 
 Relevant files:
 
@@ -126,7 +128,7 @@ Relevant files:
 3. Add map art/node behavior for completed Lesson 1.
 4. Expand validators as levels become more advanced.
 5. Add command-queue execution if the game needs direct method-call animation.
-6. Add teacher-editable dialogue and result message overrides.
+6. Treat curriculum text, dialogue, result messages, starter code, and validators as system-managed unless the product scope is explicitly expanded later.
 7. Add full level content for Lessons 2-4 after Lesson 1 is complete.
 
 ## Suggested Next Focus

@@ -16,6 +16,7 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Teachers can manage classrooms, view student progress, post announcements, manage classwork, and configure the currently supported per-classroom level settings.
 - Teachers can organize secure classroom modules, lessons, assignments, external links, and multimedia resources. They cannot edit Phaser levels or validators.
 - Failed attempts unlock a free basic hint at the teacher-configured threshold (three by default).
+- After that threshold, students may optionally spend 15 XP once per level for protected, level-specific detailed guidance.
 - First completions award server-owned XP and bonuses separately from academic scores.
 - Admins can manage users, create teacher accounts, and view admin activity logs.
 - Developer tools can generate one-time admin invite codes.
@@ -31,6 +32,7 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Complete coding challenges through a Monaco-based C# editor.
 - Receive a saved final score and grade after level completion.
 - Earn one-time XP for first completion, first-attempt success, and no-hint success.
+- Use XP to unlock a detailed hint without directly changing the academic grade; purchases survive refresh and cannot double-charge.
 - Select optional motivation and learning-game preferences from the dashboard.
 - Revisit available teacher content and replay completed levels without overwriting the original score or farming XP.
 
@@ -301,6 +303,7 @@ or provider backup.
 - `/teacher/announcements` - teacher announcements
 - `/teacher/settings` - teacher profile and password settings
 - `/teacher/classrooms/:classroomId/levels` - teacher level settings for availability, order, scheduling, hints, and grading deductions
+- `/progress/level/:levelKey/detailed-hint-purchase` - authenticated, access-controlled, transactional detailed-hint purchase
 - `/admin` - admin dashboard
 - `/developer` - developer admin-invite tools
 - `/admin-invite` - admin invite registration

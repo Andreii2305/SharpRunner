@@ -648,7 +648,7 @@ router.get("/students/:studentId/grades", async (req, res) => {
 
     const rows = await UserProgress.findAll({
       where: { userId: studentId, levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS } },
-      attributes: ["levelKey", "orderIndex", "isCompleted", "attemptCount", "timeSpentSeconds", "finalScore", "completedAt", "hintUsed", "xpAwarded"],
+      attributes: ["levelKey", "orderIndex", "isCompleted", "attemptCount", "timeSpentSeconds", "finalScore", "completedAt", "hintUsed", "hintType", "detailedHintUnlocked", "xpAwarded"],
       order: [["orderIndex", "ASC"]],
     });
 
@@ -666,6 +666,12 @@ router.get("/students/:studentId/grades", async (req, res) => {
         finalScore: r.finalScore,
         completedAt: r.completedAt,
         hintUsed: Boolean(r.hintUsed),
+        hintType: r.detailedHintUnlocked || r.hintType === "detailed"
+          ? "detailed"
+          : r.hintUsed
+            ? "basic"
+            : null,
+        detailedHintPurchased: Boolean(r.detailedHintUnlocked),
         xpAwarded: Number(r.xpAwarded) || 0,
       })),
     });

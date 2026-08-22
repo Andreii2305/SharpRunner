@@ -11,7 +11,7 @@ This document covers system recommendations only. XP is motivational and remains
 | Consider teacher modules | Teachers can create published/draft modules, associate lessons and assignments, attach learning resources, and set availability/due dates. | Teacher classroom Classwork | Implemented |
 | Automatically record student scores | The backend records completion, failed attempts, time, completion time, final score, and derived grade. | `UserProgress`, progress API | Implemented |
 | Consider self-paced learning | Students may revisit available modules/lessons, retry incomplete levels, replay completed levels, and review unlocked hints. Replays preserve the original recorded grade and cannot farm XP. | Lesson pages, map/game routes, progress API | Implemented |
-| Three attempts before hints | The default is three failed attempts. The free basic hint unlocks immediately on the threshold response, persists across refresh, and remains subject to the teacher master switch. Teachers may set 1–10. | Game page, progress API, challenge settings | Implemented |
+| Three attempts before hints | The default is three failed attempts. The free basic hint unlocks immediately; students may then optionally purchase a protected, level-specific detailed hint for 15 XP. Both remain subject to the teacher master switch and configurable 1–10 threshold. | Game page, progress API, challenge settings | Implemented |
 | Gamification based on interest | Students choose Challenges, Exploration, Competition, or Rewards; a secondary dashboard card presents matching real progress data. | Student dashboard/preferences | Implemented |
 | Gamification based on motivation | Students choose Progress, Competition, Achievement/Rewards, or Story/Exploration; a prominent primary dashboard card changes immediately after a successful save. | Student dashboard/preferences | Implemented |
 | Game type based on interest | SharpRunner remains one 2D coding adventure. Interest personalizes emphasis and is available to teachers only as aggregate counts. | Student/teacher dashboards | Implemented within intended scope |
@@ -43,7 +43,9 @@ The teacher module is an instructional-content and configuration tool. It is not
 - No hint used: 5 no-hint bonus XP.
 - Reward values are centralized in `backend/src/constants/gamificationConfig.js`.
 - A unique XP ledger entry and a locked user balance prevent refresh, replay, and concurrent duplicate rewards.
-- The free basic hint does not cost XP. A paid detailed hint is intentionally not implemented, so low XP never blocks educational help.
+- The free basic hint does not cost XP, so low XP never blocks essential guidance.
+- A detailed hint costs 15 XP and is optional. The backend checks access, threshold, teacher controls, balance, and prior purchase inside the purchase flow.
+- Detailed-hint deductions use the XP ledger and a locked user/progress transaction. XP spending never directly reduces the academic grade.
 
 ## Student preference card mapping
 

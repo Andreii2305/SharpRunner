@@ -103,8 +103,9 @@ The legacy five-level descriptions below describe only the tutorial/prologue.
 - Backend computes and stores `finalScore`.
 - Backend derives `grade` from `finalScore` in the progress payload.
 - The game completion modal uses the backend-saved score and grade.
-- The default hint unlock is three failed attempts; teachers may configure 1–10 or disable hints.
-- Hint use metadata and one-time first-completion XP are saved centrally.
+- The default Basic Hint unlock is three failed attempts; teachers may configure 1–10 or disable both hint tiers.
+- Once unlocked, the Basic Hint is free and a protected Detailed Hint can be purchased once for 15 XP.
+- Hint use/purchase metadata and one-time first-completion XP are saved centrally. Detailed-hint text is returned only after authorization confirms purchase.
 - XP is separate from score. Completion is +20 XP, first attempt +10, and no hint +5.
 - Replay remains available but does not overwrite the original score/attempt record or award XP again.
 
@@ -114,6 +115,44 @@ Relevant files:
 - `backend/src/services/progressService.js`
 - `backend/src/models/UserProgress.js`
 - `frontend/src/pages/game/GamePage.jsx`
+
+## Playable-Level Hint Audit
+
+The authoritative Basic and Detailed Hint text is stored server-side in `backend/src/constants/levelHintCatalog.js`. It is deliberately not reproduced in this public-facing document. Automated tests require a unique objective, Basic Hint, and Detailed Hint for every playable key and reject missing, shallow, duplicate, or copy-ready entries.
+
+| SharpRunner level | Playable key | Audited learning objective |
+| --- | --- | --- |
+| 1 | `tutorial-level-1` | Integer variable controlling portal distance |
+| 2 | `tutorial-level-2` | Exact string declaration for the hero name |
+| 3 | `tutorial-level-3` | Three non-empty string variables |
+| 4 | `tutorial-level-4` | Integer quantity matching the bridge toll |
+| 5 | `tutorial-level-5` | Double value matching a decimal measurement |
+| 6 | `arrays-level-1` | Ordered integer-array declaration |
+| 7 | `arrays-level-2` | Ordered string-array declaration |
+| 8 | `arrays-level-3` | Zero-based selection of the boss flame |
+| 9 | `arrays-level-4` | Zero-based inventory selection |
+| 10 | `arrays-level-5` | 3-by-3 rectangular ward array |
+| 11 | `arrays-level-6` | Rectangular checkpoint/path representation |
+| 12 | `arrays-level-7` | Complete string-array traversal |
+| 13 | `arrays-level-8` | Element-by-element jar scanning |
+| 14 | `functions-level-1` | Define and call a no-parameter void method |
+| 15 | `functions-level-2` | Call a predefined method |
+| 16 | `functions-level-3` | Define and call `LightFlame` |
+| 17 | `functions-level-4` | Define and call `SealShrine` |
+| 18 | `functions-level-5` | Return and store an integer method result |
+| 19 | `functions-level-6` | Return and store a string method result |
+| 20 | `functions-level-7` | Pass a string argument to a predefined method |
+| 21 | `functions-level-8` | Pass an integer argument to a predefined method |
+| 22 | `functions-level-9` | Add parameters and return calculated power |
+| 23 | `functions-level-10` | Multiply parameters and return healing |
+| 24–25 | `functions-level-11` | Recursive base case, smaller call, and unwind order |
+| 26 | `functions-with-arrays-level-1` | Pass an integer array to a method |
+| 27 | `functions-with-arrays-level-2` | Traverse, conditionally count, and return |
+| 28 | `functions-with-arrays-level-3` | Pass a rectangular array to a method |
+| 29 | `functions-with-arrays-level-4` | Nested traversal and conditional 2D count |
+| 30 | `final-level-1` | Combined arrays, methods, traversal, return values, 2D arrays, and recursion |
+
+Each entry was checked against the live goal, instructions, starter-code structure, curriculum concept, and validator expectations. Hints use identifiers students already see but do not include a complete ready-to-submit solution.
 
 ## Teacher Level Settings
 

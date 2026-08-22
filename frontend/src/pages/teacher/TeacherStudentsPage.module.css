@@ -289,7 +289,7 @@
 
 .gradeTableHead {
   display: grid;
-  grid-template-columns: 60px 1fr 1fr 1fr;
+  grid-template-columns: 60px repeat(4, 1fr);
   font-size: 11px;
   font-weight: 700;
   color: #94a3b8;
@@ -391,7 +391,7 @@
   }
   .gradeTableHead,
   .gradeTableRow {
-    grid-template-columns: 40px 1fr 1fr;
+    grid-template-columns: 40px repeat(3, 1fr);
   }
   /* Hide the last score column on very small screens */
   .gradeTableHead > *:last-child,

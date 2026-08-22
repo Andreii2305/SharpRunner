@@ -270,7 +270,7 @@ function TeacherLevelEditorPage() {
                     <p>Conceptual difficulty: <strong>{curriculum.difficulty}</strong></p>
                     <small>{curriculum.referenceAccessNote}</small>
                   </article>
-                  {selected?.hintsEnabled && config?.hint ? <article className={`${s.previewCard} ${s.hintPreview}`}><span className={s.previewLabel}>Hint shown after repeated mistakes</span><p>{config.hint}</p></article> : null}
+                  {selected?.hintsEnabled ? <article className={`${s.previewCard} ${s.hintPreview}`}><span className={s.previewLabel}>Level-specific guidance</span><p>A free basic hint unlocks after the configured failures. Students may then spend XP on a protected detailed hint for this exact challenge.</p></article> : null}
                 </section>
 
                 <aside className={s.settingsPanel}>
@@ -290,7 +290,7 @@ function TeacherLevelEditorPage() {
                     <small>Late deductions begin immediately after this deadline.</small>
                   </label>
                   <label className={s.toggleRow}>
-                    <span><strong><FiHelpCircle /> Student hints</strong><small>Allow the free built-in learning hint after the configured number of failures.</small></span>
+                    <span><strong><FiHelpCircle /> Student hints</strong><small>Allow the free basic hint and optional XP-purchased detailed hint after the configured number of failures.</small></span>
                     <input type="checkbox" checked={selected?.hintsEnabled ?? true} onChange={(event) => updateSelected({ hintsEnabled: event.target.checked })} />
                   </label>
                   <label className={s.settingField}>

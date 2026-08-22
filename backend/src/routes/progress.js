@@ -21,27 +21,47 @@ const {
   getClassroomLevelSettings,
 } = require("../services/classroomLevelSettingsService");
 const { validateLevelCode } = require("../services/levelCodeValidationService");
-const { awardFirstCompletionXp } = require("../services/gamificationService");
+const {
+  GamificationError,
+  awardFirstCompletionXp,
+  purchaseDetailedHint,
+} = require("../services/gamificationService");
 const {
   DEFAULT_HINT_UNLOCK_THRESHOLD,
+  DETAILED_HINT_XP_COST,
 } = require("../constants/gamificationConfig");
+const { getLevelHints } = require("../constants/levelHintCatalog");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
-const buildHintState = (levelRow, setting = {}) => {
+const buildHintState = (levelRow, setting = {}, currentXp = null) => {
   const threshold = Number.isInteger(Number(setting.hintUnlockThreshold))
     ? Number(setting.hintUnlockThreshold)
     : DEFAULT_HINT_UNLOCK_THRESHOLD;
   const hintsEnabled = setting.hintsEnabled !== false;
   const attemptCount = Math.max(0, Number(levelRow?.attemptCount) || 0);
+  const hintUnlocked = hintsEnabled && attemptCount >= threshold;
+  const detailedHintUnlocked = Boolean(levelRow?.detailedHintUnlocked);
+  const hintDefinition = getLevelHints(levelRow?.levelKey);
   return {
     hintsEnabled,
     hintUnlockThreshold: threshold,
-    hintUnlocked: hintsEnabled && attemptCount >= threshold,
+    hintUnlocked,
     hintUsed: Boolean(levelRow?.hintUsed),
     hintUsedAt: levelRow?.hintUsedAt ?? null,
     hintType: levelRow?.hintType ?? null,
     attemptsRemaining: hintsEnabled ? Math.max(0, threshold - attemptCount) : null,
+    detailedHintXpCost: DETAILED_HINT_XP_COST,
+    detailedHintUnlocked,
+    detailedHintPurchasedAt: levelRow?.detailedHintPurchasedAt ?? null,
+    currentXp: Number.isFinite(Number(currentXp))
+      ? Math.max(0, Number(currentXp))
+      : null,
+    basicHint: hintUnlocked ? hintDefinition?.basicHint ?? null : null,
+    detailedHint:
+      hintsEnabled && detailedHintUnlocked
+        ? hintDefinition?.detailedHint ?? null
+        : null,
   };
 };
 
@@ -176,7 +196,7 @@ const buildProgressPayloadForUser = async (userId) => {
         : prerequisiteComplete
           ? null
           : "prerequisite",
-      ...buildHintState(level, setting),
+      ...buildHintState(level, setting, currentUser?.xpTotal),
     };
   });
 
@@ -216,6 +236,10 @@ router.post("/level/:levelKey/start", async (req, res) => {
       return res.status(404).json({ message: "Progress row not found" });
     }
 
+    const currentUser = await User.findByPk(req.userId, {
+      attributes: ["xpTotal"],
+    });
+
     if (levelRow.isCompleted) {
       // Score already recorded — return an ephemeral start time without saving to DB
       return res.json({
@@ -227,6 +251,7 @@ router.post("/level/:levelKey/start", async (req, res) => {
           (await getClassroomLevelSettings(
             (await findPrimaryActiveMembership(req.userId))?.classroomId,
           )).find((row) => row.levelKey === levelKey),
+          currentUser?.xpTotal,
         ),
       });
     }
@@ -243,7 +268,7 @@ router.post("/level/:levelKey/start", async (req, res) => {
       startedAt: levelRow.startedAt,
       attemptCount: levelRow.attemptCount,
       ephemeral: false,
-      ...buildHintState(levelRow, setting),
+      ...buildHintState(levelRow, setting, currentUser?.xpTotal),
     });
   } catch (error) {
     console.error(error);
@@ -277,12 +302,15 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
     const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
+    const currentUser = await User.findByPk(req.userId, {
+      attributes: ["xpTotal"],
+    });
 
     if (levelRow.isCompleted) {
       return res.json({
         attemptCount: levelRow.attemptCount ?? 0,
         replay: true,
-        ...buildHintState(levelRow, setting),
+        ...buildHintState(levelRow, setting, currentUser?.xpTotal),
       });
     }
 
@@ -292,7 +320,7 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
     return res.json({
       attemptCount: levelRow.attemptCount,
       replay: false,
-      ...buildHintState(levelRow, setting),
+      ...buildHintState(levelRow, setting, currentUser?.xpTotal),
     });
   } catch (error) {
     console.error(error);
@@ -318,7 +346,10 @@ router.post("/level/:levelKey/hint-use", async (req, res) => {
     const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
-    const hintState = buildHintState(levelRow, setting);
+    const currentUser = await User.findByPk(req.userId, {
+      attributes: ["xpTotal"],
+    });
+    const hintState = buildHintState(levelRow, setting, currentUser?.xpTotal);
     if (!hintState.hintsEnabled) {
       return res.status(403).json({ code: "HINTS_DISABLED", message: "Hints are disabled by your teacher." });
     }
@@ -339,9 +370,59 @@ router.post("/level/:levelKey/hint-use", async (req, res) => {
     }
     return res.json({
       message: "Basic hint opened",
-      ...buildHintState(levelRow, setting),
+      ...buildHintState(levelRow, setting, currentUser?.xpTotal),
     });
   } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/level/:levelKey/detailed-hint-purchase", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey) || !getLevelHints(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+
+    await ensureProgressRowsForUser(req.userId);
+    const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey);
+    if (accessRestriction) return sendLevelRestrictionResponse(res, accessRestriction);
+
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const setting = (await getClassroomLevelSettings(membership?.classroomId))
+      .find((row) => row.levelKey === levelKey);
+    const hintsEnabled = setting?.hintsEnabled !== false;
+    const hintUnlockThreshold = Number(setting?.hintUnlockThreshold)
+      || DEFAULT_HINT_UNLOCK_THRESHOLD;
+
+    const purchase = await purchaseDetailedHint({
+      userId: req.userId,
+      levelKey,
+      hintsEnabled,
+      hintUnlockThreshold,
+    });
+    const hintState = buildHintState(
+      purchase.progress,
+      setting,
+      purchase.totalXp,
+    );
+
+    return res.json({
+      message: purchase.alreadyUnlocked
+        ? "Detailed hint already unlocked"
+        : "Detailed hint unlocked",
+      purchased: purchase.purchased,
+      ...hintState,
+    });
+  } catch (error) {
+    if (error instanceof GamificationError) {
+      return res.status(error.status).json({
+        code: error.code,
+        message: error.message,
+        ...error.details,
+      });
+    }
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }

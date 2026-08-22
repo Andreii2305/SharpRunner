@@ -64,6 +64,18 @@ const UserProgress = sequelize.define(
     hintUsedAt: { type: DataTypes.DATE, allowNull: true },
     hintType: { type: DataTypes.STRING(20), allowNull: true },
     attemptCountAtHintUnlock: { type: DataTypes.INTEGER, allowNull: true },
+    detailedHintUnlocked: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    detailedHintPurchasedAt: { type: DataTypes.DATE, allowNull: true },
+    detailedHintUsedAt: { type: DataTypes.DATE, allowNull: true },
+    detailedHintXpCost: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      validate: { min: 0 },
+    },
     xpAwarded: {
       type: DataTypes.INTEGER,
       allowNull: false,

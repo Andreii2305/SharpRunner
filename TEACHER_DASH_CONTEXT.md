@@ -38,7 +38,8 @@ The teacher experience is connected to live backend data. Teachers can create cl
 - Classroom lessons and assignments with scheduling, attachments, audience targeting, submission policies, rubrics, grading, feedback, and version history.
 - Standalone instructional modules and module-associated lessons/assignments.
 - Optional external reference/video links and MIME-checked multimedia learning resources.
-- Teacher-configurable free-hint unlock threshold (1–10; default 3).
+- Teacher-configurable hint unlock threshold (1–10; default 3) for the free Basic Hint and optional 15-XP Detailed Hint.
+- Per-level student detail indicates whether no hint, a Basic Hint, or a Detailed Hint was used.
 - Aggregate classroom motivation-preference counts without exposing individual preferences.
 
 ## Backend Files

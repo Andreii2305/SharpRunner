@@ -38,6 +38,7 @@ const migrations = [
   ["20260812000000_enable_rls_for_backend_tables", sqlMigration("20260812000000_enable_rls_for_backend_tables.sql")],
   ["20260819000000_protect_all_backend_tables", sqlMigration("20260819000000_protect_all_backend_tables.sql")],
   ["20260822000000_panel_system_recommendations", sqlMigration("20260822000000_panel_system_recommendations.sql")],
+  ["20260822120000_detailed_hint_purchases", sqlMigration("20260822120000_detailed_hint_purchases.sql")],
 ];
 
 const runMigrations = async () => {

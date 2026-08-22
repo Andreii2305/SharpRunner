@@ -64,6 +64,10 @@ const normalizeLevelRows = (rows) =>
         hintUsedAt: row.hintUsedAt ?? null,
         hintType: row.hintType ?? null,
         attemptCountAtHintUnlock: row.attemptCountAtHintUnlock ?? null,
+        detailedHintUnlocked: Boolean(row.detailedHintUnlocked),
+        detailedHintPurchasedAt: row.detailedHintPurchasedAt ?? null,
+        detailedHintUsedAt: row.detailedHintUsedAt ?? null,
+        detailedHintXpCost: row.detailedHintXpCost ?? null,
         xpAwarded: Math.max(0, Number(row.xpAwarded) || 0),
         xpAwardedAt: row.xpAwardedAt ?? null,
       };

@@ -244,18 +244,20 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
 });
 
 test("failed attempts unlock the free hint at the teacher-controlled threshold", async () => {
+  const user = activeUser({ xpTotal: 40 });
   const progressRow = {
     userId: 1,
     levelKey: "tutorial-level-1",
     attemptCount: 0,
     isCompleted: false,
     hintUsed: false,
+    detailedHintUnlocked: false,
     save: async () => undefined,
   };
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
 
   await withStubs([
-    [User, "findByPk", async () => activeUser()],
+    [User, "findByPk", async () => user],
     [ClassroomMembership, "findOne", async () => membership],
     [UserProgress, "findAll", async () => [progressRow]],
     [UserProgress, "bulkCreate", async () => []],
@@ -267,6 +269,8 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
       isEnabled: true,
       displayOrder: 1,
     }]],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [XpTransaction, "create", async (values) => values],
   ], async () => {
     for (let expected = 1; expected <= 3; expected += 1) {
       const { response, payload } = await apiRequest(
@@ -277,6 +281,8 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
       assert.equal(payload.attemptCount, expected);
       assert.equal(payload.hintUnlocked, expected >= 3);
       assert.equal(payload.attemptsRemaining, Math.max(0, 3 - expected));
+      assert.equal(payload.detailedHint, null);
+      if (expected === 3) assert.ok(payload.basicHint.includes("portal method"));
     }
 
     const hintResponse = await apiRequest(
@@ -287,6 +293,23 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
     assert.equal(hintResponse.payload.hintUsed, true);
     assert.equal(progressRow.hintType, "basic");
     assert.equal(progressRow.attemptCountAtHintUnlock, 3);
+
+    const purchaseResponse = await apiRequest(
+      "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(purchaseResponse.response.status, 200);
+    assert.equal(purchaseResponse.payload.purchased, true);
+    assert.equal(purchaseResponse.payload.currentXp, 25);
+    assert.ok(purchaseResponse.payload.detailedHint.includes("WalkToPortal"));
+
+    const retryResponse = await apiRequest(
+      "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(retryResponse.response.status, 200);
+    assert.equal(retryResponse.payload.purchased, false);
+    assert.equal(retryResponse.payload.currentXp, 25);
   });
 });
 

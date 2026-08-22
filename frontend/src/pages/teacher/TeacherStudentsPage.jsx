@@ -656,13 +656,13 @@ function TeacherStudentsPage() {
               <div><span>Completed</span><strong>{gradesModal.student.completedLevels || 0} levels</strong></div>
               <div><span>Badges</span><strong>{gradesModal.student.badgesCount || 0}</strong></div>
             </div>
-            <div className={pgStyles.modalSectionHead}><strong>Completed level grades</strong><span>Score, attempts, and time spent</span></div>
+            <div className={pgStyles.modalSectionHead}><strong>Completed level grades</strong><span>Score, attempts, hint use, and time spent</span></div>
             {gradesLoading ? (
               <div className={styles.loadingText}>Loading…</div>
             ) : (
               <div className={pgStyles.gradeTable}>
                 <div className={pgStyles.gradeTableHead}>
-                  <span>Level</span><span>Score</span><span>Attempts</span><span>Time</span>
+                  <span>Level</span><span>Score</span><span>Attempts</span><span>Hint</span><span>Time</span>
                 </div>
                 {gradesModal.grades.filter((g) => g.isCompleted).length === 0 ? (
                   <div className={styles.emptyText}>No completed levels yet.</div>
@@ -683,6 +683,7 @@ function TeacherStudentsPage() {
                           {g.finalScore ?? "—"}
                         </span>
                         <span>{g.attemptCount} attempt{g.attemptCount !== 1 ? "s" : ""}</span>
+                        <span>{g.hintType === "detailed" ? "Detailed" : g.hintUsed ? "Basic" : "None"}</span>
                         <span>{mins}m {secs}s</span>
                       </div>
                     );

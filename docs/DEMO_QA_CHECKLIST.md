@@ -77,7 +77,10 @@ Only when account registration is part of the demo:
 - [ ] Submitting invalid C# keeps the level incomplete and shows useful feedback.
 - [ ] Fail the same incomplete level once and confirm two attempts remain before the default hint unlock.
 - [ ] Fail a second time and confirm one attempt remains.
-- [ ] Fail a third time and confirm the hint unlocks without refresh; open it and refresh to confirm it remains reviewable.
+- [ ] Fail a third time and confirm the free Basic Hint and Detailed Hint purchase appear without refresh; open the Basic Hint and refresh to confirm it remains reviewable.
+- [ ] With at least 15 XP, confirm a Detailed Hint purchase, verify exactly 15 XP is deducted, and confirm the level-specific hint appears immediately.
+- [ ] Refresh and repeatedly click the Detailed Hint control; confirm it remains unlocked and no second deduction occurs.
+- [ ] With fewer than 15 XP, confirm purchase is disabled and the current/required XP message is supportive and accurate.
 - [ ] Submitting valid C# completes the level and shows the backend-issued score and grade.
 - [ ] Completion shows XP earned, bonus breakdown, and total XP; refresh/replay does not award it again.
 - [ ] Refreshing the game/map/dashboard preserves completion, score, attempts, and time.
@@ -88,14 +91,14 @@ Only when account registration is part of the demo:
 
 - [ ] The teacher dashboard metrics load and match the demo classroom.
 - [ ] The classroom list and classroom detail show the joined student once.
-- [ ] Student progress displays the level completion, score, attempts, and time from the student journey.
+- [ ] Student progress displays the level completion, score, attempts, Basic/Detailed hint indicator, and time from the student journey.
 - [ ] Creating a disposable classroom produces a usable join code; archive/delete it afterward only if the UI supports recovery or it is clearly test data.
 - [ ] Posting a clearly labelled test announcement makes it visible to the student.
 - [ ] Changing level availability, order, unlock/due dates, hints, or grading deductions affects only that classroom.
 - [ ] Resetting classroom level settings restores the supported controls to their system defaults.
 - [ ] Lesson attachments show the server upload limits; create, add, and replace actions reject too many or oversized files before uploading.
 - [ ] Create a module, associate a lesson, add an external learning link/resource, and confirm students see only published/available content.
-- [ ] Change the hint threshold, then disable hints and confirm the teacher master control wins.
+- [ ] Change the hint threshold, then disable hints and confirm both Basic and Detailed hints and the purchase control are unavailable.
 - [ ] Analytics and student pages handle an empty classroom without crashing.
 - [ ] A teacher cannot open or edit another teacher's classroom by changing the URL identifier.
 

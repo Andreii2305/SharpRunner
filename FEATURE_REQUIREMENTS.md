@@ -210,8 +210,9 @@ Remaining gaps:
 
 - Failed attempts persist on `UserProgress`.
 - A free basic hint unlocks after three failures by default and updates immediately without refresh.
+- Once the basic hint is available, a student may unlock the protected detailed hint for 15 XP. The detailed hint is specific to the current challenge and does not provide a complete solution.
 - Teachers retain a master enable/disable switch and may configure a threshold from 1–10.
-- Hint use, timestamp, type, and attempt count at unlock are recorded.
+- Basic use, detailed purchase/use, timestamps, XP cost, hint type, and attempt count at unlock are recorded.
 - Completed-level replay preserves the original attempt/score record and permits review of previously unlocked hints.
 
 ## Requirement 6 - XP And Motivation
@@ -223,9 +224,10 @@ Remaining gaps:
 - No-hint bonus: +5 XP.
 - Values are centralized in `backend/src/constants/gamificationConfig.js`.
 - XP transactions are unique per user/level completion and server-validated. Replay and refresh cannot farm XP.
+- Detailed hints cost 15 XP through a server-validated, transactional, one-purchase-per-student-per-level deduction. A retry or refresh cannot charge twice.
 - XP is displayed on the dashboard, leaderboard, and completion result, with reward breakdown.
 - XP never changes academic score or grade.
-- The free basic hint has no XP cost; a paid detailed hint is not currently implemented.
+- The free basic hint has no XP cost. Detailed-hint spending is part of the motivational XP economy and is not an academic-grade deduction.
 
 ## Requirement 7 - Self-Paced Classroom Learning
 

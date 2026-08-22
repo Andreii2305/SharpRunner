@@ -97,6 +97,25 @@ function timeAgo(dateStr) {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function formatDuration(totalSeconds) {
+  const parsed = Number(totalSeconds);
+  if (!Number.isFinite(parsed) || parsed < 0) return "—";
+
+  const seconds = Math.floor(parsed);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  const parts = [];
+
+  if (hours > 0) parts.push(`${hours}hr`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (remainingSeconds > 0 || parts.length === 0) {
+    parts.push(`${remainingSeconds}s`);
+  }
+
+  return parts.join(" ");
+}
+
 function parseLevelNumberFromLabel(label = "") {
   const match = String(label).match(/\d+/g);
   if (!match || match.length === 0) return null;
@@ -574,7 +593,9 @@ function StudentDashboardPage() {
     progressData?.summary?.classRank ?? leaderboardMeta.currentUserRank ?? null;
   const classSize =
     progressData?.summary?.classSize ?? leaderboardMeta.classSize ?? null;
-  const totalTimePlayed = progressData?.summary?.totalTimePlayed ?? "—";
+  const totalTimePlayed = formatDuration(
+    progressData?.summary?.totalTimePlayed,
+  );
 
   const myUserId = user?.id;
   const myRank =
@@ -815,7 +836,7 @@ function StudentDashboardPage() {
           <StatCard
             label="Total time played"
             value={totalTimePlayed}
-            sub="this session"
+            sub="across game levels"
           />
         </div>
 

@@ -353,10 +353,10 @@
 .editorFooter {
   padding: 12px 20px;
   border-top: 1px solid #e2e8f0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
 }
 
 .hintAccess,
@@ -365,28 +365,52 @@
   font-size: 0.82rem;
 }
 
-.hintChoices {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+.hintAccess {
+  justify-self: end;
+  width: min(100%, 500px);
 }
 
-.hintChoices small {
-  flex-basis: 100%;
+.hintDisabled {
+  align-self: center;
+  justify-self: end;
+}
+
+.hintChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.hintBalance {
+  grid-column: 1 / -1;
   color: #64748b;
   font-size: 0.7rem;
+  line-height: 1.35;
+  text-align: right;
 }
 
 .hintAccessButton {
-  border: 1px solid #d97706;
-  border-radius: 999px;
+  display: flex;
+  min-width: 0;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid #e7b96d;
+  border-radius: 10px;
   background: #fffbeb;
   color: #92400e;
   cursor: pointer;
   font: inherit;
-  font-weight: 700;
-  padding: 7px 12px;
+  padding: 8px 10px 8px 12px;
+  text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.hintAccessButton:hover:not(:disabled) {
+  border-color: #d97706;
+  box-shadow: 0 3px 10px rgba(146, 64, 14, 0.12);
+  transform: translateY(-1px);
 }
 
 .hintAccessButton:focus-visible {
@@ -400,9 +424,69 @@
 }
 
 .detailedHintButton {
-  border-color: #7c3aed;
+  border-color: #c4b5fd;
   background: #f5f3ff;
   color: #5b21b6;
+}
+
+.detailedHintButton:hover:not(:disabled) {
+  border-color: #7c3aed;
+  box-shadow: 0 3px 10px rgba(91, 33, 182, 0.12);
+}
+
+.hintButtonCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.hintButtonCopy strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hintButtonCopy small {
+  color: currentColor;
+  font-size: 0.66rem;
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+.hintTierBadge {
+  flex-shrink: 0;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+@media (max-width: 1100px) {
+  .editorFooter {
+    grid-template-columns: 1fr;
+  }
+
+  .hintAccess,
+  .hintDisabled {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .hintBalance {
+    text-align: left;
+  }
+}
+
+@media (max-width: 560px) {
+  .hintChoices {
+    grid-template-columns: 1fr;
+  }
 }
 
 .resultBanner {

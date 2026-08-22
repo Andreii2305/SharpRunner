@@ -1043,7 +1043,11 @@ function GamePage({ levelConfig }) {
                         onClick={openBasicHint}
                         disabled={!basicHint}
                       >
-                        {hintUsed ? "Review Basic Hint · Free" : "View Basic Hint · Free"}
+                        <span className={styles.hintButtonCopy}>
+                          <strong>Basic Hint</strong>
+                          <small>{hintUsed ? "Review guidance" : "View guidance"}</small>
+                        </span>
+                        <span className={styles.hintTierBadge}>Free</span>
                       </button>
                       <button
                         type="button"
@@ -1058,16 +1062,22 @@ function GamePage({ levelConfig }) {
                           )
                         }
                       >
-                        {detailedHintUnlocked
-                          ? "View Detailed Hint · Unlocked"
-                          : `Unlock Detailed Hint · ${detailedHintXpCost ?? "—"} XP`}
+                        <span className={styles.hintButtonCopy}>
+                          <strong>Detailed Hint</strong>
+                          <small>{detailedHintUnlocked ? "View guidance" : "Unlock guidance"}</small>
+                        </span>
+                        <span className={styles.hintTierBadge}>
+                          {detailedHintUnlocked
+                            ? "Unlocked"
+                            : `${detailedHintXpCost ?? "—"} XP`}
+                        </span>
                       </button>
-                      <small>
+                      <small className={styles.hintBalance}>
                         {detailedHintUnlocked
-                          ? `Detailed guidance purchased · ${currentXp ?? 0} XP remaining`
+                          ? `${currentXp ?? 0} XP available · Detailed guidance stays unlocked for this level`
                           : currentXp != null && detailedHintXpCost != null && currentXp < detailedHintXpCost
                             ? `You need ${detailedHintXpCost} XP to unlock the detailed hint. Current XP: ${currentXp}.`
-                            : `Current XP: ${currentXp ?? "Loading..."}`}
+                            : `${currentXp ?? "Loading..."} XP available`}
                       </small>
                     </div>
                   ) : (

@@ -245,7 +245,7 @@ Teachers cannot create or modify Phaser maps, collision data, validators, game e
 
 **Status: Implemented**
 
-Students can optionally save a motivation preference and learning-game interest. Dashboard feedback reflects the motivation focus without hiding educational information. Teachers receive aggregate motivation counts only. `curriculumMetadata.js` traces playable configs to CodeChum, module, lesson, objective, conceptual difficulty, and a nullable restricted reference URL policy.
+Students can save a motivation preference and learning-game interest. The dashboard renders a prominent primary focus card for Progress, Competition, Rewards, or Story and a secondary interest card for Challenges, Exploration, Competition, or Rewards. Overlapping choices fall back to the student's next progress goal instead of duplicating content. Unset profiles use Progress and Challenges defaults. A successful save updates both cards immediately and the persisted profile restores them after reload; failures remain visible in an inline status and error toast. Teachers receive aggregate motivation counts only. `curriculumMetadata.js` traces playable configs to CodeChum, module, lesson, objective, conceptual difficulty, and a nullable restricted reference URL policy.
 
 ## Current Implementation Priority
 

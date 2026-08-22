@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
+import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { buildApiUrl, getAuthHeaders, getUser, setUser as persistUser } from "../../utils/auth";
+import {
+  normalizePreferences,
+  resolvePreferenceModes,
+} from "./preferencePersonalization.js";
 import styles from "./Dashboard.module.css";
 
 /* ─── Region config ───────────────────────────────────────────── */
@@ -135,6 +140,95 @@ function StatCard({ label, value, sub, accent }) {
   );
 }
 
+function PersonalizedFocusCard({ eyebrow, title, value, detail, progress }) {
+  return (
+    <article className={styles.focusCard}>
+      <div className={styles.focusEyebrow}>{eyebrow}</div>
+      <h3>{title}</h3>
+      <strong className={styles.focusValue}>{value}</strong>
+      <p>{detail}</p>
+      {Number.isFinite(progress) && (
+        <div
+          className={styles.focusProgressTrack}
+          role="progressbar"
+          aria-label={title}
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={Math.round(progress)}
+        >
+          <span style={{ width: `${Math.max(0, Math.min(100, progress))}%` }} />
+        </div>
+      )}
+    </article>
+  );
+}
+
+function focusCardFor(mode, data, secondary = false) {
+  const eyebrow = secondary ? "Because you enjoy" : "Personalized focus";
+
+  if (mode === "competition") {
+    return data.rank
+      ? {
+          eyebrow,
+          title: secondary ? "Competition" : "Your Classroom Standing",
+          value: `Rank #${data.rank}`,
+          detail: data.classSize
+            ? `${data.xp.toLocaleString()} XP among ${data.classSize} students.`
+            : `${data.xp.toLocaleString()} XP earned in your classroom.`,
+        }
+      : {
+          eyebrow,
+          title: secondary ? "Competition" : "Your Classroom Standing",
+          value: "Your first rank awaits",
+          detail: "Complete a level to join your classroom ranking.",
+        };
+  }
+
+  if (mode === "rewards") {
+    return {
+      eyebrow,
+      title: secondary ? "Rewards" : "Your Rewards",
+      value: `${data.xp.toLocaleString()} XP earned`,
+      detail: data.latestXp > 0
+        ? `Your latest completed level added ${data.latestXp} XP.`
+        : "Complete your first level to earn XP and completion bonuses.",
+      progress: data.xpNext > 0 ? (data.xp / data.xpNext) * 100 : 0,
+    };
+  }
+
+  if (mode === "story") {
+    return {
+      eyebrow,
+      title: secondary ? "Exploration" : "Your Story Journey",
+      value: data.region.label,
+      detail: `${data.currentLevel} is your next stop in ${data.region.topic}. ${data.unlockedLevels} levels are currently open to explore.`,
+    };
+  }
+
+  if (mode === "challenges") {
+    return {
+      eyebrow,
+      title: "Challenges",
+      value: data.firstAttemptCompletions > 0
+        ? `${data.firstAttemptCompletions} first-attempt ${data.firstAttemptCompletions === 1 ? "win" : "wins"}`
+        : "Your first challenge awaits",
+      detail: data.completedLevels > 0
+        ? `${data.completedLevels} levels completed across your coding journey.`
+        : "Complete a level to start building your challenge record.",
+    };
+  }
+
+  return {
+    eyebrow: secondary ? "Next learning goal" : eyebrow,
+    title: secondary ? data.currentLevel : "Your Progress",
+    value: `${data.completedLevels} levels completed`,
+    detail: data.overallPct >= 100
+      ? "Journey complete — you cleared every available level."
+      : `${Math.round(data.overallPct)}% of your coding journey complete. Continue with ${data.currentLevel}.`,
+    progress: data.overallPct,
+  };
+}
+
 function XpBar({ current, max }) {
   const pct = max > 0 ? Math.min(100, Math.round((current / max) * 100)) : 0;
   return (
@@ -264,6 +358,7 @@ function LeaderboardRow({ rank, name, xp, levels, isMe }) {
 /* ─── Main component ──────────────────────────────────────────── */
 function StudentDashboardPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const [user, setProfileUser] = useState(() => getUser());
 
   const [progressData, setProgressData] = useState(null);
@@ -280,11 +375,11 @@ function StudentDashboardPage() {
   const [announcementActionError, setAnnouncementActionError] = useState("");
   const [notificationActionError, setNotificationActionError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [preferenceForm, setPreferenceForm] = useState(() => ({
-    gamificationPreference: getUser()?.gamificationPreference ?? "",
-    learningGameInterest: getUser()?.learningGameInterest ?? "",
-  }));
+  const [preferenceForm, setPreferenceForm] = useState(() =>
+    normalizePreferences(getUser()),
+  );
   const [preferenceStatus, setPreferenceStatus] = useState("");
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -322,10 +417,7 @@ function StudentDashboardPage() {
         const loadedUser = profileRes.value.data.user;
         setProfileUser(loadedUser);
         persistUser(loadedUser);
-        setPreferenceForm({
-          gamificationPreference: loadedUser.gamificationPreference ?? "",
-          learningGameInterest: loadedUser.learningGameInterest ?? "",
-        });
+        setPreferenceForm(normalizePreferences(loadedUser));
       }
 
       setIsLoading(false);
@@ -337,8 +429,15 @@ function StudentDashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (preferenceStatus !== "Preferences saved") return undefined;
+    const timer = window.setTimeout(() => setPreferenceStatus(""), 3000);
+    return () => window.clearTimeout(timer);
+  }, [preferenceStatus]);
+
   const savePreferences = async () => {
-    setPreferenceStatus("Saving…");
+    setIsSavingPreferences(true);
+    setPreferenceStatus("Saving preferences...");
     try {
       const response = await axios.put(
         buildApiUrl("/api/auth/me/gamification-preferences"),
@@ -348,9 +447,16 @@ function StudentDashboardPage() {
       const nextUser = { ...user, ...response.data };
       setProfileUser(nextUser);
       persistUser(nextUser);
-      setPreferenceStatus("Saved");
+      setPreferenceStatus("Preferences saved");
+      toast.success("Preferences saved. Your dashboard focus has been updated.");
     } catch (error) {
-      setPreferenceStatus(error.response?.data?.message ?? "Could not save preferences");
+      const message =
+        error.response?.data?.message ??
+        "Could not save preferences. Check your connection and try again.";
+      setPreferenceStatus(message);
+      toast.error(message);
+    } finally {
+      setIsSavingPreferences(false);
     }
   };
 
@@ -469,12 +575,6 @@ function StudentDashboardPage() {
   const classSize =
     progressData?.summary?.classSize ?? leaderboardMeta.classSize ?? null;
   const totalTimePlayed = progressData?.summary?.totalTimePlayed ?? "—";
-  const motivationMessage = {
-    progress: `${totalCleared} levels completed · ${Math.round(overallPct)}% of the journey`,
-    competition: myRankDisplay ? `You are #${myRankDisplay} in your classroom.` : "Complete a level to join the classroom ranking.",
-    rewards: `${xpCurrent.toLocaleString()} XP earned from first completions and bonuses.`,
-    story: `Continue ${currentLevelLabel} to explore the next part of the story.`,
-  }[user?.gamificationPreference] ?? "Choose what motivates you so SharpRunner can emphasize the right progress feedback.";
 
   const myUserId = user?.id;
   const myRank =
@@ -532,6 +632,42 @@ function StudentDashboardPage() {
     LEVEL_BACKGROUND_BY_NUMBER[currentLevelNumber] ??
     LEVEL_BACKGROUND_BY_NUMBER[1]
   }`;
+
+  const completedLevelRows =
+    progressData?.levels?.filter((level) => level.isCompleted) ?? [];
+  const latestCompletedLevel = [...completedLevelRows]
+    .filter((level) => level.completedAt)
+    .sort(
+      (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime(),
+    )[0];
+  const currentRegion =
+    REGIONS.find((region) => region.key === currentLessonKey) ?? REGIONS[0];
+  const preferenceModes = resolvePreferenceModes(user);
+  const personalizationData = {
+    rank: myRankDisplay,
+    classSize,
+    xp: xpCurrent,
+    xpNext,
+    latestXp: Number(latestCompletedLevel?.xpAwarded ?? 0),
+    region: currentRegion,
+    currentLevel: currentLevelLabel,
+    unlockedLevels:
+      progressData?.levels?.filter((level) => level.isAccessible !== false).length ?? 0,
+    firstAttemptCompletions: completedLevelRows.filter(
+      (level) => Number(level.attemptCount ?? 0) === 0,
+    ).length,
+    completedLevels: totalCleared,
+    overallPct,
+  };
+  const primaryFocusCard = focusCardFor(
+    preferenceModes.primaryMode,
+    personalizationData,
+  );
+  const secondaryFocusCard = focusCardFor(
+    preferenceModes.secondaryMode,
+    personalizationData,
+    true,
+  );
 
   /* ─── Render ──────────────────────────────────────────────────── */
   return (
@@ -598,33 +734,64 @@ function StudentDashboardPage() {
           </div>
         </header>
 
-        <section className={styles.preferencePanel} aria-label="Gamification preferences">
-          <div>
-            <strong>Your motivation focus</strong>
-            <span>{motivationMessage}</span>
+        <section className={styles.preferenceSection} aria-label="Gamification preferences">
+          <div className={styles.personalizationGrid} aria-live="polite">
+            <PersonalizedFocusCard {...primaryFocusCard} />
+            <PersonalizedFocusCard {...secondaryFocusCard} />
           </div>
-          <label>
-            Motivation
-            <select value={preferenceForm.gamificationPreference} onChange={(event) => setPreferenceForm((current) => ({ ...current, gamificationPreference: event.target.value }))}>
-              <option value="">Choose optionally</option>
-              <option value="progress">Progress</option>
-              <option value="competition">Competition</option>
-              <option value="rewards">Achievement / rewards</option>
-              <option value="story">Story / exploration</option>
-            </select>
-          </label>
-          <label>
-            Game interest
-            <select value={preferenceForm.learningGameInterest} onChange={(event) => setPreferenceForm((current) => ({ ...current, learningGameInterest: event.target.value }))}>
-              <option value="">Choose optionally</option>
-              <option value="challenges">Challenges</option>
-              <option value="exploration">Exploration</option>
-              <option value="competition">Competition</option>
-              <option value="rewards">Rewards</option>
-            </select>
-          </label>
-          <button type="button" onClick={savePreferences}>Save</button>
-          {preferenceStatus && <small role="status">{preferenceStatus}</small>}
+
+          <div className={styles.preferencePanel}>
+            <div className={styles.preferenceIntro}>
+              <strong>Your Learning Game Preferences</strong>
+              <span>Choose what motivates you and what you enjoy. Saved choices change the cards above.</span>
+            </div>
+            <label>
+              Motivation
+              <select
+                value={preferenceForm.gamificationPreference}
+                onChange={(event) => {
+                  setPreferenceStatus("");
+                  setPreferenceForm((current) => ({
+                    ...current,
+                    gamificationPreference: event.target.value,
+                  }));
+                }}
+              >
+                <option value="progress">Progress</option>
+                <option value="competition">Competition</option>
+                <option value="rewards">Achievement / rewards</option>
+                <option value="story">Story / exploration</option>
+              </select>
+            </label>
+            <label>
+              Game interest
+              <select
+                value={preferenceForm.learningGameInterest}
+                onChange={(event) => {
+                  setPreferenceStatus("");
+                  setPreferenceForm((current) => ({
+                    ...current,
+                    learningGameInterest: event.target.value,
+                  }));
+                }}
+              >
+                <option value="challenges">Challenges</option>
+                <option value="exploration">Exploration</option>
+                <option value="competition">Competition</option>
+                <option value="rewards">Rewards</option>
+              </select>
+            </label>
+            <div className={styles.preferenceAction}>
+              <button
+                type="button"
+                onClick={savePreferences}
+                disabled={isSavingPreferences}
+              >
+                {isSavingPreferences ? "Saving..." : "Save preferences"}
+              </button>
+              {preferenceStatus && <small role="status">{preferenceStatus}</small>}
+            </div>
+          </div>
         </section>
 
         {/* ── STAT CARDS ROW ── */}

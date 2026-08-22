@@ -10,7 +10,6 @@ import {
   FiEye,
   FiHelpCircle,
   FiLock,
-  FiPlus,
   FiRotateCcw,
   FiSave,
   FiSliders,
@@ -22,6 +21,7 @@ import {
   getAvailableLevelNumbers,
   getLevelConfig,
 } from "../game/levels/levelConfigs.js";
+import { getCurriculumMetadata } from "../game/levels/curriculumMetadata.js";
 import styles from "./TeacherPage.module.css";
 import s from "./TeacherLevelEditorPage.module.css";
 
@@ -46,6 +46,7 @@ const buildDefaultSettings = () =>
       unlockAt: "",
       dueAt: "",
       hintsEnabled: true,
+      hintUnlockThreshold: 3,
       wrongAttemptDeduction: 5,
       lateDeductionPerDay: 3,
     };
@@ -66,6 +67,7 @@ const mergeSettings = (rows) => {
             unlockAt: toDateTimeInput(row.unlockAt),
             dueAt: toDateTimeInput(row.dueAt),
             hintsEnabled: row.hintsEnabled ?? true,
+            hintUnlockThreshold: Number(row.hintUnlockThreshold ?? 3),
             wrongAttemptDeduction: Number(row.wrongAttemptDeduction ?? 5),
             lateDeductionPerDay: Number(row.lateDeductionPerDay ?? 3),
           }
@@ -114,6 +116,7 @@ function TeacherLevelEditorPage() {
   );
   const selected = settings[selectedIndex] ?? settings[0];
   const config = getLevelConfig(selected?.levelNumber);
+  const curriculum = getCurriculumMetadata(config);
 
   const updateSelected = (updates) => {
     setStatus(null);
@@ -154,6 +157,7 @@ function TeacherLevelEditorPage() {
               ? new Date(setting.dueAt).toISOString()
               : null,
             hintsEnabled: setting.hintsEnabled,
+            hintUnlockThreshold: Number(setting.hintUnlockThreshold),
             wrongAttemptDeduction: Number(setting.wrongAttemptDeduction),
             lateDeductionPerDay: Number(setting.lateDeductionPerDay),
           })),
@@ -242,7 +246,6 @@ function TeacherLevelEditorPage() {
                 <div className={s.headerActions}>
                   <button type="button" className={s.orderButton} onClick={() => moveSelected(-1)} disabled={selectedIndex <= 0}><FiArrowUp /> Move up</button>
                   <button type="button" className={s.orderButton} onClick={() => moveSelected(1)} disabled={selectedIndex >= settings.length - 1}><FiArrowDown /> Move down</button>
-                  <button type="button" className={s.customButton} disabled title="Custom challenge templates are coming soon"><FiPlus /> Custom challenge · Coming soon</button>
                 </div>
               </div>
 
@@ -260,11 +263,18 @@ function TeacherLevelEditorPage() {
                     <ol>{(config?.instruction?.items ?? []).map((item) => <li key={item}>{item}</li>)}</ol>
                   </article>
                   <article className={s.previewCard}><span className={s.previewLabel}>Starter code</span><pre><code>{config?.defaultCode ?? "// No starter code"}</code></pre></article>
+                  <article className={s.previewCard}>
+                    <span className={s.previewLabel}>Curriculum mapping</span>
+                    <p><strong>{curriculum.curriculumSource}</strong> · {curriculum.moduleName} · {curriculum.lessonName}</p>
+                    <p>{curriculum.learningObjective}</p>
+                    <p>Conceptual difficulty: <strong>{curriculum.difficulty}</strong></p>
+                    <small>{curriculum.referenceAccessNote}</small>
+                  </article>
                   {selected?.hintsEnabled && config?.hint ? <article className={`${s.previewCard} ${s.hintPreview}`}><span className={s.previewLabel}>Hint shown after repeated mistakes</span><p>{config.hint}</p></article> : null}
                 </section>
 
                 <aside className={s.settingsPanel}>
-                  <div className={s.sectionHeading}><FiSliders /><div><h2>Level settings</h2><p>These settings apply only to this classroom.</p></div></div>
+                  <div className={s.sectionHeading}><FiSliders /><div><h2>Challenge settings</h2><p>These conditions apply only to this classroom. Game code and validators remain system-managed.</p></div></div>
                   <label className={s.toggleRow}>
                     <span><strong><FiCheckCircle /> Level availability</strong><small>Students can access this level in the assigned sequence.</small></span>
                     <input type="checkbox" checked={selected?.isEnabled ?? true} onChange={(event) => updateSelected({ isEnabled: event.target.checked })} />
@@ -280,8 +290,13 @@ function TeacherLevelEditorPage() {
                     <small>Late deductions begin immediately after this deadline.</small>
                   </label>
                   <label className={s.toggleRow}>
-                    <span><strong><FiHelpCircle /> Student hints</strong><small>Show the built-in hint after three wrong attempts.</small></span>
+                    <span><strong><FiHelpCircle /> Student hints</strong><small>Allow the free built-in learning hint after the configured number of failures.</small></span>
                     <input type="checkbox" checked={selected?.hintsEnabled ?? true} onChange={(event) => updateSelected({ hintsEnabled: event.target.checked })} />
+                  </label>
+                  <label className={s.settingField}>
+                    <span>Hint unlocks after failed attempts</span>
+                    <input type="number" min="1" max="10" step="1" disabled={!selected?.hintsEnabled} value={selected?.hintUnlockThreshold ?? 3} onChange={(event) => updateSelected({ hintUnlockThreshold: event.target.value })} />
+                    <small>Default: 3. The basic educational hint remains free.</small>
                   </label>
                   <div className={s.gradingBox}>
                     <h3>Grading policy</h3>

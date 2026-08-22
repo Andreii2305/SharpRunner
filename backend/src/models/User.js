@@ -61,6 +61,22 @@ const User = sequelize.define("Users", {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  xpTotal: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    validate: { min: 0 },
+  },
+  gamificationPreference: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    validate: { isIn: [["progress", "competition", "rewards", "story"]] },
+  },
+  learningGameInterest: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    validate: { isIn: [["challenges", "exploration", "competition", "rewards"]] },
+  },
   password: {
     type: DataTypes.STRING,
     allowNull: true,

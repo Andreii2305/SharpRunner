@@ -17,6 +17,7 @@ const ClassroomLessonSubmission = require("./ClassroomLessonSubmission");
 const ClassroomLessonSubmissionAttachment = require("./ClassroomLessonSubmissionAttachment");
 const ClassroomLessonVersion = require("./ClassroomLessonVersion");
 const ClassroomLessonAudit = require("./ClassroomLessonAudit");
+const XpTransaction = require("./XpTransaction");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -39,6 +40,14 @@ UserProgress.belongsTo(User, {
   foreignKey: "userId",
   as: "user",
 });
+
+User.hasMany(XpTransaction, {
+  foreignKey: "userId",
+  as: "xpTransactions",
+  onDelete: "CASCADE",
+});
+
+XpTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 User.hasMany(AdminActivityLog, {
   foreignKey: "actorUserId",
@@ -93,6 +102,17 @@ Classroom.hasMany(ClassroomLesson, {
 ClassroomLesson.belongsTo(Classroom, {
   foreignKey: "classroomId",
   as: "classroom",
+});
+
+ClassroomLesson.hasMany(ClassroomLesson, {
+  foreignKey: "moduleId",
+  as: "moduleLessons",
+  onDelete: "SET NULL",
+});
+
+ClassroomLesson.belongsTo(ClassroomLesson, {
+  foreignKey: "moduleId",
+  as: "module",
 });
 
 ClassroomLesson.hasMany(ClassroomLessonAttachment, {
@@ -250,4 +270,5 @@ module.exports = {
   ClassroomLessonSubmissionAttachment,
   ClassroomLessonVersion,
   ClassroomLessonAudit,
+  XpTransaction,
 };

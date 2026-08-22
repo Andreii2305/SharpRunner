@@ -37,6 +37,7 @@ const migrations = [
   ["001_legacy_schema_upgrade", runLegacySchemaUpgrade],
   ["20260812000000_enable_rls_for_backend_tables", sqlMigration("20260812000000_enable_rls_for_backend_tables.sql")],
   ["20260819000000_protect_all_backend_tables", sqlMigration("20260819000000_protect_all_backend_tables.sql")],
+  ["20260822000000_panel_system_recommendations", sqlMigration("20260822000000_panel_system_recommendations.sql")],
 ];
 
 const runMigrations = async () => {

@@ -1,6 +1,6 @@
 # SharpRunner Feature Requirements
 
-> Last updated: 2026-08-19
+> Last updated: 2026-08-22
 > Source: Panel review feedback and current project implementation
 > Status: Living project reference
 
@@ -39,6 +39,7 @@ Current teacher-editable settings:
 - unlock date and time
 - due date and time
 - hints enabled/disabled
+- hint unlock threshold (1–10 failed attempts; default 3)
 - points deducted per wrong attempt
 - points deducted per late day
 
@@ -199,21 +200,61 @@ Teacher visibility:
 
 Remaining gaps:
 
-- No hint penalty is saved yet.
 - No grade database column exists; grade is derived from score.
 - Score breakdown is not yet shown in detail.
 - Retrying a completed level does not overwrite the first saved score.
+
+## Requirement 5 - Three-Failure Hint Access
+
+**Status: Implemented**
+
+- Failed attempts persist on `UserProgress`.
+- A free basic hint unlocks after three failures by default and updates immediately without refresh.
+- Teachers retain a master enable/disable switch and may configure a threshold from 1–10.
+- Hint use, timestamp, type, and attempt count at unlock are recorded.
+- Completed-level replay preserves the original attempt/score record and permits review of previously unlocked hints.
+
+## Requirement 6 - XP And Motivation
+
+**Status: Implemented**
+
+- First completion: +20 XP.
+- First-attempt bonus: +10 XP.
+- No-hint bonus: +5 XP.
+- Values are centralized in `backend/src/constants/gamificationConfig.js`.
+- XP transactions are unique per user/level completion and server-validated. Replay and refresh cannot farm XP.
+- XP is displayed on the dashboard, leaderboard, and completion result, with reward breakdown.
+- XP never changes academic score or grade.
+- The free basic hint has no XP cost; a paid detailed hint is not currently implemented.
+
+## Requirement 7 - Self-Paced Classroom Learning
+
+**Status: Implemented within teacher availability controls**
+
+Students can revisit published modules and lessons, retry incomplete game levels, replay completed levels, review saved score/attempt/completion data, and review already-unlocked hints. Teachers continue to control publication, scheduling, deadlines, sequence, game availability, hints, and grading settings.
+
+## Requirement 8 - Teacher Modules And Multimedia Resources
+
+**Status: Implemented**
+
+The existing Classwork system supports standalone modules, module-associated lessons/assignments, publication schedules, optional due dates, external links, and secure attachments. Supported educational uploads include PDFs, images, Office/OpenDocument files, text/spreadsheets, audio, and size-limited video. File extension, MIME category, dangerous signature, size, ownership, and classroom access are checked.
+
+Teachers cannot create or modify Phaser maps, collision data, validators, game events, or level implementations.
+
+## Requirement 9 - Preferences And Curriculum Traceability
+
+**Status: Implemented**
+
+Students can optionally save a motivation preference and learning-game interest. Dashboard feedback reflects the motivation focus without hiding educational information. Teachers receive aggregate motivation counts only. `curriculumMetadata.js` traces playable configs to CodeChum, module, lesson, objective, conceptual difficulty, and a nullable restricted reference URL policy.
 
 ## Current Implementation Priority
 
 | Priority | Work Item | Reason |
 |---|---|---|
-| 1 | Finish Lesson 1 levels 6-10 | Gives the project one complete playable module |
-| 2 | Run the demo/manual QA checklist on each presentation build | The repeatable preflight and role checks are documented in `docs/DEMO_QA_CHECKLIST.md` |
-| 3 | Add disposable-database integration tests | HTTP route coverage exists; PostgreSQL migrations and constraints still need isolated testing |
-| 4 | Add score breakdown UI | Makes grading easier for students and teachers to understand |
-| 5 | Add command-queue execution | Makes coding feel more directly game-controlled |
-| 6 | Add boss-level editing | Stretch goal after boss level defaults exist |
+| 1 | Run the demo/manual QA checklist on each presentation build | Confirms real persistence, uploads, and role access |
+| 2 | Add disposable-database integration tests | HTTP fixtures cannot verify PostgreSQL locks and constraints |
+| 3 | Improve academic score breakdown UI | Makes grading deductions easier to understand |
+| 4 | Reduce production bundle size | Phaser and level configuration chunks remain large |
 
 ## Notes For Panel Explanation
 

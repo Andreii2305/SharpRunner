@@ -4,7 +4,31 @@ const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 
 const BLOCKED_EXTENSIONS = new Set([".exe", ".dll", ".bat", ".cmd", ".com", ".msi", ".ps1", ".scr", ".vbs", ".js", ".jar", ".apk"]);
+const LEARNING_RESOURCE_EXTENSIONS = new Set([
+  ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp",
+  ".ppt", ".pptx", ".doc", ".docx", ".odt", ".odp",
+  ".txt", ".rtf", ".csv", ".xls", ".xlsx", ".ods",
+  ".mp4", ".webm", ".mp3", ".wav", ".ogg",
+]);
+const LEARNING_RESOURCE_MIME_TYPES = new Set([
+  "application/pdf", "application/msword", "application/rtf",
+  "application/vnd.ms-powerpoint", "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.presentation",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "text/plain", "text/csv",
+]);
 const isDangerousFilename = (name = "") => BLOCKED_EXTENSIONS.has(path.extname(name).toLowerCase());
+const isAllowedLearningResource = (file = {}) => {
+  const extension = path.extname(file.originalname || "").toLowerCase();
+  const mimeType = String(file.mimetype || "").toLowerCase();
+  const allowedMime = LEARNING_RESOURCE_MIME_TYPES.has(mimeType) ||
+    /^(image|audio|video)\//.test(mimeType);
+  return LEARNING_RESOURCE_EXTENSIONS.has(extension) && allowedMime;
+};
 
 const hasDangerousSignature = async (filePath) => {
   const handle = await require("fs").promises.open(filePath, "r");
@@ -49,4 +73,4 @@ const extensionAllowed = (filename, allowedFileTypes = []) => {
   return allowedFileTypes.map((item) => String(item).toLowerCase().replace(/^\./, "")).includes(extension);
 };
 
-module.exports = { BLOCKED_EXTENSIONS, isDangerousFilename, hasDangerousSignature, scanFile, extensionAllowed };
+module.exports = { BLOCKED_EXTENSIONS, LEARNING_RESOURCE_EXTENSIONS, isDangerousFilename, isAllowedLearningResource, hasDangerousSignature, scanFile, extensionAllowed };

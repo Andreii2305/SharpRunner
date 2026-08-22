@@ -21,8 +21,29 @@ const {
   getClassroomLevelSettings,
 } = require("../services/classroomLevelSettingsService");
 const { validateLevelCode } = require("../services/levelCodeValidationService");
+const { awardFirstCompletionXp } = require("../services/gamificationService");
+const {
+  DEFAULT_HINT_UNLOCK_THRESHOLD,
+} = require("../constants/gamificationConfig");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
+
+const buildHintState = (levelRow, setting = {}) => {
+  const threshold = Number.isInteger(Number(setting.hintUnlockThreshold))
+    ? Number(setting.hintUnlockThreshold)
+    : DEFAULT_HINT_UNLOCK_THRESHOLD;
+  const hintsEnabled = setting.hintsEnabled !== false;
+  const attemptCount = Math.max(0, Number(levelRow?.attemptCount) || 0);
+  return {
+    hintsEnabled,
+    hintUnlockThreshold: threshold,
+    hintUnlocked: hintsEnabled && attemptCount >= threshold,
+    hintUsed: Boolean(levelRow?.hintUsed),
+    hintUsedAt: levelRow?.hintUsedAt ?? null,
+    hintType: levelRow?.hintType ?? null,
+    attemptsRemaining: hintsEnabled ? Math.max(0, threshold - attemptCount) : null,
+  };
+};
 
 const normalizeLevelKey = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -98,6 +119,7 @@ router.use(authMiddleware, requireActiveClassMembership);
 
 const buildProgressPayloadForUser = async (userId) => {
   const rows = await ensureProgressRowsForUser(userId);
+  const currentUser = await User.findByPk(userId, { attributes: ["xpTotal"] });
   let classRank = null;
   let classSize = null;
 
@@ -120,7 +142,11 @@ const buildProgressPayloadForUser = async (userId) => {
   const activeRows = enabledSettings
     .map((setting) => rowByKey.get(setting.levelKey))
     .filter(Boolean);
-  const payload = buildProgressSummary(activeRows, { classRank, classSize });
+  const payload = buildProgressSummary(activeRows, {
+    classRank,
+    classSize,
+    xpTotal: currentUser?.xpTotal ?? 0,
+  });
   const completedByKey = new Map(
     activeRows.map((row) => [row.levelKey, Boolean(row.isCompleted)]),
   );
@@ -139,6 +165,8 @@ const buildProgressPayloadForUser = async (userId) => {
       unlockAt: setting?.unlockAt ?? null,
       dueAt: setting?.dueAt ?? null,
       hintsEnabled: setting?.hintsEnabled ?? true,
+      hintUnlockThreshold:
+        setting?.hintUnlockThreshold ?? DEFAULT_HINT_UNLOCK_THRESHOLD,
       wrongAttemptDeduction: setting?.wrongAttemptDeduction ?? 5,
       lateDeductionPerDay: setting?.lateDeductionPerDay ?? 3,
       prerequisiteLevelKey,
@@ -148,6 +176,7 @@ const buildProgressPayloadForUser = async (userId) => {
         : prerequisiteComplete
           ? null
           : "prerequisite",
+      ...buildHintState(level, setting),
     };
   });
 
@@ -191,8 +220,14 @@ router.post("/level/:levelKey/start", async (req, res) => {
       // Score already recorded — return an ephemeral start time without saving to DB
       return res.json({
         startedAt: new Date().toISOString(),
-        attemptCount: 0,
+        attemptCount: levelRow.attemptCount ?? 0,
         ephemeral: true,
+        ...buildHintState(
+          levelRow,
+          (await getClassroomLevelSettings(
+            (await findPrimaryActiveMembership(req.userId))?.classroomId,
+          )).find((row) => row.levelKey === levelKey),
+        ),
       });
     }
 
@@ -201,10 +236,14 @@ router.post("/level/:levelKey/start", async (req, res) => {
       await levelRow.save();
     }
 
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const setting = (await getClassroomLevelSettings(membership?.classroomId))
+      .find((row) => row.levelKey === levelKey);
     return res.json({
       startedAt: levelRow.startedAt,
       attemptCount: levelRow.attemptCount,
       ephemeral: false,
+      ...buildHintState(levelRow, setting),
     });
   } catch (error) {
     console.error(error);
@@ -235,10 +274,73 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
       return res.status(404).json({ message: "Progress row not found" });
     }
 
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const setting = (await getClassroomLevelSettings(membership?.classroomId))
+      .find((row) => row.levelKey === levelKey);
+
+    if (levelRow.isCompleted) {
+      return res.json({
+        attemptCount: levelRow.attemptCount ?? 0,
+        replay: true,
+        ...buildHintState(levelRow, setting),
+      });
+    }
+
     levelRow.attemptCount = (levelRow.attemptCount || 0) + 1;
     await levelRow.save();
 
-    return res.json({ attemptCount: levelRow.attemptCount });
+    return res.json({
+      attemptCount: levelRow.attemptCount,
+      replay: false,
+      ...buildHintState(levelRow, setting),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/level/:levelKey/hint-use", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) {
+      return res.status(404).json({ message: "Unknown level key" });
+    }
+    await ensureProgressRowsForUser(req.userId);
+    const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey);
+    if (accessRestriction) return sendLevelRestrictionResponse(res, accessRestriction);
+
+    const levelRow = await UserProgress.findOne({
+      where: { userId: req.userId, levelKey },
+    });
+    if (!levelRow) return res.status(404).json({ message: "Progress row not found" });
+
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const setting = (await getClassroomLevelSettings(membership?.classroomId))
+      .find((row) => row.levelKey === levelKey);
+    const hintState = buildHintState(levelRow, setting);
+    if (!hintState.hintsEnabled) {
+      return res.status(403).json({ code: "HINTS_DISABLED", message: "Hints are disabled by your teacher." });
+    }
+    if (!hintState.hintUnlocked) {
+      return res.status(403).json({
+        code: "HINT_LOCKED",
+        message: `The hint unlocks after ${hintState.hintUnlockThreshold} failed attempts.`,
+        ...hintState,
+      });
+    }
+
+    if (!levelRow.hintUsed) {
+      levelRow.hintUsed = true;
+      levelRow.hintUsedAt = new Date();
+      levelRow.hintType = "basic";
+      levelRow.attemptCountAtHintUnlock = levelRow.attemptCount;
+      await levelRow.save();
+    }
+    return res.json({
+      message: "Basic hint opened",
+      ...buildHintState(levelRow, setting),
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -363,7 +465,24 @@ router.put("/level/:levelKey", async (req, res) => {
 
     await levelRow.save();
 
-    return res.json(await buildProgressPayloadForUser(req.userId));
+    let xpAward = null;
+    if (isCompleted && !wasAlreadyCompleted) {
+      xpAward = await awardFirstCompletionXp({
+        userId: req.userId,
+        levelKey,
+        attemptCount: levelRow.attemptCount,
+        hintUsed: levelRow.hintUsed,
+      });
+      if (xpAward.awarded) {
+        levelRow.xpAwarded = xpAward.amount;
+        levelRow.xpAwardedAt = new Date();
+        await levelRow.save();
+      }
+    }
+
+    const payload = await buildProgressPayloadForUser(req.userId);
+    payload.xpAward = xpAward;
+    return res.json(payload);
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

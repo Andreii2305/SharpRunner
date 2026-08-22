@@ -1,0 +1,46 @@
+# Panel System Recommendations Traceability
+
+Last updated: 2026-08-22
+
+This document covers system recommendations only. XP is motivational and remains separate from academic score and grade.
+
+| Panel Recommendation | SharpRunner Implementation | Relevant System Area | Status |
+| --- | --- | --- | --- |
+| Relate subject modules, lessons, and activities | Teacher classwork supports modules, module-associated lessons/assignments, instructions, schedules, links, and attachments. Predefined game activities remain linked through centralized curriculum metadata. | `ClassroomLessons`, classwork UI, `curriculumMetadata.js` | Implemented |
+| Identify appropriate levels for students | Curriculum metadata labels conceptual difficulty as Beginner, Intermediate, or Advanced. Classroom sequence, availability, and schedules control assigned access. | Curriculum metadata, level settings | Implemented |
+| Consider teacher modules | Teachers can create published/draft modules, associate lessons and assignments, attach learning resources, and set availability/due dates. | Teacher classroom Classwork | Implemented |
+| Automatically record student scores | The backend records completion, failed attempts, time, completion time, final score, and derived grade. | `UserProgress`, progress API | Implemented |
+| Consider self-paced learning | Students may revisit available modules/lessons, retry incomplete levels, replay completed levels, and review unlocked hints. Replays preserve the original recorded grade and cannot farm XP. | Lesson pages, map/game routes, progress API | Implemented |
+| Three attempts before hints | The default is three failed attempts. The free basic hint unlocks immediately on the threshold response, persists across refresh, and remains subject to the teacher master switch. Teachers may set 1–10. | Game page, progress API, challenge settings | Implemented |
+| Gamification based on interest | Students optionally choose Challenges, Exploration, Competition, or Rewards. | Student dashboard/preferences | Implemented |
+| Gamification based on motivation | Students optionally choose Progress, Competition, Achievement/Rewards, or Story/Exploration; the dashboard changes its motivational summary. | Student dashboard/preferences | Implemented |
+| Game type based on interest | SharpRunner remains one 2D coding adventure. Interest personalizes emphasis and is available to teachers only as aggregate counts. | Student/teacher dashboards | Implemented within intended scope |
+| Basis for game levels | Central metadata traces every playable config to CodeChum curriculum source, module, lesson, topic, objective, difficulty, and SharpRunner level. | `curriculumMetadata.js` | Implemented |
+| Data references for different challenges | CodeChum is recorded as a restricted source; URLs remain nullable and are never fabricated. | Curriculum metadata | Implemented |
+| Mechanics linking games and learning | Existing validators evaluate C# submissions and shared events drive Phaser feedback without changing validator answers. | Level configs, validators, shared game events | Existing and verified |
+| Scoring mechanism | Academic score is backend-calculated from challenge conditions. XP is awarded separately once per first completion. | Progress and gamification services | Implemented |
+| Difficulty/challenge conditions controlled by instructor | Teachers control availability, order, unlock/due dates, hint threshold, hint master switch, and scoring deductions. They cannot edit validators or maps. | Teacher Challenge Settings | Implemented |
+| Attempts | Failed attempts persist for incomplete levels, drive scoring and hint access, and are visible in progress reporting. Completed-level replay does not corrupt the original record. | Progress API and teacher grades | Implemented |
+| Filipino cultural influence in the game environment | The Arrays, Functions, combined, and final curriculum scenes use Filipino settings and mythology including barangay environments, diwata, aswang, tikbalang, kapre, anting-anting, and Bakunawa. | Existing Phaser scenes/story | Existing |
+| Various multimedia elements for sustained game learning | Phaser visuals, sprites, animation, dialogue, Monaco, visual feedback, optional scene audio, mute control, reduced-motion support, PDFs/images/Office/text/audio/small-video resources, and external video links are supported. | Game shell and classroom resources | Implemented/existing |
+
+## Architectural Scope
+
+### Instructor responsibilities
+
+Teachers manage classrooms, instructional modules, lessons, assignments, learning resources, publication/availability, deadlines, classroom challenge conditions, hints, and academic scoring configuration.
+
+### Developer/system responsibilities
+
+SharpRunner developers maintain Phaser maps, game physics, collision configuration, C# validators, character logic, game events, and challenge implementations.
+
+The teacher module is an instructional-content and configuration tool. It is not a Phaser scene editor, validator builder, collision editor, or game-authoring tool.
+
+## XP policy
+
+- First successful completion: 20 base XP.
+- Zero failed attempts: 10 first-attempt bonus XP.
+- No hint used: 5 no-hint bonus XP.
+- Reward values are centralized in `backend/src/constants/gamificationConfig.js`.
+- A unique XP ledger entry and a locked user balance prevent refresh, replay, and concurrent duplicate rewards.
+- The free basic hint does not cost XP. A paid detailed hint is intentionally not implemented, so low XP never blocks educational help.

@@ -17,6 +17,8 @@ const LevelContentOverride = require("../src/models/LevelContentOverride");
 const LevelDeadline = require("../src/models/LevelDeadline");
 const AdminActivityLog = require("../src/models/AdminActivityLog");
 const AdminInvite = require("../src/models/AdminInvite");
+const XpTransaction = require("../src/models/XpTransaction");
+const sequelize = require("../src/config/database");
 
 let server;
 let baseUrl;
@@ -69,6 +71,7 @@ const activeUser = (overrides = {}) => ({
   status: "active",
   emailVerifiedAt: new Date(),
   password: null,
+  xpTotal: 0,
   save: async () => undefined,
   ...overrides,
 });
@@ -187,6 +190,7 @@ test("PUT /api/progress rejects forged completion with invalid source code", asy
 });
 
 test("PUT /api/progress accepts valid source and returns the backend score", async () => {
+  const user = activeUser();
   const progressRow = {
     id: 1,
     userId: 1,
@@ -205,7 +209,7 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
 
   await withStubs([
-    [User, "findByPk", async () => activeUser()],
+    [User, "findByPk", async () => user],
     [User, "findAll", async () => []],
     [ClassroomMembership, "findOne", async () => membership],
     [ClassroomMembership, "findAll", async () => []],
@@ -214,6 +218,9 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
     [UserProgress, "findOne", async () => progressRow],
     [LevelContentOverride, "findAll", async () => []],
     [LevelDeadline, "findOne", async () => null],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [XpTransaction, "findOne", async () => null],
+    [XpTransaction, "create", async (value) => value],
   ], async () => {
     const { response, payload } = await apiRequest(
       "/api/progress/level/tutorial-level-1",
@@ -231,6 +238,55 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
     assert.equal(progressRow.isCompleted, true);
     assert.equal(progressRow.finalScore, 95);
     assert.equal(payload.levels[0].finalScore, 95);
+    assert.equal(payload.xpAward.amount, 25);
+    assert.equal(payload.summary.xp, 25);
+  });
+});
+
+test("failed attempts unlock the free hint at the teacher-controlled threshold", async () => {
+  const progressRow = {
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    attemptCount: 0,
+    isCompleted: false,
+    hintUsed: false,
+    save: async () => undefined,
+  };
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+
+  await withStubs([
+    [User, "findByPk", async () => activeUser()],
+    [ClassroomMembership, "findOne", async () => membership],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async () => [{
+      levelKey: "tutorial-level-1",
+      hintsEnabled: true,
+      hintUnlockThreshold: 3,
+      isEnabled: true,
+      displayOrder: 1,
+    }]],
+  ], async () => {
+    for (let expected = 1; expected <= 3; expected += 1) {
+      const { response, payload } = await apiRequest(
+        "/api/progress/level/tutorial-level-1/attempt",
+        { method: "POST", token: authToken(1, "student"), body: {} },
+      );
+      assert.equal(response.status, 200);
+      assert.equal(payload.attemptCount, expected);
+      assert.equal(payload.hintUnlocked, expected >= 3);
+      assert.equal(payload.attemptsRemaining, Math.max(0, 3 - expected));
+    }
+
+    const hintResponse = await apiRequest(
+      "/api/progress/level/tutorial-level-1/hint-use",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(hintResponse.response.status, 200);
+    assert.equal(hintResponse.payload.hintUsed, true);
+    assert.equal(progressRow.hintType, "basic");
+    assert.equal(progressRow.attemptCountAtHintUnlock, 3);
   });
 });
 

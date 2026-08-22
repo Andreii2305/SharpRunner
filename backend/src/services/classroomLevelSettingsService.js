@@ -3,6 +3,7 @@ const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 
 const DEFAULT_WRONG_ATTEMPT_DEDUCTION = 5;
 const DEFAULT_LATE_DEDUCTION_PER_DAY = 3;
+const { DEFAULT_HINT_UNLOCK_THRESHOLD } = require("../constants/gamificationConfig");
 
 const toNumber = (value, fallback) => {
   const parsed = Number(value);
@@ -26,6 +27,10 @@ const getClassroomLevelSettings = async (classroomId) => {
       unlockAt: row?.unlockAt ?? null,
       dueAt: row?.dueAt ?? null,
       hintsEnabled: row?.hintsEnabled ?? true,
+      hintUnlockThreshold: Math.min(
+        10,
+        Math.max(1, Number(row?.hintUnlockThreshold) || DEFAULT_HINT_UNLOCK_THRESHOLD),
+      ),
       wrongAttemptDeduction: toNumber(
         row?.wrongAttemptDeduction,
         DEFAULT_WRONG_ATTEMPT_DEDUCTION,

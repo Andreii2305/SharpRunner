@@ -99,7 +99,10 @@ function GamePage({ levelConfig }) {
   const hintsEnabledRef = useRef(true);
   const [startedAt, setStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [, setFailedAttempts] = useState(0);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [hintUnlockThreshold, setHintUnlockThreshold] = useState(3);
+  const [hintUnlocked, setHintUnlocked] = useState(false);
+  const [hintUsed, setHintUsed] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
   const [activeDialogueId, setActiveDialogueId] = useState(null);
@@ -157,6 +160,9 @@ function GamePage({ levelConfig }) {
     setShowStoryIntro(shouldStartWithDialogue(levelConfig));
     setIsCodeLocked(isCodeLockedByDialogue(levelConfig));
     setFailedAttempts(0);
+    setHintUnlockThreshold(3);
+    setHintUnlocked(false);
+    setHintUsed(false);
     setShowHint(false);
     hintsEnabledRef.current = true;
     failedAttemptsRef.current = 0;
@@ -197,6 +203,11 @@ function GamePage({ levelConfig }) {
         } else {
           hintsEnabledRef.current = true;
         }
+        const threshold = Number(override.hintUnlockThreshold) || 3;
+        setHintUnlockThreshold(threshold);
+        setHintUnlocked(
+          override.hintsEnabled !== false && failedAttemptsRef.current >= threshold,
+        );
 
         if (override.lessonCardTitle != null) {
           merged.lessonCard = { ...merged.lessonCard, title: override.lessonCardTitle };
@@ -268,7 +279,10 @@ function GamePage({ levelConfig }) {
         const dbAttempts = attemptCount ?? 0;
         failedAttemptsRef.current = dbAttempts;
         setFailedAttempts(dbAttempts);
-        if (dbAttempts >= 3 && hintsEnabledRef.current && levelConfig?.hint) setShowHint(true);
+        setHintUnlockThreshold(res.data.hintUnlockThreshold ?? 3);
+        hintsEnabledRef.current = res.data.hintsEnabled !== false;
+        setHintUnlocked(Boolean(res.data.hintUnlocked));
+        setHintUsed(Boolean(res.data.hintUsed));
       })
       .catch((err) => console.error("Failed to start level timer", err));
 
@@ -434,17 +448,15 @@ function GamePage({ levelConfig }) {
                 progressPayload.summary?.currentLevelKey === levelConfig.progressKey
                   ? null
                   : progressPayload.summary?.currentLevelKey ?? null,
+              xpEarned: progressPayload.xpAward?.amount ?? 0,
+              totalXp: progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? 0,
+              xpBreakdown: progressPayload.xpAward?.breakdown ?? [],
             });
           })();
         }
 
         return;
       }
-
-      const nextCount = failedAttemptsRef.current + 1;
-      failedAttemptsRef.current = nextCount;
-      setFailedAttempts(nextCount);
-      if (nextCount === 3 && mergedLevelConfig?.hint) setShowHint(true);
 
       if (levelConfig?.progressKey) {
         axios
@@ -456,7 +468,9 @@ function GamePage({ levelConfig }) {
           .then((res) => {
             failedAttemptsRef.current = res.data.attemptCount;
             setFailedAttempts(res.data.attemptCount);
-            if (res.data.attemptCount >= 3 && mergedLevelConfig?.hint) setShowHint(true);
+            setHintUnlockThreshold(res.data.hintUnlockThreshold ?? 3);
+            setHintUnlocked(Boolean(res.data.hintUnlocked));
+            setHintUsed(Boolean(res.data.hintUsed));
           })
           .catch(() => {});
       }
@@ -539,6 +553,24 @@ function GamePage({ levelConfig }) {
 
   const exitButton = () => {
     navigate("/dashboard");
+  };
+
+  const openBasicHint = async () => {
+    if (!mergedLevelConfig?.hint || !hintUnlocked || !hintsEnabledRef.current) return;
+    try {
+      const response = await axios.post(
+        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/hint-use`),
+        {},
+        { headers: getAuthHeaders() },
+      );
+      setHintUsed(Boolean(response.data?.hintUsed));
+      setShowHint(true);
+    } catch (error) {
+      setResult({
+        type: "error",
+        message: error.response?.data?.message ?? "The hint could not be opened.",
+      });
+    }
   };
 
   const resetCode = () => {
@@ -911,6 +943,23 @@ function GamePage({ levelConfig }) {
                 size="sm"
                 onClick={runLevelCheck}
               />
+              {mergedLevelConfig?.hint && hintsEnabledRef.current ? (
+                <div className={styles.hintAccess} aria-live="polite">
+                  {hintUnlocked ? (
+                    <button type="button" className={styles.hintAccessButton} onClick={openBasicHint}>
+                      {hintUsed ? "Review free hint" : "Hint unlocked · Free"}
+                    </button>
+                  ) : (
+                    <span>
+                      {failedAttempts === 0
+                        ? `Hint available after ${hintUnlockThreshold} failed attempts.`
+                        : `${Math.max(0, hintUnlockThreshold - failedAttempts)} attempt${Math.max(0, hintUnlockThreshold - failedAttempts) === 1 ? "" : "s"} remaining before hint unlocks.`}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <span className={styles.hintDisabled}>Hints are disabled for this classroom.</span>
+              )}
             </div>
             <div className={resultClassName} role="status" aria-live="polite">{result.message}</div>
           </div>
@@ -998,7 +1047,16 @@ function GamePage({ levelConfig }) {
               <div className={styles.gradeScoreLabel}>/ 100</div>
             </div>
 
-            <div className={styles.gradeXp}>&#10022; +25 XP earned</div>
+            <div className={styles.gradeXp}>
+              &#10022; +{gradeModal.xpEarned} XP earned · {gradeModal.totalXp} total XP
+            </div>
+            {gradeModal.xpBreakdown?.length > 0 && (
+              <div className={styles.gradeXpBreakdown}>
+                {gradeModal.xpBreakdown.map((item) => (
+                  <span key={item.key}>+{item.amount} {item.label}</span>
+                ))}
+              </div>
+            )}
 
             <div className={styles.gradeStats}>
               <div className={styles.gradeStat}>

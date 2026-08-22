@@ -1,6 +1,6 @@
 # Teacher Dash Context
 
-Last updated: 2026-08-19
+Last updated: 2026-08-22
 
 ## Current Status
 
@@ -36,6 +36,10 @@ The teacher experience is connected to live backend data. Teachers can create cl
 - Teacher account settings for profile and password updates.
 - Per-level availability, ordering, unlock dates, due dates, hints, and grading deductions.
 - Classroom lessons and assignments with scheduling, attachments, audience targeting, submission policies, rubrics, grading, feedback, and version history.
+- Standalone instructional modules and module-associated lessons/assignments.
+- Optional external reference/video links and MIME-checked multimedia learning resources.
+- Teacher-configurable free-hint unlock threshold (1–10; default 3).
+- Aggregate classroom motivation-preference counts without exposing individual preferences.
 
 ## Backend Files
 
@@ -92,7 +96,7 @@ The teacher experience is connected to live backend data. Teachers can create cl
 - `GET /api/teacher/classrooms/:classroomId/level-overrides`
   - Returns the stored rows used to populate classroom level settings.
 - `PUT /api/teacher/classrooms/:classroomId/level-settings`
-  - Saves availability, order, scheduling, hints, and grading deductions for every playable level.
+  - Saves availability, order, scheduling, hint master switch/threshold, and grading deductions for every playable level.
 - `DELETE /api/teacher/classrooms/:classroomId/level-settings`
   - Restores the supported level settings to system defaults.
 - `PUT /api/auth/me/profile`
@@ -110,6 +114,10 @@ The teacher experience is connected to live backend data. Teachers can create cl
 2. Add a configurable par-time field only if grading requirements expand beyond the currently supported due-date controls.
 3. Keep curriculum text, starter code, dialogue, result messages, and validators system-managed unless a later product decision explicitly expands teacher editing.
 4. Add browser-level end-to-end coverage for the teacher dashboard; API ownership coverage now includes roster, classwork, lifecycle, profile, and password routes.
+
+## Intentional Authoring Boundary
+
+Teachers manage classrooms, modules, lessons, learning resources, publication, deadlines, hint access, and challenge conditions. SharpRunner developers manage Phaser maps, physics, collision data, validators, character logic, game events, and C# challenge implementation. Classwork is not a game builder.
 
 ## Suggested Next Focus
 

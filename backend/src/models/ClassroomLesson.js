@@ -15,8 +15,10 @@ const ClassroomLesson = sequelize.define("ClassroomLessons", {
     type: DataTypes.STRING(20),
     allowNull: false,
     defaultValue: "lesson",
-    validate: { isIn: [["lesson", "assignment"]] },
+    validate: { isIn: [["module", "lesson", "assignment"]] },
   },
+  moduleId: { type: DataTypes.INTEGER, allowNull: true },
+  externalUrl: { type: DataTypes.STRING(1000), allowNull: true },
   description: {
     type: DataTypes.TEXT,
     allowNull: true,

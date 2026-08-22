@@ -358,6 +358,7 @@ function TeacherDashboardPage() {
   };
   const classPerformance = dashData?.classPerformance ?? [];
   const topStudents = (dashData?.studentPerformance ?? []).slice(0, 5);
+  const preferenceCounts = dashData?.gamificationPreferenceCounts ?? {};
   const fallbackClassrooms = classPerformance.map((c) => ({
     id: c.classId,
     className: c.className,
@@ -440,6 +441,28 @@ function TeacherDashboardPage() {
                 {overview.activeStudentsToday}
               </div>
               <div className={styles.statSub}>students online now</div>
+            </div>
+          </div>
+
+          <div className={styles.card}>
+            <div className={styles.sectionHead}>
+              <div>
+                <div className={styles.sectionTitle}>Class motivation preferences</div>
+                <div className={styles.statSub}>Aggregate counts only; individual preferences are not exposed.</div>
+              </div>
+            </div>
+            <div className={styles.statRow}>
+              {[
+                ["Progress", preferenceCounts.progress],
+                ["Competition", preferenceCounts.competition],
+                ["Rewards", preferenceCounts.rewards],
+                ["Story", preferenceCounts.story],
+              ].map(([label, count]) => (
+                <div className={styles.statCard} key={label}>
+                  <div className={styles.statLabel}>{label}</div>
+                  <div className={styles.statVal}>{count ?? 0}</div>
+                </div>
+              ))}
             </div>
           </div>
 

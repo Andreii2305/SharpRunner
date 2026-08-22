@@ -297,13 +297,14 @@ function LessonCard({ lesson, onPlay, onLocked }) {
   );
 }
 
-function ClassroomContentCard({ lesson, navigate }) {
+function ClassroomContentCard({ lesson, navigate, moduleTitle = null }) {
   const isAssignment = lesson.contentType === "assignment";
+  const isModule = lesson.contentType === "module";
   const contentRoute = `${isAssignment ? "/assignment" : "/lesson"}/classroom/${lesson.id}`;
   return (
     <div className={`${styles.lessonCard} ${styles.cardActive} ${styles.classLessonCard}`} role="link" tabIndex={0} onClick={() => navigate(contentRoute)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") navigate(contentRoute); }}>
       <div className={`${styles.cardIcon} ${styles.iconWrapActive}`}><LessonIcon status="active" /></div>
-      <div className={styles.cardBody}><div className={styles.cardTop}><span className={styles.cardTitle}>{lesson.title}</span><span className={`${styles.cardBadge} ${styles.badgeActive}`}>{isAssignment ? "Assignment" : "Material"}</span></div><p className={styles.cardRegion}>Your classroom</p><p className={styles.cardDesc}>{lesson.description || "No additional instructions."}</p>{isAssignment && lesson.dueAt && <div className={styles.progressLabel}>Due {new Date(lesson.dueAt).toLocaleString()}</div>}{lesson.attachments?.length > 0 && <div className={styles.classAttachments}><span><FiPaperclip /> {lesson.attachments.length} attachment{lesson.attachments.length === 1 ? "" : "s"}</span></div>}</div>
+      <div className={styles.cardBody}><div className={styles.cardTop}><span className={styles.cardTitle}>{lesson.title}</span><span className={`${styles.cardBadge} ${styles.badgeActive}`}>{isAssignment ? "Assignment" : isModule ? "Module" : "Lesson"}</span></div><p className={styles.cardRegion}>{moduleTitle ? `Module: ${moduleTitle}` : "Your classroom"}</p><p className={styles.cardDesc}>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <div className={styles.progressLabel}>Due {new Date(lesson.dueAt).toLocaleString()}</div>}{lesson.attachments?.length > 0 && <div className={styles.classAttachments}><span><FiPaperclip /> {lesson.attachments.length} attachment{lesson.attachments.length === 1 ? "" : "s"}</span></div>}</div>
       <div className={styles.classLessonOpen}><FiArrowRight /></div>
     </div>
   );
@@ -380,6 +381,9 @@ function LessonSection() {
   const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;
   const teacherMaterials = classroomLessons.filter((lesson) => lesson.contentType !== "assignment");
   const teacherAssignments = classroomLessons.filter((lesson) => lesson.contentType === "assignment");
+  const moduleTitleById = new Map(
+    classroomLessons.filter((lesson) => lesson.contentType === "module").map((module) => [module.id, module.title]),
+  );
 
   return (
     <div className={styles.lessonContainer}>
@@ -416,9 +420,9 @@ function LessonSection() {
           ))}
         </div>
 
-        {teacherMaterials.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Materials from your teacher</div><div className={styles.sectionCount}>{teacherMaterials.length} lesson{teacherMaterials.length === 1 ? "" : "s"}</div></div><div className={styles.lessonsGrid}>{teacherMaterials.map((lesson) => <ClassroomContentCard key={`material-${lesson.id}`} lesson={lesson} navigate={navigate} />)}</div></>}
+        {teacherMaterials.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Modules and lessons from your teacher</div><div className={styles.sectionCount}>{teacherMaterials.length} item{teacherMaterials.length === 1 ? "" : "s"}</div></div><div className={styles.lessonsGrid}>{teacherMaterials.map((lesson) => <ClassroomContentCard key={`material-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(lesson.moduleId)} navigate={navigate} />)}</div></>}
 
-        {teacherAssignments.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Assignments and activities</div><div className={styles.sectionCount}>{teacherAssignments.length} assigned</div></div><div className={styles.lessonsGrid}>{teacherAssignments.map((lesson) => <ClassroomContentCard key={`assignment-${lesson.id}`} lesson={lesson} navigate={navigate} />)}</div></>}
+        {teacherAssignments.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Assignments and activities</div><div className={styles.sectionCount}>{teacherAssignments.length} assigned</div></div><div className={styles.lessonsGrid}>{teacherAssignments.map((lesson) => <ClassroomContentCard key={`assignment-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(lesson.moduleId)} navigate={navigate} />)}</div></>}
       </div>
     </div>
   );

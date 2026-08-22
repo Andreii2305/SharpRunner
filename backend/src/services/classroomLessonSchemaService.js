@@ -28,6 +28,8 @@ const ensureClassroomLessonsTable = async () => {
     },
     title: { type: DataTypes.STRING(160), allowNull: false },
     contentType: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "lesson" },
+    moduleId: { type: DataTypes.INTEGER, allowNull: true, references: { model: TABLE, key: "id" }, onDelete: "SET NULL" },
+    externalUrl: { type: DataTypes.STRING(1000), allowNull: true },
     description: { type: DataTypes.TEXT, allowNull: true },
     dueAt: { type: DataTypes.DATE, allowNull: true },
     isPublished: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
@@ -48,6 +50,8 @@ const ensureClassroomLessonsTable = async () => {
   if (lessonTableExists) {
     const lessonTable = await queryInterface.describeTable(TABLE);
     await addMissingColumn(queryInterface, TABLE, lessonTable, "contentType", { type: DataTypes.STRING(20), allowNull: false, defaultValue: "lesson" });
+    await addMissingColumn(queryInterface, TABLE, lessonTable, "moduleId", { type: DataTypes.INTEGER, allowNull: true });
+    await addMissingColumn(queryInterface, TABLE, lessonTable, "externalUrl", { type: DataTypes.STRING(1000), allowNull: true });
     await addMissingColumn(queryInterface, TABLE, lessonTable, "publishAt", { type: DataTypes.DATE, allowNull: true });
     await addMissingColumn(queryInterface, TABLE, lessonTable, "allowSubmissions", { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false });
     await addMissingColumn(queryInterface, TABLE, lessonTable, "maxScore", { type: DataTypes.INTEGER, allowNull: false, defaultValue: 100 });

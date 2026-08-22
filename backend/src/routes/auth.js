@@ -17,6 +17,10 @@ const {
   verifyEmailToken,
 } = require("../services/emailVerificationService");
 const { createRateLimit } = require("../middleware/rateLimit");
+const {
+  GAMIFICATION_PREFERENCES,
+  LEARNING_GAME_INTERESTS,
+} = require("../constants/gamificationConfig");
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -718,13 +722,42 @@ router.post("/bootstrap-admin", bootstrapRateLimit, async (req, res) => {
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findByPk(req.userId, {
-      attributes: ["id", "firstName", "lastName", "username", "email", "role", "status"],
+      attributes: ["id", "firstName", "lastName", "username", "email", "role", "status", "xpTotal", "gamificationPreference", "learningGameInterest"],
     });
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({ user });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/me/gamification-preferences", authMiddleware, async (req, res) => {
+  try {
+    const preference = normalizeString(req.body?.gamificationPreference).toLowerCase();
+    const interest = normalizeString(req.body?.learningGameInterest).toLowerCase();
+    if (preference && !GAMIFICATION_PREFERENCES.includes(preference)) {
+      return res.status(400).json({ message: "Unknown gamification preference" });
+    }
+    if (interest && !LEARNING_GAME_INTERESTS.includes(interest)) {
+      return res.status(400).json({ message: "Unknown learning-game interest" });
+    }
+    const user = await User.findByPk(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.role !== "student") {
+      return res.status(403).json({ message: "Gamification preferences are available to students" });
+    }
+    user.gamificationPreference = preference || null;
+    user.learningGameInterest = interest || null;
+    await user.save();
+    return res.json({
+      message: "Motivation preferences updated",
+      gamificationPreference: user.gamificationPreference,
+      learningGameInterest: user.learningGameInterest,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

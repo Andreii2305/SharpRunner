@@ -38,11 +38,12 @@ test("dangerous upload extensions and executable signatures are rejected", async
 });
 
 test("the latest RLS migration covers every Sequelize model table", async () => {
-  const migrationPath = path.resolve(
-    __dirname,
-    "../../supabase/migrations/20260819000000_protect_all_backend_tables.sql",
-  );
-  const migration = await fs.promises.readFile(migrationPath, "utf8");
+  const migrationDirectory = path.resolve(__dirname, "../../supabase/migrations");
+  const migrationFiles = (await fs.promises.readdir(migrationDirectory))
+    .filter((filename) => filename.endsWith(".sql"));
+  const migration = (await Promise.all(migrationFiles.map((filename) =>
+    fs.promises.readFile(path.join(migrationDirectory, filename), "utf8")
+  ))).join("\n");
   const requiredTables = [
     ...new Set(
       Object.values(models)
@@ -53,7 +54,7 @@ test("the latest RLS migration covers every Sequelize model table", async () => 
   ];
 
   for (const table of requiredTables) {
-    assert.match(migration, new RegExp(`'${table}'`), `${table} must be protected`);
+    assert.match(migration, new RegExp(`["']${table}["']`), `${table} must be protected`);
   }
 });
 

@@ -10,10 +10,13 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 
 ## Current Status
 
-- The backend progress model supports 4 lessons with 10 levels each, for 40 total progress rows per student.
-- The playable game currently exposes Lesson 1 levels 1-5.
+- The backend curriculum contains 30 progress rows: tutorial, Arrays, Functions/Methods, Functions with Arrays, and the final challenge.
+- The playable game exposes 29 routes covering levels 1–30 (the combined Functions scene covers curriculum levels 24–25).
 - Student progress, attempts, time spent, final score, and grade label are saved through the backend.
 - Teachers can manage classrooms, view student progress, post announcements, manage classwork, and configure the currently supported per-classroom level settings.
+- Teachers can organize secure classroom modules, lessons, assignments, external links, and multimedia resources. They cannot edit Phaser levels or validators.
+- Failed attempts unlock a free basic hint at the teacher-configured threshold (three by default).
+- First completions award server-owned XP and bonuses separately from academic scores.
 - Admins can manage users, create teacher accounts, and view admin activity logs.
 - Developer tools can generate one-time admin invite codes.
 
@@ -27,6 +30,9 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Access the dashboard, lesson map, playable levels, leaderboard, announcements, and saved grades.
 - Complete coding challenges through a Monaco-based C# editor.
 - Receive a saved final score and grade after level completion.
+- Earn one-time XP for first completion, first-attempt success, and no-hint success.
+- Select optional motivation and learning-game preferences from the dashboard.
+- Revisit available teacher content and replay completed levels without overwriting the original score or farming XP.
 
 ### Teacher Experience
 
@@ -36,6 +42,8 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Post classroom announcements.
 - View per-student level scores, attempts, and time spent.
 - Configure per-classroom level availability, order, unlock and due dates, hints, and grading deductions.
+- Configure the hint unlock threshold from 1–10 failed attempts (default 3).
+- Create instructional modules and associate lessons/assignments with optional secure attachments and external links.
 - Remove students from a roster without deleting their saved progress.
 - Archive/reactivate classrooms and rotate compromised class codes.
 - Update teacher profile details and password from `/teacher/settings`.
@@ -310,11 +318,12 @@ or provider backup.
 
 ## Current Priorities
 
-1. Finish Lesson 1 levels 6-10 so the first lesson becomes a complete playable module.
-2. Keep backend grading as the single source of truth for scores shown in the game, map, dashboard, and teacher pages.
-3. Run the manual/demo QA checklist on each presentation build.
-4. Expand API coverage with disposable PostgreSQL-backed migration and transaction tests.
-5. Consider frontend code-splitting because the production bundle is currently large.
+1. Keep backend grading and XP ledgers as the sources of truth for scores and rewards.
+2. Run the manual/demo QA checklist on each presentation build.
+3. Expand API coverage with disposable PostgreSQL-backed migration and transaction tests.
+4. Consider frontend code-splitting because the production bundle is currently large.
+
+See `docs/PANEL_SYSTEM_RECOMMENDATIONS.md` for panel recommendation traceability and the teacher/developer architectural boundary.
 
 ## Developer
 

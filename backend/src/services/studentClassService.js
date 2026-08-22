@@ -3,7 +3,6 @@ const ClassroomMembership = require("../models/ClassroomMembership");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
 const UserProgress = require("../models/UserProgress");
-const { computeXpFromTotalPercent } = require("./progressService");
 
 const formatDisplayName = (user) => {
   if (!user) {
@@ -98,7 +97,7 @@ const buildClassroomLeaderboard = async ({
       id: { [Op.in]: studentIds },
       role: "student",
     },
-    attributes: ["id", "firstName", "lastName", "username", "updatedAt"],
+    attributes: ["id", "firstName", "lastName", "username", "xpTotal", "updatedAt"],
   });
 
   const validStudentIds = students.map((student) => student.id);
@@ -159,7 +158,7 @@ const buildClassroomLeaderboard = async ({
         userId: student.id,
         name: formatDisplayName(student),
         username: student.username,
-        xp: computeXpFromTotalPercent(stats.totalPercent),
+        xp: Math.max(0, Number(student.xpTotal) || 0),
         levelsCleared: stats.levelsCleared,
         lastActivityAt: lastActivityAt > 0 ? new Date(lastActivityAt).toISOString() : null,
       };
@@ -208,4 +207,3 @@ module.exports = {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
 };
-

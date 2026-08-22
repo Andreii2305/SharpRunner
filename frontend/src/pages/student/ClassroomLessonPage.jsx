@@ -209,6 +209,9 @@ function ClassroomLessonPage() {
               <section className={styles.lessonContent}>
                 <div className={styles.sectionLabel}>{lesson.contentType === "assignment" ? "Assignment instructions" : "Lesson content"}</div>
                 <div className={styles.instructions}>{lesson.description || "No additional instructions were provided."}</div>
+                {lesson.externalUrl && (
+                  <p><a href={lesson.externalUrl} target="_blank" rel="noreferrer">Open external learning resource</a></p>
+                )}
 
                 {lesson.attachments?.some((attachment) => isPreviewable(attachment.mimeType, attachment.originalName)) && (
                   <div className={styles.previewSection}>

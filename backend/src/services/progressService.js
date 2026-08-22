@@ -8,7 +8,6 @@ const LEVEL_KEY_PATTERN = /^(.*)-level-(\d+)$/;
 const DEFAULT_LEVEL_KEY_SET = new Set(
   DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey)
 );
-const MAX_PLAYER_XP = 1000;
 const XP_LEVEL_STEP = 250;
 const LESSON_TITLE_BY_KEY = new Map(
   LESSON_DEFINITIONS.map((lesson) => [lesson.lessonKey, lesson.lessonTitle])
@@ -61,6 +60,12 @@ const normalizeLevelRows = (rows) =>
         timeSpentSeconds: row.timeSpentSeconds ?? 0,
         finalScore,
         grade: computeGradeFromScore(finalScore),
+        hintUsed: Boolean(row.hintUsed),
+        hintUsedAt: row.hintUsedAt ?? null,
+        hintType: row.hintType ?? null,
+        attemptCountAtHintUnlock: row.attemptCountAtHintUnlock ?? null,
+        xpAwarded: Math.max(0, Number(row.xpAwarded) || 0),
+        xpAwardedAt: row.xpAwardedAt ?? null,
       };
     });
 
@@ -70,16 +75,12 @@ const computeXpFromTotalPercent = (totalPercent) => {
     return 0;
   }
 
-  return Math.max(0, Math.min(MAX_PLAYER_XP, Math.round(parsed / 4)));
+  return Math.max(0, Math.round(parsed / 4));
 };
 
 const computeXpToNextLevel = (xp) => {
-  if (xp >= MAX_PLAYER_XP) {
-    return MAX_PLAYER_XP;
-  }
-
   const nextThreshold = Math.ceil((xp + 1) / XP_LEVEL_STEP) * XP_LEVEL_STEP;
-  return Math.max(XP_LEVEL_STEP, Math.min(MAX_PLAYER_XP, nextThreshold));
+  return Math.max(XP_LEVEL_STEP, nextThreshold);
 };
 
 const formatCurrentLevelName = (lessonKey, levelNumber) => {
@@ -134,7 +135,10 @@ const ensureProgressRowsForUser = async (userId) => {
   return rows.filter((row) => DEFAULT_LEVEL_KEY_SET.has(row.levelKey));
 };
 
-const buildProgressSummary = (rows, { classRank = null, classSize = null } = {}) => {
+const buildProgressSummary = (
+  rows,
+  { classRank = null, classSize = null, xpTotal = null } = {},
+) => {
   const normalizedRows = normalizeLevelRows(rows);
   const totalLevels = normalizedRows.length;
   const completedLevels = normalizedRows.filter((row) => row.isCompleted).length;
@@ -198,7 +202,9 @@ const buildProgressSummary = (rows, { classRank = null, classSize = null } = {})
   );
   const overallProgress =
     totalLevels === 0 ? 0 : Math.round(totalPercent / totalLevels);
-  const xp = computeXpFromTotalPercent(totalPercent);
+  const xp = Number.isFinite(Number(xpTotal))
+    ? Math.max(0, Number(xpTotal))
+    : computeXpFromTotalPercent(totalPercent);
   const xpToNextLevel = computeXpToNextLevel(xp);
   const currentLevelHint = currentLevelName
     ? `Continue ${currentLevelName} to keep progressing.`
@@ -221,7 +227,10 @@ const buildProgressSummary = (rows, { classRank = null, classSize = null } = {})
       xpToNextLevel,
       classRank,
       classSize,
-      totalTimePlayed: null,
+      totalTimePlayed: normalizedRows.reduce(
+        (sum, row) => sum + (Number(row.timeSpentSeconds) || 0),
+        0,
+      ),
       commonMistakes: [],
     },
     lessons: lessons.map((lesson) => ({

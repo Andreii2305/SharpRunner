@@ -17,6 +17,8 @@ run without PostgreSQL and never modifies development or production data.
 - Classroom joining and membership creation
 - Rejection of forged level completion
 - Acceptance and backend scoring of valid level code
+- Three-failure hint unlock and persisted basic-hint use
+- One-time first-completion XP and bonus breakdown
 - Student rejection from teacher routes
 - Teacher classroom creation and ownership
 - Admin status changes and audit-log creation
@@ -37,3 +39,8 @@ or driver behavior. That requires a separate disposable PostgreSQL database.
 Use a dedicated `TEST_DATABASE_URL`; never reuse a development or production
 connection string. Database-backed tests are intentionally not enabled until a
 disposable database is provisioned for local development and CI.
+
+The XP ledger uses a PostgreSQL transaction, row lock, non-negative balance
+constraint, and unique user/kind/reference key. Fixture tests verify the HTTP
+reward result; concurrent-lock behavior belongs in the future disposable-
+database suite.

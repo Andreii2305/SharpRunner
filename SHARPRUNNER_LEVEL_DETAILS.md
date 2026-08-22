@@ -1,4 +1,6 @@
-# SharpRunner — Level Details (All 40 Levels)
+# SharpRunner — Level Details (Legacy 40-Level Design Reference)
+
+> Status note (2026-08-22): This file preserves the original 40-level concept. The implemented application now uses the 30-row Filipino myth curriculum documented in `NEW_CURRICULUM_STORY_PLAN.md`, `LEVELING_CONTEXT.md`, and the live centralized level configs. Do not use this legacy document as the current route/count source.
 
 > Last updated: 2026-04-05
 > Game: SharpRunner — A Gamified C# Learning Platform

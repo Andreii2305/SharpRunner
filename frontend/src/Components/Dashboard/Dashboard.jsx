@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
-import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth";
+import { buildApiUrl, getAuthHeaders, getUser, setUser as persistUser } from "../../utils/auth";
 import styles from "./Dashboard.module.css";
 
 /* ─── Region config ───────────────────────────────────────────── */
@@ -264,7 +264,7 @@ function LeaderboardRow({ rank, name, xp, levels, isMe }) {
 /* ─── Main component ──────────────────────────────────────────── */
 function StudentDashboardPage() {
   const navigate = useNavigate();
-  const user = getUser();
+  const [user, setProfileUser] = useState(() => getUser());
 
   const [progressData, setProgressData] = useState(null);
   const [classroomData, setClassroomData] = useState(null);
@@ -280,19 +280,25 @@ function StudentDashboardPage() {
   const [announcementActionError, setAnnouncementActionError] = useState("");
   const [notificationActionError, setNotificationActionError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [preferenceForm, setPreferenceForm] = useState(() => ({
+    gamificationPreference: getUser()?.gamificationPreference ?? "",
+    learningGameInterest: getUser()?.learningGameInterest ?? "",
+  }));
+  const [preferenceStatus, setPreferenceStatus] = useState("");
 
   useEffect(() => {
     let isMounted = true;
     const h = { headers: getAuthHeaders() };
 
     const fetchAll = async () => {
-      const [progressRes, classroomRes, lbRes, annRes, notifRes] =
+      const [progressRes, classroomRes, lbRes, annRes, notifRes, profileRes] =
         await Promise.allSettled([
           axios.get(buildApiUrl("/api/progress/me"), h),
           axios.get(buildApiUrl("/api/classrooms/me"), h),
           axios.get(buildApiUrl("/api/classrooms/leaderboard"), h),
           axios.get(buildApiUrl("/api/classrooms/announcements"), h),
           axios.get(buildApiUrl("/api/notifications/me"), h),
+          axios.get(buildApiUrl("/api/auth/me"), h),
         ]);
 
       if (!isMounted) return;
@@ -312,6 +318,15 @@ function StudentDashboardPage() {
         setAnnouncements(annRes.value.data?.announcements ?? []);
       if (notifRes.status === "fulfilled")
         setNotifications(notifRes.value.data?.notifications ?? []);
+      if (profileRes.status === "fulfilled" && profileRes.value.data?.user) {
+        const loadedUser = profileRes.value.data.user;
+        setProfileUser(loadedUser);
+        persistUser(loadedUser);
+        setPreferenceForm({
+          gamificationPreference: loadedUser.gamificationPreference ?? "",
+          learningGameInterest: loadedUser.learningGameInterest ?? "",
+        });
+      }
 
       setIsLoading(false);
     };
@@ -321,6 +336,23 @@ function StudentDashboardPage() {
       isMounted = false;
     };
   }, []);
+
+  const savePreferences = async () => {
+    setPreferenceStatus("Saving…");
+    try {
+      const response = await axios.put(
+        buildApiUrl("/api/auth/me/gamification-preferences"),
+        preferenceForm,
+        { headers: getAuthHeaders() },
+      );
+      const nextUser = { ...user, ...response.data };
+      setProfileUser(nextUser);
+      persistUser(nextUser);
+      setPreferenceStatus("Saved");
+    } catch (error) {
+      setPreferenceStatus(error.response?.data?.message ?? "Could not save preferences");
+    }
+  };
 
 
   const markAnnouncementAsViewed = async (announcement) => {
@@ -437,6 +469,12 @@ function StudentDashboardPage() {
   const classSize =
     progressData?.summary?.classSize ?? leaderboardMeta.classSize ?? null;
   const totalTimePlayed = progressData?.summary?.totalTimePlayed ?? "—";
+  const motivationMessage = {
+    progress: `${totalCleared} levels completed · ${Math.round(overallPct)}% of the journey`,
+    competition: myRankDisplay ? `You are #${myRankDisplay} in your classroom.` : "Complete a level to join the classroom ranking.",
+    rewards: `${xpCurrent.toLocaleString()} XP earned from first completions and bonuses.`,
+    story: `Continue ${currentLevelLabel} to explore the next part of the story.`,
+  }[user?.gamificationPreference] ?? "Choose what motivates you so SharpRunner can emphasize the right progress feedback.";
 
   const myUserId = user?.id;
   const myRank =
@@ -559,6 +597,35 @@ function StudentDashboardPage() {
             </button>
           </div>
         </header>
+
+        <section className={styles.preferencePanel} aria-label="Gamification preferences">
+          <div>
+            <strong>Your motivation focus</strong>
+            <span>{motivationMessage}</span>
+          </div>
+          <label>
+            Motivation
+            <select value={preferenceForm.gamificationPreference} onChange={(event) => setPreferenceForm((current) => ({ ...current, gamificationPreference: event.target.value }))}>
+              <option value="">Choose optionally</option>
+              <option value="progress">Progress</option>
+              <option value="competition">Competition</option>
+              <option value="rewards">Achievement / rewards</option>
+              <option value="story">Story / exploration</option>
+            </select>
+          </label>
+          <label>
+            Game interest
+            <select value={preferenceForm.learningGameInterest} onChange={(event) => setPreferenceForm((current) => ({ ...current, learningGameInterest: event.target.value }))}>
+              <option value="">Choose optionally</option>
+              <option value="challenges">Challenges</option>
+              <option value="exploration">Exploration</option>
+              <option value="competition">Competition</option>
+              <option value="rewards">Rewards</option>
+            </select>
+          </label>
+          <button type="button" onClick={savePreferences}>Save</button>
+          {preferenceStatus && <small role="status">{preferenceStatus}</small>}
+        </section>
 
         {/* ── STAT CARDS ROW ── */}
         <div className={styles.statRow}>

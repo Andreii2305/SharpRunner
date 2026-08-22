@@ -1,5 +1,7 @@
 # SharpRunner Curriculum Migration Plan
 
+> Status note (2026-08-22): The 30-row target curriculum and lesson-local routes described here are now active. This file remains useful as migration rationale; use `LEVELING_CONTEXT.md`, live configs, and `docs/PANEL_SYSTEM_RECOMMENDATIONS.md` for current behavior.
+
 Last updated: 2026-06-01
 
 ## Purpose

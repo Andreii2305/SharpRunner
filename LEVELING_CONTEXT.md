@@ -1,12 +1,12 @@
 # Leveling Context
 
-Last updated: 2026-05-27
+Last updated: 2026-08-22
 
 ## Current Direction
 
 SharpRunner uses a level-driven architecture. Each playable level is built from a config, a validator, game events, and a Phaser scene.
 
-The current backend progress model still supports the older 4 lessons with 10 levels each, but the frontend currently has playable configs/scenes for Lesson 1 levels 1-5 only.
+The backend now uses the 30-row tutorial/Arrays/Functions/Functions-with-Arrays/final curriculum. The frontend exposes 29 playable routes; one Functions scene covers curriculum levels 24–25.
 
 A new curriculum/story plan is now being reviewed in `NEW_CURRICULUM_STORY_PLAN.md`. The proposed direction keeps the first 5 playable levels as a tutorial/prologue, then adds a 25-level Filipino myth horror main story focused on Arrays, Functions/Methods, and Functions/Methods with Arrays.
 
@@ -46,7 +46,15 @@ Backend default progress rows are defined in:
 - `frontend/src/pages/game/scenes/`
   - Phaser scenes for current levels.
 
-## Current Playable Levels
+## Current Playable Curriculum
+
+- Tutorial / Prologue: 5 levels.
+- Arrays: 8 levels.
+- Functions and Methods: 12 progress rows across 11 routes.
+- Functions with Arrays: 4 levels.
+- Final Bakunawa challenge: 1 level.
+
+The legacy five-level descriptions below describe only the tutorial/prologue.
 
 ### Level 1 - The Awakening
 
@@ -95,6 +103,10 @@ Backend default progress rows are defined in:
 - Backend computes and stores `finalScore`.
 - Backend derives `grade` from `finalScore` in the progress payload.
 - The game completion modal uses the backend-saved score and grade.
+- The default hint unlock is three failed attempts; teachers may configure 1–10 or disable hints.
+- Hint use metadata and one-time first-completion XP are saved centrally.
+- XP is separate from score. Completion is +20 XP, first attempt +10, and no hint +5.
+- Replay remains available but does not overwrite the original score/attempt record or award XP again.
 
 Relevant files:
 
@@ -111,6 +123,7 @@ Teachers can currently configure these per-classroom level settings:
 - unlock date and time
 - due date and time
 - hints enabled/disabled
+- hint unlock threshold
 - wrong-attempt and late-day grading deductions
 
 The current teacher UI does not edit lesson text, goals, instructions, starter code, dialogue, result messages, or validator configuration. Although the backend model retains older content-override columns, they are not supported teacher-facing functionality.
@@ -123,13 +136,10 @@ Relevant files:
 
 ## Pending Leveling Work
 
-1. Build Lesson 1 levels 6-10.
-2. Decide whether Level 10 is a boss level.
-3. Add map art/node behavior for completed Lesson 1.
-4. Expand validators as levels become more advanced.
-5. Add command-queue execution if the game needs direct method-call animation.
-6. Treat curriculum text, dialogue, result messages, starter code, and validators as system-managed unless the product scope is explicitly expanded later.
-7. Add full level content for Lessons 2-4 after Lesson 1 is complete.
+1. Add disposable PostgreSQL tests for migration constraints and XP transaction locking.
+2. Improve academic score breakdown presentation.
+3. Reduce the production Phaser/config bundle size.
+4. Keep curriculum text, dialogue, starter code, maps, and validators system-managed.
 
 ## Suggested Next Focus
 

@@ -157,6 +157,8 @@ const sanitizeClassroomLesson = (lesson) => ({
   classroomId: lesson.classroomId,
   title: lesson.title,
   contentType: lesson.contentType,
+  moduleId: lesson.moduleId ?? null,
+  externalUrl: lesson.externalUrl ?? null,
   description: lesson.description,
   dueAt: lesson.dueAt,
   isPublished: lesson.isPublished,
@@ -179,7 +181,10 @@ const sanitizeClassroomLesson = (lesson) => ({
 });
 
 const parseLessonOptions = (body) => {
-  const contentType = body?.contentType === "assignment" ? "assignment" : "lesson";
+  const requestedType = normalizeString(body?.contentType).toLowerCase();
+  const contentType = ["module", "lesson", "assignment"].includes(requestedType)
+    ? requestedType
+    : "lesson";
   const isPublished = body?.isPublished === undefined ? true : String(body.isPublished) === "true";
   const allowSubmissions = contentType === "assignment";
   let maxScore = Math.min(1000, Math.max(1, Number.parseInt(body?.maxScore, 10) || 100));
@@ -187,6 +192,14 @@ const parseLessonOptions = (body) => {
   if (body?.publishAt) {
     publishAt = new Date(body.publishAt);
     if (Number.isNaN(publishAt.getTime())) throw new Error("Publish date must be valid");
+  }
+  const moduleId = contentType === "module" ? null : parseInteger(body?.moduleId);
+  const externalUrl = normalizeString(body?.externalUrl);
+  if (externalUrl) {
+    let parsedUrl;
+    try { parsedUrl = new URL(externalUrl); } catch { throw new Error("External link must be a valid URL"); }
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) throw new Error("External link must use http or https");
+    if (externalUrl.length > 1000) throw new Error("External link must be 1000 characters or fewer");
   }
   const parseArray = (value) => {
     if (Array.isArray(value)) return value;
@@ -200,7 +213,7 @@ const parseLessonOptions = (body) => {
   let feedbackReleaseAt = null;
   if (body?.feedbackReleaseAt) { feedbackReleaseAt = new Date(body.feedbackReleaseAt); if (Number.isNaN(feedbackReleaseAt.getTime())) throw new Error("Feedback release date must be valid"); }
   return {
-    contentType, isPublished, allowSubmissions, maxScore, publishAt, rubric, assignedStudentIds, allowedFileTypes,
+    contentType, moduleId, externalUrl: externalUrl || null, isPublished, allowSubmissions, maxScore, publishAt, rubric, assignedStudentIds, allowedFileTypes,
     feedbackReleaseAt: contentType === "assignment" ? feedbackReleaseAt : null,
     allowLateSubmissions: contentType === "assignment" ? String(body?.allowLateSubmissions) !== "false" : true,
     maxAttempts: contentType === "assignment" ? Math.min(100, Math.max(0, Number.parseInt(body?.maxAttempts, 10) || 0)) : 0,
@@ -211,7 +224,7 @@ const parseLessonOptions = (body) => {
 };
 
 const lessonSnapshot = (lesson) => ({
-  title: lesson.title, description: lesson.description, contentType: lesson.contentType, dueAt: lesson.dueAt,
+  title: lesson.title, description: lesson.description, contentType: lesson.contentType, moduleId: lesson.moduleId, externalUrl: lesson.externalUrl, dueAt: lesson.dueAt,
   isPublished: lesson.isPublished, publishAt: lesson.publishAt, maxScore: lesson.maxScore, rubric: lesson.rubric,
   feedbackReleaseAt: lesson.feedbackReleaseAt, allowLateSubmissions: lesson.allowLateSubmissions, maxAttempts: lesson.maxAttempts,
   allowedFileTypes: lesson.allowedFileTypes, maxFileSizeMb: lesson.maxFileSizeMb, assignedStudentIds: lesson.assignedStudentIds,
@@ -265,6 +278,7 @@ const buildDashboardPayload = async (req) => {
       },
       classPerformance: [],
       studentPerformance: [],
+      gamificationPreferenceCounts: { progress: 0, competition: 0, rewards: 0, story: 0, unspecified: 0 },
       lessonInsights: {
         mostCompletedLesson: null,
         mostDifficultLesson: null,
@@ -304,6 +318,7 @@ const buildDashboardPayload = async (req) => {
           "status",
           "isPlayingGame",
           "lastGameHeartbeatAt",
+          "gamificationPreference",
           "createdAt",
           "updatedAt",
         ],
@@ -543,6 +558,20 @@ const buildDashboardPayload = async (req) => {
       ...student,
     }));
 
+  const gamificationPreferenceCounts = {
+    progress: 0,
+    competition: 0,
+    rewards: 0,
+    story: 0,
+    unspecified: 0,
+  };
+  for (const student of students) {
+    const key = Object.hasOwn(gamificationPreferenceCounts, student.gamificationPreference)
+      ? student.gamificationPreference
+      : "unspecified";
+    gamificationPreferenceCounts[key] += 1;
+  }
+
   const completionByLesson = Array.from(lessonStatsByKey.values()).map((lessonStats) => {
     const completionPercent =
       lessonStats.progressCount === 0
@@ -576,6 +605,7 @@ const buildDashboardPayload = async (req) => {
     },
     classPerformance,
     studentPerformance: rankedStudents,
+    gamificationPreferenceCounts,
     lessonInsights: {
       mostCompletedLesson: hasAnyLessonProgress ? sortedByCompletion[0] : null,
       mostDifficultLesson: hasAnyLessonProgress ? sortedByDifficulty[0] : null,
@@ -618,7 +648,7 @@ router.get("/students/:studentId/grades", async (req, res) => {
 
     const rows = await UserProgress.findAll({
       where: { userId: studentId, levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS } },
-      attributes: ["levelKey", "orderIndex", "isCompleted", "attemptCount", "timeSpentSeconds", "finalScore", "completedAt"],
+      attributes: ["levelKey", "orderIndex", "isCompleted", "attemptCount", "timeSpentSeconds", "finalScore", "completedAt", "hintUsed", "xpAwarded"],
       order: [["orderIndex", "ASC"]],
     });
 
@@ -635,6 +665,8 @@ router.get("/students/:studentId/grades", async (req, res) => {
         timeSpentSeconds: r.timeSpentSeconds,
         finalScore: r.finalScore,
         completedAt: r.completedAt,
+        hintUsed: Boolean(r.hintUsed),
+        xpAwarded: Number(r.xpAwarded) || 0,
       })),
     });
   } catch (error) {
@@ -1342,11 +1374,15 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
       const audienceCount = await ClassroomMembership.count({ where: { classroomId, studentId: { [Op.in]: options.assignedStudentIds }, status: "active" } });
       if (audienceCount !== options.assignedStudentIds.length) { await removeUploadedFiles(req.files); return res.status(400).json({ message: "Assignment audience contains students outside this class" }); }
     }
+    if (options.moduleId) {
+      const moduleRow = await ClassroomLesson.findOne({ where: { id: options.moduleId, classroomId, contentType: "module" }, attributes: ["id"] });
+      if (!moduleRow) { await removeUploadedFiles(req.files); return res.status(400).json({ message: "Selected module does not belong to this classroom" }); }
+    }
     const lesson = await ClassroomLesson.create({
       classroomId,
       title,
       description: description || null,
-      dueAt: options.contentType === "assignment" ? dueAt : null,
+      dueAt,
       ...options,
       displayOrder: await ClassroomLesson.count({ where: { classroomId } }),
     });
@@ -1553,9 +1589,15 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
       const audienceCount = await ClassroomMembership.count({ where: { classroomId, studentId: { [Op.in]: options.assignedStudentIds }, status: "active" } });
       if (audienceCount !== options.assignedStudentIds.length) return res.status(400).json({ message: "Assignment audience contains students outside this class" });
     }
+    if (options.moduleId) {
+      const moduleRow = await ClassroomLesson.findOne({ where: { id: options.moduleId, classroomId, contentType: "module" }, attributes: ["id"] });
+      if (!moduleRow || moduleRow.id === lesson.id) return res.status(400).json({ message: "Selected module does not belong to this classroom" });
+    }
     lesson.isPublished = options.isPublished;
     lesson.contentType = options.contentType;
-    lesson.dueAt = options.contentType === "assignment" ? dueAt : null;
+    lesson.dueAt = dueAt;
+    lesson.moduleId = options.moduleId;
+    lesson.externalUrl = options.externalUrl;
     lesson.publishAt = options.publishAt;
     lesson.allowSubmissions = options.allowSubmissions;
     lesson.maxScore = options.maxScore;
@@ -1776,6 +1818,13 @@ router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
       }
       return Math.round(number * 100) / 100;
     };
+    const parseHintThreshold = (value) => {
+      const number = value === "" || value == null ? 3 : Number(value);
+      if (!Number.isInteger(number) || number < 1 || number > 10) {
+        throw new Error("hintUnlockThreshold must be an integer between 1 and 10");
+      }
+      return number;
+    };
 
     try {
       settings.forEach((setting, index) => {
@@ -1791,6 +1840,7 @@ router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
           unlockAt: parseOptionalDate(setting.unlockAt, "unlockAt"),
           dueAt: parseOptionalDate(setting.dueAt, "dueAt"),
           hintsEnabled: setting.hintsEnabled !== false,
+          hintUnlockThreshold: parseHintThreshold(setting.hintUnlockThreshold),
           wrongAttemptDeduction: parseDeduction(
             setting.wrongAttemptDeduction,
             "wrongAttemptDeduction",

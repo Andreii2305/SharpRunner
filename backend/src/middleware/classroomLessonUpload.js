@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
-const { isDangerousFilename, scanFile } = require("../services/fileSecurityService");
+const { isDangerousFilename, isAllowedLearningResource, scanFile } = require("../services/fileSecurityService");
 const lessonUploadPolicy = require("../config/lessonUploadPolicy");
 
 const uploadDirectory = process.env.LESSON_UPLOAD_DIR
@@ -23,7 +23,10 @@ const maxUploadBytes = lessonUploadPolicy.maxFileSizeBytes;
 
 const upload = multer({
   storage,
-  fileFilter: (_req, file, callback) => callback(isDangerousFilename(file.originalname) ? new multer.MulterError("BLOCKED_FILE_TYPE") : null, !isDangerousFilename(file.originalname)),
+  fileFilter: (_req, file, callback) => {
+    const blocked = isDangerousFilename(file.originalname) || !isAllowedLearningResource(file);
+    callback(blocked ? new multer.MulterError("BLOCKED_FILE_TYPE") : null, !blocked);
+  },
   limits: {
     files: maxUploadFiles,
     fileSize: maxUploadBytes,
@@ -43,7 +46,7 @@ const uploadLessonFiles = (req, res, next) => {
       } catch (scanError) { await removeUploadedFiles(req.files); return res.status(503).json({ message: scanError.message }); }
     }
     await removeUploadedFiles(req.files);
-    const message = error.code === "BLOCKED_FILE_TYPE" ? "Executable and script files are not allowed" : error.code === "LIMIT_FILE_SIZE"
+    const message = error.code === "BLOCKED_FILE_TYPE" ? "Use a supported PDF, image, Office document, text, audio, or small video resource with a matching file type" : error.code === "LIMIT_FILE_SIZE"
       ? `Each attachment must be ${maxUploadBytes / 1024 / 1024} MB or smaller`
       : error.code === "LIMIT_FILE_COUNT"
         ? `You can upload up to ${maxUploadFiles} files at a time`

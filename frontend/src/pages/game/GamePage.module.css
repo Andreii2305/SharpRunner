@@ -354,7 +354,31 @@
   padding: 12px 20px;
   border-top: 1px solid #e2e8f0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.hintAccess,
+.hintDisabled {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.hintAccessButton {
+  border: 1px solid #d97706;
+  border-radius: 999px;
+  background: #fffbeb;
+  color: #92400e;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 7px 12px;
+}
+
+.hintAccessButton:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
 }
 
 .resultBanner {
@@ -710,6 +734,15 @@
   border-radius: 20px;
   padding: 5px 18px;
   letter-spacing: 0.04em;
+}
+
+.gradeXpBreakdown {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 12px;
+  color: #cbd5e1;
+  font-size: 0.76rem;
 }
 
 .finalCompletionCopy {

@@ -75,7 +75,11 @@ Only when account registration is part of the demo:
 - [ ] The joined classroom, teacher content, and announcements are visible to the student.
 - [ ] The lesson map opens the expected unlocked level and does not unlock later levels early.
 - [ ] Submitting invalid C# keeps the level incomplete and shows useful feedback.
+- [ ] Fail the same incomplete level once and confirm two attempts remain before the default hint unlock.
+- [ ] Fail a second time and confirm one attempt remains.
+- [ ] Fail a third time and confirm the hint unlocks without refresh; open it and refresh to confirm it remains reviewable.
 - [ ] Submitting valid C# completes the level and shows the backend-issued score and grade.
+- [ ] Completion shows XP earned, bonus breakdown, and total XP; refresh/replay does not award it again.
 - [ ] Refreshing the game/map/dashboard preserves completion, score, attempts, and time.
 - [ ] The leaderboard and classroom lesson/assignment pages load without errors.
 - [ ] Assignment uploads show the server file-count and per-file size limits; selecting too many or an oversized file is rejected before submission.
@@ -90,6 +94,8 @@ Only when account registration is part of the demo:
 - [ ] Changing level availability, order, unlock/due dates, hints, or grading deductions affects only that classroom.
 - [ ] Resetting classroom level settings restores the supported controls to their system defaults.
 - [ ] Lesson attachments show the server upload limits; create, add, and replace actions reject too many or oversized files before uploading.
+- [ ] Create a module, associate a lesson, add an external learning link/resource, and confirm students see only published/available content.
+- [ ] Change the hint threshold, then disable hints and confirm the teacher master control wins.
 - [ ] Analytics and student pages handle an empty classroom without crashing.
 - [ ] A teacher cannot open or edit another teacher's classroom by changing the URL identifier.
 

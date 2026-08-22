@@ -1,5 +1,7 @@
 # SharpRunner New Curriculum And Story Plan
 
+> Implementation status (2026-08-22): The tutorial, Arrays, Functions/Methods, Functions-with-Arrays, and Bakunawa finale are represented by the live 30-row curriculum and 29 playable routes. Shared hint/XP systems and curriculum reference metadata are implemented outside individual scenes. This document remains the detailed story/design reference.
+
 Last updated: 2026-07-30
 
 ## Purpose

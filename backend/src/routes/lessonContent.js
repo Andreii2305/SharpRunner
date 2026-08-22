@@ -45,7 +45,7 @@ router.get("/", authMiddleware, async (req, res) => {
     const classroomLessons = membership
       ? await ClassroomLesson.findAll({
           where: visibleLessonWhere(membership.classroomId),
-          attributes: ["id", "title", "description", "contentType", "dueAt", "allowSubmissions", "assignedStudentIds", "createdAt"],
+          attributes: ["id", "title", "description", "contentType", "moduleId", "externalUrl", "dueAt", "allowSubmissions", "assignedStudentIds", "createdAt"],
           include: [{
             model: ClassroomLessonAttachment,
             as: "attachments",
@@ -69,7 +69,7 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     }
 
     const lesson = await ClassroomLesson.findByPk(lessonId, {
-      attributes: ["id", "classroomId", "title", "description", "contentType", "dueAt", "isPublished", "publishAt", "allowSubmissions", "maxScore", "rubric", "feedbackReleaseAt", "allowLateSubmissions", "maxAttempts", "allowedFileTypes", "maxFileSizeMb", "assignedStudentIds", "createdAt", "updatedAt"],
+      attributes: ["id", "classroomId", "title", "description", "contentType", "moduleId", "externalUrl", "dueAt", "isPublished", "publishAt", "allowSubmissions", "maxScore", "rubric", "feedbackReleaseAt", "allowLateSubmissions", "maxAttempts", "allowedFileTypes", "maxFileSizeMb", "assignedStudentIds", "createdAt", "updatedAt"],
       include: [{
         model: ClassroomLessonAttachment,
         as: "attachments",
@@ -191,7 +191,7 @@ router.put("/classroom-lessons/:lessonId/completion", authMiddleware, async (req
     const lessonId = Number.parseInt(req.params.lessonId, 10);
     const lesson = await ClassroomLesson.findByPk(lessonId);
     const membership = lesson && await ClassroomMembership.findOne({ where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" } });
-    if (!lesson || !membership || !isAssignedToStudent(lesson, req.userId) || lesson.contentType !== "lesson" || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
+    if (!lesson || !membership || !isAssignedToStudent(lesson, req.userId) || !["module", "lesson"].includes(lesson.contentType) || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
     const [progress] = await ClassroomLessonProgress.findOrCreate({ where: { lessonId, studentId: req.userId }, defaults: { classroomId: lesson.classroomId, viewedAt: new Date() } });
     progress.viewedAt ||= new Date();
     progress.completedAt = req.body?.completed === false ? null : new Date();

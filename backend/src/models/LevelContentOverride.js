@@ -18,6 +18,12 @@ const LevelContentOverride = sequelize.define(
     unlockAt: { type: DataTypes.DATE, allowNull: true },
     dueAt: { type: DataTypes.DATE, allowNull: true },
     hintsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+    hintUnlockThreshold: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 3,
+      validate: { min: 1, max: 10 },
+    },
     wrongAttemptDeduction: {
       type: DataTypes.DECIMAL(5, 2),
       allowNull: false,

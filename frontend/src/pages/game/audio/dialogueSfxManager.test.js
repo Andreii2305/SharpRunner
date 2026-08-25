@@ -60,7 +60,7 @@ const manager = new DialogueSfxManager({
 manager.setSfxPreferences({ volume: 50, muted: false });
 assert.equal(manager.playBlip(), true);
 assert.equal(audio.src, DIALOGUE_SFX_CONFIG.path);
-assert.equal(audio.volume, 0.11);
+assert.equal(audio.volume, 0.3);
 assert.equal(audio.playbackRate, 1);
 assert.equal(audio.playCount, 1);
 

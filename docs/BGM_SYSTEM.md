@@ -45,7 +45,7 @@ Narrative dialogue uses the shared `dialogueSfxManager.js` presentation layer
 and `/game/assets/sounds/sfx/medium-text-blip-dialogue.mp3`. The manager reuses
 one audio instance and plays a restrained blip after every third letter or
 number, ignoring spaces and punctuation and enforcing a 55 ms minimum interval.
-Each blip uses a 0.22 base volume multiplied by the live SFX volume and a subtle
+Each blip uses a 0.60 base volume multiplied by the live SFX volume and a subtle
 0.95-1.05 playback-rate variation. SFX mute, zero volume, skipping text,
 advancing a line, closing dialogue, and leaving the game stop playback without
 affecting BGM or dialogue progression.

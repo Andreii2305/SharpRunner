@@ -1,6 +1,6 @@
 export const DIALOGUE_SFX_CONFIG = Object.freeze({
   path: "/game/assets/sounds/sfx/medium-text-blip-dialogue.mp3",
-  baseVolume: 0.22,
+  baseVolume: 0.6,
   characterInterval: 3,
   minPlaybackIntervalMs: 55,
   pitchMin: 0.95,

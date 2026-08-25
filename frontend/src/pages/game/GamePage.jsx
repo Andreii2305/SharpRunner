@@ -769,6 +769,17 @@ function GamePage({ levelConfig }) {
   }, [showStoryIntro]);
 
   useEffect(() => {
+    if (
+      showStoryIntro
+      && activeDialogue
+      && totalStepCharacters > 0
+      && typedCharacters >= totalStepCharacters
+    ) {
+      dialogueSfxManager.stop();
+    }
+  }, [activeDialogue, showStoryIntro, totalStepCharacters, typedCharacters]);
+
+  useEffect(() => {
     const stopWhenHidden = () => {
       if (document.hidden) dialogueSfxManager.stop();
     };

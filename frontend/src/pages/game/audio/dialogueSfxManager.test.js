@@ -73,6 +73,12 @@ assert.equal(manager.playBlip(), true);
 assert.equal(audio.playCount, 2);
 assert.ok(audio.pauseCount >= 2, "the shared sound is stopped before restart");
 
+audio.currentTime = 0.4;
+const pausesBeforeCompletion = audio.pauseCount;
+manager.stop();
+assert.equal(audio.currentTime, 0, "dialogue completion rewinds the active blip");
+assert.equal(audio.pauseCount, pausesBeforeCompletion + 1, "dialogue completion stops playback");
+
 manager.setSfxPreferences({ volume: 50, muted: true });
 now += 100;
 assert.equal(manager.playBlip(), false, "SFX mute applies immediately");

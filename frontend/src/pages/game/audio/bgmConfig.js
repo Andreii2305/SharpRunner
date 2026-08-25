@@ -1,7 +1,7 @@
 const BGM_ASSET_BASE = `${import.meta.env?.BASE_URL ?? "/"}game/assets/sounds/bgm`;
 
-export const DEFAULT_BGM_VOLUME = 5;
-export const DEFAULT_SFX_VOLUME = 20;
+export const DEFAULT_BGM_VOLUME = 10;
+export const DEFAULT_SFX_VOLUME = 100;
 export const BGM_FADE_DURATION_MS = 750;
 
 export const BGM_CONFIG = Object.freeze({

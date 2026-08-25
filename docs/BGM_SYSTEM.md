@@ -23,8 +23,8 @@ existing IDs without renaming or reordering levels.
 
 ## Playback and preferences
 
-- Music loops at a quiet 5% default. The game control limits music to 0-40%.
-- SFX has an independent 20% default and 0-100% control.
+- Music loops at a quiet 10% default. The game control limits music to 0-40%.
+- SFX has an independent 100% default and 0-100% control.
 - Music and SFX each have an independent on/off setting.
 - Changes are live and persist in local storage. The legacy game mute key stays
   synchronized with SFX mute for scenes that already read it directly.

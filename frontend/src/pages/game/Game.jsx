@@ -36,7 +36,7 @@ export default function Game({
   levelNumber,
   parentId = "phaser-canvas-root",
   isMuted = false,
-  sfxVolume = 20,
+  sfxVolume = 100,
 }) {
   const gameRef = useRef(null);
   const initialAudioSettingsRef = useRef({ isMuted, sfxVolume });

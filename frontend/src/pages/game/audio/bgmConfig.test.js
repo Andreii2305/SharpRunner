@@ -38,9 +38,9 @@ globalThis.window = {
 
 const { readAudioPreferences, saveAudioPreferences } = await import("./audioPreferences.js");
 assert.deepEqual(readAudioPreferences(), {
-  bgmVolume: 5,
+  bgmVolume: 10,
   bgmMuted: false,
-  sfxVolume: 20,
+  sfxVolume: 100,
   sfxMuted: false,
 });
 const savedPreferences = { bgmVolume: 22, bgmMuted: true, sfxVolume: 61, sfxMuted: false };

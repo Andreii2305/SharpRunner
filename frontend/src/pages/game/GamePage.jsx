@@ -1322,19 +1322,32 @@ function GamePage({ levelConfig }) {
               </div>
             </div>
 
-            <button
-              ref={gradeButtonRef}
-              className={`${styles.gradeContinueBtn} ${styles[`gradeContinueBtn${gradeModal.grade}`]}`}
-              onClick={() => {
-                setGradeModal(null);
-                const nextConfig = getLevelConfigByProgressKey(gradeModal.nextLevelKey);
-                navigate(
-                  nextConfig ? getLevelRoute(nextConfig.levelNumber) : "/Map",
-                );
-              }}
-            >
-              {gradeModal.isFinalLevel ? "Return to Map" : "Continue"}
-            </button>
+            <div className={styles.gradeActions}>
+              <button
+                ref={gradeButtonRef}
+                type="button"
+                className={`${styles.gradeContinueBtn} ${styles[`gradeContinueBtn${gradeModal.grade}`]}`}
+                onClick={() => {
+                  setGradeModal(null);
+                  const nextConfig = getLevelConfigByProgressKey(gradeModal.nextLevelKey);
+                  navigate(
+                    nextConfig ? getLevelRoute(nextConfig.levelNumber) : "/Map",
+                  );
+                }}
+              >
+                {gradeModal.isFinalLevel ? "Return to Map" : "Continue"}
+              </button>
+              <button
+                type="button"
+                className={styles.gradeExitBtn}
+                onClick={() => {
+                  setGradeModal(null);
+                  exitButton();
+                }}
+              >
+                Exit
+              </button>
+            </div>
           </div>
         </div>
       )}

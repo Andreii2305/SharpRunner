@@ -436,6 +436,7 @@ export default class MethodsLevelOneScene extends Phaser.Scene {
   }
 
   startSuccess() {
+    this.playSfx?.("energyCharge");
     this.sequenceMode = "walkingToRitual";
     this.statusText.setText("method named").setColor("#bfffe5");
     this.diwataLabel.setText("Now call the ritual.").setColor("#bfffe5");
@@ -444,6 +445,7 @@ export default class MethodsLevelOneScene extends Phaser.Scene {
   }
 
   activateRitual() {
+    this.playSfx?.("magicPulse");
     this.panTo(this.ritualPoint.x, 520);
     this.statusText.setText("method named").setColor("#f5d98e");
     this.diwataLabel.setText("The action now has a name.").setColor("#f5d98e");
@@ -670,6 +672,7 @@ export default class MethodsLevelOneScene extends Phaser.Scene {
   }
 
   openBarrier() {
+    this.playSfx?.("magicActivate");
     this.statusText.setText("path opened").setColor("#dfffea");
     this.setBarrierStage("open");
     this.createBarrierBreakParticles();

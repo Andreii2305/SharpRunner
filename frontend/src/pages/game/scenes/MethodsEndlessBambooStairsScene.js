@@ -641,6 +641,8 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
   }
 
   growStair(stair, unsafe = false) {
+    const stairIndex = Math.max(0, this.stairs?.indexOf(stair) ?? 0);
+    this.playSfx?.("stepSpawn", { rate: Math.min(1.06, 0.94 + stairIndex * 0.03) });
     const color = unsafe ? ERROR_RED : CYAN;
     this.tweens.add({
       targets: [stair.guideSupport, stair.guidePlatform],
@@ -823,6 +825,7 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
   }
 
   activateShrine() {
+    this.playSfx?.("energyCharge");
     this.shrineCharge = this.stairs.length;
     this.phaseText.setText("stack cleared").setColor("#d8ffcb");
     this.stackText.setVisible(true).setText("complete").setColor("#d8ffcb");
@@ -1287,6 +1290,7 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
   }
 
   highlightBaseCase() {
+    this.playSfx?.("magicPulse");
     const baseFrame = this.stackFrames[this.stackValues.length - 1];
     if (baseFrame) {
       baseFrame.frame.setFillStyle(0x4b3b16, 0.96).setStrokeStyle(1, 0xffdf7d, 0.95);

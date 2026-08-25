@@ -565,6 +565,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
   }
 
   runHealingSequence() {
+    this.playSfx?.("energyCharge");
     this.sequenceMode = "healing";
     this.stopCriticalPulse();
     this.player.play("methods-10-player-cast", true);
@@ -803,6 +804,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
   }
 
   createHealingField() {
+    this.playSfx?.("heal");
     this.playHealingSound();
     const field = this.add
       .ellipse(this.diwataPoint.x, this.diwataPoint.y - 42, 96, 118, HEAL_GREEN, 0.12)
@@ -871,6 +873,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
   }
 
   restoreDiwata() {
+    this.playSfx?.("magicPulse");
     this.heartLabel.setText("vitality").setColor("#c8f7d1");
     this.statusText.setText("restored").setColor("#d8ffcb");
     this.diwata.setAlpha(1);

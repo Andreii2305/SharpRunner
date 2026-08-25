@@ -497,6 +497,8 @@ export default class MethodsLevelTwoScene extends Phaser.Scene {
   }
 
   igniteCandle() {
+    this.playSfx?.("fireIgnite");
+    this.playSfx?.("fireLoop", { loop: true });
     this.fireSprite.play(FIRE_ANIM_KEY, true);
     this.tweens.add({
       targets: this.unlitFlameAura,
@@ -735,6 +737,8 @@ export default class MethodsLevelTwoScene extends Phaser.Scene {
   }
 
   openBarrier() {
+    this.playSfx?.("fireExtinguish");
+    this.stopSfx?.("fireLoop");
     this.statusText.setText("path opened").setColor("#dfffea");
     this.barrierLabel.setText("path opened");
     this.tweens.add({

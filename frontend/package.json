@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "test": "npm run test:preferences && npm run test:audio && npm run test:validators && npm run test:uploads && npm run test:levels && npm run test:assets",
     "test:preferences": "node src/Components/Dashboard/preferencePersonalization.test.js",
-    "test:audio": "node src/pages/game/audio/bgmConfig.test.js && node src/pages/game/audio/dialogueSfxManager.test.js",
+    "test:audio": "node src/pages/game/audio/bgmConfig.test.js && node src/pages/game/audio/dialogueSfxManager.test.js && node src/pages/game/audio/gameSfx.test.js",
     "test:validators": "node src/pages/game/levels/validators.test.js",
     "test:uploads": "node src/utils/uploadPolicy.test.js",
     "test:levels": "node scripts/audit-levels.mjs",

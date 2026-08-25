@@ -356,6 +356,7 @@ export default class MethodsDiwatasSafePathScene extends Phaser.Scene {
   }
 
   startSuccess() {
+    this.playSfx?.("scan");
     this.sequenceMode = "success";
     this.statusText.setText("path returned").setColor("#bfffe5");
     this.diwataLabel.setText("The safe path answers.").setColor("#bfffe5");
@@ -429,6 +430,7 @@ export default class MethodsDiwatasSafePathScene extends Phaser.Scene {
   }
 
   openSafePath() {
+    this.playSfx?.("magicActivate");
     this.panTo(this.upPathPoint.x + 180, 650);
     this.tweens.add({
       targets: [this.safePathGlow, this.upMarker],

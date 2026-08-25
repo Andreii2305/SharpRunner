@@ -373,6 +373,7 @@ export default class LevelOneScene extends Phaser.Scene {
   }
 
   beginTeleportSequence() {
+    this.playSfx?.("magicActivate");
     if (this.teleporting) return;
 
     this.teleporting = true;
@@ -423,6 +424,7 @@ export default class LevelOneScene extends Phaser.Scene {
   }
 
   startFailureSequence(message, { useDeathAnimation = true } = {}) {
+    this.playSfx?.("impactSoft");
     this.failureMessage = message ?? this.failureMessage;
 
     if (!useDeathAnimation) {

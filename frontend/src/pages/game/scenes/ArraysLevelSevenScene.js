@@ -676,6 +676,9 @@ export default class ArraysLevelSevenScene extends Phaser.Scene {
   }
 
   checkTag(index, successTone) {
+    this.playSfx?.(successTone ? "scan" : "scanError", {
+      rate: Phaser.Math.FloatBetween(0.97, 1.03),
+    });
     const tag = this.nameTags[index];
     if (!tag) return;
     tag.checked = true;
@@ -714,6 +717,7 @@ export default class ArraysLevelSevenScene extends Phaser.Scene {
   }
 
   burnCorruptedTag() {
+    this.playSfx?.("fireIgnite");
     const tag = this.nameTags[CORRUPTED_INDEX];
     if (!tag) return;
     this.kapreLabel.setText("The corrupted tag is found.").setColor("#fff0ad");
@@ -741,6 +745,7 @@ export default class ArraysLevelSevenScene extends Phaser.Scene {
   }
 
   openGateAndExit() {
+    this.playSfx?.("fireExtinguish");
     this.kapreLabel.setText("Every index was checked.").setColor("#d8ffd9");
     this.tweens.add({
       targets: this.kapre,

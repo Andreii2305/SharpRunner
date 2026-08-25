@@ -436,6 +436,7 @@ export default class ArraysLevelEightScene extends Phaser.Scene {
   }
 
   inspectJar(index, revealHiddenCurse = true) {
+    this.playSfx?.("scan", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     const jar = this.jars[index];
     const point = this.jarPoints[index];
     this.panTo(point.x);
@@ -458,6 +459,8 @@ export default class ArraysLevelEightScene extends Phaser.Scene {
   }
 
   revealCurse() {
+    this.playSfx?.("scanError");
+    this.playSfx?.("magicPulse");
     const jar = this.jars[CURSED_INDEX];
     this.panTo(this.jarPoints[CURSED_INDEX].x);
     jar.aura.setFillStyle(0xff294f, 0.42).setAlpha(1);
@@ -498,6 +501,7 @@ export default class ArraysLevelEightScene extends Phaser.Scene {
   }
 
   retreatManananggal() {
+    this.playSfx?.("enemyRetreat");
     if (this.manananggalRetreated) return;
     this.manananggalRetreated = true;
     this.manananggalLabel.setText("The seal is exposed!").setColor("#ffb1c1");
@@ -518,6 +522,7 @@ export default class ArraysLevelEightScene extends Phaser.Scene {
   }
 
   collectSafeJar(index) {
+    this.playSfx?.("itemCollect", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     this.collectedSafeIndexes.add(index);
     const jar = this.jars[index];
     const collectedCount = this.collectedSafeIndexes.size;

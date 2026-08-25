@@ -450,6 +450,9 @@ export default class FunctionsArraysAncientCemeteryScene extends Phaser.Scene {
   }
 
   inspectGrave(grave, value, index) {
+    this.playSfx?.(value === 1 ? "scan" : "scanError", {
+      rate: Math.min(1.05, 0.97 + (index % 5) * 0.02),
+    });
     grave.valueText.setText(`= ${value}`);
     grave.coordinate.setColor("#d5eaf2");
     this.tweens.add({
@@ -527,6 +530,7 @@ export default class FunctionsArraysAncientCemeteryScene extends Phaser.Scene {
   }
 
   releaseSpirits() {
+    this.playSfx?.("ghostFade");
     this.mode = "releasing";
     this.scanReadout.setText("THE GUARDIAN SPIRITS ARE FREE").setColor("#d9f8ff");
     this.releaseLabel.setText("THE FORGOTTEN ASCEND");
@@ -602,6 +606,7 @@ export default class FunctionsArraysAncientCemeteryScene extends Phaser.Scene {
   }
 
   finishSpiritRelease() {
+    this.playSfx?.("moonRestore");
     this.releaseLabel
       .setText("The forgotten are finally at peace.")
       .setColor("#e4f2f4");
@@ -720,6 +725,9 @@ export default class FunctionsArraysAncientCemeteryScene extends Phaser.Scene {
   }
 
   createSpiritTrail(spirit, spiritIndex, trailIndex) {
+    if (trailIndex === 0) {
+      this.playSfx?.("spiritRelease", { rate: Math.min(1.05, 0.97 + (spiritIndex % 5) * 0.02) });
+    }
     if (!spirit?.active) return;
     const trail = this.add
       .circle(

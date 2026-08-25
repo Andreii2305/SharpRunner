@@ -375,6 +375,7 @@ export default class ArraysLevelThreeScene extends Phaser.Scene {
   }
 
   startFlameIdleTweens(flame) {
+    this.playSfx?.("fireLoop", { loop: true });
     this.tweens.add({
       targets: [flame.sprite, flame.glow, flame.plumeGlow, flame.innerGlow],
       y: flame.y - 8,
@@ -610,6 +611,9 @@ export default class ArraysLevelThreeScene extends Phaser.Scene {
   }
 
   openFlameWall() {
+    this.playSfx?.("impactSoft");
+    this.playSfx?.("fireExtinguish");
+    this.stopSfx?.("fireLoop");
     const bossFlame = this.flames[BOSS_INDEX];
     this.tweens.add({
       targets: [

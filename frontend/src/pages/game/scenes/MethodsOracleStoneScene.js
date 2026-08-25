@@ -411,6 +411,7 @@ export default class MethodsOracleStoneScene extends Phaser.Scene {
   }
 
   revealReturnedCode() {
+    this.playSfx?.("scan");
     this.flashPlayerToOracle();
     this.schedule(260, () => this.lightOracleMotes());
     this.schedule(1260, () => {
@@ -433,6 +434,7 @@ export default class MethodsOracleStoneScene extends Phaser.Scene {
   }
 
   lightOracleMotes() {
+    this.playSfx?.("magicPulse");
     this.oracleMotes.forEach((mote, index) => {
       this.tweens.add({
         targets: mote,
@@ -583,6 +585,7 @@ export default class MethodsOracleStoneScene extends Phaser.Scene {
   }
 
   openBarrier() {
+    this.playSfx?.("magicActivate");
     this.panTo(this.barrierPoint.x, 700);
     this.schedule(250, () => {
       this.statusText.setText("code stored").setColor("#bfffe5");

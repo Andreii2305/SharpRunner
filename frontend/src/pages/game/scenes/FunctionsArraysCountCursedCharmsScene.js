@@ -484,6 +484,7 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
   }
 
   revealClean(charm) {
+    this.playSfx?.("scan", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     charm.aura.setTexture("fa2_clean_aura").setTint(0xffffff);
     charm.accessory.setTint(charm.tint).setAlpha(1);
     charm.label.setColor("#bdf6d5");
@@ -507,6 +508,7 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
   }
 
   revealCursed(charm, cursedCount) {
+    this.playSfx?.("scanError");
     charm.aura.setTexture("fa2_curse_aura").setTint(0xffffff);
     charm.accessory.setTint(0xff7b9c).setAlpha(1);
     charm.label.setColor("#ff93aa");
@@ -566,6 +568,7 @@ export default class FunctionsArraysCountCursedCharmsScene extends Phaser.Scene 
   }
 
   sendReturnedCountToSeal(count, onComplete) {
+    this.playSfx?.("magicPulse");
     this.diwata.playAnimation("spellcast", "right");
     this.tweens.add({
       targets: this.diwataAura,

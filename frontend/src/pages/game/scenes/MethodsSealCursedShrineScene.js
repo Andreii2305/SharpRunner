@@ -615,6 +615,7 @@ export default class MethodsSealCursedShrineScene extends Phaser.Scene {
   }
 
   startSuccess() {
+    this.playSfx?.("energyCharge");
     this.sequenceMode = "sealing";
     this.tweens.killTweensOf(this.methodPanel);
     this.methodPanel.setScale(1);
@@ -657,6 +658,7 @@ export default class MethodsSealCursedShrineScene extends Phaser.Scene {
   }
 
   activateSeal() {
+    this.playSfx?.("magicActivate");
     this.createSealRunes();
     this.tweens.add({
       targets: [this.sealGlow, this.sealRing, this.sealInnerRing],
@@ -705,6 +707,7 @@ export default class MethodsSealCursedShrineScene extends Phaser.Scene {
   }
 
   retreatMonster() {
+    this.playSfx?.("enemyRetreat");
     this.hintText.setText("the creature retreats").setColor("#bfffe5");
     this.tweens.killTweensOf(this.monster);
     this.tweens.add({

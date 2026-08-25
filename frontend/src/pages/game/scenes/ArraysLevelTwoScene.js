@@ -431,6 +431,7 @@ export default class ArraysLevelTwoScene extends Phaser.Scene {
   }
 
   collectSupplyAtIndex(index) {
+    this.playSfx?.("itemCollect");
     const crate = this.crates[index];
     if (!crate) {
       this.depositSuppliesAtGate();
@@ -521,6 +522,7 @@ export default class ArraysLevelTwoScene extends Phaser.Scene {
   }
 
   openGateAndWalk() {
+    this.playSfx?.("enemyRetreat");
     this.sequenceMode = "openingGate";
     this.schedule(220, () => {
       this.sequenceMode = "walkingToExit";
@@ -531,6 +533,7 @@ export default class ArraysLevelTwoScene extends Phaser.Scene {
   }
 
   startFailureSequence(message) {
+    this.playSfx?.("objectShake");
     this.sequenceMode = "aswangStealing";
     this.failureMessage = message;
 

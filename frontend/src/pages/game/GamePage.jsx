@@ -941,6 +941,7 @@ function GamePage({ levelConfig }) {
             <Game
               scene={levelConfig.scene}
               sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
+              levelNumber={levelConfig.levelNumber}
               isMuted={sfxMuted}
               sfxVolume={sfxVolume}
             />

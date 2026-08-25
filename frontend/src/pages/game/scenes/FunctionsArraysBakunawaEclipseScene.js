@@ -394,6 +394,7 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
   }
 
   startFailure(phase, completedPhases, message) {
+    this.playSfx?.("impactSoft");
     this.mode = "failure";
     const failedIndex = Phaser.Math.Clamp(Number(phase) - 1, 0, PHASE_NAMES.length - 1);
     const validatedCount = Phaser.Math.Clamp(Number(completedPhases), 0, PHASE_NAMES.length);
@@ -471,6 +472,7 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
   }
 
   startFinalCompile() {
+    this.playSfx?.("energyCharge");
     this.mode = "compiling";
     this.diwata.playAnimation("spellcast", "right");
     this.player.play("final-player-cast", true);
@@ -485,6 +487,8 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
   }
 
   completePhase(index, name) {
+    this.playSfx?.("magicPulse", { rate: Math.min(1.05, 0.96 + index * 0.015) });
+    this.playSfx?.("bossHit");
     if (index < this.completedPhaseCount) return;
     this.completedPhaseCount = index + 1;
     this.writePhaseProgress(this.completedPhaseCount);
@@ -588,6 +592,7 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
   }
 
   dissolveBakunawa() {
+    this.playSfx?.("enemyRetreat");
     const bossTop = this.boss.y - this.boss.displayHeight * 0.72;
     for (let index = 0; index < 34; index += 1) {
       const mote = this.add
@@ -620,6 +625,7 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
   }
 
   restoreDawn() {
+    this.playSfx?.("moonRestore");
     this.moon.setTint(0xffffff);
     this.sound.play("final_dawn_bell", { volume: 0.24, rate: 0.9 });
     this.tweens.add({

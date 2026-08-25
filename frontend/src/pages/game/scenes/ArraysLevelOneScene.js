@@ -467,6 +467,7 @@ export default class ArraysLevelOneScene extends Phaser.Scene {
   }
 
   lightLantern(item) {
+    this.playSfx?.("fireIgnite", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     item.isLit = true;
     item.lantern.setTint(0xffd46b);
     item.glow.setTint(0xffb845);
@@ -544,6 +545,7 @@ export default class ArraysLevelOneScene extends Phaser.Scene {
   }
 
   openGateAndWalk() {
+    this.playSfx?.("magicActivate");
     this.sequenceMode = "openingGate";
     this.tweens.add({
       targets: [this.gate, this.gateLabel],

@@ -388,6 +388,7 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
   }
 
   runPowerSequence(isCorrect) {
+    this.playSfx?.("energyCharge");
     const power = isCorrect ? TARGET_POWER : this.extractComputedPower(this.lastSourceCode);
     const visiblePower = Number.isFinite(power) ? Phaser.Math.Clamp(power, 0, 12) : 0;
     this.sequenceMode = "charging";
@@ -595,6 +596,7 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
   }
 
   createShieldWard() {
+    this.playSfx?.("magicActivate");
     const x = this.shieldPoint.x;
     const y = this.shieldPoint.y - 62;
     this.weakenEnemyAura();
@@ -688,6 +690,7 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
   }
 
   createShieldImpact() {
+    this.playSfx?.("shieldHit");
     const impactRing = this.add
       .ellipse(this.impactPoint.x, this.impactPoint.y - 54, 30, 74, 0xffffff, 0.1)
       .setStrokeStyle(2, 0xffffff, 0.82)
@@ -716,6 +719,7 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
   }
 
   failShield() {
+    this.playSfx?.("impactSoft");
     this.powerText.setText("not enough power").setColor("#ffb8c0");
     this.shadow.setAlpha(0).stop();
     this.shadowGlow.setAlpha(0);

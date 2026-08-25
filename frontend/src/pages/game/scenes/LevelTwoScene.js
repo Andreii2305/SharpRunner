@@ -625,6 +625,7 @@ export default class LevelTwoScene extends Phaser.Scene {
   }
 
   playGateOpenAnimation(onComplete) {
+    this.playSfx?.("magicActivate");
     if (this.gateState === "open") {
       onComplete?.();
       return;
@@ -962,6 +963,7 @@ export default class LevelTwoScene extends Phaser.Scene {
   }
 
   startFailureSequence(message, { useDeathAnimation = true } = {}) {
+    this.playSfx?.("impactSoft");
     this.failureMessage = message ?? this.failureMessage;
 
     if (!useDeathAnimation) {

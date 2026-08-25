@@ -534,6 +534,7 @@ export default class LevelFourScene extends Phaser.Scene {
   }
 
   collectTollCoins(coins, onComplete) {
+    this.playSfx?.("itemCollect");
     if (!coins.length) {
       onComplete?.();
       return;
@@ -579,6 +580,7 @@ export default class LevelFourScene extends Phaser.Scene {
   }
 
   startBoardingSequence() {
+    this.playSfx?.("magicActivate");
     this.sequenceMode = "boarding";
     const riderPosition = this.getBoatRiderPosition();
 

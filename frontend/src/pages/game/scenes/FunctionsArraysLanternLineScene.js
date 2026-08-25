@@ -309,6 +309,7 @@ export default class FunctionsArraysLanternLineScene extends Phaser.Scene {
   }
 
   lightLantern(item) {
+    this.playSfx?.("fireIgnite", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     item.lit = true;
     item.lantern.setTint(0xffdc76);
     this.tweens.add({
@@ -455,6 +456,7 @@ export default class FunctionsArraysLanternLineScene extends Phaser.Scene {
   }
 
   dissolveRoadSeal(onComplete) {
+    this.playSfx?.("magicActivate");
     const centerX = this.roadSeal.x;
     const centerY = this.roadSeal.y;
     const particles = Array.from({ length: 22 }, (_, index) => {

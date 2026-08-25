@@ -642,6 +642,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
   }
 
   startSuccessSequence() {
+    this.playSfx?.("magicActivate");
     this.sequenceMode = "restoring";
     this.followPlayerCamera();
     this.monsterLabel?.setText("No... you read the trail.").setColor("#fff0ad");
@@ -764,6 +765,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
   }
 
   startFailedRouteSequence(submittedRows) {
+    this.playSfx?.("errorMagic", { volume: 0.22 });
     this.followPlayerCamera();
     this.highlightSubmittedRoute(submittedRows);
     this.failureTravelTargets = this.buildFailureTravelTargets(submittedRows);

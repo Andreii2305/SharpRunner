@@ -575,6 +575,7 @@ export default class ArraysLevelFourScene extends Phaser.Scene {
   }
 
   collectCrate(crate, isCorrect, onComplete) {
+    this.playSfx?.(isCorrect ? "itemCollect" : "objectShake");
     crate.crate.setTint(isCorrect ? 0xffe7a3 : 0xff7d7d);
     this.tweens.add({
       targets: crate.glow,
@@ -700,6 +701,7 @@ export default class ArraysLevelFourScene extends Phaser.Scene {
   }
 
   unlockDoor() {
+    this.playSfx?.("magicActivate");
     this.sequenceMode = "unlockingDoor";
     this.tweens.add({
       targets: this.carriedItem,

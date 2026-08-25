@@ -409,6 +409,7 @@ export default class FunctionsArraysRestoreWardingGridScene extends Phaser.Scene
   }
 
   restoreGrid(values) {
+    this.playSfx?.("energyCharge");
     this.mode = "restoring";
     this.stopBlueShimmer();
     this.diwata.playAnimation("spellcast", "right");
@@ -516,6 +517,7 @@ export default class FunctionsArraysRestoreWardingGridScene extends Phaser.Scene
   }
 
   activateCell(cell, verificationPass) {
+    this.playSfx?.("magicPulse", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     cell.panel
       .setFillStyle(verificationPass ? 0x123934 : 0x132f38, 0.96)
       .setStrokeStyle(verificationPass ? 2 : 1, 0x9cf9ee, 0.9);
@@ -577,6 +579,7 @@ export default class FunctionsArraysRestoreWardingGridScene extends Phaser.Scene
   }
 
   completeRestoration() {
+    this.playSfx?.("magicActivate");
     this.diwata.playIdle("right");
     this.gridStatus.setText("2/4 BLUE - WARD RESTORED").setColor("#baffdf");
     this.gridFrame.setStrokeStyle(2, 0xa9fff1, 0.95);

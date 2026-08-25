@@ -838,6 +838,7 @@ export default class LevelThreeScene extends Phaser.Scene {
   }
 
   unfreezeNext() {
+    this.playSfx?.("magicPulse", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     if (this.unfreezeIndex >= this.frozenNpcs.length) {
       this.onAllUnfrozen();
       return;
@@ -1015,6 +1016,7 @@ export default class LevelThreeScene extends Phaser.Scene {
   }
 
   collectCoins(coins) {
+    this.playSfx?.("itemCollect");
     let collected = 0;
     coins.forEach((coin, i) => {
       this.time.delayedCall(i * 30, () => {
@@ -1089,6 +1091,7 @@ export default class LevelThreeScene extends Phaser.Scene {
   }
 
   startFailureSequence(message, { useDeathAnimation = true } = {}) {
+    this.playSfx?.("impactSoft");
     this.failureMessage = message ?? this.failureMessage;
 
     if (!useDeathAnimation) {

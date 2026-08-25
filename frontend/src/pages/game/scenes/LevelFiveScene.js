@@ -536,6 +536,7 @@ export default class LevelFiveScene extends Phaser.Scene {
   // ─── Failure ──────────────────────────────────────────────────────────────
 
   startWizardCastSequence() {
+    this.playSfx?.("magicPulse");
     this.sequenceMode = "wizardCasting";
     this.playAnimation("player-idle");
     this.wizard.play(NPC_CAST_KEY, true);
@@ -570,6 +571,7 @@ export default class LevelFiveScene extends Phaser.Scene {
   // ─── Success ──────────────────────────────────────────────────────────────
 
   startPortalSequence() {
+    this.playSfx?.("magicActivate");
     this.sequenceMode = "portalAppearing";
     this.playAnimation("player-idle");
 

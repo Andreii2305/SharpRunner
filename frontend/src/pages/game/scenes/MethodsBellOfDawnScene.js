@@ -476,6 +476,8 @@ export default class MethodsBellOfDawnScene extends Phaser.Scene {
   }
 
   ringBell() {
+    // TODO(audio): prefer a dedicated bell_ring.wav when the existing bell asset is replaced.
+    this.playSfx?.("magicActivate");
     this.playBellChime();
     this.createBellBrightBeat();
     this.createBellSparks();
@@ -685,6 +687,7 @@ export default class MethodsBellOfDawnScene extends Phaser.Scene {
   }
 
   fadeGhosts() {
+    this.playSfx?.("ghostFade");
     this.panTo(this.ghostPoints[1].x, 520);
     this.ghosts.forEach((ghost, index) => {
       this.tweens.killTweensOf(ghost);

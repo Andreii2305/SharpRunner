@@ -572,6 +572,7 @@ export default class ArraysLevelFiveScene extends Phaser.Scene {
   }
 
   playRowScan(onComplete) {
+    this.playSfx?.("magicPulse", { rate: Phaser.Math.FloatBetween(0.97, 1.03) });
     this.sequenceMode = "scanning";
     this.setSpiritLine("The shrine reads your rows.", "#dfffea");
     const rowCenters = [0, 1, 2].map(
@@ -602,6 +603,7 @@ export default class ArraysLevelFiveScene extends Phaser.Scene {
   }
 
   startSuccessSequence() {
+    this.playSfx?.("magicActivate");
     this.sequenceMode = "restoring";
     this.drawSuccessTrace();
     this.setSpiritLine("The ward breaks... no!", "#fff0ad");
@@ -716,6 +718,7 @@ export default class ArraysLevelFiveScene extends Phaser.Scene {
   }
 
   startFailureSequence(submittedWard, validationMessage = "") {
+    this.playSfx?.("impactSoft");
     this.sequenceMode = "failure";
     this.setSpiritLine(this.getFailureLine(submittedWard, validationMessage), "#ffc5c5");
     const submittedRows = Array.isArray(submittedWard) ? submittedWard : [];

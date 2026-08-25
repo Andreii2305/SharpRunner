@@ -295,6 +295,7 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
   }
 
   startThrow(amount, isCorrect) {
+    this.playSfx?.("magicPulse");
     this.sequenceMode = "throwing";
     const displayAmount = Number.isFinite(amount) ? amount : "?";
     const target = this.resolveThrowTarget(amount, isCorrect);
@@ -402,6 +403,8 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
   }
 
   hitAswang() {
+    this.playSfx?.("impactSoft");
+    this.playSfx?.("bossHit");
     this.amountText.setAlpha(0);
     this.createLandingSparkle(this.saltTarget, HIT_BLUE);
     this.createHitBurst();
@@ -593,6 +596,7 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
   }
 
   finishSuccess() {
+    this.playSfx?.("enemyRetreat");
     if (this.sequenceMode === "complete") return;
     this.sequenceMode = "complete";
     this.cameras.main.stopFollow();

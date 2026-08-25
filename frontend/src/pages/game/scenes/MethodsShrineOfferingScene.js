@@ -342,6 +342,7 @@ export default class MethodsShrineOfferingScene extends Phaser.Scene {
   }
 
   startSuccess() {
+    this.playSfx?.("itemCollect");
     this.sequenceMode = "walkingToShrine";
     this.parameterText.setText('PlaceOffering("rice")').setColor("#ffe8a8");
     this.tweens.add({
@@ -354,6 +355,7 @@ export default class MethodsShrineOfferingScene extends Phaser.Scene {
   }
 
   startFailure(message) {
+    this.playSfx?.("errorMagic", { volume: 0.22 });
     const argument = this.extractOfferingArgument(this.lastSourceCode) ?? "?";
     this.parameterText.setText(`PlaceOffering(${argument})`).setColor("#ffb8c0");
     this.statusText.setText(message || "rejected").setColor("#ffb8c0");
@@ -494,6 +496,7 @@ export default class MethodsShrineOfferingScene extends Phaser.Scene {
   }
 
   releaseBarrier() {
+    this.playSfx?.("magicActivate");
     this.barrierLabel.setText("").setColor("#d8ffe7");
     this.tweens.add({
       targets: this.barrier,

@@ -22,7 +22,7 @@ This document covers system recommendations only. XP is motivational and remains
 | Difficulty/challenge conditions controlled by instructor | Teachers control availability, order, unlock/due dates, hint threshold, hint master switch, and scoring deductions. They cannot edit validators or maps. | Teacher Challenge Settings | Implemented |
 | Attempts | Failed attempts persist for incomplete levels, drive scoring and hint access, and are visible in progress reporting. Completed-level replay does not corrupt the original record. | Progress API and teacher grades | Implemented |
 | Filipino cultural influence in the game environment | The Arrays, Functions, combined, and final curriculum scenes use Filipino settings and mythology including barangay environments, diwata, aswang, tikbalang, kapre, anting-anting, and Bakunawa. | Existing Phaser scenes/story | Existing |
-| Various multimedia elements for sustained game learning | Phaser visuals, sprites, animation, dialogue, Monaco, visual feedback, optional scene audio, mute control, reduced-motion support, PDFs/images/Office/text/audio/small-video resources, and external video links are supported. | Game shell and classroom resources | Implemented/existing |
+| Various multimedia elements for sustained game learning | Phaser graphics, sprites and animation, interactive Monaco coding, dialogue, visual feedback, sound effects where applicable, and quiet chapter-mapped background music with separate live volume/mute controls are supported. Classroom resources support PDFs/images/Office/text/audio/small-video files and external video links. | Game shell, centralized BGM system, and classroom resources | Implemented/existing |
 
 ## Architectural Scope
 
@@ -46,6 +46,7 @@ The teacher module is an instructional-content and configuration tool. It is not
 - The free basic hint does not cost XP, so low XP never blocks essential guidance.
 - A detailed hint costs 15 XP and is optional. The backend checks access, threshold, teacher controls, balance, and prior purchase inside the purchase flow.
 - Detailed-hint deductions use the XP ledger and a locked user/progress transaction. XP spending never directly reduces the academic grade.
+- When a teacher disables hints, the API hides both Basic and Detailed Hint content, including previously purchased detailed hints, and rejects new hint use or purchases. Existing purchases remain recorded and no XP is refunded automatically.
 
 ## Student preference card mapping
 

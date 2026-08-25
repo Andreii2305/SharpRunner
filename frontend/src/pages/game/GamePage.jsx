@@ -23,9 +23,13 @@ import {
   getLevelConfigByProgressKey,
   getLevelRoute,
 } from "./levels/levelConfigs";
+import {
+  readAudioPreferences,
+  saveAudioPreferences,
+} from "./audio/audioPreferences";
+import { bgmManager } from "./audio/bgmManager";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
-const AUDIO_PREFERENCE_KEY = "sharprunner:game-audio-muted";
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
 
 const readBooleanPreference = (key, fallback = false) => {
@@ -125,7 +129,8 @@ function GamePage({ levelConfig }) {
   const [mergedLevelConfig, setMergedLevelConfig] = useState(levelConfig);
   const [gradeModal, setGradeModal] = useState(null);
   const [draftRestored, setDraftRestored] = useState(false);
-  const [isMuted, setIsMuted] = useState(() => readBooleanPreference(AUDIO_PREFERENCE_KEY));
+  const [audioPreferences, setAudioPreferences] = useState(readAudioPreferences);
+  const [showAudioSettings, setShowAudioSettings] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(() =>
     readBooleanPreference(
       MOTION_PREFERENCE_KEY,
@@ -208,15 +213,18 @@ function GamePage({ levelConfig }) {
     elapsedSecondsRef.current = 0;
   }, [clearNextLevelTimer, levelConfig]);
 
+  const { bgmVolume, bgmMuted, sfxVolume, sfxMuted } = audioPreferences;
+
   useEffect(() => {
     try {
-      localStorage.setItem(AUDIO_PREFERENCE_KEY, String(isMuted));
       localStorage.setItem(MOTION_PREFERENCE_KEY, String(reducedMotion));
     } catch {
       // Preferences remain usable for this session when storage is unavailable.
     }
-    gameEvents.emit(GAME_ACCESSIBILITY_CHANGED, { isMuted, reducedMotion });
-  }, [isMuted, reducedMotion, levelConfig?.levelNumber]);
+    saveAudioPreferences(audioPreferences);
+    bgmManager.setMusicPreferences({ volume: bgmVolume, muted: bgmMuted });
+    gameEvents.emit(GAME_ACCESSIBILITY_CHANGED, { isMuted: sfxMuted, reducedMotion });
+  }, [audioPreferences, bgmMuted, bgmVolume, reducedMotion, sfxMuted, levelConfig?.levelNumber]);
 
   useEffect(() => {
     if (!levelConfig?.progressKey) return;
@@ -431,6 +439,7 @@ function GamePage({ levelConfig }) {
       }
 
       if (status === "success") {
+        if (levelConfig.levelNumber === 30) void bgmManager.fadeOut();
         setResult({
           type: "success",
           message: message ?? levelConfig.successResultMessage,
@@ -879,7 +888,8 @@ function GamePage({ levelConfig }) {
             <Game
               scene={levelConfig.scene}
               sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
-              isMuted={isMuted}
+              isMuted={sfxMuted}
+              sfxVolume={sfxVolume}
             />
             {activeHint && (
               <div className={styles.hintOverlay} role="presentation">
@@ -986,16 +996,60 @@ function GamePage({ levelConfig }) {
                 <button type="button" className={styles.iconButton} onClick={resetCode} title="Reset code" aria-label="Reset code">
                   <FiRefreshCw aria-hidden="true" />
                 </button>
-                <button
-                  type="button"
-                  className={`${styles.iconButton} ${isMuted ? styles.iconButtonActive : ""}`}
-                  onClick={() => setIsMuted((current) => !current)}
-                  title={isMuted ? "Turn sound on" : "Mute sound"}
-                  aria-label={isMuted ? "Turn sound on" : "Mute sound"}
-                  aria-pressed={isMuted}
-                >
-                  {isMuted ? <FiVolumeX aria-hidden="true" /> : <FiVolume2 aria-hidden="true" />}
-                </button>
+                <div className={styles.audioSettingsWrap}>
+                  <button
+                    type="button"
+                    className={`${styles.iconButton} ${bgmMuted && sfxMuted ? styles.iconButtonActive : ""}`}
+                    onClick={() => setShowAudioSettings((current) => !current)}
+                    title="Audio settings"
+                    aria-label="Audio settings"
+                    aria-expanded={showAudioSettings}
+                    aria-controls="game-audio-settings"
+                  >
+                    {bgmMuted && sfxMuted ? <FiVolumeX aria-hidden="true" /> : <FiVolume2 aria-hidden="true" />}
+                  </button>
+                  {showAudioSettings && (
+                    <div id="game-audio-settings" className={styles.audioPanel} role="group" aria-label="Audio settings">
+                      <div className={styles.audioPanelTitle}>Audio</div>
+                      <label className={styles.audioToggle}>
+                        <span>Music</span>
+                        <input
+                          type="checkbox"
+                          checked={!bgmMuted}
+                          onChange={() => setAudioPreferences((current) => ({ ...current, bgmMuted: !current.bgmMuted }))}
+                        />
+                      </label>
+                      <label className={styles.audioSlider}>
+                        <span>Music Volume <output>{bgmVolume}%</output></span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="40"
+                          value={bgmVolume}
+                          onChange={(event) => setAudioPreferences((current) => ({ ...current, bgmVolume: Number(event.target.value) }))}
+                        />
+                      </label>
+                      <label className={styles.audioToggle}>
+                        <span>Sound Effects</span>
+                        <input
+                          type="checkbox"
+                          checked={!sfxMuted}
+                          onChange={() => setAudioPreferences((current) => ({ ...current, sfxMuted: !current.sfxMuted }))}
+                        />
+                      </label>
+                      <label className={styles.audioSlider}>
+                        <span>SFX Volume <output>{sfxVolume}%</output></span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={sfxVolume}
+                          onChange={(event) => setAudioPreferences((current) => ({ ...current, sfxVolume: Number(event.target.value) }))}
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
                 {levelConfig.levelNumber === 30 && (
                   <button
                     type="button"

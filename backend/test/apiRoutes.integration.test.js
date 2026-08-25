@@ -313,6 +313,121 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
   });
 });
 
+test("hint state persists across refresh for teacher thresholds 1 and 5", async () => {
+  const user = activeUser({ xpTotal: 40 });
+  const progressRow = {
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    attemptCount: 0,
+    isCompleted: false,
+    hintUsed: false,
+    detailedHintUnlocked: false,
+    startedAt: new Date(),
+    save: async () => undefined,
+  };
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const setting = {
+    levelKey: "tutorial-level-1",
+    hintsEnabled: true,
+    hintUnlockThreshold: 1,
+    isEnabled: true,
+    displayOrder: 1,
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [ClassroomMembership, "findOne", async () => membership],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async () => [setting]],
+  ], async () => {
+    for (const threshold of [1, 5]) {
+      setting.hintUnlockThreshold = threshold;
+      progressRow.attemptCount = 0;
+
+      for (let expected = 1; expected <= threshold; expected += 1) {
+        const attempt = await apiRequest(
+          "/api/progress/level/tutorial-level-1/attempt",
+          { method: "POST", token: authToken(1, "student"), body: {} },
+        );
+        assert.equal(attempt.response.status, 200);
+        assert.equal(attempt.payload.hintUnlocked, expected === threshold);
+        assert.equal(attempt.payload.attemptsRemaining, threshold - expected);
+        assert.equal(attempt.payload.basicHint === null, expected < threshold);
+      }
+
+      const refreshed = await apiRequest(
+        "/api/progress/level/tutorial-level-1/start",
+        { method: "POST", token: authToken(1, "student"), body: {} },
+      );
+      assert.equal(refreshed.response.status, 200);
+      assert.equal(refreshed.payload.hintUnlockThreshold, threshold);
+      assert.equal(refreshed.payload.hintUnlocked, true);
+      assert.ok(refreshed.payload.basicHint.includes("portal method"));
+      assert.equal(refreshed.payload.detailedHint, null);
+    }
+  });
+});
+
+test("teacher-disabled hints hide both tiers and reject use or purchase", async () => {
+  const user = activeUser({ xpTotal: 40 });
+  const progressRow = {
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    attemptCount: 5,
+    isCompleted: false,
+    hintUsed: true,
+    detailedHintUnlocked: true,
+    detailedHintPurchasedAt: new Date(),
+    startedAt: new Date(),
+    save: async () => undefined,
+  };
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const disabledSetting = {
+    levelKey: "tutorial-level-1",
+    hintsEnabled: false,
+    hintUnlockThreshold: 3,
+    isEnabled: true,
+    displayOrder: 1,
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [ClassroomMembership, "findOne", async () => membership],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async () => [disabledSetting]],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const refreshed = await apiRequest(
+      "/api/progress/level/tutorial-level-1/start",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(refreshed.response.status, 200);
+    assert.equal(refreshed.payload.hintsEnabled, false);
+    assert.equal(refreshed.payload.hintUnlocked, false);
+    assert.equal(refreshed.payload.basicHint, null);
+    assert.equal(refreshed.payload.detailedHint, null);
+
+    const basic = await apiRequest(
+      "/api/progress/level/tutorial-level-1/hint-use",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(basic.response.status, 403);
+    assert.equal(basic.payload.code, "HINTS_DISABLED");
+
+    const detailed = await apiRequest(
+      "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(detailed.response.status, 403);
+    assert.equal(detailed.payload.code, "HINTS_DISABLED");
+    assert.equal(user.xpTotal, 40);
+  });
+});
+
 test("teacher routes reject students and allow teachers to create their own classroom", async () => {
   const student = activeUser({ role: "student" });
   await withStubs([[User, "findByPk", async () => student]], async () => {

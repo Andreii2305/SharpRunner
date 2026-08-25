@@ -12,6 +12,7 @@ import {
   getLevelRoute,
 } from "./levels/levelConfigs";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import { bgmManager } from "./audio/bgmManager";
 
 const AVAILABLE_ROUTES = getAvailableLessonRoutes();
 
@@ -68,14 +69,22 @@ function LevelRoutePage() {
     };
   }, [checkVersion, lessonSlug, levelConfig]);
 
-  if (!lessonSlug && levelConfig) {
-    return <Navigate to={getLevelRoute(levelConfig.levelNumber)} replace />;
-  }
-
   const accessStatus =
     accessCheck.levelKey === levelConfig?.progressKey
       ? accessCheck.status
       : "loading";
+
+  useEffect(() => {
+    if (accessStatus === "allowed" && levelConfig) {
+      bgmManager.playForLevel(levelConfig.levelNumber);
+    }
+  }, [accessStatus, levelConfig]);
+
+  useEffect(() => () => bgmManager.leaveGameplay(), []);
+
+  if (!lessonSlug && levelConfig) {
+    return <Navigate to={getLevelRoute(levelConfig.levelNumber)} replace />;
+  }
 
   if (Number.isInteger(parsedLevelNumber) && levelConfig && accessStatus === "allowed") {
     return <GamePage levelConfig={levelConfig} />;

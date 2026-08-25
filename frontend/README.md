@@ -1,16 +1,43 @@
-# React + Vite
+# SharpRunner Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This directory contains SharpRunner's React client: the student and teacher dashboards, curriculum map, and the Phaser/Monaco game experience. It communicates with the Express API in `../backend`; the frontend is not the source of truth for scores, XP, access control, or hint purchases.
 
-Currently, two official plugins are available:
+## Main Technologies
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- React 19 and React Router
+- Vite
+- Phaser 3
+- Monaco Editor
+- Axios
+- Vitest and Testing Library
+- ESLint
 
-## React Compiler
+## Development Commands
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Run these from the repository root:
 
-## Expanding the ESLint configuration
+```bash
+npm --prefix frontend install
+npm --prefix frontend run dev:local
+npm --prefix frontend run lint
+npm --prefix frontend test
+npm --prefix frontend run build
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+The backend must be running for authenticated and progress-saving flows.
+
+## Environment Configuration
+
+Copy the frontend example environment file when one is provided for your deployment, then set `VITE_API_BASE_URL` to the backend API origin. Never commit real credentials or service-role keys; Vite variables are bundled into browser code and must be treated as public configuration.
+
+## Directory Overview
+
+- `src/Components/` — reusable dashboard, navigation, modal, and account UI.
+- `src/pages/` — route-level student, teacher, admin, and game screens.
+- `src/pages/game/` — shared React game shell, Phaser scenes, curriculum configs, and validators.
+- `src/services/` — API clients and browser-side service helpers.
+- `public/game/` — game assets loaded by Phaser.
+
+## Game-Safety Boundary
+
+Individual scenes, validators, maps, routes, and assets encode the active curriculum. Treat them as protected behavior: verify shared UI or service changes against the existing levels instead of changing levels to fit stale documentation.

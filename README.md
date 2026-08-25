@@ -64,10 +64,12 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 
 ### Game And Learning
 
-- Level-driven architecture using configs, validators, and Phaser scenes.
-- Current lesson focus: Variables and Data Types.
-- Implemented validator types include single integer declarations, exact goal declarations, and multiple string declarations.
-- Future lessons are planned for Operators, Conditional Statements, and Loops.
+- Filipino-inspired 2D Phaser environments paired with a Monaco-based C# challenge editor.
+- Tutorial / Prologue: 5 playable levels.
+- Arrays: 8 playable levels.
+- Functions and Methods: 12 curriculum progress slots delivered through 11 routes; one scene covers levels 24–25.
+- Functions with Arrays: 4 playable levels, followed by the final combined Bakunawa challenge.
+- Automatic scoring, failed-attempt tracking, free basic hints, optional XP-purchased detailed hints, and self-paced replay/review.
 
 ## Tech Stack
 
@@ -294,7 +296,7 @@ or provider backup.
 - `/tutorial/level/:levelNumber` - tutorial levels 1–5
 - `/array/level/:levelNumber` - array levels 1–8
 - `/function/level/:levelNumber` - function levels 1–11
-- `/function-with-array/level/:levelNumber` - functions-with-arrays levels 1–5
+- `/function-with-array/level/:levelNumber` - four functions-with-arrays levels followed by the final combined challenge at local level 5
 - `/Map/level/:levelNumber` - legacy global-level URL that redirects to the lesson route
 - `/teacher` - teacher dashboard
 - `/teacher/classes` - teacher classes
@@ -303,7 +305,6 @@ or provider backup.
 - `/teacher/announcements` - teacher announcements
 - `/teacher/settings` - teacher profile and password settings
 - `/teacher/classrooms/:classroomId/levels` - teacher level settings for availability, order, scheduling, hints, and grading deductions
-- `/progress/level/:levelKey/detailed-hint-purchase` - authenticated, access-controlled, transactional detailed-hint purchase
 - `/admin` - admin dashboard
 - `/developer` - developer admin-invite tools
 - `/admin-invite` - admin invite registration
@@ -312,6 +313,7 @@ or provider backup.
 
 - `/api/auth`
 - `/api/progress`
+  - `POST /api/progress/level/:levelKey/detailed-hint-purchase` - authenticated, access-controlled, transactional detailed-hint purchase
 - `/api/lesson-content`
 - `/api/admin`
 - `/api/teacher`

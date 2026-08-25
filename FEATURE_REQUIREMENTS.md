@@ -167,6 +167,8 @@ startedAt
 completedAt
 ```
 
+`attemptCount` means the number of failed submissions, not total submissions. A first-submission success is stored with `attemptCount === 0`.
+
 Current scoring source:
 
 - `backend/src/services/progressService.js`

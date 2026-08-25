@@ -2,24 +2,21 @@
 
 Last updated: 2026-08-22
 
-## Current Direction
+## Current Curriculum
 
 SharpRunner uses a level-driven architecture. Each playable level is built from a config, a validator, game events, and a Phaser scene.
 
 The backend now uses the 30-row tutorial/Arrays/Functions/Functions-with-Arrays/final curriculum. The frontend exposes 29 playable routes; one Functions scene covers curriculum levels 24–25.
 
-A new curriculum/story plan is now being reviewed in `NEW_CURRICULUM_STORY_PLAN.md`. The proposed direction keeps the first 5 playable levels as a tutorial/prologue, then adds a 25-level Filipino myth horror main story focused on Arrays, Functions/Methods, and Functions/Methods with Arrays.
-
-The code migration path for that curriculum pivot is documented in `CURRICULUM_MIGRATION_PLAN.md`.
+The curriculum/story plan in `NEW_CURRICULUM_STORY_PLAN.md` is implemented. `CURRICULUM_MIGRATION_PLAN.md` remains as historical migration context rather than a list of pending work.
 
 ## Lesson Structure
 
-- Lesson 1: Variables and Data Types
-- Lesson 2: Operators
-- Lesson 3: Conditional Statements
-- Lesson 4: Loops
-
-Each lesson is planned for 10 levels.
+- Tutorial / Prologue: 5 levels.
+- Arrays: 8 levels.
+- Functions and Methods: 12 progress slots across 11 routes; the level 24 scene covers curriculum levels 24–25.
+- Functions with Arrays: 4 levels.
+- Final combined Bakunawa challenge: 1 level.
 
 Backend default progress rows are defined in:
 
@@ -97,7 +94,7 @@ The legacy five-level descriptions below describe only the tutorial/prologue.
 
 ## Grading And Progress
 
-- Attempts are incremented after failed outcomes.
+- `attemptCount` stores failed submissions only and is incremented after an incorrect outcome. A correct first submission therefore has `attemptCount === 0`; the dashboard uses that definition for first-attempt completions.
 - Timer starts through the backend when a level begins.
 - Completion is saved with `progressPercent: 100`.
 - Backend computes and stores `finalScore`.

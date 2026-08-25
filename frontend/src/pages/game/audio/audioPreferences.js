@@ -21,7 +21,9 @@ const readBoolean = (storage, key, fallback) => {
 };
 
 const readVolume = (storage, key, fallback, maximum) => {
-  const value = Number(storage.getItem(key));
+  const saved = storage.getItem(key);
+  if (saved == null || saved === "") return fallback;
+  const value = Number(saved);
   return Number.isFinite(value) ? Math.min(maximum, Math.max(0, value)) : fallback;
 };
 

@@ -6,7 +6,7 @@ export default function Game({
   sceneKey,
   parentId = "phaser-canvas-root",
   isMuted = false,
-  sfxVolume = 45,
+  sfxVolume = 20,
 }) {
   const gameRef = useRef(null);
   const initialAudioSettingsRef = useRef({ isMuted, sfxVolume });

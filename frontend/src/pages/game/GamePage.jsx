@@ -28,6 +28,10 @@ import {
   saveAudioPreferences,
 } from "./audio/audioPreferences";
 import { bgmManager } from "./audio/bgmManager";
+import {
+  dialogueSfxManager,
+  shouldPlayDialogueBlipForProgress,
+} from "./audio/dialogueSfxManager";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -101,6 +105,7 @@ function GamePage({ levelConfig }) {
   const dialogueButtonRef = useRef(null);
   const hintButtonRef = useRef(null);
   const gradeButtonRef = useRef(null);
+  const previousTypedCharactersRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
   const failedAttemptsRef = useRef(0);
   const hintsEnabledRef = useRef(true);
@@ -223,8 +228,12 @@ function GamePage({ levelConfig }) {
     }
     saveAudioPreferences(audioPreferences);
     bgmManager.setMusicPreferences({ volume: bgmVolume, muted: bgmMuted });
+    dialogueSfxManager.setSfxPreferences({ volume: sfxVolume, muted: sfxMuted });
+    dialogueSfxManager.preload();
     gameEvents.emit(GAME_ACCESSIBILITY_CHANGED, { isMuted: sfxMuted, reducedMotion });
-  }, [audioPreferences, bgmMuted, bgmVolume, reducedMotion, sfxMuted, levelConfig?.levelNumber]);
+  }, [audioPreferences, bgmMuted, bgmVolume, reducedMotion, sfxMuted, sfxVolume, levelConfig?.levelNumber]);
+
+  useEffect(() => () => dialogueSfxManager.stop(), []);
 
   useEffect(() => {
     if (!levelConfig?.progressKey) return;
@@ -714,6 +723,11 @@ function GamePage({ levelConfig }) {
     return activeDialogue.lines.reduce((sum, line) => sum + line.text.length, 0);
   }, [activeDialogue]);
 
+  const activeDialogueText = useMemo(
+    () => activeDialogue?.lines.map((line) => line.text).join("") ?? "",
+    [activeDialogue],
+  );
+
   const isTyping = Boolean(activeDialogue) && typedCharacters < totalStepCharacters;
 
   const displayedLines = useMemo(() => {
@@ -735,8 +749,32 @@ function GamePage({ levelConfig }) {
   }, [activeDialogue, typedCharacters]);
 
   useEffect(() => {
+    dialogueSfxManager.stop();
+    previousTypedCharactersRef.current = 0;
     setTypedCharacters(0);
-  }, [dialogueStep, levelConfig?.levelNumber]);
+  }, [dialogueStep, levelConfig?.levelNumber, activeDialogueId]);
+
+  useEffect(() => {
+    const previous = previousTypedCharactersRef.current;
+    previousTypedCharactersRef.current = typedCharacters;
+
+    if (!showStoryIntro || !activeDialogue) return;
+    if (shouldPlayDialogueBlipForProgress(activeDialogueText, previous, typedCharacters)) {
+      dialogueSfxManager.playBlip();
+    }
+  }, [activeDialogue, activeDialogueText, showStoryIntro, typedCharacters]);
+
+  useEffect(() => {
+    if (!showStoryIntro) dialogueSfxManager.stop();
+  }, [showStoryIntro]);
+
+  useEffect(() => {
+    const stopWhenHidden = () => {
+      if (document.hidden) dialogueSfxManager.stop();
+    };
+    document.addEventListener("visibilitychange", stopWhenHidden);
+    return () => document.removeEventListener("visibilitychange", stopWhenHidden);
+  }, []);
 
   useEffect(() => {
     if (activeHint) hintButtonRef.current?.focus();
@@ -780,16 +818,19 @@ function GamePage({ levelConfig }) {
 
   const nextDialogue = () => {
     if (!activeDialogue) {
+      dialogueSfxManager.stop();
       setShowStoryIntro(false);
       return;
     }
 
     if (isTyping) {
+      dialogueSfxManager.stop();
       setTypedCharacters(totalStepCharacters);
       return;
     }
 
     if (isLastDialogue) {
+      dialogueSfxManager.stop();
       setShowStoryIntro(false);
       setIsCodeLocked(false);
       if (levelConfig) {
@@ -802,6 +843,7 @@ function GamePage({ levelConfig }) {
       return;
     }
 
+    dialogueSfxManager.stop();
     setDialogueStep((current) => current + 1);
   };
 

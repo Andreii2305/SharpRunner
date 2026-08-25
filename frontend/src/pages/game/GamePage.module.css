@@ -4,10 +4,56 @@
 .gameContainer {
   background-color: #f0f4f8;
   min-height: 100vh;
+  min-height: 100dvh;
   padding: 24px 5rem;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   box-sizing: border-box;
 }
+
+.mobileTabs { display: none; }
+
+.orientationOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(8, 17, 40, 0.84);
+  backdrop-filter: blur(4px);
+}
+
+.orientationPrompt {
+  display: flex;
+  width: min(360px, 100%);
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  box-sizing: border-box;
+  padding: 28px 24px calc(24px + env(safe-area-inset-bottom));
+  border: 1px solid #334155;
+  border-radius: 18px;
+  background: #0f172a;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+.orientationIcon { color: #60a5fa; font-size: 3.5rem; transform: rotate(90deg); }
+.orientationPrompt h2 { margin: 0; color: #f1f5f9; font-size: 1.4rem; }
+.orientationPrompt p { margin: 0; color: #94a3b8; font-size: 0.9rem; line-height: 1.6; }
+.orientationPrompt button {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: 10px;
+  background: #2563eb;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.orientationPrompt button:hover { background: #1d4ed8; }
 
 .header {
   display: flex;
@@ -1058,68 +1104,56 @@
   transform: translateY(0);
 }
 
-/* ── Mobile block screen ────────────────── */
-.mobileBlock {
-  min-height: 100dvh;
-  background: #0f172a;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 32px 24px 80px;
-}
-
-.mobileBlockInner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 14px;
-  max-width: 320px;
-}
-
-.mobileBlockIcon {
-  font-size: 3.5rem;
-  line-height: 1;
-}
-
-.mobileBlockTitle {
-  margin: 0;
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: #f1f5f9;
-  font-family: 'Segoe UI', sans-serif;
-}
-
-.mobileBlockText {
-  margin: 0;
-  font-size: 0.9rem;
-  color: #94a3b8;
-  line-height: 1.6;
-}
-
-.mobileBlockBtn {
-  margin-top: 8px;
-  width: 100%;
-  padding: 13px;
-  background: #2563eb;
-  color: #fff;
-  border: none;
-  border-radius: 10px;
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-  font-family: 'Segoe UI', sans-serif;
-  transition: background 0.15s;
-}
-.mobileBlockBtn:hover { background: #1d4ed8; }
-
 /* ── Responsive ─────────────────────────── */
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .gameContainer {
     padding: 16px 20px;
   }
+}
+
+@media (max-width: 820px) and (orientation: portrait), (max-height: 500px) and (orientation: landscape) {
+  .gameContainer {
+    min-height: 100dvh;
+    padding: 10px 8px calc(12px + env(safe-area-inset-bottom));
+    overflow-x: clip;
+  }
+
+  .header { margin-bottom: 10px; }
+  .titleGroup { min-width: 0; flex: 1 1 180px; }
+  .titleGroup h1 { overflow: hidden; font-size: 1.05rem; text-overflow: ellipsis; white-space: nowrap; }
+  .titleGroup span { display: block; overflow: hidden; font-size: 0.75rem; text-overflow: ellipsis; white-space: nowrap; }
+  .timer, .timerOvertime { min-width: 58px; padding: 4px 9px; }
+
+  .mobileTabs {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-bottom: 10px;
+    padding: 4px;
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobileTabs button {
+    min-height: 44px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .mobileTabs .mobileTabActive { color: #fff; background: #2563eb; }
+
   .upperRow {
-    grid-template-columns: 1fr;
+    display: contents;
   }
   .lowerRow {
     grid-template-columns: 1fr;
@@ -1127,6 +1161,50 @@
   .infoCards {
     grid-template-columns: 1fr;
   }
+
+  .mobilePanelInactive { display: none; }
+  .mobilePanelActive { display: flex; }
+  .phaserCanvasRoot.mobilePanelActive { display: block; width: 100%; max-height: none; border-radius: 8px; }
+  .editorPanel.mobilePanelActive { height: max(520px, calc(100dvh - 150px)); min-height: 0; }
+  .editorHeader { min-height: 44px; padding: 7px 10px; }
+  .editorActions > :last-child { display: none; }
+  .iconButton { width: 44px; height: 44px; }
+  .audioPanel {
+    position: fixed;
+    top: auto;
+    right: 10px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: min(260px, calc(100vw - 20px));
+    box-sizing: border-box;
+  }
+  .editorFooter {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    padding: 9px 10px calc(9px + env(safe-area-inset-bottom));
+    background: #fff;
+  }
+  .editorFooter > :first-child { width: 100%; min-height: 44px; }
+  .hintAccessButton, .hintClose, .hintDismiss { min-height: 44px; }
+  .lowerRow.mobilePanelActive {
+    display: grid;
+    max-height: calc(100dvh - 150px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .card { padding: 16px; }
+
+  .storyOverlay { padding: 6px; }
+  .storyContainer { gap: 4px; }
+  .storyChapter { padding: 3px 7px; font-size: 0.62rem; }
+  .dialogueBox { min-height: 116px; }
+  .portraitContainer, .portraitFrame, .portraitFace { width: 46px; height: 46px; }
+  .portraitContainer { left: 8px; top: 9px; }
+  .nameTag { top: 8px; left: 60px; min-width: 100px; height: 24px; }
+  .dialogueTextBlock { min-height: 58px; margin: 36px 76px 6px 60px; }
+  .dialogueLine { font-size: 0.75rem; line-height: 1.2; }
+  .dialogueButtonWrap { top: 7px; right: 7px; }
+  .storyAction { display: none; }
 }
 
 @media (max-width: 600px) {

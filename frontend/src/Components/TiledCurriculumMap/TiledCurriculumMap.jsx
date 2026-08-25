@@ -234,8 +234,20 @@ function LevelNode({ node, onNodeClick }) {
 function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
   const [map, setMap] = useState(null);
   const [error, setError] = useState(null);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  const [selectedNode, setSelectedNode] = useState(null);
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) setSelectedNode(null);
+  }, [isMobile]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -321,34 +333,53 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
     dragRef.current = null;
   };
 
+  const selectOrOpenNode = (node) => {
+    if (isMobile) {
+      setSelectedNode(node);
+      return;
+    }
+    onNodeClick?.(node);
+  };
+
   return (
-    <div
-      ref={viewportRef}
-      className={styles.viewport}
-      onPointerDown={startDrag}
-      onPointerMove={moveDrag}
-      onPointerUp={stopDrag}
-      onPointerCancel={stopDrag}
-      aria-label="Scrollable Arrays curriculum map"
-    >
+    <div className={styles.mapShell}>
       <div
-        className={styles.world}
-        style={{ width: map.width * map.tilewidth, height: map.height * map.tileheight }}
+        ref={viewportRef}
+        className={styles.viewport}
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={stopDrag}
+        onPointerCancel={stopDrag}
+        aria-label="Scrollable Arrays curriculum map"
       >
-        {artworkLayers.map((layer) => (
-          <TiledVisualLayer
-            key={layer.id}
-            map={map}
-            layer={layer}
-            onError={setError}
-          />
-        ))}
-        <div className={styles.nodeLayer}>
-          {positionedNodes.map((node) => (
-            <LevelNode key={node.levelNumber} node={node} onNodeClick={onNodeClick} />
+        <div
+          className={styles.world}
+          style={{ width: map.width * map.tilewidth, height: map.height * map.tileheight }}
+        >
+          {artworkLayers.map((layer) => (
+            <TiledVisualLayer
+              key={layer.id}
+              map={map}
+              layer={layer}
+              onError={setError}
+            />
           ))}
+          <div className={styles.nodeLayer}>
+            {positionedNodes.map((node) => (
+              <LevelNode key={node.levelNumber} node={node} onNodeClick={selectOrOpenNode} />
+            ))}
+          </div>
         </div>
       </div>
+      {selectedNode && (
+        <aside className={styles.mobileDetails} aria-label={`${selectedNode.title} details`}>
+          <button type="button" className={styles.detailsClose} onClick={() => setSelectedNode(null)} aria-label="Close level details">×</button>
+          <span className={styles.detailsStatus}>{selectedNode.status}</span>
+          <strong>{selectedNode.title}</strong>
+          <p>{selectedNode.topic || "Open this level to view its learning objective."}</p>
+          <button type="button" className={styles.detailsPlay} onClick={() => onNodeClick?.(selectedNode)}>Play</button>
+        </aside>
+      )}
     </div>
   );
 }

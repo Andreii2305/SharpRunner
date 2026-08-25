@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { FiRefreshCw, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
+import { FiRefreshCw, FiSmartphone, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import styles from "./GamePage.module.css";
@@ -35,6 +35,7 @@ import {
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
+const MOBILE_GAME_QUERY = "(max-width: 820px) and (orientation: portrait), (max-height: 500px) and (orientation: landscape)";
 
 const readBooleanPreference = (key, fallback = false) => {
   try {
@@ -91,13 +92,39 @@ const renderEmphasizedText = (text) =>
 function GamePage({ levelConfig }) {
   const navigate = useNavigate();
   const toast = useToast();
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_GAME_QUERY).matches);
+  const [isPortrait, setIsPortrait] = useState(() =>
+    window.matchMedia?.("(orientation: portrait)").matches ?? false,
+  );
+  const [activeMobileTab, setActiveMobileTab] = useState("game");
+  const [orientationPromptDismissed, setOrientationPromptDismissed] = useState(false);
 
   useEffect(() => {
-    const check = () => setIsMobile(window.innerWidth < 900);
+    const mobileQuery = window.matchMedia(MOBILE_GAME_QUERY);
+    const portraitQuery = window.matchMedia("(orientation: portrait)");
+    const check = () => {
+      setIsMobile(mobileQuery.matches);
+      setIsPortrait(portraitQuery.matches);
+    };
+    check();
     window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
+    mobileQuery.addEventListener?.("change", check);
+    portraitQuery.addEventListener?.("change", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      mobileQuery.removeEventListener?.("change", check);
+      portraitQuery.removeEventListener?.("change", check);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) setOrientationPromptDismissed(false);
+  }, [isMobile]);
+
+  useEffect(() => {
+    const resizeTimer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 0);
+    return () => window.clearTimeout(resizeTimer);
+  }, [activeMobileTab, isMobile, isPortrait]);
 
   const nextLevelTimerRef = useRef(null);
   const completionRequestRef = useRef(null);
@@ -864,23 +891,6 @@ function GamePage({ levelConfig }) {
   const timerSecondsDisplay = (elapsedSeconds % 60).toString().padStart(2, "0");
   const timerLabel = `${timerMinutes}:${timerSecondsDisplay}`;
 
-  if (isMobile) {
-    return (
-      <div className={styles.mobileBlock}>
-        <div className={styles.mobileBlockInner}>
-          <div className={styles.mobileBlockIcon}>🎮</div>
-          <h2 className={styles.mobileBlockTitle}>Desktop Required</h2>
-          <p className={styles.mobileBlockText}>
-            The coding game requires a larger screen to play. Please open SharpRunner on a desktop or laptop.
-          </p>
-          <button className={styles.mobileBlockBtn} onClick={() => navigate("/dashboard")}>
-            ← Back to Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (!levelConfig) {
     return (
       <div className={styles.gameContainer}>
@@ -923,6 +933,18 @@ function GamePage({ levelConfig }) {
 
   return (
     <div className={styles.gameContainer}>
+      {isMobile && isPortrait && !orientationPromptDismissed && (
+        <div className={styles.orientationOverlay} role="presentation">
+          <div className={styles.orientationPrompt} role="dialog" aria-modal="true" aria-labelledby="orientation-title">
+            <FiSmartphone className={styles.orientationIcon} aria-hidden="true" />
+            <h2 id="orientation-title">Rotate your device</h2>
+            <p>SharpRunner gameplay works best in landscape mode.</p>
+            <button type="button" onClick={() => setOrientationPromptDismissed(true)}>
+              Continue Anyway
+            </button>
+          </div>
+        </div>
+      )}
       <header className={styles.header}>
         <div className={styles.titleGroup}>
           <h1>{levelConfig.title}</h1>
@@ -935,9 +957,31 @@ function GamePage({ levelConfig }) {
         <Button label="Exit" variant="outline" size="sm" onClick={exitButton} />
       </header>
 
+      <nav className={styles.mobileTabs} aria-label="Gameplay panels" role="tablist">
+        {[
+          ["game", "Game"],
+          ["code", "Code"],
+          ["lesson", "Lesson"],
+        ].map(([tab, label]) => (
+          <button
+            key={tab}
+            type="button"
+            className={activeMobileTab === tab ? styles.mobileTabActive : ""}
+            onClick={() => setActiveMobileTab(tab)}
+            aria-selected={activeMobileTab === tab}
+            role="tab"
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
       <main className={styles.mainLayout}>
         <div className={styles.upperRow}>
-          <div id="phaser-canvas-root" className={styles.phaserCanvasRoot}>
+          <div
+            id="phaser-canvas-root"
+            className={`${styles.phaserCanvasRoot} ${activeMobileTab === "game" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}
+          >
             <Game
               scene={levelConfig.scene}
               sceneKey={levelConfig.sceneKey ?? `level-${levelConfig.levelNumber}`}
@@ -1040,7 +1084,7 @@ function GamePage({ levelConfig }) {
             )}
           </div>
 
-          <div className={styles.editorPanel}>
+          <div className={`${styles.editorPanel} ${activeMobileTab === "code" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
             <div className={styles.editorHeader}>
               <div className={styles.editorTitleGroup}>
                 <b>C#</b>
@@ -1129,14 +1173,17 @@ function GamePage({ levelConfig }) {
                 onMount={handleEditorMount}
                 options={{
                   minimap: { enabled: false },
-                  fontSize: 14,
+                  fontSize: isMobile ? 13 : 14,
+                  automaticLayout: true,
+                  scrollBeyondLastLine: false,
+                  wordWrap: "off",
                   readOnly: isCodeLocked,
                 }}
               />
             </div>
             <div className={styles.editorFooter}>
               <Button
-                label="Run"
+                label="Run Code"
                 variant="outline"
                 size="sm"
                 onClick={runLevelCheck}
@@ -1204,7 +1251,7 @@ function GamePage({ levelConfig }) {
           </div>
         </div>
 
-        <div className={styles.lowerRow}>
+        <div className={`${styles.lowerRow} ${activeMobileTab === "lesson" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
           <section className={styles.card}>
             <h3>{goalTitle}</h3>
             <p>{goalDescription}</p>

@@ -1,3 +1,11 @@
+.mapShell {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .viewport {
   position: relative;
   flex: 1;
@@ -250,3 +258,57 @@
 }
 
 .fallback span { color: #c9a662; font-size: 0.85rem; }
+
+.mobileDetails { display: none; }
+
+@media (max-width: 767px) {
+  .viewport { min-height: 62dvh; }
+  .levelNode { width: 106px; min-height: 78px; }
+  .nodeTitle { max-width: 100px; font-size: 9px; }
+  .tooltip { display: none !important; }
+
+  .mobileDetails {
+    position: absolute;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    left: 8px;
+    z-index: 150;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 5px 12px;
+    margin: 0;
+    padding: 14px;
+    border: 2px solid #8b6f3f;
+    border-radius: 14px;
+    color: #3d2817;
+    background: #f4e2ab;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+  }
+
+  .mobileDetails strong, .mobileDetails p, .detailsStatus { grid-column: 1; }
+  .mobileDetails strong { font: 700 1rem Georgia, serif; }
+  .mobileDetails p { margin: 0; font-size: 0.76rem; line-height: 1.35; }
+  .detailsStatus { color: #8b2c1a; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; }
+  .detailsClose {
+    grid-column: 2;
+    grid-row: 1;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    color: #5c3a1e;
+    font-size: 1.5rem;
+  }
+  .detailsPlay {
+    grid-column: 2;
+    grid-row: 2 / span 2;
+    min-width: 76px;
+    min-height: 44px;
+    align-self: end;
+    border: 0;
+    border-radius: 9px;
+    color: #fff;
+    background: #175c91;
+    font-weight: 800;
+  }
+}

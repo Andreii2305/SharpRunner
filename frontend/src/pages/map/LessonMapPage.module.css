@@ -6,6 +6,7 @@
   display: flex;
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background: #edf1f3;
 }
@@ -287,19 +288,19 @@
 
   .lessonMapContent {
     padding: 6px;
-    height: auto;
-    overflow: auto;
+    height: 100%;
+    overflow: hidden;
   }
 
   .regionTabs { align-items: stretch; flex-direction: column; gap: 5px; padding: 7px; }
   .regionTabsLabel { padding-left: 3px; }
-  .regionTabList { width: 100%; box-sizing: border-box; }
-  .regionTabList button { flex: 1; min-width: 0; }
+  .regionTabList { width: 100%; overflow-x: auto; box-sizing: border-box; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .regionTabList button { flex: 0 0 auto; min-width: 130px; min-height: 44px; }
   .regionOrder { display: none; }
   .arraysLayout { display: flex; flex-direction: column; }
-  .arraysInfoPanel { flex: none; }
-  .arraysHero { min-height: 120px; }
+  .arraysInfoPanel { display: none; }
   .arraysNotes { display: none; }
-  .arraysHeader { align-items: flex-start; flex-direction: column; }
-  .arraysRegion { min-height: 70vh; }
+  .arraysHeader { padding: 9px 12px; }
+  .arraysHeader p { font-size: 0.7rem; }
+  .arraysRegion { flex: 1; min-height: 0; }
 }

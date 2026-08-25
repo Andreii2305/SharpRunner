@@ -23,6 +23,10 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 
 ## Features
 
+## Device Compatibility
+
+SharpRunner supports responsive web access. The dashboard, curriculum map, lesson content, and teacher pages support portrait use across desktop, tablet, and mobile. Coding gameplay keeps the side-by-side game/editor experience on desktop and uses focused **Game / Code / Lesson** panels below 768px. Gameplay is best experienced on a desktop or tablet, or on a mobile device in landscape orientation; portrait play remains available after a non-blocking rotation recommendation.
+
 ### Student Experience
 
 - Register or log in with email/username and password.

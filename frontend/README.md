@@ -41,3 +41,11 @@ Copy the frontend example environment file when one is provided for your deploym
 ## Game-Safety Boundary
 
 Individual scenes, validators, maps, routes, and assets encode the active curriculum. Treat them as protected behavior: verify shared UI or service changes against the existing levels instead of changing levels to fit stale documentation.
+
+## Responsive Behavior
+
+- **Desktop (1024px and wider):** the Phaser game and Monaco editor remain side by side.
+- **Tablet:** the layout adapts to available width; landscape is preferred for gameplay.
+- **Mobile (below 768px):** navigation and the curriculum map support portrait use, while gameplay uses persistent Game, Code, and Lesson panels. A portrait prompt recommends rotation without blocking access.
+
+Phaser and Monaco stay mounted while mobile panels change, preserving scene and draft state. The code panel uses automatic editor layout, a compact 13px mobile font, and a safe-area-aware action region. For the best coding experience, use a tablet, laptop, or mobile device in landscape orientation.

@@ -80,8 +80,7 @@ const resetPassword = async ({ rawToken, passwordHash }) => {
     if (
       !user ||
       user.status === "archived" ||
-      user.authProvider === "google" ||
-      !user.password
+      user.authProvider !== "password"
     ) {
       return false;
     }

@@ -792,7 +792,7 @@ test("forgot-password is generic, hashes emailed tokens, and excludes Google and
   const localUser = activeUser({
     id: 81,
     authProvider: "password",
-    password: bcrypt.hashSync("old-password", 4),
+    password: null,
   });
   const googleUser = activeUser({ id: 82, email: "google@example.com", authProvider: "google" });
   const archivedUser = activeUser({
@@ -880,7 +880,7 @@ test("reset-password is single-use, bcrypt-hashes the password, and revokes an e
   const user = activeUser({
     id: 91,
     authProvider: "password",
-    password: bcrypt.hashSync("old-password", 4),
+    password: null,
     tokenVersion: 2,
   });
   const oldSession = authToken(user.id, user.role, user.tokenVersion);

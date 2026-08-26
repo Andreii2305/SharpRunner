@@ -230,8 +230,7 @@ router.post("/forgot-password", forgotPasswordRateLimit, async (req, res) => {
       if (
         user &&
         user.status !== "archived" &&
-        user.authProvider !== "google" &&
-        Boolean(user.password)
+        user.authProvider === "password"
       ) {
         const latestToken = await PasswordResetToken.findOne({
           where: { userId: user.id },

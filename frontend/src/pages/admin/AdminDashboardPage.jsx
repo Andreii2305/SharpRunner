@@ -1,4 +1,5 @@
-import { createElement, useCallback, useEffect, useMemo, useState } from "react";
+import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { FiActivity, FiArchive, FiBookOpen, FiDownload, FiEye, FiGrid, FiKey, FiLogOut, FiMenu, FiMoreVertical, FiPlus, FiRefreshCw, FiSearch, FiShield, FiTrash2, FiUserCheck, FiUsers, FiX } from "react-icons/fi";
@@ -93,7 +94,14 @@ function AdminDashboardPage() {
       <TableState loading={loading} error={error} empty={!users.length} emptyText="No accounts match these filters."><div className={styles.tableWrap}><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Created</th><th><span className={styles.srOnly}>Actions</span></th></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{user.firstName} {user.lastName}</strong><small>{user.email} · @{user.username}</small></td><td>{user.role === "teacher" ? "Teacher" : user.role[0].toUpperCase() + user.role.slice(1)}</td><td><StatusBadge value={user.status} /></td><td>{formatDate(user.createdAt)}</td><td><UserActions user={user} openUser={openUser} setConfirmAction={setConfirmAction} setDeleteTarget={setDeleteTarget} setDeleteText={setDeleteText} changeRole={changeRole} /></td></tr>)}</tbody></table></div></TableState><Pager page={userPage} totalPages={userMeta.totalPages || 1} total={userMeta.total || 0} label="matching users" onChange={setUserPage} /></section>
   </>;
 
-  const renderClassrooms = () => <><PageHeading eyebrow="Read-only governance" title="Classrooms"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/classrooms/export.csv?${queryString(classFilters, 1)}`, "sharprunner-classrooms.csv")}><FiDownload /> Export CSV</button></PageHeading><section className={styles.card}><div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search classrooms</span><input value={classFilters.search} onChange={(e) => setClassFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Classroom, teacher, or email" /></label><label>Status<select value={classFilters.status} onChange={(e) => setClassFilters((v) => ({ ...v, status: e.target.value }))}><option value="">All states</option><option value="active">Active</option><option value="archived">Archived</option></select></label><label>Created from<input type="date" value={classFilters.from} onChange={(e) => setClassFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>Created to<input type="date" value={classFilters.to} onChange={(e) => setClassFilters((v) => ({ ...v, to: e.target.value }))} /></label></div><TableState loading={loading} error={error} empty={!classrooms.length} emptyText="No classrooms match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Classroom</th><th>Teacher</th><th>Students</th><th>Modules</th><th>Status</th><th>Latest activity</th><th /></tr></thead><tbody>{classrooms.map((room) => <tr key={room.id}><td><strong>{room.className}</strong><small>{room.section} · {room.schoolYear}</small></td><td>{room.teacher ? <>{room.teacher.firstName} {room.teacher.lastName}<small>{room.teacher.email}</small></> : "—"}</td><td>{room.studentCount ?? 0}</td><td>{room.moduleCount ?? 0}</td><td><StatusBadge value={room.isActive} /></td><td>{formatDate(room.latestActivityAt || room.updatedAt)}</td><td><details className={styles.actionMenu}><summary aria-label={`Actions for ${room.className}`}><FiMoreVertical /></summary><div><button type="button" onClick={() => openClassroom(room)}><FiEye /> Inspect</button><button type="button" onClick={() => setConfirmAction({ title: room.isActive ? "Archive classroom?" : "Restore classroom?", message: room.isActive ? "Students will no longer be able to use this classroom. Instructional content will be preserved." : "The classroom will become active again.", label: room.isActive ? "Archive" : "Restore", path: `/api/admin/classrooms/${room.id}/${room.isActive ? "archive" : "restore"}`, danger: room.isActive })}>{room.isActive ? <FiArchive /> : <FiRefreshCw />} {room.isActive ? "Archive" : "Restore"}</button></div></details></td></tr>)}</tbody></table></div></TableState><Pager page={classPage} totalPages={classMeta.totalPages || 1} total={classMeta.total || 0} label="classrooms" onChange={setClassPage} /></section></>;
+  const renderClassrooms = () => <>
+    <PageHeading eyebrow="Read-only governance" title="Classrooms"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/classrooms/export.csv?${queryString(classFilters, 1)}`, "sharprunner-classrooms.csv")}><FiDownload /> Export CSV</button></PageHeading>
+    <section className={styles.card}>
+      <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search classrooms</span><input value={classFilters.search} onChange={(e) => setClassFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Classroom, teacher, or email" /></label><label>Status<select value={classFilters.status} onChange={(e) => setClassFilters((v) => ({ ...v, status: e.target.value }))}><option value="">All states</option><option value="active">Active</option><option value="archived">Archived</option></select></label><label>Created from<input type="date" value={classFilters.from} onChange={(e) => setClassFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>Created to<input type="date" value={classFilters.to} onChange={(e) => setClassFilters((v) => ({ ...v, to: e.target.value }))} /></label></div>
+      <TableState loading={loading} error={error} empty={!classrooms.length} emptyText="No classrooms match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Classroom</th><th>Teacher</th><th>Students</th><th>Modules</th><th>Status</th><th>Latest activity</th><th /></tr></thead><tbody>{classrooms.map((room) => <tr key={room.id}><td><strong>{room.className}</strong><small>{room.section} · {room.schoolYear}</small></td><td>{room.teacher ? <>{room.teacher.firstName} {room.teacher.lastName}<small>{room.teacher.email}</small></> : "—"}</td><td>{room.studentCount ?? 0}</td><td>{room.moduleCount ?? 0}</td><td><StatusBadge value={room.isActive} /></td><td>{formatDate(room.latestActivityAt || room.updatedAt)}</td><td><ClassroomActions room={room} openClassroom={openClassroom} setConfirmAction={setConfirmAction} /></td></tr>)}</tbody></table></div></TableState>
+      <Pager page={classPage} totalPages={classMeta.totalPages || 1} total={classMeta.total || 0} label="classrooms" onChange={setClassPage} />
+    </section>
+  </>;
 
   const renderContent = () => <>
     <PageHeading eyebrow="Teacher-created materials" title="Content oversight"><span className={styles.readOnly}><FiEye /> Read-only</span></PageHeading>
@@ -113,16 +121,72 @@ function AdminDashboardPage() {
 
 function PageHeading({ eyebrow, title, children }) { return <div className={styles.pageHeading}><div><p>{eyebrow}</p><h2>{title}</h2></div><div className={styles.headingActions}>{children}</div></div>; }
 function Sidebar({ open, activeView, selectView, adminUser, close, signOut }) { return <aside className={`${styles.sidebar} ${open ? styles.sidebarOpen : ""}`}><div className={styles.brand}><div>SR</div><span><strong>SharpRunner</strong><small>Administration</small></span><button type="button" onClick={close} aria-label="Close navigation"><FiX /></button></div><nav>{NAV_ITEMS.map(([key, label, icon]) => <button type="button" className={activeView === key ? styles.navActive : ""} key={key} onClick={() => selectView(key)}>{createElement(icon)}<span>{label}</span></button>)}</nav><div className={styles.adminIdentity}><div>{(adminUser?.firstName?.[0] || adminUser?.username?.[0] || "A").toUpperCase()}</div><span><strong>{adminUser?.firstName || adminUser?.username || "Admin"}</strong><small>Administrator</small></span></div><button className={styles.logoutButton} type="button" onClick={signOut}><FiLogOut /> Sign out</button></aside>; }
+function RowActionMenu({ label, children }) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef(null);
+  const menuRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current || !menuRef.current) return;
+    const margin = 8;
+    const gap = 6;
+    const menuWidth = menuRef.current.offsetWidth;
+    const menuHeight = menuRef.current.offsetHeight;
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - triggerRect.bottom - margin;
+    const spaceAbove = triggerRect.top - margin;
+    const shouldOpenUp = spaceBelow < menuHeight && spaceAbove > spaceBelow;
+    const desiredTop = shouldOpenUp ? triggerRect.top - menuHeight - gap : triggerRect.bottom + gap;
+    setPosition({
+      top: Math.max(margin, Math.min(desiredTop, window.innerHeight - menuHeight - margin)),
+      left: Math.max(margin, Math.min(triggerRect.right - menuWidth, window.innerWidth - menuWidth - margin)),
+    });
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutsidePress = (event) => {
+      if (!triggerRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeOnKey = (event) => { if (event.key === "Escape") setOpen(false); };
+    const closeOnViewportChange = (event) => {
+      if (event?.type === "scroll" && menuRef.current?.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    document.addEventListener("keydown", closeOnKey);
+    window.addEventListener("resize", closeOnViewportChange);
+    window.addEventListener("scroll", closeOnViewportChange, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePress);
+      document.removeEventListener("keydown", closeOnKey);
+      window.removeEventListener("resize", closeOnViewportChange);
+      window.removeEventListener("scroll", closeOnViewportChange, true);
+    };
+  }, [open]);
+
+  return <div className={styles.actionMenu}>
+    <button ref={triggerRef} className={styles.actionMenuTrigger} type="button" aria-label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}><FiMoreVertical /></button>
+    {open && createPortal(<div ref={menuRef} className={styles.actionMenuPopover} role="menu" style={position} onClick={(event) => { if (event.target.closest("button")) setOpen(false); }} onChange={() => setOpen(false)}>{children}</div>, document.body)}
+  </div>;
+}
+function ClassroomActions({ room, openClassroom, setConfirmAction }) {
+  return <RowActionMenu label={`Actions for ${room.className}`}>
+    <button type="button" role="menuitem" onClick={() => openClassroom(room)}><FiEye /> Inspect</button>
+    <button type="button" role="menuitem" onClick={() => setConfirmAction({ title: room.isActive ? "Archive classroom?" : "Restore classroom?", message: room.isActive ? "Students will no longer be able to use this classroom. Instructional content will be preserved." : "The classroom will become active again.", label: room.isActive ? "Archive" : "Restore", path: `/api/admin/classrooms/${room.id}/${room.isActive ? "archive" : "restore"}`, danger: room.isActive })}>{room.isActive ? <FiArchive /> : <FiRefreshCw />} {room.isActive ? "Archive" : "Restore"}</button>
+  </RowActionMenu>;
+}
 function UserActions({ user, openUser, setConfirmAction, setDeleteTarget, setDeleteText, changeRole }) {
   const statusAction = user.status === "inactive"
     ? { title: "Reactivate account?", message: `${user.username} will be able to sign in again.`, label: "Reactivate", status: "active" }
     : user.status === "active"
       ? { title: user.role === "teacher" ? "Suspend teacher?" : "Deactivate account?", message: `${user.username} will no longer be able to sign in until reactivated.`, label: user.role === "teacher" ? "Suspend" : "Deactivate", status: "inactive", danger: true }
       : null;
-  return <details className={styles.actionMenu}><summary aria-label={`Actions for ${user.username}`}><FiMoreVertical /></summary><div>
-    <button type="button" onClick={() => openUser(user)}><FiEye /> View details</button>
+  return <RowActionMenu label={`Actions for ${user.username}`}>
+    <button type="button" role="menuitem" onClick={() => openUser(user)}><FiEye /> View details</button>
     {user.role !== "admin" && <>
-      <button type="button" onClick={() => setConfirmAction({ title: "Force logout?", message: `${user.username} will need to sign in again on every device.`, label: "Force logout", path: `/api/admin/users/${user.id}/force-logout` })}><FiLogOut /> Force logout</button>
+      <button type="button" role="menuitem" onClick={() => setConfirmAction({ title: "Force logout?", message: `${user.username} will need to sign in again on every device.`, label: "Force logout", path: `/api/admin/users/${user.id}/force-logout` })}><FiLogOut /> Force logout</button>
       {user.status === "archived" ? <>
         <button type="button" onClick={() => setConfirmAction({ title: "Restore account?", message: "This user will regain access with all historical data preserved.", label: "Restore", path: `/api/admin/users/${user.id}/restore` })}><FiRefreshCw /> Restore</button>
         <button className={styles.dangerItem} type="button" onClick={() => { setDeleteTarget(user); setDeleteText(""); }}><FiTrash2 /> Delete permanently</button>
@@ -133,7 +197,7 @@ function UserActions({ user, openUser, setConfirmAction, setDeleteTarget, setDel
       {user.role === "teacher" && user.authProvider !== "google" && <button type="button" onClick={() => setConfirmAction({ title: "Reset password?", message: `A temporary password will be emailed to ${user.email}. Existing sessions will be revoked.`, label: "Reset password", path: `/api/admin/users/${user.id}/reset-password`, body: { revokeSessions: true } })}><FiKey /> Reset password</button>}
       <div className={styles.menuSelect}><span>Role</span><select value={user.role} onChange={(e) => changeRole(user, e.target.value)}><option value="student">Student</option><option value="teacher">Teacher</option></select></div>
     </>}
-  </div></details>;
+  </RowActionMenu>;
 }
 function TableState({ loading, error, empty, emptyText, children }) { if (loading) return <div className={styles.state}><FiRefreshCw className={styles.spin} /> Loading…</div>; if (error) return <div className={`${styles.state} ${styles.stateError}`}><FiActivity />{error}</div>; if (empty) return <Empty text={emptyText} />; return children; }
 function Empty({ text }) { return <div className={styles.state}><FiSearch /><strong>{text}</strong><span>Try changing the current filters.</span></div>; }

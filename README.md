@@ -18,7 +18,7 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Failed attempts unlock a free basic hint at the teacher-configured threshold (three by default).
 - After that threshold, students may optionally spend 15 XP once per level for protected, level-specific detailed guidance.
 - First completions award server-owned XP and bonuses separately from academic scores.
-- Admins can manage users, create teacher accounts, and view admin activity logs.
+- Admins govern account retention and sessions, oversee classrooms/content, monitor system health, export reports, and review audit activity.
 - Developer tools can generate one-time admin invite codes.
 
 ## Features
@@ -56,14 +56,18 @@ SharpRunner supports responsive web access. The dashboard, curriculum map, lesso
 
 ### Admin Experience
 
-- View and search users.
+- View and search paginated users, teachers, and students with role/status filters.
 - Create teacher accounts.
 - Activate or deactivate non-admin users.
+- Archive and restore accounts without deleting classroom or progress history.
+- Force logout users by revoking existing JWT sessions.
 - Change student/teacher roles with ownership safeguards.
-- Email temporary-password resets to teacher accounts.
-- Browse paginated users and audit activity with accurate system totals.
-- Permanently delete non-admin accounts after confirmation.
-- View admin activity logs.
+- Email temporary-password resets to teacher accounts and revoke their sessions by default.
+- Permanently delete archived non-admin accounts only after typed confirmation.
+- Inspect all classrooms and teacher-created content in read-only governance views; archive/restore classrooms.
+- View live backend/database health, system totals, and recent admin activity.
+- Filter paginated audit logs by actor, action, target, and date.
+- Export filter-aware users, classrooms, and audit logs as safe CSV files.
 - Bootstrap the first admin through a setup key, or create admins through developer-generated invite codes.
 
 ### Game And Learning

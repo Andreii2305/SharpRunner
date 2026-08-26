@@ -7,8 +7,9 @@ const USER_STATUS_COLUMN_NAME = "status";
 const USER_IS_PLAYING_GAME_COLUMN_NAME = "isPlayingGame";
 const USER_LAST_GAME_HEARTBEAT_AT_COLUMN_NAME = "lastGameHeartbeatAt";
 const USER_LAST_LOGIN_AT_COLUMN_NAME = "lastLoginAt";
+const USER_TOKEN_VERSION_COLUMN_NAME = "tokenVersion";
 const ALLOWED_ROLES = ["student", "teacher", "admin"];
-const ALLOWED_STATUSES = ["active", "inactive", "pending"];
+const ALLOWED_STATUSES = ["active", "inactive", "pending", "archived"];
 
 const ensureUserRoleColumn = async () => {
   const queryInterface = sequelize.getQueryInterface();
@@ -107,8 +108,22 @@ const ensureUserActivityColumns = async () => {
   );
 };
 
+const ensureUserTokenVersionColumn = async () => {
+  const queryInterface = sequelize.getQueryInterface();
+  const tableDefinition = await queryInterface.describeTable(USER_TABLE_NAME);
+  if (!tableDefinition[USER_TOKEN_VERSION_COLUMN_NAME]) {
+    await queryInterface.addColumn(USER_TABLE_NAME, USER_TOKEN_VERSION_COLUMN_NAME, {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+    });
+  }
+  await sequelize.query('UPDATE "Users" SET "tokenVersion" = 0 WHERE "tokenVersion" IS NULL');
+};
+
 module.exports = {
   ensureUserRoleColumn,
   ensureUserStatusColumn,
   ensureUserActivityColumns,
+  ensureUserTokenVersionColumn,
 };

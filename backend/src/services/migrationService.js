@@ -5,6 +5,7 @@ const {
   ensureUserRoleColumn,
   ensureUserStatusColumn,
   ensureUserActivityColumns,
+  ensureUserTokenVersionColumn,
 } = require("./userRoleSchemaService");
 const { ensureClassroomColumns } = require("./classroomSchemaService");
 const { ensureProgressGradingColumns } = require("./progressSchemaService");
@@ -19,6 +20,7 @@ const runLegacySchemaUpgrade = async () => {
   await ensureUserRoleColumn();
   await ensureUserStatusColumn();
   await ensureUserActivityColumns();
+  await ensureUserTokenVersionColumn();
   await ensureClassroomColumns();
   await ensureProgressGradingColumns();
   await ensureLevelContentOverridesTable();
@@ -39,6 +41,7 @@ const migrations = [
   ["20260819000000_protect_all_backend_tables", sqlMigration("20260819000000_protect_all_backend_tables.sql")],
   ["20260822000000_panel_system_recommendations", sqlMigration("20260822000000_panel_system_recommendations.sql")],
   ["20260822120000_detailed_hint_purchases", sqlMigration("20260822120000_detailed_hint_purchases.sql")],
+  ["20260826000000_admin_governance", sqlMigration("20260826000000_admin_governance.sql")],
 ];
 
 const runMigrations = async () => {

@@ -35,8 +35,8 @@ after(() => new Promise((resolve, reject) => {
   server.close((error) => (error ? reject(error) : resolve()));
 }));
 
-const authToken = (id, role) =>
-  jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: "5m" });
+const authToken = (id, role, tokenVersion = 0) =>
+  jwt.sign({ id, role, tokenVersion }, process.env.JWT_SECRET, { expiresIn: "5m" });
 
 const apiRequest = async (path, { method = "GET", token, body } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
@@ -107,6 +107,18 @@ test("GET /api/auth/me rejects an inactive account even with a valid token", asy
     });
     assert.equal(response.status, 403);
     assert.equal(payload.message, "Account is not active");
+  });
+});
+
+test("GET /api/auth/me rejects an access token after its session version is revoked", async () => {
+  await withStubs([
+    [User, "findByPk", async () => activeUser({ tokenVersion: 4 })],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/auth/me", {
+      token: authToken(1, "student", 3),
+    });
+    assert.equal(response.status, 401);
+    assert.equal(payload.message, "Session has been revoked");
   });
 });
 
@@ -642,7 +654,7 @@ test("admin user and log endpoints return bounded pagination metadata", async ()
 
 test("admin summary reports active users and classrooms", async () => {
   const admin = activeUser({ id: 7, role: "admin" });
-  const counts = [40, 4, 31];
+  const counts = [40, 35, 4, 31, 5];
   await withStubs([
     [User, "findByPk", async () => admin],
     [User, "count", async () => counts.shift()],
@@ -650,7 +662,7 @@ test("admin summary reports active users and classrooms", async () => {
   ], async () => {
     const { response, payload } = await apiRequest("/api/admin/summary", { token: authToken(7, "admin") });
     assert.equal(response.status, 200);
-    assert.deepEqual(payload, { totalUsers: 40, activeTeachers: 4, activeStudents: 31, activeClassrooms: 6 });
+    assert.deepEqual(payload, { totalUsers: 40, activeUsers: 35, activeTeachers: 4, activeStudents: 31, activeClassrooms: 6, archivedAccounts: 5 });
   });
 });
 
@@ -676,15 +688,43 @@ test("admin role changes and deletion are audited while admin accounts remain pr
   });
 
   let destroyed = false;
+  target.status = "archived";
   target.destroy = async () => { destroyed = true; };
   await withStubs([
     [User, "findByPk", async (id) => id === 7 ? admin : target],
     [AdminActivityLog, "create", async (values) => { auditRows.push(values); return values; }],
   ], async () => {
-    const deleted = await apiRequest("/api/admin/users/8", { method: "DELETE", token: authToken(7, "admin") });
+    const deleted = await apiRequest("/api/admin/users/8", { method: "DELETE", token: authToken(7, "admin"), body: { confirmation: "DELETE" } });
     assert.equal(deleted.response.status, 200);
     assert.equal(destroyed, true);
-    assert.equal(auditRows.at(-1).activity, "Deleted user account");
+    assert.equal(auditRows.at(-1).activity, "USER_DELETED");
+  });
+});
+
+test("admin archive, restore, and force logout preserve accounts and rotate token versions", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin", tokenVersion: 0 });
+  const target = activeUser({ id: 8, username: "student-eight", role: "student", tokenVersion: 2 });
+  const auditRows = [];
+  await withStubs([
+    [User, "findByPk", async (id, options) => id === 7 ? (options?.attributes?.length === 1 ? { username: admin.username } : admin) : target],
+    [AdminActivityLog, "create", async (values) => { auditRows.push(values); return values; }],
+  ], async () => {
+    const archived = await apiRequest("/api/admin/users/8/archive", { method: "POST", token: authToken(7, "admin"), body: {} });
+    assert.equal(archived.response.status, 200);
+    assert.equal(target.status, "archived");
+    assert.equal(target.tokenVersion, 3);
+    assert.equal(auditRows.at(-1).activity, "USER_ARCHIVED");
+
+    const restored = await apiRequest("/api/admin/users/8/restore", { method: "POST", token: authToken(7, "admin"), body: {} });
+    assert.equal(restored.response.status, 200);
+    assert.equal(target.status, "active");
+    assert.equal(target.tokenVersion, 4);
+    assert.equal(auditRows.at(-1).activity, "USER_RESTORED");
+
+    const revoked = await apiRequest("/api/admin/users/8/force-logout", { method: "POST", token: authToken(7, "admin"), body: {} });
+    assert.equal(revoked.response.status, 200);
+    assert.equal(target.tokenVersion, 5);
+    assert.equal(auditRows.at(-1).activity, "SESSION_REVOKED");
   });
 });
 

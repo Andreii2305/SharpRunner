@@ -1,628 +1,153 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createElement, useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import {
-  FiBell,
-  FiEdit2,
-  FiFilter,
-  FiGrid,
-  FiKey,
-  FiPlus,
-  FiSearch,
-  FiTrash2,
-  FiUserCheck,
-  FiUsers,
-  FiXCircle,
-  FiZap,
-} from "react-icons/fi";
-import {
-  buildApiUrl,
-  clearToken,
-  getAuthHeaders,
-  getUser,
-} from "../../utils/auth";
+import { FiActivity, FiArchive, FiBookOpen, FiDownload, FiEye, FiGrid, FiKey, FiLogOut, FiMenu, FiMoreVertical, FiPlus, FiRefreshCw, FiSearch, FiShield, FiTrash2, FiUserCheck, FiUsers, FiX } from "react-icons/fi";
+import { buildApiUrl, clearToken, getAuthHeaders, getUser } from "../../utils/auth";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInviteModal.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import styles from "./AdminDashboardPage.module.css";
 
-const formatLastUpdated = (timestamp) =>
-  new Date(timestamp).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+const NAV_ITEMS = [["dashboard", "Dashboard", FiGrid], ["users", "Users", FiUsers], ["teachers", "Teachers", FiUserCheck], ["students", "Students", FiUsers], ["classrooms", "Classrooms", FiBookOpen], ["content", "Content", FiShield], ["audit", "Audit Logs", FiActivity], ["status", "System Status", FiActivity]];
+const EMPTY_SUMMARY = { totalUsers: 0, activeUsers: 0, activeTeachers: 0, activeStudents: 0, activeClassrooms: 0, archivedAccounts: 0 };
+const formatDate = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
+const api = () => ({ headers: getAuthHeaders() });
 
-const formatTime = (timestamp) =>
-  new Date(timestamp).toLocaleTimeString(undefined, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function StatusBadge({ value }) {
+  const label = value === true ? "Active" : value === false ? "Archived" : String(value || "unknown").replaceAll("_", " ");
+  return <span className={`${styles.badge} ${styles[`badge_${String(value).toLowerCase()}`] || ""}`}>{label}</span>;
+}
+function Pager({ page, totalPages, total, label, onChange }) {
+  return <div className={styles.pagination}><span>{total} {label}</span><div><button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)}>Previous</button><span>Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => onChange(page + 1)}>Next</button></div></div>;
+}
 
 function AdminDashboardPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const adminUser = getUser();
-  const [allUsers, setAllUsers] = useState([]);
-  const [activityLogs, setActivityLogs] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchText, setSearchText] = useState("");
-  const [isCreatingTeacher, setIsCreatingTeacher] = useState(false);
-  const [teacherInviteError, setTeacherInviteError] = useState("");
-  const [updatingUserId, setUpdatingUserId] = useState(null);
-  const [userPendingDeletion, setUserPendingDeletion] = useState(null);
-  const [deletingUserId, setDeletingUserId] = useState(null);
-  const [showTeacherInviteModal, setShowTeacherInviteModal] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(Date.now());
-  const [summary, setSummary] = useState({ totalUsers: 0, activeTeachers: 0, activeStudents: 0, activeClassrooms: 0 });
-  const [userPage, setUserPage] = useState(1);
-  const [logPage, setLogPage] = useState(1);
-  const [userPagination, setUserPagination] = useState({ total: 0, totalPages: 1 });
-  const [logPagination, setLogPagination] = useState({ total: 0, totalPages: 1 });
-  const [passwordResetTarget, setPasswordResetTarget] = useState(null);
+  const [activeView, setActiveView] = useState("dashboard");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
+  const [health, setHealth] = useState({ status: "checking", database: "checking" });
+  const [users, setUsers] = useState([]); const [userPage, setUserPage] = useState(1); const [userMeta, setUserMeta] = useState({ total: 0, totalPages: 1 });
+  const [userFilters, setUserFilters] = useState({ search: "", status: "", role: "" });
+  const [classrooms, setClassrooms] = useState([]); const [classPage, setClassPage] = useState(1); const [classMeta, setClassMeta] = useState({ total: 0, totalPages: 1 });
+  const [classFilters, setClassFilters] = useState({ search: "", status: "", from: "", to: "" });
+  const [content, setContent] = useState([]); const [contentPage, setContentPage] = useState(1); const [contentMeta, setContentMeta] = useState({ total: 0, totalPages: 1 });
+  const [contentFilters, setContentFilters] = useState({ search: "", type: "", published: "" });
+  const [logs, setLogs] = useState([]); const [logPage, setLogPage] = useState(1); const [logMeta, setLogMeta] = useState({ total: 0, totalPages: 1 });
+  const [logFilters, setLogFilters] = useState({ actor: "", target: "", action: "", from: "", to: "" });
+  const [confirmAction, setConfirmAction] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deleteText, setDeleteText] = useState("");
+  const [detail, setDetail] = useState(null); const [showInvite, setShowInvite] = useState(false); const [inviteBusy, setInviteBusy] = useState(false); const [inviteError, setInviteError] = useState(""); const [actionBusy, setActionBusy] = useState(false);
 
-  const fetchDashboardData = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage("");
-
+  const effectiveUserFilters = useMemo(() => ({ ...userFilters, role: activeView === "teachers" ? "teacher" : activeView === "students" ? "student" : userFilters.role }), [activeView, userFilters]);
+  const queryString = (values, page) => { const params = new URLSearchParams({ page: String(page), limit: "20" }); Object.entries(values).forEach(([key, value]) => value && params.set(key, value)); return params.toString(); };
+  const loadDashboard = useCallback(async () => {
+    const [summaryResponse, logsResponse, healthResponse] = await Promise.all([axios.get(buildApiUrl("/api/admin/summary"), api()), axios.get(buildApiUrl("/api/admin/logs?page=1&limit=8"), api()), axios.get(buildApiUrl("/api/health"))]);
+    setSummary(summaryResponse.data); setLogs(logsResponse.data.logs || []); setHealth(healthResponse.data);
+  }, []);
+  const refresh = useCallback(async () => {
+    setLoading(true); setError("");
     try {
-      const userQuery = new URLSearchParams({ page: String(userPage), limit: "20" });
-      if (roleFilter !== "all") userQuery.set("role", roleFilter);
-      if (statusFilter !== "all") userQuery.set("status", statusFilter);
-      if (searchText.trim()) userQuery.set("search", searchText.trim());
-      const [usersResponse, logsResponse, summaryResponse] = await Promise.all([
-        axios.get(buildApiUrl(`/api/admin/users?${userQuery}`), {
-          headers: getAuthHeaders(),
-        }),
-        axios.get(buildApiUrl(`/api/admin/logs?page=${logPage}&limit=20`), {
-          headers: getAuthHeaders(),
-        }),
-        axios.get(buildApiUrl("/api/admin/summary"), { headers: getAuthHeaders() }),
-      ]);
+      if (activeView === "dashboard" || activeView === "status") await loadDashboard();
+      else if (["users", "teachers", "students"].includes(activeView)) { const r = await axios.get(buildApiUrl(`/api/admin/users?${queryString(effectiveUserFilters, userPage)}`), api()); setUsers(r.data.users || []); setUserMeta(r.data); }
+      else if (activeView === "classrooms") { const r = await axios.get(buildApiUrl(`/api/admin/classrooms?${queryString(classFilters, classPage)}`), api()); setClassrooms(r.data.classrooms || []); setClassMeta(r.data); }
+      else if (activeView === "content") { const r = await axios.get(buildApiUrl(`/api/admin/content?${queryString(contentFilters, contentPage)}`), api()); setContent(r.data.content || []); setContentMeta(r.data); }
+      else if (activeView === "audit") { const r = await axios.get(buildApiUrl(`/api/admin/logs?${queryString(logFilters, logPage)}`), api()); setLogs(r.data.logs || []); setLogMeta(r.data); }
+    } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load this admin view."); if (activeView === "status") setHealth({ status: "error", database: "unavailable" }); }
+    finally { setLoading(false); }
+  }, [activeView, classFilters, classPage, contentFilters, contentPage, effectiveUserFilters, loadDashboard, logFilters, logPage, userPage]);
+  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { setUserPage(1); }, [effectiveUserFilters]);
 
-      setAllUsers(usersResponse.data.users ?? []);
-      setActivityLogs(logsResponse.data.logs ?? []);
-      setUserPagination({ total: usersResponse.data.total ?? 0, totalPages: usersResponse.data.totalPages ?? 1 });
-      setLogPagination({ total: logsResponse.data.total ?? 0, totalPages: logsResponse.data.totalPages ?? 1 });
-      setSummary(summaryResponse.data ?? { totalUsers: 0, activeTeachers: 0, activeStudents: 0, activeClassrooms: 0 });
-      setLastUpdated(Date.now());
-    } catch (error) {
-      setErrorMessage(
-        error.response?.data?.message ??
-          "Failed to load dashboard data. Please refresh.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [logPage, roleFilter, searchText, statusFilter, userPage]);
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, [fetchDashboardData]);
-
-  const usersWithStatus = useMemo(
-    () =>
-      allUsers.map((user) => ({
-        ...user,
-        status:
-          typeof user.status === "string" && user.status.trim()
-            ? user.status.toLowerCase()
-            : "active",
-      })),
-    [allUsers],
-  );
-
-  const filteredUsers = useMemo(() => {
-    const normalizedSearch = searchText.trim().toLowerCase();
-
-    return usersWithStatus.filter((user) => {
-      const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
-      const matchesRole = roleFilter === "all" || user.role === roleFilter;
-      const matchesStatus =
-        statusFilter === "all" || user.status === statusFilter;
-      const matchesSearch =
-        !normalizedSearch ||
-        fullName.includes(normalizedSearch) ||
-        user.username?.toLowerCase().includes(normalizedSearch) ||
-        user.email?.toLowerCase().includes(normalizedSearch);
-
-      return matchesRole && matchesStatus && matchesSearch;
-    });
-  }, [usersWithStatus, roleFilter, statusFilter, searchText]);
-
-  useEffect(() => { setUserPage(1); }, [roleFilter, statusFilter, searchText]);
-
-  const systemLogs = useMemo(() => {
-    return activityLogs.map((log) => ({
-      id: log.id,
-      time: formatTime(log.createdAt),
-      username: log.actorUsername || log.targetUsername || "system",
-      role: log.role || "system",
-      activity: log.activity || "System activity",
-      details: log.details || "-",
-      status:
-        (log.status || "success").toLowerCase() === "failed"
-          ? "Failed"
-          : "Success",
-    }));
-  }, [activityLogs]);
-
-  const createTeacher = async (teacherForm) => {
-    setSuccessMessage("");
-    setErrorMessage("");
-    setTeacherInviteError("");
-
-    setIsCreatingTeacher(true);
-
-    try {
-      const response = await axios.post(
-        buildApiUrl("/api/admin/users/teacher"),
-        teacherForm,
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-
-      setSuccessMessage(
-        response.data.message ?? "Teacher invitation sent successfully.",
-      );
-      toast.success(`Teacher invitation sent to ${teacherForm.email}.`);
-      setShowTeacherInviteModal(false);
-      await fetchDashboardData();
-    } catch (error) {
-      setTeacherInviteError(
-        error.response?.data?.message ?? "Failed to send teacher invitation",
-      );
-    } finally {
-      setIsCreatingTeacher(false);
-    }
+  const runAction = async () => {
+    if (!confirmAction || actionBusy) return; setActionBusy(true);
+    try { const r = await axios.request({ url: buildApiUrl(confirmAction.path), method: confirmAction.method || "POST", data: confirmAction.body || {}, headers: getAuthHeaders() }); toast.success(r.data.message || "Admin action completed."); setConfirmAction(null); await refresh(); }
+    catch (requestError) { setError(requestError.response?.data?.message || "Admin action failed."); } finally { setActionBusy(false); }
   };
-
-  const onChangeUserStatus = async (user, nextStatus) => {
-    setErrorMessage("");
-    setSuccessMessage("");
-    setUpdatingUserId(user.id);
-
-    try {
-      const response = await axios.patch(
-        buildApiUrl(`/api/admin/users/${user.id}/status`),
-        { status: nextStatus },
-        {
-          headers: getAuthHeaders(),
-        },
-      );
-
-      setSuccessMessage(response.data.message ?? "User status updated.");
-      await fetchDashboardData();
-    } catch (error) {
-      setErrorMessage(
-        error.response?.data?.message ?? "Failed to update user status",
-      );
-    } finally {
-      setUpdatingUserId(null);
-    }
+  const permanentDelete = async () => {
+    if (!deleteTarget || deleteText !== "DELETE" || actionBusy) return; setActionBusy(true);
+    try { const r = await axios.delete(buildApiUrl(`/api/admin/users/${deleteTarget.id}`), { headers: getAuthHeaders(), data: { confirmation: deleteText } }); toast.success(r.data.message); setDeleteTarget(null); setDeleteText(""); await refresh(); }
+    catch (requestError) { setError(requestError.response?.data?.message || "Permanent deletion failed."); } finally { setActionBusy(false); }
   };
+  const changeRole = async (user, role) => { try { const r = await axios.patch(buildApiUrl(`/api/admin/users/${user.id}/role`), { role }, api()); toast.success(r.data.message); await refresh(); } catch (requestError) { setError(requestError.response?.data?.message || "Role change failed."); } };
+  const openUser = async (user) => { try { const r = await axios.get(buildApiUrl(`/api/admin/users/${user.id}`), api()); setDetail({ type: "user", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load user details."); } };
+  const openClassroom = async (room) => { try { const r = await axios.get(buildApiUrl(`/api/admin/classrooms/${room.id}`), api()); setDetail({ type: "classroom", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load classroom details."); } };
+  const openContent = async (item) => { try { const r = await axios.get(buildApiUrl(`/api/admin/content/${item.id}`), api()); setDetail({ type: "content", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load content details."); } };
+  const exportCsv = async (path, filename) => { try { const r = await axios.get(buildApiUrl(path), { headers: getAuthHeaders(), responseType: "blob" }); const url = URL.createObjectURL(r.data); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); } catch { setError("CSV export failed."); } };
+  const createTeacher = async (form) => { setInviteBusy(true); setInviteError(""); try { const r = await axios.post(buildApiUrl("/api/admin/users/teacher"), form, api()); toast.success(r.data.message); setShowInvite(false); await refresh(); } catch (requestError) { setInviteError(requestError.response?.data?.message || "Unable to invite teacher."); } finally { setInviteBusy(false); } };
+  const selectView = (view) => { setActiveView(view); setDrawerOpen(false); setError(""); setDetail(null); };
+  const signOut = () => { clearToken(); navigate("/login", { replace: true }); };
 
-  const confirmDeleteUser = async () => {
-    if (!userPendingDeletion || deletingUserId) return;
+  const renderDashboard = () => <>
+    <PageHeading eyebrow="Platform administration" title="Dashboard overview"><button className={styles.secondaryButton} type="button" onClick={refresh}><FiRefreshCw /> Refresh</button></PageHeading>
+    <div className={styles.statGrid}>{[["Total users", summary.totalUsers, FiUsers], ["Active users", summary.activeUsers, FiUserCheck], ["Teachers", summary.activeTeachers, FiUserCheck], ["Students", summary.activeStudents, FiUsers], ["Active classrooms", summary.activeClassrooms, FiBookOpen], ["Archived accounts", summary.archivedAccounts, FiArchive]].map(([label, value, icon]) => <article className={styles.statCard} key={label}>{createElement(icon)}<div><span>{label}</span><strong>{value}</strong></div></article>)}</div>
+    <div className={styles.gridTwo}><section className={styles.card}><div className={styles.cardHeader}><div><h3>System health</h3><p>Live operational checks</p></div></div><div className={styles.healthRows}><div><span>Backend</span><StatusBadge value={health.status === "ok" ? "online" : health.status} /></div><div><span>Database</span><StatusBadge value={health.database} /></div></div></section><section className={styles.card}><div className={styles.cardHeader}><div><h3>Recent admin activity</h3><p>Latest governance actions</p></div><button type="button" className={styles.textButton} onClick={() => selectView("audit")}>View all</button></div><div className={styles.activityList}>{logs.length ? logs.slice(0, 6).map((log) => <div key={log.id}><FiActivity /><p><strong>{log.actorUsername || "System"}</strong> {log.activity}<small>{log.targetUsername || log.details || "Platform"} · {formatDate(log.createdAt)}</small></p></div>) : <Empty text="No admin activity yet." />}</div></section></div>
+  </>;
 
-    const user = userPendingDeletion;
-    setErrorMessage("");
-    setSuccessMessage("");
-    setDeletingUserId(user.id);
+  const renderUsers = () => <>
+    <PageHeading eyebrow="Account governance" title={activeView === "teachers" ? "Teachers" : activeView === "students" ? "Students" : "Users"}><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/users/export.csv?${queryString(effectiveUserFilters, 1)}`, "sharprunner-users.csv")}><FiDownload /> Export CSV</button><button type="button" className={styles.primaryButton} onClick={() => setShowInvite(true)}><FiPlus /> Add teacher</button></PageHeading>
+    <section className={styles.card}><div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search users</span><input value={userFilters.search} onChange={(e) => setUserFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Search name, username, or email" /></label><label>Status<select value={userFilters.status} onChange={(e) => setUserFilters((v) => ({ ...v, status: e.target.value }))}><option value="">Active views</option><option value="active">Active</option><option value="pending">Pending verification</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label>{activeView === "users" && <label>Role<select value={userFilters.role} onChange={(e) => setUserFilters((v) => ({ ...v, role: e.target.value }))}><option value="">All roles</option><option value="admin">Admin</option><option value="teacher">Teacher</option><option value="student">Student</option></select></label>}</div>
+      <TableState loading={loading} error={error} empty={!users.length} emptyText="No accounts match these filters."><div className={styles.tableWrap}><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Created</th><th><span className={styles.srOnly}>Actions</span></th></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{user.firstName} {user.lastName}</strong><small>{user.email} · @{user.username}</small></td><td>{user.role === "teacher" ? "Teacher" : user.role[0].toUpperCase() + user.role.slice(1)}</td><td><StatusBadge value={user.status} /></td><td>{formatDate(user.createdAt)}</td><td><UserActions user={user} openUser={openUser} setConfirmAction={setConfirmAction} setDeleteTarget={setDeleteTarget} setDeleteText={setDeleteText} changeRole={changeRole} /></td></tr>)}</tbody></table></div></TableState><Pager page={userPage} totalPages={userMeta.totalPages || 1} total={userMeta.total || 0} label="matching users" onChange={setUserPage} /></section>
+  </>;
 
-    try {
-      const response = await axios.delete(
-        buildApiUrl(`/api/admin/users/${user.id}`),
-        { headers: getAuthHeaders() },
-      );
-      setUserPendingDeletion(null);
-      setSuccessMessage(response.data.message ?? "User permanently deleted.");
-      await fetchDashboardData();
-    } catch (error) {
-      setErrorMessage(error.response?.data?.message ?? "Failed to delete user");
-    } finally {
-      setDeletingUserId(null);
-    }
-  };
+  const renderClassrooms = () => <><PageHeading eyebrow="Read-only governance" title="Classrooms"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/classrooms/export.csv?${queryString(classFilters, 1)}`, "sharprunner-classrooms.csv")}><FiDownload /> Export CSV</button></PageHeading><section className={styles.card}><div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search classrooms</span><input value={classFilters.search} onChange={(e) => setClassFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Classroom, teacher, or email" /></label><label>Status<select value={classFilters.status} onChange={(e) => setClassFilters((v) => ({ ...v, status: e.target.value }))}><option value="">All states</option><option value="active">Active</option><option value="archived">Archived</option></select></label><label>Created from<input type="date" value={classFilters.from} onChange={(e) => setClassFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>Created to<input type="date" value={classFilters.to} onChange={(e) => setClassFilters((v) => ({ ...v, to: e.target.value }))} /></label></div><TableState loading={loading} error={error} empty={!classrooms.length} emptyText="No classrooms match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Classroom</th><th>Teacher</th><th>Students</th><th>Modules</th><th>Status</th><th>Latest activity</th><th /></tr></thead><tbody>{classrooms.map((room) => <tr key={room.id}><td><strong>{room.className}</strong><small>{room.section} · {room.schoolYear}</small></td><td>{room.teacher ? <>{room.teacher.firstName} {room.teacher.lastName}<small>{room.teacher.email}</small></> : "—"}</td><td>{room.studentCount ?? 0}</td><td>{room.moduleCount ?? 0}</td><td><StatusBadge value={room.isActive} /></td><td>{formatDate(room.latestActivityAt || room.updatedAt)}</td><td><details className={styles.actionMenu}><summary aria-label={`Actions for ${room.className}`}><FiMoreVertical /></summary><div><button type="button" onClick={() => openClassroom(room)}><FiEye /> Inspect</button><button type="button" onClick={() => setConfirmAction({ title: room.isActive ? "Archive classroom?" : "Restore classroom?", message: room.isActive ? "Students will no longer be able to use this classroom. Instructional content will be preserved." : "The classroom will become active again.", label: room.isActive ? "Archive" : "Restore", path: `/api/admin/classrooms/${room.id}/${room.isActive ? "archive" : "restore"}`, danger: room.isActive })}>{room.isActive ? <FiArchive /> : <FiRefreshCw />} {room.isActive ? "Archive" : "Restore"}</button></div></details></td></tr>)}</tbody></table></div></TableState><Pager page={classPage} totalPages={classMeta.totalPages || 1} total={classMeta.total || 0} label="classrooms" onChange={setClassPage} /></section></>;
 
-  const onChangeUserRole = async (user, role) => {
-    if (role === user.role) return;
-    setUpdatingUserId(user.id);
-    setErrorMessage("");
-    try {
-      const response = await axios.patch(buildApiUrl(`/api/admin/users/${user.id}/role`), { role }, { headers: getAuthHeaders() });
-      toast.success(response.data.message ?? "User role updated.");
-      await fetchDashboardData();
-    } catch (error) {
-      setErrorMessage(error.response?.data?.message ?? "Failed to update user role");
-    } finally {
-      setUpdatingUserId(null);
-    }
-  };
+  const renderContent = () => <>
+    <PageHeading eyebrow="Teacher-created materials" title="Content oversight"><span className={styles.readOnly}><FiEye /> Read-only</span></PageHeading>
+    <section className={styles.card}>
+      <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search content</span><input value={contentFilters.search} onChange={(e) => setContentFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Title, classroom, or teacher" /></label><label>Type<select value={contentFilters.type} onChange={(e) => setContentFilters((v) => ({ ...v, type: e.target.value }))}><option value="">All content</option><option value="module">Modules</option><option value="lesson">Lessons</option><option value="assignment">Assignments</option></select></label><label>Publish state<select value={contentFilters.published} onChange={(e) => setContentFilters((v) => ({ ...v, published: e.target.value }))}><option value="">All states</option><option value="true">Published</option><option value="false">Draft</option></select></label></div>
+      <TableState loading={loading} error={error} empty={!content.length} emptyText="No learning content matches these filters."><div className={styles.tableWrap}><table><thead><tr><th>Content</th><th>Type</th><th>Classroom</th><th>Teacher</th><th>Publish state</th><th>Created</th><th /></tr></thead><tbody>{content.map((item) => <tr key={item.id}><td><strong>{item.title}</strong>{item.externalUrl && <small className={styles.ellipsis}>{item.externalUrl}</small>}</td><td>{item.contentType}</td><td>{item.classroom?.className || "—"}</td><td>{item.classroom?.teacher ? `${item.classroom.teacher.firstName} ${item.classroom.teacher.lastName}` : "—"}</td><td><StatusBadge value={item.isPublished ? "published" : "draft"} /></td><td>{formatDate(item.createdAt)}</td><td><button type="button" className={styles.inspectButton} onClick={() => openContent(item)}><FiEye /> Inspect</button></td></tr>)}</tbody></table></div></TableState>
+      <Pager page={contentPage} totalPages={contentMeta.totalPages || 1} total={contentMeta.total || 0} label="items" onChange={setContentPage} />
+    </section>
+  </>;
 
-  const confirmPasswordReset = async () => {
-    if (!passwordResetTarget || updatingUserId) return;
-    setUpdatingUserId(passwordResetTarget.id);
-    try {
-      const response = await axios.post(buildApiUrl(`/api/admin/users/${passwordResetTarget.id}/reset-password`), {}, { headers: getAuthHeaders() });
-      toast.success(response.data.message);
-      setPasswordResetTarget(null);
-      await fetchDashboardData();
-    } catch (error) {
-      setErrorMessage(error.response?.data?.message ?? "Failed to reset password");
-    } finally {
-      setUpdatingUserId(null);
-    }
-  };
+  const renderAudit = () => <><PageHeading eyebrow="Accountable administration" title="Audit logs"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/logs/export.csv?${queryString(logFilters, 1)}`, "sharprunner-audit-logs.csv")}><FiDownload /> Export CSV</button></PageHeading><section className={styles.card}><div className={styles.filters}><label>Admin actor<input value={logFilters.actor} onChange={(e) => setLogFilters((v) => ({ ...v, actor: e.target.value }))} placeholder="Username" /></label><label>Action<input value={logFilters.action} onChange={(e) => setLogFilters((v) => ({ ...v, action: e.target.value }))} placeholder="e.g. ARCHIVED" /></label><label>Affected user<input value={logFilters.target} onChange={(e) => setLogFilters((v) => ({ ...v, target: e.target.value }))} placeholder="Username" /></label><label>From<input type="date" value={logFilters.from} onChange={(e) => setLogFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>To<input type="date" value={logFilters.to} onChange={(e) => setLogFilters((v) => ({ ...v, to: e.target.value }))} /></label></div><TableState loading={loading} error={error} empty={!logs.length} emptyText="No audit records match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>Safe metadata</th><th>Status</th></tr></thead><tbody>{logs.map((log) => <tr key={log.id}><td>{formatDate(log.createdAt)}</td><td>{log.actorUsername || "System"}</td><td><strong>{log.activity}</strong></td><td>{log.targetUsername || "—"}</td><td>{log.details || "—"}</td><td><StatusBadge value={log.status} /></td></tr>)}</tbody></table></div></TableState><Pager page={logPage} totalPages={logMeta.totalPages || 1} total={logMeta.total || 0} label="audit records" onChange={setLogPage} /></section></>;
 
-  const getDeleteWarning = (user) => {
-    if (!user) return "";
-    const relatedData = user.role === "teacher"
-      ? "their classrooms and related class data"
-      : "their progress and classroom membership data";
-    return `Delete ${user.username}? This permanently removes the account and ${relatedData}. This action cannot be undone.`;
-  };
+  const renderStatus = () => <><PageHeading eyebrow="Operational visibility" title="System status"><button className={styles.secondaryButton} type="button" onClick={refresh}><FiRefreshCw /> Run checks</button></PageHeading><div className={styles.gridTwo}><section className={styles.card}><h3>Service checks</h3><div className={styles.healthRows}><div><span>Backend API</span><StatusBadge value={health.status === "ok" ? "online" : health.status} /></div><div><span>Database</span><StatusBadge value={health.database} /></div></div><p className={styles.privacyNote}>Only non-sensitive operational status is exposed. Credentials, environment variables, and server details are never returned.</p></section><section className={styles.card}><h3>Platform totals</h3><div className={styles.healthRows}><div><span>Total users</span><strong>{summary.totalUsers}</strong></div><div><span>Active users</span><strong>{summary.activeUsers}</strong></div><div><span>Active classrooms</span><strong>{summary.activeClassrooms}</strong></div><div><span>Archived accounts</span><strong>{summary.archivedAccounts}</strong></div></div></section></div></>;
 
-  const onSignOut = () => {
-    clearToken();
-    navigate("/login", { replace: true });
-  };
-
-  return (
-    <div className={styles.page}>
-      <div className={styles.container}>
-        <header className={styles.topbar}>
-          <div className={styles.brandArea}>
-            <h1>SharpRunner</h1>
-          </div>
-
-          <div className={styles.topbarRight}>
-            <button
-              type="button"
-              className={styles.iconButton}
-              aria-label="notifications"
-            >
-              <FiBell size={14} />
-            </button>
-            <nav className={styles.nav}>
-              <button
-                className={`${styles.navLink} ${styles.navLinkActive}`}
-                type="button"
-              >
-                Dashboard
-              </button>
-              <button className={styles.navLink} type="button">
-                Account
-              </button>
-            </nav>
-            <div className={styles.avatar} aria-label="admin profile">
-              {(
-                adminUser?.firstName?.[0] ??
-                adminUser?.username?.[0] ??
-                "A"
-              ).toUpperCase()}
-            </div>
-            <button
-              type="button"
-              className={styles.signOutButton}
-              onClick={onSignOut}
-            >
-              Logout
-            </button>
-          </div>
-        </header>
-
-        <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <h2>Dashboard Overview</h2>
-            <span>Last updated: {formatLastUpdated(lastUpdated)}</span>
-          </div>
-
-          <div className={styles.statGrid}>
-            <article className={styles.statCard}>
-              <p className={styles.statTitle}>
-                <FiUsers size={16} />
-                <span>Total of Users</span>
-              </p>
-              <p className={styles.statValue}>{summary.totalUsers}</p>
-            </article>
-            <article className={styles.statCard}>
-              <p className={styles.statTitle}>
-                <FiUserCheck size={16} />
-                <span>Active Instructor</span>
-              </p>
-              <p className={styles.statValue}>{summary.activeTeachers}</p>
-              <button type="button" className={styles.seeMoreButton}>
-                See more
-              </button>
-            </article>
-            <article
-              className={`${styles.statCard} ${styles.statCardCentered}`}
-            >
-              <p className={styles.statTitle}>
-                <FiGrid size={16} />
-                <span>Active Classrooms</span>
-              </p>
-              <p className={styles.statValue}>{summary.activeClassrooms}</p>
-              <button type="button" className={styles.seeMoreButton}>
-                See more
-              </button>
-            </article>
-          </div>
-
-          <div className={styles.logsCard}>
-            <h3>
-              <FiZap size={16} />
-              <span>System Log Today</span>
-            </h3>
-            {isLoading ? (
-              <p className={styles.feedback}>Loading logs...</p>
-            ) : systemLogs.length === 0 ? (
-              <p className={styles.feedback}>No activity logs yet.</p>
-            ) : (
-              <div className={styles.tableWrap}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Time</th>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Activity</th>
-                      <th>Details</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {systemLogs.map((log) => (
-                      <tr key={log.id}>
-                        <td>{log.time}</td>
-                        <td>{log.username}</td>
-                        <td className={styles.capitalize}>{log.role}</td>
-                        <td>{log.activity}</td>
-                        <td>{log.details}</td>
-                        <td
-                          className={
-                            log.status === "Failed"
-                              ? styles.errorText
-                              : styles.successText
-                          }
-                        >
-                          {log.status}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <div className={styles.pagination}><span>{logPagination.total} log entries</span><div><button type="button" disabled={logPage <= 1} onClick={() => setLogPage((page) => page - 1)}>Previous</button><span>Page {logPage} of {logPagination.totalPages}</span><button type="button" disabled={logPage >= logPagination.totalPages} onClick={() => setLogPage((page) => page + 1)}>Next</button></div></div>
-          </div>
-        </section>
-
-        <section className={styles.panel}>
-          <div className={styles.userHeader}>
-            <div>
-              <h2>User Management</h2>
-              <p>Manage user accounts, permissions, and access levels.</p>
-            </div>
-          </div>
-
-          <div className={styles.controlRow}>
-            <div className={styles.searchBox}>
-              <FiSearch size={14} className={styles.searchIcon} />
-              <input
-                type="text"
-                value={searchText}
-                className={styles.searchInput}
-                placeholder="Search User..."
-                onChange={(event) => setSearchText(event.target.value)}
-              />
-            </div>
-
-            <div className={styles.filterWrap}>
-              <FiFilter size={14} />
-              <select
-                value={statusFilter}
-                className={styles.filterSelect}
-                onChange={(event) => setStatusFilter(event.target.value)}
-              >
-                <option value="all">Status: All</option>
-                <option value="active">Status: Active</option>
-                <option value="pending">Status: Pending verification</option>
-                <option value="inactive">Status: Inactive</option>
-              </select>
-            </div>
-
-            <div className={styles.filterWrap}>
-              <FiUsers size={14} />
-              <select
-                value={roleFilter}
-                className={styles.filterSelect}
-                onChange={(event) => setRoleFilter(event.target.value)}
-              >
-                <option value="all">Role: All</option>
-                <option value="admin">Role: Admin</option>
-                <option value="teacher">Role: Instructor</option>
-                <option value="student">Role: Student</option>
-              </select>
-            </div>
-
-            <button
-              type="button"
-              className={styles.addUserButton}
-              onClick={() => {
-                setTeacherInviteError("");
-                setShowTeacherInviteModal(true);
-              }}
-            >
-              <FiPlus size={15} />
-              Add user
-            </button>
-
-            <button
-              type="button"
-              className={styles.refreshButton}
-              onClick={fetchDashboardData}
-            >
-              Refresh
-            </button>
-          </div>
-
-          {errorMessage && <p className={styles.error}>{errorMessage}</p>}
-          {successMessage && <p className={styles.success}>{successMessage}</p>}
-
-          {isLoading ? (
-            <p className={styles.feedback}>Loading users...</p>
-          ) : filteredUsers.length === 0 ? (
-            <p className={styles.feedback}>No users found for this filter.</p>
-          ) : (
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th />
-                    <th>Username</th>
-                    <th>Full Name</th>
-                    <th>Role</th>
-                    <th>Email</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          className={styles.rowCheckbox}
-                          aria-label={`select-${user.username}`}
-                        />
-                      </td>
-                      <td>{user.username}</td>
-                      <td>{`${user.firstName} ${user.lastName}`}</td>
-                      <td className={styles.capitalize}>{user.role}</td>
-                      <td>{user.email}</td>
-                      <td>
-                        <span
-                          className={
-                            user.status === "inactive"
-                              ? styles.errorText
-                              : user.status === "pending"
-                                ? styles.pendingText
-                                : styles.successText
-                          }
-                        >
-                          {user.status === "inactive"
-                            ? "Inactive"
-                            : user.status === "pending"
-                              ? "Pending verification"
-                              : "Active"}
-                        </span>
-                      </td>
-                      <td>
-                        <div className={styles.userActions}>
-                          {user.role === "admin" ? (
-                            <button
-                              type="button"
-                              className={styles.tableActionButton}
-                              disabled
-                            >
-                              <FiEdit2 size={12} />
-                              Edit
-                            </button>
-                          ) : user.status === "pending" ? (
-                            <span className={styles.pendingAction}>Awaiting email</span>
-                          ) : user.status === "inactive" ? (
-                            <button
-                              type="button"
-                              className={`${styles.tableActionButton} ${styles.activateButton}`}
-                              onClick={() => onChangeUserStatus(user, "active")}
-                              disabled={updatingUserId === user.id}
-                            >
-                              <FiPlus size={12} />
-                              {updatingUserId === user.id
-                                ? "Updating..."
-                                : "Activate"}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className={`${styles.tableActionButton} ${styles.deactivateButton}`}
-                              onClick={() => onChangeUserStatus(user, "inactive")}
-                              disabled={updatingUserId === user.id}
-                            >
-                              <FiXCircle size={12} />
-                              {updatingUserId === user.id
-                                ? "Updating..."
-                                : "Deactivate"}
-                            </button>
-                          )}
-                          {user.role !== "admin" && (
-                            <select className={styles.roleActionSelect} value={user.role} disabled={updatingUserId === user.id} onChange={(event) => onChangeUserRole(user, event.target.value)} aria-label={`Change role for ${user.username}`}>
-                              <option value="student">Student</option>
-                              <option value="teacher">Instructor</option>
-                            </select>
-                          )}
-                          {user.role === "teacher" && user.authProvider !== "google" && (
-                            <button type="button" className={styles.tableActionButton} onClick={() => setPasswordResetTarget(user)} disabled={updatingUserId === user.id}><FiKey size={12} /> Reset password</button>
-                          )}
-                          {user.role !== "admin" && (
-                            <button
-                              type="button"
-                              className={`${styles.tableActionButton} ${styles.deleteButton}`}
-                              onClick={() => setUserPendingDeletion(user)}
-                              disabled={deletingUserId === user.id}
-                            >
-                              <FiTrash2 size={12} />
-                              Remove
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <div className={styles.pagination}><span>{userPagination.total} matching users</span><div><button type="button" disabled={userPage <= 1} onClick={() => setUserPage((page) => page - 1)}>Previous</button><span>Page {userPage} of {userPagination.totalPages}</span><button type="button" disabled={userPage >= userPagination.totalPages} onClick={() => setUserPage((page) => page + 1)}>Next</button></div></div>
-        </section>
-      </div>
-      <ConfirmModal
-        open={Boolean(userPendingDeletion)}
-        title="Permanently delete user?"
-        message={getDeleteWarning(userPendingDeletion)}
-        confirmLabel={deletingUserId ? "Deleting..." : "Delete user"}
-        danger
-        confirmDisabled={Boolean(deletingUserId)}
-        onConfirm={confirmDeleteUser}
-        onCancel={() => {
-          if (!deletingUserId) setUserPendingDeletion(null);
-        }}
-      />
-      <ConfirmModal open={Boolean(passwordResetTarget)} title="Reset this user's password?" message={passwordResetTarget ? `A new temporary password will be emailed to ${passwordResetTarget.email}. The password is never displayed in the dashboard.` : ""} confirmLabel={updatingUserId ? "Resetting..." : "Email temporary password"} danger confirmDisabled={Boolean(updatingUserId)} onConfirm={confirmPasswordReset} onCancel={() => !updatingUserId && setPasswordResetTarget(null)} />
-      {showTeacherInviteModal && (
-        <TeacherInviteModal
-          isSubmitting={isCreatingTeacher}
-          errorMessage={teacherInviteError}
-          onInvite={createTeacher}
-          onClose={() => {
-            if (isCreatingTeacher) return;
-            setTeacherInviteError("");
-            setShowTeacherInviteModal(false);
-          }}
-        />
-      )}
-    </div>
-  );
+  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && <DetailPanel detail={detail} onClose={() => setDetail(null)} />}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
 }
+
+function PageHeading({ eyebrow, title, children }) { return <div className={styles.pageHeading}><div><p>{eyebrow}</p><h2>{title}</h2></div><div className={styles.headingActions}>{children}</div></div>; }
+function Sidebar({ open, activeView, selectView, adminUser, close, signOut }) { return <aside className={`${styles.sidebar} ${open ? styles.sidebarOpen : ""}`}><div className={styles.brand}><div>SR</div><span><strong>SharpRunner</strong><small>Administration</small></span><button type="button" onClick={close} aria-label="Close navigation"><FiX /></button></div><nav>{NAV_ITEMS.map(([key, label, icon]) => <button type="button" className={activeView === key ? styles.navActive : ""} key={key} onClick={() => selectView(key)}>{createElement(icon)}<span>{label}</span></button>)}</nav><div className={styles.adminIdentity}><div>{(adminUser?.firstName?.[0] || adminUser?.username?.[0] || "A").toUpperCase()}</div><span><strong>{adminUser?.firstName || adminUser?.username || "Admin"}</strong><small>Administrator</small></span></div><button className={styles.logoutButton} type="button" onClick={signOut}><FiLogOut /> Sign out</button></aside>; }
+function UserActions({ user, openUser, setConfirmAction, setDeleteTarget, setDeleteText, changeRole }) {
+  const statusAction = user.status === "inactive"
+    ? { title: "Reactivate account?", message: `${user.username} will be able to sign in again.`, label: "Reactivate", status: "active" }
+    : user.status === "active"
+      ? { title: user.role === "teacher" ? "Suspend teacher?" : "Deactivate account?", message: `${user.username} will no longer be able to sign in until reactivated.`, label: user.role === "teacher" ? "Suspend" : "Deactivate", status: "inactive", danger: true }
+      : null;
+  return <details className={styles.actionMenu}><summary aria-label={`Actions for ${user.username}`}><FiMoreVertical /></summary><div>
+    <button type="button" onClick={() => openUser(user)}><FiEye /> View details</button>
+    {user.role !== "admin" && <>
+      <button type="button" onClick={() => setConfirmAction({ title: "Force logout?", message: `${user.username} will need to sign in again on every device.`, label: "Force logout", path: `/api/admin/users/${user.id}/force-logout` })}><FiLogOut /> Force logout</button>
+      {user.status === "archived" ? <>
+        <button type="button" onClick={() => setConfirmAction({ title: "Restore account?", message: "This user will regain access with all historical data preserved.", label: "Restore", path: `/api/admin/users/${user.id}/restore` })}><FiRefreshCw /> Restore</button>
+        <button className={styles.dangerItem} type="button" onClick={() => { setDeleteTarget(user); setDeleteText(""); }}><FiTrash2 /> Delete permanently</button>
+      </> : <>
+        {statusAction && <button type="button" onClick={() => setConfirmAction({ ...statusAction, path: `/api/admin/users/${user.id}/status`, method: "PATCH", body: { status: statusAction.status } })}><FiShield /> {statusAction.label}</button>}
+        <button type="button" onClick={() => setConfirmAction({ title: "Archive account?", message: "This user will no longer be able to sign in, but historical records will be preserved.", label: "Archive", path: `/api/admin/users/${user.id}/archive`, danger: true })}><FiArchive /> Archive</button>
+      </>}
+      {user.role === "teacher" && user.authProvider !== "google" && <button type="button" onClick={() => setConfirmAction({ title: "Reset password?", message: `A temporary password will be emailed to ${user.email}. Existing sessions will be revoked.`, label: "Reset password", path: `/api/admin/users/${user.id}/reset-password`, body: { revokeSessions: true } })}><FiKey /> Reset password</button>}
+      <div className={styles.menuSelect}><span>Role</span><select value={user.role} onChange={(e) => changeRole(user, e.target.value)}><option value="student">Student</option><option value="teacher">Teacher</option></select></div>
+    </>}
+  </div></details>;
+}
+function TableState({ loading, error, empty, emptyText, children }) { if (loading) return <div className={styles.state}><FiRefreshCw className={styles.spin} /> Loading…</div>; if (error) return <div className={`${styles.state} ${styles.stateError}`}><FiActivity />{error}</div>; if (empty) return <Empty text={emptyText} />; return children; }
+function Empty({ text }) { return <div className={styles.state}><FiSearch /><strong>{text}</strong><span>Try changing the current filters.</span></div>; }
+function TypedDelete({ target, text, setText, busy, onCancel, onDelete }) { return <div className={styles.modalBackdrop}><section className={styles.typedModal} role="dialog" aria-modal="true" aria-labelledby="delete-title"><h3 id="delete-title">Permanently delete user</h3><p>This cannot be undone. The archived account and related records may be removed by database cascades.</p><label>Type <strong>DELETE</strong> to continue<input autoFocus value={text} onChange={(e) => setText(e.target.value)} aria-label={`Type DELETE to permanently delete ${target.username}`} /></label><div><button type="button" className={styles.secondaryButton} onClick={onCancel} disabled={busy}>Cancel</button><button type="button" className={styles.dangerButton} onClick={onDelete} disabled={text !== "DELETE" || busy}>Delete permanently</button></div></section></div>; }
+function DetailPanel({ detail, onClose }) {
+  if (detail.type === "content") return <ContentDetail detail={detail} onClose={onClose} />;
+  const isUser = detail.type === "user"; const subject = isUser ? detail.user : detail.classroom;
+  return <div className={styles.detailBackdrop} onClick={onClose}><aside className={styles.detailPanel} role="dialog" aria-modal="true" aria-label={`${isUser ? "User" : "Classroom"} details`} onClick={(e) => e.stopPropagation()}><header><div><span>{isUser ? "Account detail" : "Read-only classroom detail"}</span><h2>{isUser ? `${subject.firstName} ${subject.lastName}` : subject.className}</h2></div><button type="button" onClick={onClose} aria-label="Close details"><FiX /></button></header>{isUser ? <><dl><DetailTerm name="Username">@{subject.username}</DetailTerm><DetailTerm name="Email">{subject.email}</DetailTerm><DetailTerm name="Role">{subject.role}</DetailTerm><DetailTerm name="Status"><StatusBadge value={subject.status} /></DetailTerm><DetailTerm name="Last login">{formatDate(subject.lastLoginAt)}</DetailTerm></dl><DetailSection title="Owned classrooms" items={detail.ownedClassrooms} render={(item) => <><strong>{item.className}</strong><span>{item.section} · {item.isActive ? "Active" : "Archived"}</span></>} /><DetailSection title="Recent admin history" items={detail.recentActivity} render={(item) => <><strong>{item.activity}</strong><span>{formatDate(item.createdAt)} · {item.details || "No metadata"}</span></>} /></> : <><dl><DetailTerm name="Teacher">{subject.teacher ? `${subject.teacher.firstName} ${subject.teacher.lastName}` : "—"}</DetailTerm><DetailTerm name="Status"><StatusBadge value={subject.isActive} /></DetailTerm><DetailTerm name="Students">{subject.studentCount ?? detail.memberships?.length ?? 0}</DetailTerm><DetailTerm name="Modules">{subject.moduleCount ?? 0}</DetailTerm><DetailTerm name="Created">{formatDate(subject.createdAt)}</DetailTerm></dl><DetailSection title="Enrolled students" items={detail.memberships} render={(item) => <><strong>{item.student ? `${item.student.firstName} ${item.student.lastName}` : `Student #${item.studentId}`}</strong><span>{item.student?.email || item.status}</span></>} /><DetailSection title="Modules, lessons & resources" items={detail.lessons} render={(item) => <><strong>{item.title}</strong><span>{item.contentType} · {item.isPublished ? "Published" : "Draft"} · {item.attachments?.length || 0} resources</span></>} /><DetailSection title="Announcements" items={detail.announcements} render={(item) => <><strong>{item.message}</strong><span>{formatDate(item.createdAt)} · {item.isActive ? "Active" : "Inactive"}</span></>} /></>}</aside></div>;
+}
+function ContentDetail({ detail, onClose }) {
+  const item = detail.content;
+  return <div className={styles.detailBackdrop} onClick={onClose}><aside className={styles.detailPanel} role="dialog" aria-modal="true" aria-label="Content details" onClick={(e) => e.stopPropagation()}><header><div><span>Read-only content detail</span><h2>{item.title}</h2></div><button type="button" onClick={onClose} aria-label="Close details"><FiX /></button></header><dl><DetailTerm name="Type">{item.contentType}</DetailTerm><DetailTerm name="Publish state"><StatusBadge value={item.isPublished ? "published" : "draft"} /></DetailTerm><DetailTerm name="Classroom">{item.classroom?.className || "—"}</DetailTerm><DetailTerm name="Teacher">{item.classroom?.teacher ? `${item.classroom.teacher.firstName} ${item.classroom.teacher.lastName}` : "—"}</DetailTerm><DetailTerm name="Module">{item.module?.title || "—"}</DetailTerm><DetailTerm name="Created">{formatDate(item.createdAt)}</DetailTerm></dl>{item.description && <section className={styles.detailSection}><h3>Description</h3><p>{item.description}</p></section>}{item.externalUrl && <section className={styles.detailSection}><h3>External link</h3><p className={styles.breakWord}>{item.externalUrl}</p></section>}<DetailSection title="Resource metadata" items={item.attachments} render={(resource) => <><strong>{resource.originalName}</strong><span>{resource.mimeType} · {resource.sizeBytes} bytes · scan: {resource.scanStatus}</span></>} /></aside></div>;
+}
+function DetailTerm({ name, children }) { return <div><dt>{name}</dt><dd>{children}</dd></div>; }
+function DetailSection({ title, items = [], render }) { return <section className={styles.detailSection}><h3>{title}</h3>{items.length ? items.map((item) => <div key={item.id}>{render(item)}</div>) : <p>None recorded.</p>}</section>; }
 
 export default AdminDashboardPage;

@@ -45,8 +45,14 @@ const User = sequelize.define("Users", {
     allowNull: false,
     defaultValue: "active",
     validate: {
-      isIn: [["active", "inactive", "pending"]],
+      isIn: [["active", "inactive", "pending", "archived"]],
     },
+  },
+  tokenVersion: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+    validate: { min: 0 },
   },
   isPlayingGame: {
     type: DataTypes.BOOLEAN,

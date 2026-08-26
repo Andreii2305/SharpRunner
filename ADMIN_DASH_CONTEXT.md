@@ -1,78 +1,68 @@
-# Admin Dash Context
+# Admin Dashboard Context
 
-Last updated: 2026-08-19
+Last updated: 2026-08-26
 
 ## Current Status
 
-The admin dashboard is connected to live backend data and supports paginated user management, accurate system summaries, teacher creation, account activation/deactivation, guarded role changes, teacher password resets, deletion, and activity logs.
+The admin area is a responsive platform-governance workspace. It manages account retention and access, provides read-only classroom/content oversight, exposes non-sensitive health totals, supports filtered audit review, and exports safe CSV reports. It does not duplicate teacher authoring or game-development tools.
 
-## Completed
+## Implemented Capabilities
 
-- Role-aware and status-aware user management.
-- User `status` support with `active` and `inactive`.
-- Admin activity log model and logging service.
-- Admin APIs return real user status and real activity logs.
-- Admin dashboard UI uses live backend data.
-- Admin can create teacher accounts.
-- Admin can activate or deactivate non-admin users.
-- Inactive users are blocked from login.
-- Admin invite registration exists through the developer invite flow.
-- Server-side pagination and filtering for users and activity logs.
-- Accurate totals for users, active teachers, active students, and active classrooms.
-- Student/teacher role changes with admin-account protection and classroom-ownership safeguards.
-- Teacher password reset through an emailed temporary password; credentials are never returned to the dashboard.
-- Permanent deletion for non-admin users with an explicit confirmation.
-- Audit entries for status, role, teacher invitation, password-reset, and deletion actions.
-- Rate limiting for teacher creation and admin mutation endpoints.
+- Reversible account archive/restore using the existing user `status` field (`archived`). Archived users cannot authenticate and are excluded from normal user views unless explicitly filtered.
+- JWT session revocation through additive `Users.tokenVersion`. Force logout, archive, admin password reset (enabled by default), and self-service password change rotate the version.
+- Permanent deletion is secondary: the account must already be archived and the admin must type `DELETE`. Admin accounts and the current admin remain protected.
+- Paginated users with role/status/search filters, teacher/student views, status badges, compact action menus, user detail history, and teacher classroom ownership visibility.
+- Paginated classroom oversight with name/teacher search, state and created-date filters, student/module counts, latest activity, archive/restore, and read-only detail for roster, learning content/resources, and announcements.
+- Read-only, paginated teacher-content oversight with search, content-type, and publish-state filters.
+- System health and summary cards using real `/api/health`, database connectivity, user counts, classroom count, and archived-account count.
+- Paginated audit filters for actor, action, affected user, status, and date range. Metadata remains deliberately non-sensitive.
+- Filter-aware CSV exports for users (including teacher/student subsets), classrooms, and audit logs. Passwords, hashes, tokens, and internal token-version state are excluded.
+- Responsive sidebar/drawer, horizontally scrollable tables, loading/error/empty states, confirmation dialogs, and read-only detail drawers.
+- Teacher accounts are admin-created and email-verified through the existing invitation flow; a separate identity-document approval state was intentionally not added.
 
-## Backend Files
+## API Contract
 
-- `backend/src/models/User.js`
-- `backend/src/models/AdminActivityLog.js`
-- `backend/src/models/AdminInvite.js`
-- `backend/src/routes/admin.js`
-- `backend/src/routes/auth.js`
-- `backend/src/services/userRoleSchemaService.js`
-- `backend/src/services/adminActivityLogService.js`
-
-## Frontend Files
-
-- `frontend/src/pages/admin/AdminDashboardPage.jsx`
-- `frontend/src/pages/admin/AdminDashboardPage.module.css`
-- `frontend/src/pages/auth/AdminInviteRegisterPage.jsx`
-- `frontend/src/pages/developer/DeveloperPage.jsx`
-
-## Current API Contract
-
-- `GET /api/admin/users`
-  - Supports `page`, `limit`, `role`, `status`, and `search`; returns pagination metadata and sanitized users.
-- `GET /api/admin/logs?page=1&limit=20`
-  - Returns paginated admin activity logs.
 - `GET /api/admin/summary`
-  - Returns total users, active teachers/students, and active classrooms.
-- `POST /api/admin/users/teacher`
-  - Creates a teacher account.
+- `GET /api/admin/users` and `GET /api/admin/users/export.csv`
+- `GET /api/admin/users/:id`
+- `POST /api/admin/users/:id/archive`
+- `POST /api/admin/users/:id/restore`
+- `POST /api/admin/users/:id/force-logout`
 - `PATCH /api/admin/users/:id/status`
-  - Body: `{ "status": "active" | "inactive" }`
-  - Prevents admin accounts from being set inactive.
 - `PATCH /api/admin/users/:id/role`
-  - Changes a non-admin account between student and teacher; teacher demotion is blocked while classrooms remain assigned.
-- `POST /api/admin/users/:id/reset-password`
-  - Emails a temporary password to a local-password teacher account and never returns the password in the API.
-- `DELETE /api/admin/users/:id`
-  - Permanently deletes a non-admin account and records the action.
-- `POST /api/auth/bootstrap-admin`
-  - Creates the first admin when `ADMIN_SETUP_KEY` is configured and no admin exists.
-- `POST /api/auth/register-admin-invite`
-  - Creates an admin account with a valid developer-generated invite.
+- `POST /api/admin/users/:id/reset-password` with optional `{ "revokeSessions": false }` (defaults to true)
+- `DELETE /api/admin/users/:id` with `{ "confirmation": "DELETE" }`; archived users only
+- `POST /api/admin/users/teacher`
+- `GET /api/admin/classrooms` and `GET /api/admin/classrooms/export.csv`
+- `GET /api/admin/classrooms/:id`
+- `POST /api/admin/classrooms/:id/archive`
+- `POST /api/admin/classrooms/:id/restore`
+- `GET /api/admin/content`
+- `GET /api/admin/content/:id`
+- `GET /api/admin/logs` and `GET /api/admin/logs/export.csv`
+- `GET /api/health` (public, non-sensitive)
 
-## Remaining Gaps
+All `/api/admin/*` routes require a current active admin in server-side middleware.
 
-1. Add a reversible archive/restore flow if permanent deletion is too destructive for production policy.
-2. Add forced sign-out/token revocation after password reset if the project later stores session or token-version state.
-3. Add student self-service password settings before enabling dashboard password reset for student accounts; current resets intentionally support teachers only.
-4. Add browser-level end-to-end coverage for the admin dashboard. API coverage now includes pagination, summaries, status, roles, password reset, deletion, and auditing.
+## Data and Security Changes
 
-## Suggested Next Focus
+- `Users.status` recognizes `active`, `inactive`, `pending`, and `archived`.
+- `Users.tokenVersion` is an integer with default `0`.
+- Migration: `supabase/migrations/20260826000000_admin_governance.sql`.
+- JWTs carry `tokenVersion`; middleware compares it to the current database value on every authenticated request.
+- CSV cells beginning with spreadsheet formula characters are prefixed safely.
+- Audit and health responses never include credentials, password material, JWTs, environment variables, or filesystem information.
 
-Admin is stable enough for the current capstone loop. The next admin work should be driven by an explicit retention/session policy rather than adding more destructive controls by default.
+## Deliberately Deferred
+
+- Global announcements: classroom announcements have classroom ownership semantics; a separate scoped platform-announcement delivery/read model is needed before this can be added safely.
+- Maintenance mode: safely blocking every student/teacher route while preserving admin access requires a cross-cutting platform-setting and middleware design. It was not bolted onto selected pages.
+- Teacher transfer: classroom ownership is tied to several teacher workflows and was not changed without an explicit reassignment policy.
+- Browser E2E automation: responsive behavior is implemented in CSS, but no browser-test framework exists in the repository.
+
+## Verification
+
+- Backend integration/security suite: 32 tests passing, including rejection of a previously issued token after version rotation.
+- Frontend production build: passing.
+- Frontend ESLint: passing.
+- Existing game, progress, score, XP, hint, validator, and teacher challenge code was not changed.

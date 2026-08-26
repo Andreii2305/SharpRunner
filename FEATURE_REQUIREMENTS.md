@@ -1,10 +1,20 @@
 # SharpRunner Feature Requirements
 
-> Last updated: 2026-08-22
+> Last updated: 2026-08-26
 > Source: Panel review feedback and current project implementation
 > Status: Living project reference
 
 This document tracks the main panel-requested features and their current implementation status.
+
+## Admin Platform Governance
+
+**Status: Implemented (global announcements and maintenance mode deferred)**
+
+The admin workspace now supports reversible account archive/restore, JWT token-version session revocation, archive-first permanent deletion, read-only classroom and teacher-content oversight, real system health/totals, filtered audit logs, and safe CSV exports. Teacher accounts remain admin-created and use the existing email-verification flow, so no redundant identity-document approval system was introduced.
+
+All admin APIs are protected server-side. Admins cannot archive/delete themselves or change admin roles through the dashboard. Classroom and content views are read-only except for classroom archive/restore governance actions; admins cannot edit grades, game levels, validators, teacher challenges, scoring, XP, hints, or curriculum.
+
+Global announcements and maintenance mode remain deferred because they require dedicated cross-role delivery/settings middleware rather than reusing classroom announcements or blocking only selected frontend routes. See `ADMIN_DASH_CONTEXT.md` for endpoints, migration details, security behavior, and current limitations.
 
 ## Curriculum Pivot Note
 

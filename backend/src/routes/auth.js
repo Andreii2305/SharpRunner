@@ -130,7 +130,7 @@ if (isGoogleAuthConfigured) {
 
         if (!user.emailVerifiedAt) user.emailVerifiedAt = new Date();
         if (user.status === "pending") user.status = "active";
-        if (user.status === "inactive") return done(null, false);
+        if (["inactive", "archived"].includes(user.status)) return done(null, false);
 
         user.lastLoginAt = new Date();
         await user.save();
@@ -157,8 +157,8 @@ const secretsMatch = (provided, expected) => {
   return crypto.timingSafeEqual(providedDigest, expectedDigest);
 };
 
-const createAuthToken = (userId, role = "student") =>
-  jwt.sign({ id: userId, role }, process.env.JWT_SECRET, { expiresIn: "1h" });
+const createAuthToken = (userId, role = "student", tokenVersion = 0) =>
+  jwt.sign({ id: userId, role, tokenVersion }, process.env.JWT_SECRET, { expiresIn: "1h" });
 
 const findUserByEmailOrUsername = (email, username) =>
   User.findOne({
@@ -237,9 +237,11 @@ router.post("/login", loginRateLimit, async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    if (user.status === "inactive") {
+    if (["inactive", "archived"].includes(user.status)) {
       return res.status(403).json({
-        message: "Your account is inactive. Please contact your administrator.",
+        message: user.status === "archived"
+          ? "This account has been archived. Please contact your administrator."
+          : "Your account is inactive. Please contact your administrator.",
       });
     }
 
@@ -287,7 +289,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
     user.isPlayingGame = false;
     await user.save();
 
-    const token = createAuthToken(user.id, user.role ?? "student");
+    const token = createAuthToken(user.id, user.role ?? "student", user.tokenVersion ?? 0);
     await ensureProgressRowsForUser(user.id);
 
     res.json({
@@ -631,7 +633,7 @@ router.get("/google/callback", (req, res, next) => {
     session: false,
   })(req, res, next);
 }, (req, res) => {
-    const token = createAuthToken(req.user.id, req.user.role);
+    const token = createAuthToken(req.user.id, req.user.role, req.user.tokenVersion ?? 0);
     res.redirect(`${FRONTEND_URL}/auth/callback#token=${encodeURIComponent(token)}`);
   }
 );
@@ -698,7 +700,7 @@ router.post("/bootstrap-admin", bootstrapRateLimit, async (req, res) => {
       password: hashedPassword,
     });
 
-    const token = createAuthToken(user.id, user.role ?? "admin");
+    const token = createAuthToken(user.id, user.role ?? "admin", user.tokenVersion ?? 0);
 
     return res.status(201).json({
       message: "Admin account created successfully",
@@ -822,6 +824,7 @@ router.put("/me/password", authMiddleware, passwordChangeRateLimit, async (req, 
     }
 
     user.password = await bcrypt.hash(newPassword, 10);
+    user.tokenVersion = Number(user.tokenVersion ?? 0) + 1;
     await user.save();
     return res.json({ message: "Password updated" });
   } catch (error) {

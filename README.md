@@ -30,6 +30,7 @@ SharpRunner supports responsive web access. The dashboard, curriculum map, lesso
 ### Student Experience
 
 - Register or log in with email/username and password.
+- Request a single-use password reset link without exposing whether an email is registered.
 - Sign in with Google when configured.
 - Join a classroom using a teacher-provided class code.
 - Access the dashboard, lesson map, playable levels, leaderboard, announcements, and saved grades.
@@ -182,6 +183,7 @@ SMTP_SECURE=false
 SMTP_USER=your_smtp_username
 SMTP_PASS=your_smtp_password
 EMAIL_FROM="SharpRunner <no-reply@your-domain.com>"
+PASSWORD_RESET_TOKEN_TTL_MINUTES=30
 ```
 
 Use `SMTP_SECURE=true` with port `465`. Render free services block standard SMTP
@@ -190,6 +192,14 @@ be authorized by your email provider. Verification codes and links use
 `FRONTEND_URL`, expire after 30 minutes, and can be resent from `/verify-email`. Without SMTP configuration,
 manual student and teacher registration returns a service-unavailable error;
 Google sign-in continues to work when configured.
+
+Forgot-password emails also use `FRONTEND_URL`. Reset tokens are cryptographically
+random, stored only as SHA-256 hashes, single-use, and time-limited (30 minutes by
+default). A successful reset consumes all outstanding reset tokens and increments
+the user JWT token version, immediately revoking existing authenticated sessions.
+The public request endpoint always returns the same success message for eligible,
+unknown, Google-only, and archived accounts. It sends links only for local-password
+accounts that are not archived and never changes verification or account status.
 
 Run the backend:
 
@@ -295,6 +305,8 @@ or provider backup.
 
 - `/` - landing page
 - `/login` - login
+- `/forgot-password` - request a password reset link
+- `/reset-password` - choose a new password from a single-use email link
 - `/signup` - student registration
 - `/verify-email` - manual email verification and link resend
 - `/admin-verify-email` - admin-invite OTP verification
@@ -320,6 +332,8 @@ or provider backup.
 ### Backend
 
 - `/api/auth`
+  - `POST /api/auth/forgot-password` - generic response; 5 requests per 15 minutes per IP and a 60-second per-account email cooldown
+  - `POST /api/auth/reset-password` - consume a reset token and revoke prior sessions; 10 attempts per 15 minutes per IP
 - `/api/progress`
   - `POST /api/progress/level/:levelKey/detailed-hint-purchase` - authenticated, access-controlled, transactional detailed-hint purchase
 - `/api/lesson-content`

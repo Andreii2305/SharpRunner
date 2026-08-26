@@ -46,7 +46,7 @@ function LoginComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }
           </button>
 
           <div className={styles.formFooter}>
-            <Link to="/forgot" className={styles.forgotLink}>
+            <Link to="/forgot-password" className={styles.forgotLink}>
               Forgot Password?
             </Link>
             <span className={styles.signupText}>

@@ -1,10 +1,28 @@
 # SharpRunner Feature Requirements
 
-> Last updated: 2026-08-26
+> Last updated: 2026-08-27
 > Source: Panel review feedback and current project implementation
 > Status: Living project reference
 
 This document tracks the main panel-requested features and their current implementation status.
+
+## Account Password Recovery
+
+**Status: Implemented**
+
+Local-password students, teachers, and admins can request a reset from the login
+page. The public endpoint uses a generic response to prevent email enumeration.
+Reset links contain a cryptographically random token whose SHA-256 hash is stored
+in the dedicated `PasswordResetTokens` table. Tokens expire after 30 minutes by
+default, are single-use, and supersede older reset requests for the account.
+
+Password reset requires an 8-character minimum and confirmation on both client
+and server. Completion is transactional: the bcrypt password hash is replaced,
+outstanding reset tokens are consumed, and `tokenVersion` is incremented so old
+JWT sessions fail on their next protected request. Google-only and archived
+accounts do not receive reset links; pending/inactive local accounts retain their
+existing verification and status state, so password recovery cannot activate or
+verify an account.
 
 ## Admin Platform Governance
 

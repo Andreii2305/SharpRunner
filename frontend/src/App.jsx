@@ -24,6 +24,8 @@ const AdminInviteRegisterPage = lazy(() => import("./pages/auth/AdminInviteRegis
 const GoogleCallbackPage = lazy(() => import("./pages/auth/GoogleCallbackPage.jsx"));
 const EmailVerificationPage = lazy(() => import("./pages/auth/EmailVerificationPage.jsx"));
 const AdminEmailVerificationPage = lazy(() => import("./pages/auth/AdminEmailVerificationPage.jsx"));
+const ForgotPasswordPage = lazy(() => import("./pages/auth/ForgotPasswordPage.jsx"));
+const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage.jsx"));
 const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
 const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEditorPage.jsx"));
 const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPage.jsx"));
@@ -208,6 +210,8 @@ function App() {
         <Route path="/auth/callback" element={<GoogleCallbackPage />} />
         <Route path="/verify-email" element={<EmailVerificationPage />} />
         <Route path="/admin-verify-email" element={<AdminEmailVerificationPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
       </Routes>
       </Suspense>
     </BrowserRouter>

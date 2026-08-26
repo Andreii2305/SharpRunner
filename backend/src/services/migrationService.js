@@ -42,6 +42,7 @@ const migrations = [
   ["20260822000000_panel_system_recommendations", sqlMigration("20260822000000_panel_system_recommendations.sql")],
   ["20260822120000_detailed_hint_purchases", sqlMigration("20260822120000_detailed_hint_purchases.sql")],
   ["20260826000000_admin_governance", sqlMigration("20260826000000_admin_governance.sql")],
+  ["20260827000000_password_reset_tokens", sqlMigration("20260827000000_password_reset_tokens.sql")],
 ];
 
 const runMigrations = async () => {

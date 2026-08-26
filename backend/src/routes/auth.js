@@ -10,6 +10,7 @@ const AdminInvite = require("../models/AdminInvite");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const authMiddleware = require("../middleware/authMiddleware");
 const EmailVerificationToken = require("../models/EmailVerificationToken");
+const PasswordResetToken = require("../models/PasswordResetToken");
 const { validateEmailAddress } = require("../services/emailValidationService");
 const {
   issueEmailVerification,
@@ -17,6 +18,7 @@ const {
   verifyEmailToken,
 } = require("../services/emailVerificationService");
 const { createRateLimit } = require("../middleware/rateLimit");
+const { issuePasswordReset, resetPassword } = require("../services/passwordResetService");
 const {
   GAMIFICATION_PREFERENCES,
   LEARNING_GAME_INTERESTS,
@@ -31,6 +33,11 @@ const isGoogleAuthConfigured = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
 );
 const VERIFICATION_RESEND_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
+const FORGOT_PASSWORD_MIN_RESPONSE_MS = 250;
+const FORGOT_PASSWORD_MESSAGE =
+  "If an account exists for that email, password reset instructions have been sent.";
+const INVALID_RESET_MESSAGE = "This password reset link is invalid or has expired.";
 
 const registerRateLimit = createRateLimit({
   windowMs: 60 * 60 * 1000,
@@ -49,6 +56,18 @@ const passwordChangeRateLimit = createRateLimit({
   max: 5,
   keyGenerator: (req) => `password-change:${req.userId}`,
   message: "Too many password change attempts. Please try again later.",
+});
+const forgotPasswordRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `forgot-password:${req.ip}`,
+  message: "Too many password reset requests. Please try again later.",
+});
+const resetPasswordRateLimit = createRateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => `reset-password:${req.ip}`,
+  message: "Too many password reset attempts. Please try again later.",
 });
 const bootstrapRateLimit = createRateLimit({
   windowMs: 60 * 60 * 1000,
@@ -196,6 +215,86 @@ const completeEmailVerification = async (result, res) => {
     message: "Email verified successfully. You can now sign in.",
   });
 };
+
+router.post("/forgot-password", forgotPasswordRateLimit, async (req, res) => {
+  const startedAt = Date.now();
+  const genericResponse = { message: FORGOT_PASSWORD_MESSAGE };
+
+  try {
+    const email = normalizeEmail(req.body?.email);
+    if (email) {
+      const user = await User.findOne({
+        where: where(fn("lower", col("email")), email),
+      });
+
+      if (
+        user &&
+        user.status !== "archived" &&
+        user.authProvider !== "google" &&
+        Boolean(user.password)
+      ) {
+        const latestToken = await PasswordResetToken.findOne({
+          where: { userId: user.id },
+          attributes: ["createdAt"],
+          order: [["createdAt", "DESC"]],
+        });
+        const latestCreatedAt = latestToken?.createdAt
+          ? new Date(latestToken.createdAt).getTime()
+          : 0;
+
+        if (Date.now() - latestCreatedAt >= PASSWORD_RESET_COOLDOWN_MS) {
+          try {
+            await issuePasswordReset(user);
+          } catch (error) {
+            console.error("Failed to send password reset email", error);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("Failed to process forgot-password request", error);
+  }
+
+  const remainingDelay = FORGOT_PASSWORD_MIN_RESPONSE_MS - (Date.now() - startedAt);
+  if (remainingDelay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, remainingDelay));
+  }
+  return res.json(genericResponse);
+});
+
+router.post("/reset-password", resetPasswordRateLimit, async (req, res) => {
+  try {
+    const token = normalizeString(req.body?.token);
+    const password = normalizeString(req.body?.password);
+    const confirmPassword = normalizeString(req.body?.confirmPassword);
+
+    if (!token || !password || !confirmPassword) {
+      return res.status(400).json({ message: "Token, password, and confirmation are required." });
+    }
+    if (password !== confirmPassword) {
+      return res.status(400).json({ message: "Passwords do not match." });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters." });
+    }
+    if (!/^[a-f0-9]{64}$/i.test(token)) {
+      return res.status(400).json({ message: INVALID_RESET_MESSAGE });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const didReset = await resetPassword({ rawToken: token, passwordHash });
+    if (!didReset) {
+      return res.status(400).json({ message: INVALID_RESET_MESSAGE });
+    }
+
+    return res.json({
+      message: "Your password has been changed. You can now sign in with your new password.",
+    });
+  } catch (error) {
+    console.error("Failed to reset password", error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
 
 router.post("/login", loginRateLimit, async (req, res) => {
   try {

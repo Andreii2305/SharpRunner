@@ -3,6 +3,7 @@ const { after, before, test } = require("node:test");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
+const crypto = require("node:crypto");
 
 process.env.JWT_SECRET = "integration-test-secret-with-sufficient-length";
 process.env.DEVELOPER_SETUP_KEY = "developer-integration-key";
@@ -18,6 +19,7 @@ const LevelDeadline = require("../src/models/LevelDeadline");
 const AdminActivityLog = require("../src/models/AdminActivityLog");
 const AdminInvite = require("../src/models/AdminInvite");
 const XpTransaction = require("../src/models/XpTransaction");
+const PasswordResetToken = require("../src/models/PasswordResetToken");
 const sequelize = require("../src/config/database");
 
 let server;
@@ -778,5 +780,176 @@ test("developer login token authorizes creation of a one-time admin invite", asy
     assert.equal(response.status, 201);
     assert.equal(payload.invite.invitedEmail, "future-admin@example.com");
     assert.match(payload.invite.inviteCode, /^[A-Z2-9]{10}$/);
+  });
+});
+
+test("forgot-password is generic, hashes emailed tokens, and excludes Google and archived accounts", async () => {
+  process.env.SMTP_HOST = "smtp.test.local";
+  process.env.SMTP_USER = "mailer@test.local";
+  process.env.SMTP_PASS = "test-password";
+  process.env.EMAIL_FROM = "SharpRunner <mailer@test.local>";
+  process.env.FRONTEND_URL = "https://app.sharprunner.test";
+  const localUser = activeUser({
+    id: 81,
+    authProvider: "password",
+    password: bcrypt.hashSync("old-password", 4),
+  });
+  const googleUser = activeUser({ id: 82, email: "google@example.com", authProvider: "google" });
+  const archivedUser = activeUser({
+    id: 83,
+    email: "archived@example.com",
+    status: "archived",
+    authProvider: "password",
+    password: bcrypt.hashSync("old-password", 4),
+  });
+  const pendingUser = activeUser({
+    id: 84,
+    email: "pending@example.com",
+    status: "pending",
+    emailVerifiedAt: null,
+    authProvider: "password",
+    password: bcrypt.hashSync("old-password", 4),
+  });
+  const lookupResults = [localUser, null, googleUser, archivedUser, pendingUser];
+  const storedRecords = [];
+  const sentMail = [];
+
+  await withStubs([
+    [User, "findOne", async () => lookupResults.shift() || null],
+    [User, "findByPk", async (id) => id === pendingUser.id ? pendingUser : localUser],
+    [PasswordResetToken, "findOne", async () => null],
+    [PasswordResetToken, "update", async () => [0]],
+    [PasswordResetToken, "create", async (values) => {
+      storedRecords.push(values);
+      return { ...values, id: 1, destroy: async () => undefined };
+    }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [nodemailer, "createTransport", () => ({ sendMail: async (message) => { sentMail.push(message); } })],
+  ], async () => {
+    const responses = [];
+    for (const email of [
+      localUser.email,
+      "missing@example.com",
+      googleUser.email,
+      archivedUser.email,
+      pendingUser.email,
+    ]) {
+      responses.push(await apiRequest("/api/auth/forgot-password", {
+        method: "POST",
+        body: { email },
+      }));
+    }
+
+    for (const result of responses) {
+      assert.equal(result.response.status, 200);
+      assert.equal(
+        result.payload.message,
+        "If an account exists for that email, password reset instructions have been sent.",
+      );
+    }
+    assert.equal(sentMail.length, 2);
+    assert.equal(sentMail[0].to, localUser.email);
+    assert.equal(sentMail[1].to, pendingUser.email);
+    for (const [index, message] of sentMail.entries()) {
+      assert.doesNotMatch(message.text, /old-password/);
+      const rawToken = new URL(message.text.match(/https:\/\/\S+/)[0]).searchParams.get("token");
+      assert.equal(rawToken.length, 64);
+      assert.equal(
+        storedRecords[index].tokenHash,
+        crypto.createHash("sha256").update(rawToken).digest("hex"),
+      );
+      assert.notEqual(storedRecords[index].tokenHash, rawToken);
+    }
+    assert.equal(pendingUser.status, "pending");
+    assert.equal(pendingUser.emailVerifiedAt, null);
+  });
+});
+
+test("forgot-password rate limiting does not disclose account existence", async () => {
+  const expected = "Too many password reset requests. Please try again later.";
+  const limited = await apiRequest("/api/auth/forgot-password", {
+    method: "POST",
+    body: { email: "test@example.com" },
+  });
+  assert.equal(limited.response.status, 429);
+  assert.equal(limited.payload.message, expected);
+});
+
+test("reset-password is single-use, bcrypt-hashes the password, and revokes an existing JWT", async () => {
+  const rawToken = "a".repeat(64);
+  const user = activeUser({
+    id: 91,
+    authProvider: "password",
+    password: bcrypt.hashSync("old-password", 4),
+    tokenVersion: 2,
+  });
+  const oldSession = authToken(user.id, user.role, user.tokenVersion);
+  let available = true;
+  let invalidatedCount = 0;
+
+  await withStubs([
+    [PasswordResetToken, "findOne", async () => available
+      ? { id: 7, userId: user.id, usedAt: null, expiresAt: new Date(Date.now() + 60_000) }
+      : null],
+    [PasswordResetToken, "update", async () => {
+      available = false;
+      invalidatedCount += 1;
+      return [1];
+    }],
+    [User, "findByPk", async () => user],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const reset = await apiRequest("/api/auth/reset-password", {
+      method: "POST",
+      body: { token: rawToken, password: "new-password-123", confirmPassword: "new-password-123" },
+    });
+    assert.equal(reset.response.status, 200);
+    assert.equal(await bcrypt.compare("new-password-123", user.password), true);
+    assert.equal(user.tokenVersion, 3);
+    assert.equal(invalidatedCount, 1);
+
+    const reuse = await apiRequest("/api/auth/reset-password", {
+      method: "POST",
+      body: { token: rawToken, password: "other-password", confirmPassword: "other-password" },
+    });
+    assert.equal(reuse.response.status, 400);
+    assert.equal(reuse.payload.message, "This password reset link is invalid or has expired.");
+
+    const protectedRequest = await apiRequest("/api/auth/me", { token: oldSession });
+    assert.equal(protectedRequest.response.status, 401);
+    assert.equal(protectedRequest.payload.message, "Session has been revoked");
+  });
+});
+
+test("reset-password enforces confirmation and the existing eight-character policy", async () => {
+  const token = "b".repeat(64);
+  const mismatch = await apiRequest("/api/auth/reset-password", {
+    method: "POST",
+    body: { token, password: "long-enough", confirmPassword: "different-password" },
+  });
+  assert.equal(mismatch.response.status, 400);
+  assert.equal(mismatch.payload.message, "Passwords do not match.");
+
+  const short = await apiRequest("/api/auth/reset-password", {
+    method: "POST",
+    body: { token, password: "short", confirmPassword: "short" },
+  });
+  assert.equal(short.response.status, 400);
+  assert.equal(short.payload.message, "Password must be at least 8 characters.");
+});
+
+test("reset-password gives one response for invalid, expired, used, and superseded tokens", async () => {
+  await withStubs([
+    [PasswordResetToken, "findOne", async () => null],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    for (const token of ["c", "d", "e", "f"].map((letter) => letter.repeat(64))) {
+      const result = await apiRequest("/api/auth/reset-password", {
+        method: "POST",
+        body: { token, password: "valid-password", confirmPassword: "valid-password" },
+      });
+      assert.equal(result.response.status, 400);
+      assert.equal(result.payload.message, "This password reset link is invalid or has expired.");
+    }
   });
 });

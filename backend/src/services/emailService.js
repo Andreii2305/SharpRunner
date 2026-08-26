@@ -113,4 +113,33 @@ const sendTemporaryPasswordEmail = async ({ email, firstName, username, temporar
   });
 };
 
-module.exports = { sendTeacherInviteEmail, sendTemporaryPasswordEmail, sendVerificationEmail };
+const sendPasswordResetEmail = async ({
+  email,
+  firstName,
+  resetUrl,
+  expiresInMinutes,
+}) => {
+  const from = String(process.env.EMAIL_FROM || process.env.SMTP_USER || "").trim();
+  if (!from) {
+    const error = new Error("Email sender is not configured");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const safeName = escapeHtml(firstName || "there");
+  const safeUrl = escapeHtml(resetUrl);
+  await getTransport().sendMail({
+    from,
+    to: email,
+    subject: "Reset your SharpRunner password",
+    text: `Hi ${firstName || "there"},\n\nWe received a request to reset your SharpRunner password.\n\nReset your password: ${resetUrl}\n\nThis link will expire in ${expiresInMinutes} minutes. If you did not request a password reset, you can safely ignore this email.`,
+    html: `<div style="font-family:Arial,sans-serif;color:#23384d;line-height:1.6;max-width:600px;margin:0 auto"><div style="background:#26547c;color:#ffffff;border-radius:10px 10px 0 0;padding:20px 24px"><strong style="font-size:20px">SharpRunner Password Reset</strong></div><div style="border:1px solid #d9e1ea;border-top:0;border-radius:0 0 10px 10px;padding:24px"><p>Hi ${safeName},</p><p>We received a request to reset your SharpRunner password.</p><p style="text-align:center;margin:24px 0"><a href="${safeUrl}" style="display:inline-block;background:#26547c;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:6px;font-weight:700">Reset Password</a></p><p>This link will expire in ${expiresInMinutes} minutes.</p><p style="color:#687786;font-size:13px">If you did not request a password reset, you can safely ignore this email.</p></div></div>`,
+  });
+};
+
+module.exports = {
+  sendPasswordResetEmail,
+  sendTeacherInviteEmail,
+  sendTemporaryPasswordEmail,
+  sendVerificationEmail,
+};

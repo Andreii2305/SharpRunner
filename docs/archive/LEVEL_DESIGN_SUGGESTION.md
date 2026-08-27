@@ -2,7 +2,7 @@
 
 Last updated: 2026-03-16
 
-> **Legacy proposal:** This document predates the implemented Tutorial, Arrays, Functions and Methods, Functions with Arrays, and final combined curriculum. It is retained for design history and is not the current route or level plan. See `LEVELING_CONTEXT.md` for the active structure.
+> **Legacy proposal:** This document predates the implemented Tutorial, Arrays, Functions and Methods, Functions with Arrays, and final combined curriculum. It is retained for design history and is not the current route or level plan. See `../LEVELING_CONTEXT.md` for the active structure.
 
 ## Lesson 1: Variables and Data Types (The Castle of Syntax)
 

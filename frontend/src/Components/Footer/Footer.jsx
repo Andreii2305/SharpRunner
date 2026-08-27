@@ -1,5 +1,8 @@
 import styles from "./Footer.module.css";
 import { Link } from "react-router-dom";
+import { FaGithub } from "react-icons/fa";
+
+const GITHUB_REPOSITORY_URL = "https://github.com/Andreii2305/SharpRunner";
 
 function Footer() {
   return (
@@ -21,6 +24,16 @@ function Footer() {
           <a href="#product-demo">Platform</a>
           <a href="#howItWorks">How It Works</a>
           <Link to="/login">Log in</Link>
+          <a
+            className={styles.githubLink}
+            href={GITHUB_REPOSITORY_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View SharpRunner on GitHub (opens in a new tab)"
+          >
+            <FaGithub aria-hidden="true" />
+            GitHub
+          </a>
         </nav>
       </div>
       <div className={styles.footerBottom}>

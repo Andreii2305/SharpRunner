@@ -62,6 +62,17 @@
   transition: color 160ms ease;
 }
 
+.footerNav .githubLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.githubLink svg {
+  width: 16px;
+  height: 16px;
+}
+
 .footerNav a:hover {
   color: #7bd4e9;
 }

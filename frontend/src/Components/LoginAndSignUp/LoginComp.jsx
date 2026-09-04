@@ -1,9 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import styles from "./login.module.css";
 import { FaGoogle, FaFacebookF } from "react-icons/fa";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { Link } from "react-router-dom";
 
 function LoginComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }) {
+  const [showPassword, setShowPassword] = useState(false);
+
   return (
     <div className={styles.loginContainer}>
       <div className={styles.brandLogo}>
@@ -31,14 +34,25 @@ function LoginComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }
             />
           </div>
 
-          <div className={styles.inputGroup}>
+          <div className={`${styles.inputGroup} ${styles.passwordField}`}>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               name="password"
               placeholder="Password"
               value={formData.password}
               onChange={handleChange}
+              autoComplete="current-password"
             />
+            <button
+              type="button"
+              className={styles.passwordToggle}
+              onClick={() => setShowPassword((visible) => !visible)}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? <FiEyeOff /> : <FiEye />}
+            </button>
           </div>
 
           <button type="submit" className={styles.loginBtn}>

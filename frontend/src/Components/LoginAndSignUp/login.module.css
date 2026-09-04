@@ -85,6 +85,10 @@
   margin-bottom: 1.5rem;
 }
 
+.passwordField {
+  position: relative;
+}
+
 .inputGroup input {
   width: 100%;
   padding: 15px;
@@ -100,6 +104,38 @@
 
 .inputGroup input:focus {
   border-bottom-color: #26547c;
+}
+
+.passwordField input {
+  padding-right: 48px;
+}
+
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #526579;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.passwordToggle:hover {
+  background: rgba(38, 84, 124, 0.09);
+  color: #26547c;
+}
+
+.passwordToggle:focus-visible {
+  outline: 3px solid rgba(38, 84, 124, 0.22);
+  outline-offset: 1px;
 }
 
 /* Login Button */

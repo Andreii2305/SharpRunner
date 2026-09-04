@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { FiEye, FiEyeOff } from "react-icons/fi";
 import { buildApiUrl } from "../../utils/auth";
 import styles from "./PasswordRecoveryPage.module.css";
 
@@ -13,6 +14,7 @@ function ResetPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [status, setStatus] = useState(token ? "form" : "invalid");
   const [error, setError] = useState(token ? "" : INVALID_LINK_MESSAGE);
   const [isResetting, setIsResetting] = useState(false);
@@ -101,20 +103,34 @@ function ResetPasswordPage() {
                   className={styles.visibilityButton}
                   onClick={() => setShowPassword((visible) => !visible)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  title={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPassword ? "Hide" : "Show"}
+                  {showPassword ? <FiEyeOff /> : <FiEye />}
                 </button>
               </div>
               <label htmlFor="confirm-password">Confirm password</label>
-              <input
-                id="confirm-password"
-                type={showPassword ? "text" : "password"}
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
+              <div className={styles.passwordField}>
+                <input
+                  id="confirm-password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+                <button
+                  type="button"
+                  className={styles.visibilityButton}
+                  onClick={() => setShowConfirmPassword((visible) => !visible)}
+                  aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                  aria-pressed={showConfirmPassword}
+                  title={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                >
+                  {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
+                </button>
+              </div>
               {error && <p className={styles.error} role="alert">{error}</p>}
               <button type="submit" disabled={isResetting}>
                 {isResetting ? "Resetting..." : "Reset Password"}

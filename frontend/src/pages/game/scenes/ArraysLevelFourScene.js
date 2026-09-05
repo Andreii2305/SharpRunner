@@ -103,7 +103,6 @@ export default class ArraysLevelFourScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     const map = this.make.tilemap({ key: "arrays_level_4_base" });
     const offsetY = this.scale.height - map.heightInPixels;
 

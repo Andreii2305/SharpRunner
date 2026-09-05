@@ -72,7 +72,6 @@ export default class FunctionsArraysAncientCemeteryScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     this.map = this.make.tilemap({ key: MAP_KEY });
     this.offsetY = this.scale.height - this.map.heightInPixels;
     this.mode = "idle";
@@ -351,6 +350,16 @@ export default class FunctionsArraysAncientCemeteryScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(20)
       .setOrigin(0.5);
+  }
+
+  layoutCameraUi(width) {
+    if (!this.hud || !this.scanReadout) return;
+    const compact = width < 520;
+    this.hud.setScale(compact ? 0.82 : 1).setPosition(18, 18);
+    this.scanReadout.setPosition(
+      Phaser.Math.Clamp(width / 2, compact ? 120 : 150, Math.max(120, width - 120)),
+      compact ? 108 : 38,
+    );
   }
 
   onCodeEvaluated({ levelNumber, isCorrect, message, values }) {

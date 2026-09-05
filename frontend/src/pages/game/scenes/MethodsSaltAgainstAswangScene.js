@@ -63,7 +63,6 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     const map = this.make.tilemap({ key: MAP_KEY });
     this.offsetY = this.scale.height - map.heightInPixels;
     this.sequenceMode = "idle";

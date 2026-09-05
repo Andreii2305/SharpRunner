@@ -88,10 +88,10 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     this.map = this.make.tilemap({ key: MAP_KEY });
     this.offsetY = this.scale.height - this.map.heightInPixels;
     this.mode = "intro";
+    this.manualCameraEnabled = false;
     this.isMuted = this.readPreference(AUDIO_PREFERENCE_KEY);
     this.reducedMotion = this.readPreference(
       MOTION_PREFERENCE_KEY,
@@ -382,6 +382,17 @@ export default class FunctionsArraysBakunawaEclipseScene extends Phaser.Scene {
     this.skipOpeningButton.on("pointerover", () => this.skipOpeningButton.setColor("#ffffff"));
     this.skipOpeningButton.on("pointerout", () => this.skipOpeningButton.setColor("#b8cbd5"));
     this.skipOpeningButton.on("pointerdown", () => this.skipOpening());
+  }
+
+  layoutCameraUi(width, height) {
+    if (!this.phasePanel || !this.bossHud || !this.skipOpeningButton) return;
+    const compact = width < 520;
+    const hudScale = compact ? 0.78 : 1;
+    this.phasePanel.setScale(hudScale).setPosition(12, 12);
+    this.bossHud
+      .setScale(hudScale)
+      .setPosition(Math.max(12, width - 12 - 232 * hudScale), 12);
+    this.skipOpeningButton.setPosition(width / 2, compact ? Math.max(86, height - 32) : 20);
   }
 
   onCodeEvaluated({ levelNumber, isCorrect, message, values }) {

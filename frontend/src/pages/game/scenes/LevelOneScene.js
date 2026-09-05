@@ -169,7 +169,6 @@ export default class LevelOneScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupScene, this);
 
     this.player.play("player-idle");
-    this.scale.resize(1024, 576);
   }
 
   update() {

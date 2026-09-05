@@ -99,7 +99,6 @@ export default class LevelFourScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     const map = this.make.tilemap({ key: "level4" });
     const camera = this.cameras.main;
 

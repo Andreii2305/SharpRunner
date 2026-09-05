@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { FiRefreshCw, FiSmartphone, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
+import { FiCrosshair, FiRefreshCw, FiSmartphone, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import styles from "./GamePage.module.css";
@@ -97,6 +97,8 @@ function GamePage({ levelConfig }) {
     window.matchMedia?.("(orientation: portrait)").matches ?? false,
   );
   const [activeMobileTab, setActiveMobileTab] = useState("game");
+  const [cameraAvailable, setCameraAvailable] = useState(false);
+  const [recenterRequest, setRecenterRequest] = useState(0);
   const [orientationPromptDismissed, setOrientationPromptDismissed] = useState(false);
 
   useEffect(() => {
@@ -120,6 +122,11 @@ function GamePage({ levelConfig }) {
   useEffect(() => {
     if (!isMobile) setOrientationPromptDismissed(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    setCameraAvailable(false);
+    setRecenterRequest(0);
+  }, [levelConfig]);
 
   useEffect(() => {
     const resizeTimer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 0);
@@ -988,7 +995,20 @@ function GamePage({ levelConfig }) {
               levelNumber={levelConfig.levelNumber}
               isMuted={sfxMuted}
               sfxVolume={sfxVolume}
+              onCameraAvailabilityChange={setCameraAvailable}
+              recenterRequest={recenterRequest}
             />
+            {cameraAvailable && (
+              <button
+                type="button"
+                className={styles.recenterCameraButton}
+                onClick={() => setRecenterRequest((request) => request + 1)}
+                aria-label="Recenter Camera"
+                title="Recenter Camera"
+              >
+                <FiCrosshair aria-hidden="true" />
+              </button>
+            )}
             {activeHint && (
               <div className={styles.hintOverlay} role="presentation">
                 <div className={styles.hintBox} role="dialog" aria-modal="true" aria-labelledby="level-hint-title">

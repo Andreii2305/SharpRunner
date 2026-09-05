@@ -95,7 +95,6 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     const map = this.make.tilemap({ key: LEVEL_MAP_KEY });
     const offsetY = this.scale.height - map.heightInPixels;
 
@@ -274,11 +273,6 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
       maxY: offsetY,
     };
 
-    this.input.on("pointerdown", this.onCameraPointerDown, this);
-    this.input.on("pointermove", this.onCameraPointerMove, this);
-    this.input.on("pointerup", this.onCameraPointerUp, this);
-    this.input.on("pointerupoutside", this.onCameraPointerUp, this);
-    this.input.on("wheel", this.onCameraWheel, this);
   }
 
   onCameraPointerDown(pointer) {

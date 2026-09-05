@@ -69,7 +69,6 @@ export default class ArraysLevelEightScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     const map = this.make.tilemap({ key: MAP_KEY });
     this.offsetY = this.scale.height - map.heightInPixels;
     this.sequenceTimers = [];
@@ -705,12 +704,7 @@ export default class ArraysLevelEightScene extends Phaser.Scene {
 
   setupCamera(map) {
     this.manualCameraEnabled = true;
-    this.cameraBounds = { minX: 0, maxX: Math.max(0, map.widthInPixels - 1024) };
-    this.input.on("pointerdown", this.onPointerDown, this);
-    this.input.on("pointermove", this.onPointerMove, this);
-    this.input.on("pointerup", this.onPointerUp, this);
-    this.input.on("pointerupoutside", this.onPointerUp, this);
-    this.input.on("wheel", this.onWheel, this);
+    this.cameraBounds = { minX: 0, maxX: Math.max(0, map.widthInPixels - this.scale.width) };
   }
 
   onPointerDown(pointer) {

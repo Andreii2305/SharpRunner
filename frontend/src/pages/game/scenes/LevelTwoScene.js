@@ -256,7 +256,6 @@ export default class LevelTwoScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanupScene, this);
 
     this.playAnimation("player-idle");
-    this.scale.resize(1024, 576);
     this.startIntroSequence();
   }
 

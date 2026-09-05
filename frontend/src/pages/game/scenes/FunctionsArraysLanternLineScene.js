@@ -58,7 +58,6 @@ export default class FunctionsArraysLanternLineScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
     this.map = this.make.tilemap({ key: MAP_KEY });
     this.offsetY = this.scale.height - this.map.heightInPixels;
     this.mode = "idle";

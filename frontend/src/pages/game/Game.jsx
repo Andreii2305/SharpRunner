@@ -8,6 +8,9 @@ import {
   preloadGameSfx,
   stopGameSfx,
 } from "./audio/gameSfx.js";
+import ResponsiveCameraPlugin, {
+  RESPONSIVE_CAMERA_AVAILABILITY,
+} from "./camera/ResponsiveCameraPlugin.js";
 
 const createAudioBootScene = (targetSceneKey, levelNumber) =>
   class AudioBootScene extends Phaser.Scene {
@@ -37,6 +40,8 @@ export default function Game({
   parentId = "phaser-canvas-root",
   isMuted = false,
   sfxVolume = 100,
+  onCameraAvailabilityChange,
+  recenterRequest = 0,
 }) {
   const gameRef = useRef(null);
   const initialAudioSettingsRef = useRef({ isMuted, sfxVolume });
@@ -64,20 +69,42 @@ export default function Game({
         autoCenter: Phaser.Scale.NO_CENTER,
       },
 
+      plugins: {
+        scene: [
+          {
+            key: "ResponsiveCameraPlugin",
+            plugin: ResponsiveCameraPlugin,
+            mapping: "responsiveCamera",
+          },
+        ],
+      },
+
       scene: [AudioBootScene, scene],
       // backgroundColor: "#e9e7e7",
     });
     gameRef.current = game;
+    const handleCameraAvailability = ({ sceneKey: activeSceneKey, available }) => {
+      if (activeSceneKey === sceneKey) onCameraAvailabilityChange?.(available);
+    };
+    game.events.on(RESPONSIVE_CAMERA_AVAILABILITY, handleCameraAvailability);
     game.sound.mute = initialAudioSettingsRef.current.isMuted;
     game.sound.volume = initialAudioSettingsRef.current.sfxVolume / 100;
 
     return () => {
       if (gameRef.current) {
+        gameRef.current.events.off(RESPONSIVE_CAMERA_AVAILABILITY, handleCameraAvailability);
         gameRef.current.destroy(true);
         gameRef.current = null;
       }
+      onCameraAvailabilityChange?.(false);
     };
-  }, [scene, sceneKey, levelNumber, parentId]);
+  }, [scene, sceneKey, levelNumber, parentId, onCameraAvailabilityChange]);
+
+  useEffect(() => {
+    if (!recenterRequest) return;
+    const activeScene = gameRef.current?.scene?.getScene(sceneKey);
+    activeScene?.responsiveCamera?.recenter();
+  }, [recenterRequest, sceneKey]);
 
   useEffect(() => {
     if (gameRef.current?.sound) {

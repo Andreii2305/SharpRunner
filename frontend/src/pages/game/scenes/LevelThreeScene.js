@@ -160,7 +160,6 @@ export default class LevelThreeScene extends Phaser.Scene {
   }
 
   create() {
-    this.scale.resize(1024, 576);
 
     this.normalizeMapData();
 

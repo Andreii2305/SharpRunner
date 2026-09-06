@@ -5,7 +5,7 @@
 }
 
 .annHint {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #64748b;
   display: flex;
   gap: 7px;
@@ -13,8 +13,8 @@
   margin-bottom: 2px;
 }
 
-.annError   { font-size: 11px; color: #E24B4A; padding: 3px 0; }
-.annSuccess { font-size: 11px; color: #0F6E56; padding: 3px 0; }
+.annError   { font-size: var(--teacher-text-sm); color: #E24B4A; padding: 3px 0; }
+.annSuccess { font-size: var(--teacher-text-sm); color: #0F6E56; padding: 3px 0; }
 
 .annForm {
   display: flex;
@@ -26,7 +26,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   color: #64748b;
   font-weight: 600;
 }
@@ -37,7 +37,7 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #fff;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   padding: 8px 10px;
   outline: none;
   color: #374151;
@@ -60,7 +60,7 @@
   justify-content: space-between;
 }
 
-.annCount { font-size: 10px; color: #94a3b8; }
+.annCount { font-size: var(--teacher-text-xs); color: #94a3b8; }
 
 .annList {
   display: flex;
@@ -86,10 +86,10 @@
   margin-bottom: 5px;
 }
 
-.annTag       { font-size: 10px; font-weight: 600; background: #eef4fb; color: #26547c; padding: 2px 8px; border-radius: 99px; }
-.annTime      { font-size: 10px; color: #94a3b8; white-space: nowrap; }
-.annItemTitle { font-size: 13px; font-weight: 700; color: #1e3a5f; margin-bottom: 3px; }
-.annItemBody  { font-size: 12px; color: #374151; line-height: 1.55; margin: 0; white-space: pre-wrap; }
+.annTag       { font-size: var(--teacher-text-xs); font-weight: 600; background: #eef4fb; color: #26547c; padding: 2px 8px; border-radius: 99px; }
+.annTime      { font-size: var(--teacher-text-xs); color: #94a3b8; white-space: nowrap; }
+.annItemTitle { font-size: var(--teacher-text-lg); font-weight: 700; color: #1e3a5f; margin-bottom: 3px; }
+.annItemBody  { font-size: var(--teacher-text-md); color: #374151; line-height: 1.55; margin: 0; white-space: pre-wrap; }
 
 @media (max-width: 1000px) {
   .annGrid { grid-template-columns: 1fr; }

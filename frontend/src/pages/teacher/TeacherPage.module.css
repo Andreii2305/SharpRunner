@@ -4,13 +4,20 @@
 ───────────────────────────────────────── */
 
 .root {
+  --teacher-text-xs: 12px;
+  --teacher-text-sm: 13px;
+  --teacher-text-md: 14px;
+  --teacher-text-lg: 16px;
+  --teacher-text-xl: 20px;
+  --teacher-text-2xl: 24px;
   display: flex;
   width: 100%;
   height: 100vh;
   overflow: hidden;
   background: #f0f4f8;
   font-family: "Segoe UI", system-ui, sans-serif;
-  font-size: 13px;
+  font-size: var(--teacher-text-md);
+  line-height: 1.5;
   color: #374151;
 }
 
@@ -36,7 +43,7 @@
 }
 
 .pageTitle {
-  font-size: 15px;
+  font-size: var(--teacher-text-xl);
   font-weight: 700;
   color: #1e3a5f;
 }
@@ -77,7 +84,7 @@
 }
 
 .sectionTitle {
-  font-size: 13px;
+  font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
 }
@@ -108,7 +115,7 @@
 }
 
 .statLabel {
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   color: #94a3b8;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -127,7 +134,7 @@
 }
 
 .statSub {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #94a3b8;
   margin-top: 3px;
 }
@@ -151,7 +158,7 @@
 /* ── Code pill ────────────────────────── */
 .codePill {
   display: inline-block;
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 700;
   background: #eef4fb;
   color: #26547c;
@@ -170,7 +177,7 @@
   border: none;
   border-radius: 8px;
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
@@ -189,7 +196,7 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   padding: 8px 16px;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   font-weight: 500;
   cursor: pointer;
   font-family: inherit;
@@ -215,7 +222,7 @@
 .table th {
   text-align: left;
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: var(--teacher-text-sm);
   font-weight: 700;
   color: #94a3b8;
   letter-spacing: 0.07em;
@@ -225,8 +232,8 @@
 }
 
 .table td {
-  padding: 10px 12px;
-  font-size: 12px;
+  padding: 11px 12px;
+  font-size: var(--teacher-text-md);
   border-bottom: 1px solid #f1f5f9;
   color: #374151;
 }
@@ -266,7 +273,7 @@
 
 .modalHeader h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
 }
@@ -282,7 +289,7 @@
 }
 .modalCloseBtn:hover { border-color: #1e3a5f; color: #1e3a5f; }
 
-.modalError { font-size: 11px; color: #E24B4A; margin-bottom: 10px; }
+.modalError { font-size: var(--teacher-text-sm); line-height: 1.5; color: #E24B4A; margin-bottom: 10px; }
 
 .modalForm {
   display: grid;
@@ -294,7 +301,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   color: #64748b;
   font-weight: 600;
 }
@@ -306,7 +313,7 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #fff;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   padding: 8px 10px;
   outline: none;
   font-family: inherit;

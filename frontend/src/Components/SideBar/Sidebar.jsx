@@ -72,7 +72,7 @@ function Sidebar() {
   };
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${isTeacher ? styles.teacherSidebar : ""}`}>
       {/* Brand */}
       <div className={styles.brand}>
         <Link to="/" className={styles.brandLink}>

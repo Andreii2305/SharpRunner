@@ -26,7 +26,7 @@
 }
 
 .summaryLbl {
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
@@ -43,7 +43,7 @@
 }
 
 .gridTitle {
-  font-size: 13px;
+  font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
 }
@@ -132,7 +132,7 @@
 }
 
 .classCardName {
-  font-size: 13px;
+  font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
   white-space: nowrap;
@@ -141,7 +141,7 @@
 }
 
 .classCardMeta {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #64748b;
   white-space: nowrap;
   overflow: hidden;
@@ -152,7 +152,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 700;
   background: #f0f6ff;
   color: #2563eb;
@@ -173,14 +173,14 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 600;
   color: #475569;
 }
 
 /* ── Description ──────────────────────── */
 .classDesc {
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   color: #94a3b8;
   font-style: italic;
   line-height: 1.5;
@@ -204,7 +204,7 @@
 }
 
 .progressLabel {
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
@@ -212,7 +212,7 @@
 }
 
 .progressPct {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 700;
   color: #1e3a5f;
 }
@@ -250,7 +250,7 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   font-weight: 700;
   color: #fff;
   background: var(--accent, #2563eb);
@@ -269,7 +269,7 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   font-weight: 700;
   color: #475569;
   background: #f8fafc;
@@ -342,7 +342,7 @@
 }
 
 .rosterTitle {
-  font-size: 15px;
+  font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
 }
@@ -360,7 +360,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 700;
   background: #eff6ff;
   color: #2563eb;
@@ -397,7 +397,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   font-weight: 600;
   color: #64748b;
   background: none;
@@ -415,7 +415,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   font-weight: 700;
   color: #1e3a5f;
   background: none;
@@ -460,7 +460,7 @@
 }
 
 .analyticsStatLbl {
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 600;
   color: #94a3b8;
   text-transform: uppercase;
@@ -482,13 +482,13 @@
 }
 
 .analyticsBlockTitle {
-  font-size: 12px;
+  font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
 }
 
 .analyticsBlockSub {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #94a3b8;
   margin-top: -6px;
 }
@@ -507,7 +507,7 @@
 }
 
 .analyticsBarLabel {
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   font-weight: 600;
   color: #374151;
   white-space: nowrap;
@@ -528,7 +528,7 @@
 }
 
 .analyticsBarValue {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 600;
   color: #475569;
   text-align: right;
@@ -542,7 +542,7 @@
 }
 
 .analyticsStudentName {
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   font-weight: 600;
   color: #374151;
   white-space: nowrap;
@@ -584,12 +584,12 @@
 .rosterTable {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
 }
 
 .rosterTable th {
   text-align: left;
-  font-size: 10px;
+  font-size: var(--teacher-text-sm);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -647,12 +647,12 @@
 .rosterName {
   font-weight: 600;
   color: #1e3a5f;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   line-height: 1.2;
 }
 
 .rosterUsername {
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   color: #94a3b8;
 }
 
@@ -683,7 +683,7 @@
 .rosterBarFillLow    { background: #ef4444; }
 
 .rosterPct {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 700;
   color: #374151;
   min-width: 32px;
@@ -693,12 +693,12 @@
 .rosterCell {
   font-weight: 600;
   color: #374151;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
 }
 
 /* ── Status labels ────────────────────── */
 .rosterStatusPlaying {
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 700;
   color: #16a34a;
   background: #dcfce7;
@@ -709,7 +709,7 @@
 }
 
 .rosterStatusLabel {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #64748b;
   white-space: nowrap;
 }

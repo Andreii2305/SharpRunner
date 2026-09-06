@@ -2,7 +2,7 @@
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #fff;
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   padding: 7px 12px;
   outline: none;
   color: #374151;
@@ -55,8 +55,8 @@
 
 .summaryCard > div { min-width: 0; display: flex; flex-direction: column; }
 .summaryCard strong { color: #163653; font-size: 21px; line-height: 1; margin-bottom: 5px; }
-.summaryCard span:not(.summaryIcon) { color: #384b60; font-size: 11px; font-weight: 700; }
-.summaryCard small { color: #74869b; font-size: 10px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summaryCard span:not(.summaryIcon) { color: #384b60; font-size: var(--teacher-text-sm); font-weight: 700; }
+.summaryCard small { color: #74869b; font-size: var(--teacher-text-xs); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .summaryWarning { border-color: #f0cfaa; background: #fffaf4; }
 .summaryWarning .summaryIcon { color: #a3570b; background: #fff0dc; }
 
@@ -91,7 +91,7 @@
 .studentRow { cursor: default; }
 .studentNameBtn { padding: 0; color: #223b55; background: none; border: 0; font: inherit; font-weight: 650; cursor: pointer; text-align: left; }
 .studentNameBtn:hover { color: #17619a; text-decoration: underline; }
-.metricContext { display: block; color: #738499; font-size: 9px; margin-top: 3px; white-space: nowrap; }
+.metricContext { display: block; color: #738499; font-size: var(--teacher-text-xs); margin-top: 3px; white-space: nowrap; }
 
 .rankBadge {
   font-size: 12px;
@@ -111,7 +111,7 @@
   border-radius: 50%;
   background: #e8f0fb;
   color: #26547c;
-  font-size: 9px;
+  font-size: var(--teacher-text-xs);
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -126,7 +126,7 @@
 }
 
 .progressPct {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 600;
   color: #1e3a5f;
   min-width: 28px;
@@ -137,25 +137,25 @@
   align-items: center;
   gap: 5px;
   color: #BA7517;
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   white-space: nowrap;
 }
 
-.performanceChip { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.performanceChip { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: var(--teacher-text-xs); font-weight: 700; white-space: nowrap; }
 .performance_attention { color: #a33b2b; background: #fdece8; }
 .performance_behind { color: #95530d; background: #fff1dc; }
 .performance_track { color: #17634c; background: #e5f5ef; }
 .performance_completed { color: #315b96; background: #e9f1fc; }
-.playingStatus { display: inline-flex; align-items: center; gap: 5px; color: #17634c; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.playingStatus { display: inline-flex; align-items: center; gap: 5px; color: #17634c; font-size: var(--teacher-text-sm); font-weight: 700; white-space: nowrap; }
 .playingStatus > span { width: 7px; height: 7px; border-radius: 50%; background: #23a779; box-shadow: 0 0 0 3px #dff5ec; }
 
-.statusOnline   { font-size: 11px; color: #0F6E56; font-weight: 600; }
-.statusInactive { font-size: 11px; color: #E24B4A; font-weight: 600; }
-.lastActive     { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+.statusOnline   { font-size: var(--teacher-text-sm); color: #0F6E56; font-weight: 600; }
+.statusInactive { font-size: var(--teacher-text-sm); color: #E24B4A; font-weight: 600; }
+.lastActive     { font-size: var(--teacher-text-xs); color: #94a3b8; margin-top: 1px; }
 
 .scoreChip {
   display: inline-block;
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 700;
   color: #1a365d;
   background: #ebf8ff;
@@ -165,12 +165,12 @@
 }
 
 .scorePending {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #94a3b8;
 }
 
 .gradesBtn {
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   font-weight: 600;
   color: #26547c;
   background: #e8f0fb;
@@ -192,14 +192,14 @@
   border: 1px solid #d7e5f3;
   border-radius: 7px;
   font: inherit;
-  font-size: 10px;
+  font-size: var(--teacher-text-xs);
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
 }
 .viewBtn:hover { background: #dcebf8; }
 
-.pagination { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; color: #6b7c90; font-size: 10px; border-top: 1px solid #eef2f6; }
+.pagination { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; color: #6b7c90; font-size: var(--teacher-text-xs); border-top: 1px solid #eef2f6; }
 .pagination > div { display: flex; align-items: center; gap: 8px; }
 .pagination button { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid #dbe3ec; border-radius: 6px; color: #34536f; background: #fff; cursor: pointer; }
 .pagination button:disabled { opacity: .4; cursor: default; }
@@ -209,18 +209,18 @@
 .insightHeader { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .insightHeader > div { display: flex; flex-direction: column; gap: 3px; }
 .insightHeader strong { color: #1e3a5f; font-size: 13px; }
-.insightHeader span { color: #7c8da1; font-size: 10px; }
+.insightHeader span { color: #7c8da1; font-size: var(--teacher-text-xs); }
 .attentionCount { min-width: 24px; height: 24px; display: grid; place-items: center; color: #a33b2b !important; background: #fdece8; border-radius: 99px; font-weight: 800; }
 .attentionList { display: flex; flex-direction: column; }
 .attentionList button { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 9px; padding: 8px 6px; border: 0; border-top: 1px solid #eef2f6; color: #63768b; background: none; text-align: left; cursor: pointer; }
 .attentionList button:hover { background: #f7fafc; }
 .attentionList button > span:nth-child(2) { display: flex; flex-direction: column; gap: 2px; }
-.attentionList button strong { color: #30475e; font-size: 11px; }
-.attentionList button small { color: #7d8ea1; font-size: 10px; }
-.miniAvatar { width: 28px; height: 28px; display: grid; place-items: center; color: #26547c; background: #eaf2fb; border-radius: 50%; font-size: 9px; font-weight: 800; }
-.allClear { padding: 18px 0; color: #34765f; font-size: 11px; }
+.attentionList button strong { color: #30475e; font-size: var(--teacher-text-md); }
+.attentionList button small { color: #7d8ea1; font-size: var(--teacher-text-xs); }
+.miniAvatar { width: 28px; height: 28px; display: grid; place-items: center; color: #26547c; background: #eaf2fb; border-radius: 50%; font-size: var(--teacher-text-xs); font-weight: 800; }
+.allClear { padding: 18px 0; color: #34765f; font-size: var(--teacher-text-sm); }
 .distribution { display: flex; flex-direction: column; gap: 10px; }
-.distribution > div { display: grid; grid-template-columns: 90px 1fr 22px; align-items: center; gap: 9px; font-size: 10px; color: #607388; }
+.distribution > div { display: grid; grid-template-columns: 90px 1fr 22px; align-items: center; gap: 9px; font-size: var(--teacher-text-xs); color: #607388; }
 .distribution > div > div { height: 7px; overflow: hidden; background: #edf1f5; border-radius: 99px; }
 .distribution i { display: block; height: 100%; border-radius: 99px; }
 .distribution strong { text-align: right; color: #2b435b; }
@@ -260,14 +260,14 @@
   color: #1a365d;
 }
 
-.modalEyebrow { color: #788ba0; font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.modalEyebrow { color: #788ba0; font-size: var(--teacher-text-xs); font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .studentSnapshot { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .studentSnapshot > div { display: flex; flex-direction: column; gap: 4px; padding: 10px; background: #f5f8fb; border: 1px solid #e6edf4; border-radius: 9px; }
-.studentSnapshot span { color: #74869a; font-size: 9px; }
-.studentSnapshot strong { color: #203d59; font-size: 12px; }
+.studentSnapshot span { color: #74869a; font-size: var(--teacher-text-xs); }
+.studentSnapshot strong { color: #203d59; font-size: var(--teacher-text-md); }
 .modalSectionHead { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
-.modalSectionHead strong { color: #273f57; font-size: 12px; }
-.modalSectionHead span { color: #7b8da0; font-size: 10px; }
+.modalSectionHead strong { color: #273f57; font-size: var(--teacher-text-lg); }
+.modalSectionHead span { color: #7b8da0; font-size: var(--teacher-text-xs); }
 
 .modalClose {
   background: none;
@@ -290,7 +290,7 @@
 .gradeTableHead {
   display: grid;
   grid-template-columns: 60px repeat(4, 1fr);
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   font-weight: 700;
   color: #94a3b8;
   text-transform: uppercase;
@@ -329,7 +329,7 @@
 }
 
 .tab {
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   font-weight: 600;
   color: #64748b;
   background: none;
@@ -341,7 +341,7 @@
 .tab:hover { background: #f1f5f9; color: #1e3a5f; }
 
 .tabActive {
-  font-size: 12px;
+  font-size: var(--teacher-text-md);
   font-weight: 700;
   color: #26547c;
   background: #e8f0fb;
@@ -354,7 +354,7 @@
 .tabSpacer { flex: 1; }
 
 .tabCount {
-  font-size: 11px;
+  font-size: var(--teacher-text-sm);
   color: #94a3b8;
   margin-right: 8px;
 }
@@ -371,7 +371,7 @@
 }
 
 .exportBtn {
-  font-size: 11px;
+  font-size: var(--teacher-text-md);
   font-weight: 700;
   color: #26547c;
   background: none;

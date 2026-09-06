@@ -211,6 +211,17 @@
   text-transform: capitalize;
 }
 
+/* Teacher navigation follows the teacher-facing readability floor without
+   changing the denser student navigation treatment. */
+.teacherSidebar .accountAv,
+.teacherSidebar .accountRole {
+  font-size: 12px;
+}
+
+.teacherSidebar .accountName {
+  font-size: 14px;
+}
+
 .logoutBtn {
   display: flex;
   align-items: center;
@@ -307,5 +318,20 @@
   .logoutBtn .navLabel {
     opacity: 1 !important;
     font-size: 9px;
+  }
+
+  .teacherSidebar .navLabel,
+  .teacherSidebar .logoutBtn .navLabel {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .teacherSidebar .nav {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .teacherSidebar .navItem {
+    flex: 0 0 92px;
   }
 }

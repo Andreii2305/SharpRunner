@@ -56,6 +56,18 @@ const UserProgress = sequelize.define(
       type: DataTypes.DATE,
       allowNull: true,
     },
+    activeSessionId: {
+      type: DataTypes.STRING(64),
+      allowNull: true,
+    },
+    activeSessionStartedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
+    lastHeartbeatAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+    },
     hintUsed: {
       type: DataTypes.BOOLEAN,
       allowNull: false,

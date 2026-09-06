@@ -13,6 +13,8 @@ import {
   FiRotateCcw,
   FiSave,
   FiSliders,
+  FiTrash2,
+  FiUsers,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
@@ -31,8 +33,21 @@ const toDateTimeInput = (value) => {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+};
+
+const toPhilippineIso = (value) => value ? new Date(`${value}:00+08:00`).toISOString() : null;
+
+const defaultDueInput = () => {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const date = toDateTimeInput(tomorrow).slice(0, 10);
+  return `${date}T23:59`;
 };
 
 const buildDefaultSettings = () =>
@@ -89,6 +104,12 @@ function TeacherLevelEditorPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pastDeadlineConfirmOpen, setPastDeadlineConfirmOpen] = useState(false);
+  const [extensionsOpen, setExtensionsOpen] = useState(false);
+  const [extensionStudents, setExtensionStudents] = useState([]);
+  const [extensionDrafts, setExtensionDrafts] = useState({});
+  const [extensionsLoading, setExtensionsLoading] = useState(false);
+  const [persistedDueByKey, setPersistedDueByKey] = useState({});
 
   const fetchSettings = useCallback(async () => {
     const response = await axios.get(
@@ -97,6 +118,7 @@ function TeacherLevelEditorPage() {
     );
     const merged = mergeSettings(response.data);
     setSettings(merged);
+    setPersistedDueByKey(Object.fromEntries(merged.map((row) => [row.levelKey, row.dueAt])));
     setSelectedLevelKey((current) =>
       merged.some((row) => row.levelKey === current)
         ? current
@@ -129,6 +151,72 @@ function TeacherLevelEditorPage() {
     );
   };
 
+  useEffect(() => {
+    setExtensionsOpen(false);
+    setExtensionStudents([]);
+    setExtensionDrafts({});
+  }, [selectedLevelKey]);
+
+  const fetchExtensions = useCallback(async () => {
+    if (!selectedLevelKey) return;
+    setExtensionsLoading(true);
+    try {
+      const response = await axios.get(
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/levels/${selectedLevelKey}/extensions`),
+        { headers: getAuthHeaders() },
+      );
+      const rows = response.data?.students ?? [];
+      setExtensionStudents(rows);
+      setExtensionDrafts(Object.fromEntries(rows.map((row) => [row.studentId, {
+        extendedDueAt: toDateTimeInput(row.extensionDueAt),
+        reason: row.extensionReason ?? "",
+      }])));
+    } catch (error) {
+      setStatus({ ok: false, text: error.response?.data?.message ?? "Unable to load extensions." });
+    } finally {
+      setExtensionsLoading(false);
+    }
+  }, [classroomId, selectedLevelKey]);
+
+  const toggleExtensions = async () => {
+    const next = !extensionsOpen;
+    setExtensionsOpen(next);
+    if (next) await fetchExtensions();
+  };
+
+  const saveExtension = async (studentId) => {
+    const draft = extensionDrafts[studentId];
+    if (!draft?.extendedDueAt) {
+      setStatus({ ok: false, text: "Choose an extended date and time." });
+      return;
+    }
+    try {
+      await axios.put(
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/levels/${selectedLevelKey}/extensions/${studentId}`),
+        { extendedDueAt: toPhilippineIso(draft.extendedDueAt), reason: draft.reason || null },
+        { headers: getAuthHeaders() },
+      );
+      await fetchExtensions();
+      setStatus({ ok: true, text: "Student extension saved." });
+    } catch (error) {
+      setStatus({ ok: false, text: error.response?.data?.message ?? "Unable to save extension." });
+    }
+  };
+
+  const removeExtension = async (student) => {
+    if (!window.confirm(`Remove the extension for ${student.studentName}? The class deadline will apply immediately.`)) return;
+    try {
+      await axios.delete(
+        buildApiUrl(`/api/teacher/classrooms/${classroomId}/levels/${selectedLevelKey}/extensions/${student.studentId}`),
+        { headers: getAuthHeaders() },
+      );
+      await fetchExtensions();
+      setStatus({ ok: true, text: "Student extension removed." });
+    } catch (error) {
+      setStatus({ ok: false, text: error.response?.data?.message ?? "Unable to remove extension." });
+    }
+  };
+
   const moveSelected = (direction) => {
     const nextIndex = selectedIndex + direction;
     if (selectedIndex < 0 || nextIndex < 0 || nextIndex >= settings.length) return;
@@ -140,7 +228,7 @@ function TeacherLevelEditorPage() {
     setStatus(null);
   };
 
-  const saveSettings = async () => {
+  const persistSettings = async () => {
     setSaving(true);
     setStatus(null);
     try {
@@ -150,12 +238,8 @@ function TeacherLevelEditorPage() {
           settings: settings.map((setting) => ({
             levelKey: setting.levelKey,
             isEnabled: setting.isEnabled,
-            unlockAt: setting.unlockAt
-              ? new Date(setting.unlockAt).toISOString()
-              : null,
-            dueAt: setting.dueAt
-              ? new Date(setting.dueAt).toISOString()
-              : null,
+            unlockAt: toPhilippineIso(setting.unlockAt),
+            dueAt: toPhilippineIso(setting.dueAt),
             hintsEnabled: setting.hintsEnabled,
             hintUnlockThreshold: Number(setting.hintUnlockThreshold),
             wrongAttemptDeduction: Number(setting.wrongAttemptDeduction),
@@ -174,6 +258,19 @@ function TeacherLevelEditorPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const saveSettings = () => {
+    const hasPastDeadline = settings.some((setting) => (
+      setting.dueAt
+      && setting.dueAt !== persistedDueByKey[setting.levelKey]
+      && new Date(toPhilippineIso(setting.dueAt)).getTime() < Date.now()
+    ));
+    if (hasPastDeadline) {
+      setPastDeadlineConfirmOpen(true);
+      return;
+    }
+    void persistSettings();
   };
 
   const resetSettings = async () => {
@@ -284,11 +381,58 @@ function TeacherLevelEditorPage() {
                     <input type="datetime-local" value={selected?.unlockAt ?? ""} onChange={(event) => updateSelected({ unlockAt: event.target.value })} />
                     <small>Leave empty to unlock according to the assigned order.</small>
                   </label>
-                  <label className={s.settingField}>
-                    <span><FiCalendar /> Due date and time</span>
-                    <input type="datetime-local" value={selected?.dueAt ?? ""} onChange={(event) => updateSelected({ dueAt: event.target.value })} />
-                    <small>Late deductions begin immediately after this deadline.</small>
-                  </label>
+                  <fieldset className={s.deadlineFieldset}>
+                    <legend><FiCalendar /> Due date</legend>
+                    <label><input type="radio" name={`due-${selectedLevelKey}`} checked={!selected?.dueAt} onChange={() => {
+                      if (selected?.dueAt && !window.confirm("Remove this class deadline? Any individual extensions for this level will also be removed.")) return;
+                      updateSelected({ dueAt: "" });
+                      setExtensionsOpen(false);
+                    }} /> No due date</label>
+                    <label><input type="radio" name={`due-${selectedLevelKey}`} checked={Boolean(selected?.dueAt)} onChange={() => updateSelected({ dueAt: defaultDueInput() })} /> Set due date</label>
+                    {selected?.dueAt ? (
+                      <input type="datetime-local" value={selected.dueAt} onChange={(event) => updateSelected({ dueAt: event.target.value })} />
+                    ) : null}
+                    <small>Unfinished levels are locked after this date and time. Times shown in Philippine Time.</small>
+                  </fieldset>
+                  <div className={s.extensionManager}>
+                    <div>
+                      <strong><FiUsers /> Student extensions</strong>
+                      <small>Grant a later deadline without changing the class deadline.</small>
+                    </div>
+                    <button type="button" onClick={toggleExtensions} disabled={!selected?.dueAt}>
+                      {extensionsOpen ? "Hide extensions" : "Manage extensions"}
+                    </button>
+                    {!selected?.dueAt ? <small>Set a class due date to manage extensions.</small> : null}
+                  </div>
+                  {extensionsOpen ? (
+                    <div className={s.extensionList}>
+                      <strong>Class deadline: {selected?.dueAt?.replace("T", " ")} (Philippine Time)</strong>
+                      {extensionsLoading ? <span>Loading students…</span> : extensionStudents.length ? extensionStudents.map((student) => {
+                        const draft = extensionDrafts[student.studentId] ?? { extendedDueAt: "", reason: "" };
+                        return (
+                          <article key={student.studentId}>
+                            <div><strong>{student.studentName}</strong><small>{student.status.replaceAll("_", " ")} · Effective {student.effectiveDueAt ? toDateTimeInput(student.effectiveDueAt).replace("T", " ") : "none"}</small></div>
+                            <input
+                              aria-label={`Extended deadline for ${student.studentName}`}
+                              type="datetime-local"
+                              value={draft.extendedDueAt}
+                              onChange={(event) => setExtensionDrafts((current) => ({ ...current, [student.studentId]: { ...draft, extendedDueAt: event.target.value } }))}
+                            />
+                            <input
+                              aria-label={`Extension reason for ${student.studentName}`}
+                              placeholder="Reason (optional)"
+                              value={draft.reason}
+                              onChange={(event) => setExtensionDrafts((current) => ({ ...current, [student.studentId]: { ...draft, reason: event.target.value } }))}
+                            />
+                            <div className={s.extensionActions}>
+                              <button type="button" onClick={() => saveExtension(student.studentId)}>{student.extensionDueAt ? "Update" : "Grant"}</button>
+                              {student.extensionDueAt ? <button type="button" className={s.removeExtension} onClick={() => removeExtension(student)}><FiTrash2 /> Remove</button> : null}
+                            </div>
+                          </article>
+                        );
+                      }) : <span>No active students in this classroom.</span>}
+                    </div>
+                  ) : null}
                   <label className={s.toggleRow}>
                     <span><strong><FiHelpCircle /> Student hints</strong><small>Allow the free basic hint and optional XP-purchased detailed hint after the configured number of failures.</small></span>
                     <input type="checkbox" checked={selected?.hintsEnabled ?? true} onChange={(event) => updateSelected({ hintsEnabled: event.target.checked })} />
@@ -300,16 +444,11 @@ function TeacherLevelEditorPage() {
                   </label>
                   <div className={s.gradingBox}>
                     <h3>Grading policy</h3>
-                    <p>Scores begin at 100 points. Set either deduction to 0 to disable it.</p>
+                    <p>Scores begin at 100 points. Hard deadlines prevent late submissions; extensions reopen access.</p>
                     <label className={s.settingField}>
                       <span>Points deducted per wrong attempt</span>
                       <input type="number" min="0" max="100" step="0.5" value={selected?.wrongAttemptDeduction ?? 5} onChange={(event) => updateSelected({ wrongAttemptDeduction: event.target.value })} />
                       <small>System default: −5 points.</small>
-                    </label>
-                    <label className={s.settingField}>
-                      <span>Points deducted per late day</span>
-                      <input type="number" min="0" max="100" step="0.5" value={selected?.lateDeductionPerDay ?? 3} onChange={(event) => updateSelected({ lateDeductionPerDay: event.target.value })} />
-                      <small>Example: enter 2 to deduct 2 points for every late day.</small>
                     </label>
                   </div>
                 </aside>
@@ -335,6 +474,19 @@ function TeacherLevelEditorPage() {
         confirmDisabled={saving}
         onConfirm={resetSettings}
         onCancel={() => !saving && setConfirmOpen(false)}
+      />
+      <ConfirmModal
+        open={pastDeadlineConfirmOpen}
+        title="Set a deadline in the past?"
+        message="This deadline has already passed. Unfinished students may immediately lose access."
+        confirmLabel="Set Deadline"
+        danger
+        confirmDisabled={saving}
+        onConfirm={() => {
+          setPastDeadlineConfirmOpen(false);
+          void persistSettings();
+        }}
+        onCancel={() => !saving && setPastDeadlineConfirmOpen(false)}
       />
     </div>
   );

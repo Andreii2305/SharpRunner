@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
+import AccessTimeOutlinedIcon from "@mui/icons-material/AccessTimeOutlined";
 import Button from "../Button/Button.jsx";
 import CircularProgressBar from "../CircularProgressBar/CircularProgressBar.jsx";
 import styles from "./LessonMap.module.css";
@@ -84,6 +85,14 @@ const toRoman = (num) => {
   }
   return out;
 };
+
+const formatDue = (value) => new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+}).format(new Date(value));
 
 /* ─── Connector colour by node state ────────────────────────── */
 const getConnectorClass = (from, to) => {
@@ -174,6 +183,8 @@ function CastleHero() {
 /* ─── Single map node (shield-shaped) ────────────────────────── */
 function MapNode({ node, onNodeClick, sounds }) {
   const isLocked = node.status === "locked";
+  const isExpired = node.status === "expired";
+  const isUnavailable = isLocked || isExpired;
   const isCurrent = node.status === "current";
   const isDone = node.status === "completed";
   const isBoss = Boolean(node.isBoss);
@@ -194,15 +205,15 @@ function MapNode({ node, onNodeClick, sounds }) {
   return (
     <button
       type="button"
-      className={`${styles.nodeSlot} ${isLocked ? styles.nodeSlotDisabled : ""}`}
+      className={`${styles.nodeSlot} ${isUnavailable ? styles.nodeSlotDisabled : ""}`}
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
       onClick={handleClick}
       onMouseEnter={handleEnter}
       disabled={isLocked}
-      aria-label={`Level ${node.levelNumber}: ${node.title}${isLocked ? " — locked" : ""}`}
+      aria-label={`Level ${node.levelNumber}: ${node.title}${isExpired ? " — deadline passed" : isLocked ? " — locked" : ""}`}
     >
       {/* Boss crown banner */}
-      {isBoss && !isLocked && (
+      {isBoss && !isUnavailable && (
         <span className={styles.bossBadge} aria-hidden="true">
           ♛ Boss
         </span>
@@ -222,7 +233,7 @@ function MapNode({ node, onNodeClick, sounds }) {
           ${isDone ? styles.nodeDone : ""}
           ${isCurrent ? styles.nodeCurrent : ""}
           ${node.status === "unlocked" ? styles.nodeUnlocked : ""}
-          ${isLocked ? styles.nodeLocked : ""}
+          ${isUnavailable ? styles.nodeLocked : ""}
           ${isBoss ? styles.nodeBoss : ""}
         `}
       >
@@ -232,6 +243,8 @@ function MapNode({ node, onNodeClick, sounds }) {
         <span className={styles.nodeContent}>
           {isDone ? (
             <CheckOutlinedIcon sx={{ fontSize: 20, color: "#e8ffd4" }} />
+          ) : isExpired ? (
+            <AccessTimeOutlinedIcon sx={{ fontSize: 17, color: "#c47468" }} />
           ) : isLocked ? (
             <LockOutlinedIcon sx={{ fontSize: 16, color: "#8b6f3f" }} />
           ) : (
@@ -246,11 +259,15 @@ function MapNode({ node, onNodeClick, sounds }) {
           ${styles.nodeLabel}
           ${isDone ? styles.nodeLabelDone : ""}
           ${isCurrent ? styles.nodeLabelCurrent : ""}
-          ${isLocked ? styles.nodeLabelLocked : ""}
+          ${isUnavailable ? styles.nodeLabelLocked : ""}
         `}
       >
         {node.title}
       </span>
+      {isExpired ? <span className={styles.deadlineBadge}>Deadline Passed</span> : null}
+      {!isExpired && node.effectiveDueAt ? (
+        <span className={styles.deadlineBadge}>{node.hasExtension ? "Extension · " : ""}Due {formatDue(node.effectiveDueAt)}</span>
+      ) : null}
 
       {/* Score badge (gold coin) */}
       {isDone && node.finalScore != null && (

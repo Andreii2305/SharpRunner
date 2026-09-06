@@ -14,6 +14,7 @@ const {
 } = require("../constants/progressDefaults");
 const { ensureProgressRowsForUser } = require("../services/progressService");
 const LevelContentOverride = require("../models/LevelContentOverride");
+const StudentLevelExtension = require("../models/StudentLevelExtension");
 const ClassroomLesson = require("../models/ClassroomLesson");
 const ClassroomLessonAttachment = require("../models/ClassroomLessonAttachment");
 const ClassroomLessonProgress = require("../models/ClassroomLessonProgress");
@@ -32,6 +33,7 @@ const {
   lessonUploadPolicy,
 } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
+const { getEffectiveDueAt } = require("../services/levelAccessService");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -1811,6 +1813,8 @@ router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
 
     const seen = new Set();
     const normalized = [];
+    const existingRows = await LevelContentOverride.findAll({ where: { classroomId } });
+    const existingByKey = new Map(existingRows.map((row) => [row.levelKey, row]));
     const parseOptionalDate = (value, field) => {
       if (value === null || value === undefined || value === "") return null;
       const date = new Date(value);
@@ -1864,12 +1868,41 @@ router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
     }
 
     for (const setting of normalized) {
+      const previousDueAt = existingByKey.get(setting.levelKey)?.dueAt ?? null;
       const [row] = await LevelContentOverride.findOrCreate({
         where: { classroomId, levelKey: setting.levelKey },
         defaults: { classroomId, ...setting },
       });
       Object.assign(row, setting);
       await row.save();
+      const previousTime = previousDueAt ? new Date(previousDueAt).getTime() : null;
+      const nextTime = setting.dueAt ? setting.dueAt.getTime() : null;
+      if (previousTime !== nextTime) {
+        const action = previousTime == null
+          ? "LEVEL_DUE_DATE_SET"
+          : nextTime == null
+            ? "LEVEL_DUE_DATE_REMOVED"
+            : "LEVEL_DUE_DATE_CHANGED";
+        await recordLessonAudit(req, classroomId, null, action, {
+          levelKey: setting.levelKey,
+          oldDueAt: previousDueAt,
+          newDueAt: setting.dueAt,
+        });
+        if (nextTime == null) {
+          const removedExtensions = await StudentLevelExtension.findAll({
+            where: { classroomId, levelKey: setting.levelKey },
+          });
+          await StudentLevelExtension.destroy({ where: { classroomId, levelKey: setting.levelKey } });
+          for (const extension of removedExtensions) {
+            await recordLessonAudit(req, classroomId, null, "STUDENT_EXTENSION_REMOVED", {
+              levelKey: setting.levelKey,
+              studentId: extension.studentId,
+              oldDueAt: extension.extendedDueAt,
+              newDueAt: null,
+            });
+          }
+        }
+      }
     }
 
     const saved = await LevelContentOverride.findAll({
@@ -1894,8 +1927,175 @@ router.delete("/classrooms/:classroomId/level-settings", async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const [existingDeadlines, existingExtensions] = await Promise.all([
+      LevelContentOverride.findAll({ where: { classroomId, dueAt: { [Op.ne]: null } } }),
+      StudentLevelExtension.findAll({ where: { classroomId } }),
+    ]);
     await LevelContentOverride.destroy({ where: { classroomId } });
+    await StudentLevelExtension.destroy({ where: { classroomId } });
+    for (const row of existingDeadlines) {
+      await recordLessonAudit(req, classroomId, null, "LEVEL_DUE_DATE_REMOVED", {
+        levelKey: row.levelKey,
+        oldDueAt: row.dueAt,
+        newDueAt: null,
+      });
+    }
+    for (const extension of existingExtensions) {
+      await recordLessonAudit(req, classroomId, null, "STUDENT_EXTENSION_REMOVED", {
+        levelKey: extension.levelKey,
+        studentId: extension.studentId,
+        oldDueAt: extension.extendedDueAt,
+        newDueAt: null,
+      });
+    }
     return res.json({ message: "Classroom levels reset to system defaults" });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/classrooms/:classroomId/levels/:levelKey/extensions", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const levelKey = normalizeString(req.params.levelKey).toLowerCase();
+    if (!classroomId || !PLAYABLE_LEVEL_KEY_SET.has(levelKey)) {
+      return res.status(400).json({ message: "Invalid classroom or level" });
+    }
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const setting = await LevelContentOverride.findOne({ where: { classroomId, levelKey } });
+    const classDueAt = setting?.dueAt ?? null;
+    const memberships = await ClassroomMembership.findAll({
+      where: { classroomId, status: "active" },
+      attributes: ["studentId"],
+    });
+    const studentIds = memberships.map((membership) => membership.studentId);
+    if (!studentIds.length) return res.json({ classDueAt, students: [] });
+
+    const [students, progressRows, extensions] = await Promise.all([
+      User.findAll({
+        where: { id: { [Op.in]: studentIds }, role: "student" },
+        attributes: ["id", "firstName", "lastName", "username"],
+      }),
+      UserProgress.findAll({
+        where: { userId: { [Op.in]: studentIds }, levelKey },
+        attributes: ["userId", "isCompleted", "completedAt", "timeSpentSeconds"],
+      }),
+      StudentLevelExtension.findAll({ where: { classroomId, levelKey } }),
+    ]);
+    const progressByStudent = new Map(progressRows.map((row) => [row.userId, row]));
+    const extensionByStudent = new Map(extensions.map((row) => [row.studentId, row]));
+    const now = Date.now();
+    return res.json({
+      classDueAt,
+      students: students.map((student) => {
+        const progress = progressByStudent.get(student.id);
+        const extension = extensionByStudent.get(student.id);
+        const effectiveDueAt = getEffectiveDueAt(classDueAt, extension?.extendedDueAt);
+        return {
+          studentId: student.id,
+          studentName: `${student.firstName ?? ""} ${student.lastName ?? ""}`.trim() || student.username,
+          username: student.username,
+          extensionDueAt: extension?.extendedDueAt ?? null,
+          extensionReason: extension?.reason ?? "",
+          effectiveDueAt,
+          completedAt: progress?.completedAt ?? null,
+          activeSeconds: progress?.timeSpentSeconds ?? 0,
+          status: progress?.isCompleted
+            ? "COMPLETED"
+            : effectiveDueAt && now > effectiveDueAt.getTime()
+              ? "DEADLINE_PASSED"
+              : "AVAILABLE",
+        };
+      }).sort((a, b) => a.studentName.localeCompare(b.studentName)),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/classrooms/:classroomId/levels/:levelKey/extensions/:studentId", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const studentId = parseInteger(req.params.studentId);
+    const levelKey = normalizeString(req.params.levelKey).toLowerCase();
+    if (!classroomId || !studentId || !PLAYABLE_LEVEL_KEY_SET.has(levelKey)) {
+      return res.status(400).json({ message: "Invalid classroom, student, or level" });
+    }
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const membership = await ClassroomMembership.findOne({
+      where: { classroomId, studentId, status: "active" },
+    });
+    if (!membership) return res.status(404).json({ message: "Student is not active in this classroom" });
+    const setting = await LevelContentOverride.findOne({ where: { classroomId, levelKey } });
+    if (!setting?.dueAt) {
+      return res.status(409).json({ message: "Set a class due date before granting an extension" });
+    }
+    const extendedDueAt = new Date(req.body?.extendedDueAt);
+    if (Number.isNaN(extendedDueAt.getTime())) {
+      return res.status(400).json({ message: "Extended deadline must be a valid date and time" });
+    }
+    if (extendedDueAt.getTime() <= new Date(setting.dueAt).getTime()) {
+      return res.status(400).json({ message: "An extension must be later than the class due date" });
+    }
+    const reason = normalizeString(req.body?.reason).slice(0, 500) || null;
+    const existing = await StudentLevelExtension.findOne({ where: { classroomId, studentId, levelKey } });
+    const oldDueAt = existing?.extendedDueAt ?? null;
+    const action = existing ? "STUDENT_EXTENSION_CHANGED" : "STUDENT_EXTENSION_GRANTED";
+    const [extension] = await StudentLevelExtension.findOrCreate({
+      where: { classroomId, studentId, levelKey },
+      defaults: { classroomId, studentId, levelKey, extendedDueAt, reason, createdBy: req.userId },
+    });
+    Object.assign(extension, { extendedDueAt, reason, createdBy: req.userId });
+    await extension.save();
+    await recordLessonAudit(req, classroomId, null, action, {
+      levelKey,
+      studentId,
+      oldDueAt,
+      newDueAt: extendedDueAt,
+    });
+    return res.json({ message: "Student extension saved", extension });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.delete("/classrooms/:classroomId/levels/:levelKey/extensions/:studentId", async (req, res) => {
+  try {
+    const classroomId = parseInteger(req.params.classroomId);
+    const studentId = parseInteger(req.params.studentId);
+    const levelKey = normalizeString(req.params.levelKey).toLowerCase();
+    if (!classroomId || !studentId || !PLAYABLE_LEVEL_KEY_SET.has(levelKey)) {
+      return res.status(400).json({ message: "Invalid classroom, student, or level" });
+    }
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (req.userRole !== "admin" && classroom.teacherId !== req.userId) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const extension = await StudentLevelExtension.findOne({ where: { classroomId, studentId, levelKey } });
+    if (extension) {
+      const oldDueAt = extension.extendedDueAt;
+      await extension.destroy();
+      await recordLessonAudit(req, classroomId, null, "STUDENT_EXTENSION_REMOVED", {
+        levelKey,
+        studentId,
+        oldDueAt,
+        newDueAt: null,
+      });
+    }
+    return res.json({ message: "Student extension removed" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });

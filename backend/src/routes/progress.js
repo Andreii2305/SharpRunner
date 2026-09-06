@@ -9,7 +9,7 @@ const {
   getParTimeSeconds,
   computeFinalScore,
 } = require("../services/progressService");
-const { LevelDeadline } = require("../models");
+const { StudentLevelExtension } = require("../models");
 const {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
@@ -31,6 +31,18 @@ const {
   DETAILED_HINT_XP_COST,
 } = require("../constants/gamificationConfig");
 const { getLevelHints } = require("../constants/levelHintCatalog");
+const {
+  evaluateStudentLevelAccess,
+  getStudentLevelAccess,
+  restrictionPayload,
+} = require("../services/levelAccessService");
+const {
+  HEARTBEAT_INTERVAL_SECONDS,
+  heartbeatProgressSession,
+  pauseOtherLevelSessions,
+  pauseProgressSession,
+  startProgressSession,
+} = require("../services/activeLevelTimerService");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
@@ -69,44 +81,8 @@ const normalizeLevelKey = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
 const findLevelAccessRestriction = async (userId, levelKey) => {
-  const membership = await findPrimaryActiveMembership(userId);
-  const settings = await getClassroomLevelSettings(membership?.classroomId);
-  const targetIndex = settings.findIndex((setting) => setting.levelKey === levelKey);
-  const target = settings[targetIndex];
-
-  if (!target?.isEnabled) {
-    return {
-      code: "LEVEL_DISABLED",
-      message: "Your teacher has disabled this level for the classroom.",
-    };
-  }
-
-  if (target.unlockAt && new Date(target.unlockAt).getTime() > Date.now()) {
-    return {
-      code: "LEVEL_SCHEDULED",
-      message: `This level unlocks on ${new Date(target.unlockAt).toLocaleString()}.`,
-      unlockAt: target.unlockAt,
-    };
-  }
-
-  const enabledSettings = settings.filter((setting) => setting.isEnabled);
-  const enabledIndex = enabledSettings.findIndex((setting) => setting.levelKey === levelKey);
-  const prerequisiteLevelKey = enabledIndex > 0
-    ? enabledSettings[enabledIndex - 1].levelKey
-    : null;
-  if (!prerequisiteLevelKey) return null;
-
-  const prerequisite = await UserProgress.findOne({
-    where: { userId, levelKey: prerequisiteLevelKey },
-    attributes: ["isCompleted"],
-  });
-  return prerequisite?.isCompleted
-    ? null
-    : {
-        code: "LEVEL_LOCKED",
-        message: "Complete the previous assigned level before opening this level.",
-        prerequisiteLevelKey,
-      };
+  const access = await getStudentLevelAccess({ userId, levelKey });
+  return access.allowed ? null : restrictionPayload(access);
 };
 
 const sendLevelRestrictionResponse = (res, restriction) =>
@@ -167,18 +143,25 @@ const buildProgressPayloadForUser = async (userId) => {
     classSize,
     xpTotal: currentUser?.xpTotal ?? 0,
   });
-  const completedByKey = new Map(
-    activeRows.map((row) => [row.levelKey, Boolean(row.isCompleted)]),
-  );
   const settingsByKey = new Map(
     enabledSettings.map((setting) => [setting.levelKey, setting]),
   );
+  const extensionRows = primaryMembership && enabledSettings.some((setting) => setting.dueAt)
+    ? await StudentLevelExtension.findAll({
+        where: { classroomId: primaryMembership.classroomId, studentId: userId },
+      })
+    : [];
+  const extensionByKey = new Map(extensionRows.map((row) => [row.levelKey, row]));
+  const activeProgressByKey = new Map(activeRows.map((row) => [row.levelKey, row]));
 
   payload.levels = payload.levels.map((level, index) => {
     const setting = settingsByKey.get(level.levelKey);
-    const prerequisiteLevelKey = index > 0 ? payload.levels[index - 1].levelKey : null;
-    const scheduleOpen = !setting?.unlockAt || new Date(setting.unlockAt).getTime() <= Date.now();
-    const prerequisiteComplete = !prerequisiteLevelKey || completedByKey.get(prerequisiteLevelKey);
+    const access = evaluateStudentLevelAccess({
+      levelKey: level.levelKey,
+      settings: enabledSettings,
+      progressByKey: activeProgressByKey,
+      extensionDueAt: extensionByKey.get(level.levelKey)?.extendedDueAt ?? null,
+    });
     return {
       ...level,
       displayOrder: setting?.displayOrder ?? index + 1,
@@ -189,13 +172,20 @@ const buildProgressPayloadForUser = async (userId) => {
         setting?.hintUnlockThreshold ?? DEFAULT_HINT_UNLOCK_THRESHOLD,
       wrongAttemptDeduction: setting?.wrongAttemptDeduction ?? 5,
       lateDeductionPerDay: setting?.lateDeductionPerDay ?? 3,
-      prerequisiteLevelKey,
-      isAccessible: level.isCompleted || (scheduleOpen && prerequisiteComplete),
-      lockReason: !scheduleOpen
-        ? "scheduled"
-        : prerequisiteComplete
-          ? null
-          : "prerequisite",
+      classDueAt: access.classDueAt,
+      extensionDueAt: access.extensionDueAt,
+      effectiveDueAt: access.effectiveDueAt,
+      hasExtension: access.hasExtension,
+      prerequisiteLevelKey: access.prerequisiteLevelKey ?? null,
+      isAccessible: access.allowed,
+      accessReason: access.reason,
+      lockReason: access.reason === "DEADLINE_PASSED"
+        ? "deadline"
+        : access.reason === "LEVEL_SCHEDULED"
+          ? "scheduled"
+          : access.reason === "LEVEL_LOCKED"
+            ? "prerequisite"
+            : null,
       ...buildHintState(level, setting, currentUser?.xpTotal),
     };
   });
@@ -221,12 +211,9 @@ router.post("/level/:levelKey/start", async (req, res) => {
 
     await ensureProgressRowsForUser(req.userId);
 
-    const accessRestriction = await findLevelAccessRestriction(
-      req.userId,
-      levelKey,
-    );
-    if (accessRestriction) {
-      return sendLevelRestrictionResponse(res, accessRestriction);
+    const access = await getStudentLevelAccess({ userId: req.userId, levelKey });
+    if (!access.allowed) {
+      return sendLevelRestrictionResponse(res, restrictionPayload(access));
     }
 
     const levelRow = await UserProgress.findOne({
@@ -241,11 +228,13 @@ router.post("/level/:levelKey/start", async (req, res) => {
     });
 
     if (levelRow.isCompleted) {
-      // Score already recorded — return an ephemeral start time without saving to DB
+      // Replays keep the first-completion timing analytics unchanged.
       return res.json({
-        startedAt: new Date().toISOString(),
+        activeSeconds: levelRow.timeSpentSeconds ?? 0,
         attemptCount: levelRow.attemptCount ?? 0,
         ephemeral: true,
+        effectiveDueAt: access.effectiveDueAt,
+        hasExtension: access.hasExtension,
         ...buildHintState(
           levelRow,
           (await getClassroomLevelSettings(
@@ -256,20 +245,77 @@ router.post("/level/:levelKey/start", async (req, res) => {
       });
     }
 
-    if (!levelRow.startedAt) {
-      levelRow.startedAt = new Date();
-      await levelRow.save();
-    }
+    const now = new Date();
+    await pauseOtherLevelSessions(req.userId, levelKey, now);
+    const timer = await startProgressSession(levelRow, req.body?.sessionId, now);
 
     const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
     return res.json({
-      startedAt: levelRow.startedAt,
+      ...timer,
       attemptCount: levelRow.attemptCount,
       ephemeral: false,
+      heartbeatIntervalSeconds: HEARTBEAT_INTERVAL_SECONDS,
+      effectiveDueAt: access.effectiveDueAt,
+      hasExtension: access.hasExtension,
       ...buildHintState(levelRow, setting, currentUser?.xpTotal),
     });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/level/:levelKey/heartbeat", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) return res.status(404).json({ message: "Unknown level key" });
+    const levelRow = await UserProgress.findOne({ where: { userId: req.userId, levelKey } });
+    if (!levelRow) return res.status(404).json({ message: "Progress row not found" });
+
+    const now = new Date();
+    const access = await getStudentLevelAccess({ userId: req.userId, levelKey, now });
+    if (!access.allowed || levelRow.isCompleted) {
+      if (levelRow.activeSessionId) {
+        await pauseProgressSession(levelRow, {
+          now,
+          stopAt: access.reason === "DEADLINE_PASSED" ? access.effectiveDueAt : null,
+        });
+      }
+      if (!access.allowed) return sendLevelRestrictionResponse(res, restrictionPayload(access));
+      return res.status(409).json({ code: "LEVEL_ALREADY_COMPLETED", message: "This level is already complete." });
+    }
+
+    const result = await heartbeatProgressSession(levelRow, req.body?.sessionId, now);
+    if (result.replaced) {
+      return res.status(409).json({
+        code: "LEVEL_SESSION_REPLACED",
+        message: "This level session is active in another tab.",
+        activeSeconds: result.activeSeconds,
+      });
+    }
+    return res.json({ ...result, effectiveDueAt: access.effectiveDueAt });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/level/:levelKey/end", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey)) return res.status(404).json({ message: "Unknown level key" });
+    const levelRow = await UserProgress.findOne({ where: { userId: req.userId, levelKey } });
+    if (!levelRow) return res.status(404).json({ message: "Progress row not found" });
+    if (!req.body?.sessionId || levelRow.activeSessionId !== req.body.sessionId) {
+      return res.json({ activeSeconds: levelRow.timeSpentSeconds ?? 0, ended: false });
+    }
+    const access = await getStudentLevelAccess({ userId: req.userId, levelKey });
+    const activeSeconds = await pauseProgressSession(levelRow, {
+      stopAt: access.reason === "DEADLINE_PASSED" ? access.effectiveDueAt : null,
+    });
+    return res.json({ activeSeconds, ended: true });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -481,6 +527,7 @@ router.put("/level/:levelKey", async (req, res) => {
     const wasAlreadyCompleted = levelRow.isCompleted;
     const completedAt = isCompleted ? levelRow.completedAt ?? new Date() : null;
 
+    let completionAccess = null;
     if (isCompleted && !wasAlreadyCompleted) {
       const membership = await findPrimaryActiveMembership(req.userId);
       const settings = await getClassroomLevelSettings(membership?.classroomId);
@@ -496,33 +543,36 @@ router.put("/level/:levelKey", async (req, res) => {
           message: validation?.message ?? "The submitted code did not pass server validation.",
         });
       }
+      completionAccess = await getStudentLevelAccess({
+        userId: req.userId,
+        levelKey,
+        now: new Date(),
+      });
+      if (!completionAccess.allowed) {
+        if (levelRow.activeSessionId) {
+          await pauseProgressSession(levelRow, {
+            stopAt: completionAccess.reason === "DEADLINE_PASSED"
+              ? completionAccess.effectiveDueAt
+              : null,
+          });
+        }
+        return sendLevelRestrictionResponse(res, restrictionPayload(completionAccess));
+      }
     }
-
-    levelRow.progressPercent = isCompleted ? 100 : newProgress;
-    levelRow.isCompleted = isCompleted;
-    levelRow.completedAt = completedAt;
 
     if (isCompleted && (!wasAlreadyCompleted || levelRow.finalScore == null)) {
       const attemptCount = levelRow.attemptCount;
-      const timeSpentSeconds = levelRow.startedAt
-        ? Math.max(0, Math.floor(
-            (new Date(completedAt).getTime() - new Date(levelRow.startedAt).getTime()) / 1000
-          ))
-        : (typeof body.timeSpentSeconds === "number" && body.timeSpentSeconds >= 0
-            ? body.timeSpentSeconds
-            : levelRow.timeSpentSeconds);
+      if (levelRow.activeSessionId) await pauseProgressSession(levelRow);
+      const timeSpentSeconds = Math.max(0, Number(levelRow.timeSpentSeconds) || 0);
 
       const primaryMembership = await findPrimaryActiveMembership(req.userId);
       let deadlineAt = null;
       let wrongAttemptDeduction = 5;
       let lateDeductionPerDay = 3;
       if (primaryMembership) {
-        const deadlineRow = await LevelDeadline.findOne({
-          where: { classroomId: primaryMembership.classroomId, levelKey },
-        });
         const levelSettings = await getClassroomLevelSettings(primaryMembership.classroomId);
         const levelSetting = levelSettings.find((setting) => setting.levelKey === levelKey);
-        deadlineAt = levelSetting?.dueAt ?? deadlineRow?.deadlineAt ?? null;
+        deadlineAt = completionAccess?.effectiveDueAt ?? levelSetting?.dueAt ?? null;
         wrongAttemptDeduction = levelSetting?.wrongAttemptDeduction ?? 5;
         lateDeductionPerDay = levelSetting?.lateDeductionPerDay ?? 3;
       }
@@ -541,9 +591,11 @@ router.put("/level/:levelKey", async (req, res) => {
       levelRow.attemptCount = attemptCount;
       levelRow.timeSpentSeconds = timeSpentSeconds;
       levelRow.finalScore = finalScore;
-      levelRow.startedAt = null;
     }
 
+    levelRow.progressPercent = isCompleted ? 100 : newProgress;
+    levelRow.isCompleted = isCompleted;
+    levelRow.completedAt = completedAt;
     await levelRow.save();
 
     let xpAward = null;

@@ -197,6 +197,12 @@ completedAt
 
 `attemptCount` means the number of failed submissions, not total submissions. A first-submission success is stored with `attemptCount === 0`.
 
+Active level timing and classroom game deadlines are specified in
+[`LEVEL_TIMING_AND_DEADLINES.md`](./LEVEL_TIMING_AND_DEADLINES.md). In summary,
+the timer counts only confirmed visible time inside the level route, classroom
+level due dates default to none, unfinished work is hard-locked after the
+effective deadline, and teachers can manage later per-student extensions.
+
 Current scoring source:
 
 - `backend/src/services/progressService.js`

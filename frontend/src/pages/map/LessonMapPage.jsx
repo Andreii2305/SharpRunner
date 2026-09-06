@@ -19,6 +19,16 @@ const FUNCTIONS_LEVEL_COUNT = 11;
 const FUNCTIONS_ARRAYS_ROUTE_START = 26;
 const FUNCTIONS_ARRAYS_NODE_COUNT = 5;
 const LAST_REGION_KEY = "sharprunner:last-map-region";
+const getNodeStatus = (row) => {
+  if (row?.isCompleted) return "completed";
+  if (row?.lockReason === "deadline") return "expired";
+  if (row?.isAccessible) return "current";
+  return "locked";
+};
+const getDeadlineProps = (row) => ({
+  effectiveDueAt: row?.effectiveDueAt ?? null,
+  hasExtension: Boolean(row?.hasExtension),
+});
 
 const LESSON_DETAILS = [
   "Learn movement, inputs, counts, and precise code through five onboarding trials.",
@@ -77,14 +87,12 @@ function LessonMapPage() {
   const mapNodes = useMemo(() => {
     return LESSON_ONE_MAP_CONFIG.nodes.map((node) => {
       const row = progressByKey.get(getProgressKeyForMapNode(node));
-      let status = "locked";
-      if (row?.isCompleted) status = "completed";
-      else if (row?.isAccessible) status = "current";
       return {
         ...node,
-        status,
+        status: getNodeStatus(row),
         route: `/tutorial/level/${node.levelNumber}`,
         finalScore: row?.finalScore ?? null,
+        ...getDeadlineProps(row),
       };
     });
   }, [progressByKey]);
@@ -96,19 +104,17 @@ function LessonMapPage() {
     return rows.map((row, index) => {
       const levelNumber = ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
-      let status = "locked";
-      if (row?.isCompleted) status = "completed";
-      else if (row?.isAccessible) status = "current";
       return {
         id: `arrays-level-${index + 1}`,
         levelNumber,
         title: config?.title ?? `Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Arrays",
         route: `/array/level/${index + 1}`,
-        status,
+        status: getNodeStatus(row),
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
         attemptCount: row?.attemptCount ?? 0,
+        ...getDeadlineProps(row),
       };
     });
   }, [progressByKey]);
@@ -122,9 +128,6 @@ function LessonMapPage() {
     return rows.map((row, index) => {
       const levelNumber = FUNCTIONS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
-      let status = "locked";
-      if (row?.isCompleted) status = "completed";
-      else if (row?.isAccessible) status = "current";
       return {
         id: `functions-level-${index + 1}`,
         levelNumber,
@@ -132,10 +135,11 @@ function LessonMapPage() {
         title: config?.title ?? `Functions ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions and Methods",
         route: `/function/level/${index + 1}`,
-        status,
+        status: getNodeStatus(row),
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
         attemptCount: row?.attemptCount ?? 0,
+        ...getDeadlineProps(row),
       };
     });
   }, [progressByKey]);
@@ -152,19 +156,17 @@ function LessonMapPage() {
     return rows.map((row, index) => {
       const levelNumber = FUNCTIONS_ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
-      let status = "locked";
-      if (row?.isCompleted) status = "completed";
-      else if (row?.isAccessible) status = "current";
       return {
         id: index < 4 ? `functions-with-arrays-level-${index + 1}` : "final-level-1",
         levelNumber,
         title: config?.title ?? `Functions with Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions with Arrays",
         route: `/function-with-array/level/${index + 1}`,
-        status,
+        status: getNodeStatus(row),
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
         attemptCount: row?.attemptCount ?? 0,
+        ...getDeadlineProps(row),
       };
     });
   }, [progressByKey]);

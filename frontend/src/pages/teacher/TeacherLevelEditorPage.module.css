@@ -271,6 +271,55 @@
 }
 .settingField input:focus { outline: none; border-color: #26547c; box-shadow: 0 0 0 3px rgba(38,84,124,0.12); }
 
+.deadlineFieldset {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border: 1px solid #d8e2ec;
+  border-radius: 10px;
+  padding: 12px;
+}
+.deadlineFieldset legend { color: #34495c; font-size: 11px; font-weight: 700; padding: 0 5px; }
+.deadlineFieldset legend svg { vertical-align: -2px; }
+.deadlineFieldset label { display: flex; align-items: center; gap: 7px; color: #52616f; font-size: 11px; }
+.deadlineFieldset label input { accent-color: #26547c; }
+.deadlineFieldset > input,
+.extensionList input {
+  min-width: 0;
+  border: 1px solid #c8d5e3;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #263b4f;
+  font: inherit;
+  font-size: 11px;
+  padding: 8px;
+}
+.deadlineFieldset small,
+.extensionManager small,
+.extensionList small { color: #82909d; font-size: 10px; line-height: 1.4; }
+
+.extensionManager { display: grid; gap: 7px; border-top: 1px solid #edf1f5; padding-top: 12px; }
+.extensionManager > div { display: grid; gap: 3px; }
+.extensionManager strong { display: flex; align-items: center; gap: 6px; color: #34495c; font-size: 11px; }
+.extensionManager > button,
+.extensionActions button {
+  border: 1px solid #9db7ce;
+  border-radius: 8px;
+  background: #eef5fb;
+  color: #26547c;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.extensionManager > button:disabled { cursor: not-allowed; opacity: .5; }
+.extensionList { display: grid; gap: 9px; max-height: 420px; overflow-y: auto; }
+.extensionList article { display: grid; gap: 7px; border: 1px solid #e0e8ef; border-radius: 9px; padding: 10px; }
+.extensionList article > div:first-child { display: grid; gap: 2px; }
+.extensionList article strong { color: #263b4f; font-size: 11px; }
+.extensionActions { display: flex; gap: 7px; }
+.extensionActions .removeExtension { display: inline-flex; align-items: center; gap: 4px; border-color: #e6aaaa; background: #fff3f2; color: #b42318; }
+
 .gradingBox {
   display: grid;
   gap: 13px;

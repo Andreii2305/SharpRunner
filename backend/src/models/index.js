@@ -19,6 +19,7 @@ const ClassroomLessonSubmissionAttachment = require("./ClassroomLessonSubmission
 const ClassroomLessonVersion = require("./ClassroomLessonVersion");
 const ClassroomLessonAudit = require("./ClassroomLessonAudit");
 const XpTransaction = require("./XpTransaction");
+const StudentLevelExtension = require("./StudentLevelExtension");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -262,6 +263,19 @@ LevelContentOverride.belongsTo(Classroom, {
   as: "classroom",
 });
 
+Classroom.hasMany(StudentLevelExtension, {
+  foreignKey: "classroomId",
+  as: "studentLevelExtensions",
+  onDelete: "CASCADE",
+});
+StudentLevelExtension.belongsTo(Classroom, { foreignKey: "classroomId", as: "classroom" });
+User.hasMany(StudentLevelExtension, {
+  foreignKey: "studentId",
+  as: "levelExtensions",
+  onDelete: "CASCADE",
+});
+StudentLevelExtension.belongsTo(User, { foreignKey: "studentId", as: "student" });
+
 module.exports = {
   User,
   UserProgress,
@@ -284,4 +298,5 @@ module.exports = {
   ClassroomLessonVersion,
   ClassroomLessonAudit,
   XpTransaction,
+  StudentLevelExtension,
 };

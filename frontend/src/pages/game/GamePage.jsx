@@ -89,6 +89,17 @@ const renderEmphasizedText = (text) =>
       return part;
     });
 
+const formatPhilippineDeadline = (value) => value
+  ? new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value))
+  : "";
+
 function GamePage({ levelConfig }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -141,10 +152,16 @@ function GamePage({ levelConfig }) {
   const gradeButtonRef = useRef(null);
   const previousTypedCharactersRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
+  const confirmedSecondsRef = useRef(0);
+  const activeTimerAnchorRef = useRef(null);
+  const levelSessionIdRef = useRef(null);
+  const levelSessionActiveRef = useRef(false);
   const failedAttemptsRef = useRef(0);
   const hintsEnabledRef = useRef(true);
-  const [startedAt, setStartedAt] = useState(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [effectiveDueAt, setEffectiveDueAt] = useState(null);
+  const [hasDeadlineExtension, setHasDeadlineExtension] = useState(false);
+  const [deadlineExpired, setDeadlineExpired] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [hintUnlockThreshold, setHintUnlockThreshold] = useState(3);
   const [hintUnlocked, setHintUnlocked] = useState(false);
@@ -247,9 +264,15 @@ function GamePage({ levelConfig }) {
     setIsPurchasingHint(false);
     hintsEnabledRef.current = true;
     failedAttemptsRef.current = 0;
-    setStartedAt(null);
     setElapsedSeconds(0);
     elapsedSecondsRef.current = 0;
+    confirmedSecondsRef.current = 0;
+    activeTimerAnchorRef.current = null;
+    levelSessionIdRef.current = null;
+    levelSessionActiveRef.current = false;
+    setEffectiveDueAt(null);
+    setHasDeadlineExtension(false);
+    setDeadlineExpired(false);
   }, [clearNextLevelTimer, levelConfig]);
 
   const { bgmVolume, bgmMuted, sfxVolume, sfxMuted } = audioPreferences;
@@ -331,62 +354,126 @@ function GamePage({ levelConfig }) {
 
   useEffect(() => {
     if (!levelConfig?.progressKey) return;
-    const localKey = `sr_startedat_${levelConfig.progressKey}`;
-    const sessionKey = `sr_session_${levelConfig.progressKey}`;
-
-    // Restore immediately from whichever cache exists
-    const cached = sessionStorage.getItem(sessionKey) || localStorage.getItem(localKey);
-    if (cached) setStartedAt(cached);
-
     let cancelled = false;
-    axios
-      .post(
-        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/start`),
-        {},
-        { headers: getAuthHeaders() },
-      )
-      .then((res) => {
+    let heartbeatTimer = null;
+    let transitionPromise = Promise.resolve();
+    const createSessionId = () => window.crypto?.randomUUID?.()
+      ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const syncTimer = (activeSeconds) => {
+      const seconds = Math.max(0, Number(activeSeconds) || 0);
+      confirmedSecondsRef.current = seconds;
+      elapsedSecondsRef.current = seconds;
+      activeTimerAnchorRef.current = Date.now();
+      setElapsedSeconds(seconds);
+    };
+    const stopHeartbeat = () => {
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    };
+    const handleAccessError = (error) => {
+      const code = error.response?.data?.code;
+      if (code === "DEADLINE_PASSED") {
+        levelSessionActiveRef.current = false;
+        stopHeartbeat();
+        setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
+        setDeadlineExpired(true);
+      } else if (code === "LEVEL_SESSION_REPLACED") {
+        levelSessionActiveRef.current = false;
+        stopHeartbeat();
+        setResult({ type: "error", message: error.response.data.message });
+      }
+    };
+    const heartbeat = async () => {
+      if (cancelled || document.hidden || !levelSessionActiveRef.current) return;
+      try {
+        const response = await axios.post(
+          buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/heartbeat`),
+          { sessionId: levelSessionIdRef.current },
+          { headers: getAuthHeaders() },
+        );
+        if (!cancelled) syncTimer(response.data.activeSeconds);
+      } catch (error) {
+        if (!cancelled) handleAccessError(error);
+      }
+    };
+    const scheduleHeartbeat = (seconds = 30) => {
+      stopHeartbeat();
+      heartbeatTimer = window.setInterval(heartbeat, Math.max(20, seconds) * 1000);
+    };
+    const startSession = async () => {
+      if (cancelled || document.hidden) return;
+      const sessionId = createSessionId();
+      levelSessionIdRef.current = sessionId;
+      try {
+        const response = await axios.post(
+          buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/start`),
+          { sessionId },
+          { headers: getAuthHeaders() },
+        );
         if (cancelled) return;
-        const { startedAt: serverStartedAt, attemptCount, ephemeral } = res.data;
-
-        if (ephemeral) {
-          // Completed level — sessionStorage only (resets on tab close/refresh, not on navigation)
-          const existing = sessionStorage.getItem(sessionKey);
-          if (!existing) {
-            sessionStorage.setItem(sessionKey, serverStartedAt);
-            setStartedAt(serverStartedAt);
-          }
-          // else keep the existing session value so navigating away and back doesn't reset
-        } else {
-          // In-progress level — localStorage so it survives refresh (anti-cheat)
-          localStorage.setItem(localKey, serverStartedAt);
-          setStartedAt(serverStartedAt);
-        }
-
-        const dbAttempts = attemptCount ?? 0;
+        syncTimer(response.data.activeSeconds);
+        setEffectiveDueAt(response.data.effectiveDueAt ?? null);
+        setHasDeadlineExtension(Boolean(response.data.hasExtension));
+        const dbAttempts = response.data.attemptCount ?? 0;
         failedAttemptsRef.current = dbAttempts;
         setFailedAttempts(dbAttempts);
-        syncHintState(res.data);
-      })
-      .catch((err) => console.error("Failed to start level timer", err));
+        syncHintState(response.data);
+        levelSessionActiveRef.current = !response.data.ephemeral;
+        if (!response.data.ephemeral) scheduleHeartbeat(response.data.heartbeatIntervalSeconds);
+      } catch (error) {
+        if (!cancelled) handleAccessError(error);
+      }
+    };
+    const endSession = async (keepalive = false) => {
+      stopHeartbeat();
+      levelSessionActiveRef.current = false;
+      const url = buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/end`);
+      const payload = { sessionId: levelSessionIdRef.current };
+      if (keepalive) {
+        void fetch(url, {
+          method: "POST",
+          headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          keepalive: true,
+        });
+        return;
+      }
+      try {
+        const response = await axios.post(url, payload, { headers: getAuthHeaders() });
+        if (!cancelled && response.data.ended) syncTimer(response.data.activeSeconds);
+      } catch {
+        // Heartbeat staleness still prevents indefinite accumulation.
+      }
+    };
+    const handleVisibility = () => {
+      transitionPromise = transitionPromise.then(() => (
+        document.hidden ? endSession(true) : startSession()
+      ));
+    };
+    const handlePageHide = () => void endSession(true);
 
-    return () => { cancelled = true; };
+    void startSession();
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      cancelled = true;
+      stopHeartbeat();
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("pagehide", handlePageHide);
+      void endSession(true);
+    };
   }, [levelConfig, syncHintState]);
 
   useEffect(() => {
-    if (!startedAt) return;
-    const startMs = new Date(startedAt).getTime();
-
-    const tick = () => {
-      const secs = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
-      elapsedSecondsRef.current = secs;
-      setElapsedSeconds(secs);
-    };
-
-    tick();
-    const interval = setInterval(tick, 1000);
-    return () => clearInterval(interval);
-  }, [startedAt]);
+    const interval = window.setInterval(() => {
+      if (!levelSessionActiveRef.current || document.hidden || activeTimerAnchorRef.current == null) return;
+      const seconds = confirmedSecondsRef.current
+        + Math.max(0, Math.floor((Date.now() - activeTimerAnchorRef.current) / 1000));
+      elapsedSecondsRef.current = seconds;
+      setElapsedSeconds(seconds);
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -434,13 +521,16 @@ function GamePage({ levelConfig }) {
       return undefined;
     }
 
-    reportGameActivity(true);
+    const reportVisibility = () => reportGameActivity(!document.hidden);
+    reportVisibility();
     const heartbeatTimer = window.setInterval(() => {
-      reportGameActivity(true);
+      if (!document.hidden) reportGameActivity(true);
     }, 30_000);
+    document.addEventListener("visibilitychange", reportVisibility);
 
     return () => {
       window.clearInterval(heartbeatTimer);
+      document.removeEventListener("visibilitychange", reportVisibility);
       reportGameActivity(false);
     };
   }, [levelConfig, reportGameActivity]);
@@ -459,6 +549,11 @@ function GamePage({ levelConfig }) {
         )
         .then((response) => response.data)
         .catch((error) => {
+          if (error.response?.data?.code === "DEADLINE_PASSED") {
+            levelSessionActiveRef.current = false;
+            setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
+            setDeadlineExpired(true);
+          }
           console.error(
             `Failed to save progress for level ${levelConfig.levelNumber}`,
             error,
@@ -489,11 +584,6 @@ function GamePage({ levelConfig }) {
         });
 
         if (shouldProceed) {
-          if (levelConfig?.progressKey) {
-            localStorage.removeItem(`sr_startedat_${levelConfig.progressKey}`);
-            sessionStorage.removeItem(`sr_session_${levelConfig.progressKey}`);
-          }
-          setStartedAt(null);
           void (async () => {
             const progressPayload = await markLevelAsCompleted();
             if (!progressPayload) {
@@ -504,6 +594,7 @@ function GamePage({ levelConfig }) {
               });
               return;
             }
+            levelSessionActiveRef.current = false;
 
             const completedLevel = getCompletedLevelResult(
               progressPayload,
@@ -917,6 +1008,20 @@ function GamePage({ levelConfig }) {
     );
   }
 
+  if (deadlineExpired) {
+    return (
+      <div className={styles.gameContainer}>
+        <div className={styles.deadlineBlocked} role="alert">
+          <FiClock aria-hidden="true" />
+          <h1>Deadline Passed</h1>
+          {effectiveDueAt ? <p>Due: {formatPhilippineDeadline(effectiveDueAt)} (Philippine Time)</p> : null}
+          <p>This level is no longer available. Contact your instructor if you need an extension.</p>
+          <Button label="Back to Map" variant="primary" size="md" onClick={() => navigate("/Map")} />
+        </div>
+      </div>
+    );
+  }
+
   const uiAssetBase =
     levelConfig.dialogue?.assetBase ?? `${import.meta.env.BASE_URL}game/assets/ui/dialogue`;
   const portraitImage =
@@ -956,9 +1061,14 @@ function GamePage({ levelConfig }) {
         <div className={styles.titleGroup}>
           <h1>{levelConfig.title}</h1>
           <span>{levelConfig.subtitle}</span>
+          {effectiveDueAt ? (
+            <small className={styles.dueLabel}>
+              {hasDeadlineExtension ? "Extension granted · " : ""}Due {formatPhilippineDeadline(effectiveDueAt)}
+            </small>
+          ) : null}
         </div>
         <div className={isOvertime ? styles.timerOvertime : styles.timer}>
-          <span className={styles.timerLabel}>Time</span>
+          <span className={styles.timerLabel}>Time spent</span>
           <span className={styles.timerValue}>{timerLabel}</span>
         </div>
         <Button label="Exit" variant="outline" size="sm" onClick={exitButton} />

@@ -15,6 +15,14 @@ import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { bgmManager } from "./audio/bgmManager";
 
 const AVAILABLE_ROUTES = getAvailableLessonRoutes();
+const formatDeadline = (value) => new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+}).format(new Date(value));
 
 function LevelRoutePage() {
   const navigate = useNavigate();
@@ -29,6 +37,7 @@ function LevelRoutePage() {
     status: "loading",
     message: "",
     prerequisiteLevelKey: null,
+    effectiveDueAt: null,
   });
 
   useEffect(() => {
@@ -49,15 +58,19 @@ function LevelRoutePage() {
         if (!isMounted) return;
         const level = response.data?.levels?.find((row) => row.levelKey === levelKey);
         const isScheduled = level?.lockReason === "scheduled";
+        const isExpired = level?.lockReason === "deadline";
         setAccessCheck({
           levelKey,
-          status: level?.isAccessible || level?.isCompleted ? "allowed" : "locked",
+          status: level?.isAccessible || level?.isCompleted ? "allowed" : isExpired ? "expired" : "locked",
           message: !level
             ? "Your teacher has disabled this level for the classroom."
+            : isExpired
+              ? "This level is no longer available. Contact your instructor if you need an extension."
             : isScheduled
               ? `This level unlocks on ${new Date(level.unlockAt).toLocaleString()}.`
               : "Complete the previous assigned level before opening this level.",
           prerequisiteLevelKey: level?.prerequisiteLevelKey ?? null,
+          effectiveDueAt: level?.effectiveDueAt ?? null,
         });
       })
       .catch(() => {
@@ -126,6 +139,21 @@ function LevelRoutePage() {
               onClick={() => navigate("/Map")}
             />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (levelConfig && accessStatus === "expired") {
+    return (
+      <div className={styles.placeholderPage}>
+        <div className={styles.placeholderCard}>
+          <h1>Deadline Passed</h1>
+          {accessCheck.effectiveDueAt ? (
+            <p>Due: {formatDeadline(accessCheck.effectiveDueAt)} (Philippine Time)</p>
+          ) : null}
+          <p>{accessCheck.message}</p>
+          <Button label="Back to Map" variant="primary" size="md" onClick={() => navigate("/Map")} />
         </div>
       </div>
     );

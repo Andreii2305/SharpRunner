@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import CheckOutlinedIcon from "@mui/icons-material/CheckOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import AccessTimeOutlinedIcon from "@mui/icons-material/AccessTimeOutlined";
 import {
   decodeGid,
   findTileset,
@@ -11,6 +12,15 @@ import {
 import styles from "./TiledCurriculumMap.module.css";
 
 const imageCache = new Map();
+const formatDue = (value) => value
+  ? new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value))
+  : null;
 
 const loadImage = (url) => {
   if (!imageCache.has(url)) {
@@ -178,9 +188,10 @@ function TiledVisualLayer({ map, layer, onError }) {
 
 function LevelNode({ node, onNodeClick }) {
   const locked = node.status === "locked";
+  const expired = node.status === "expired";
   const completed = node.status === "completed";
   const current = node.status === "current";
-  const statusLabel = completed ? "Completed" : current ? "Current" : locked ? "Locked" : "Available";
+  const statusLabel = completed ? "Completed" : current ? "Current" : expired ? "Deadline Passed" : locked ? "Locked" : "Available";
   const grade =
     node.grade ??
     (node.finalScore >= 90 ? "S" : node.finalScore >= 80 ? "A" : node.finalScore != null ? "B" : null);
@@ -203,6 +214,8 @@ function LevelNode({ node, onNodeClick }) {
         <span className={styles.nodeContent}>
           {completed ? (
             <CheckOutlinedIcon sx={{ fontSize: 17 }} />
+          ) : expired ? (
+            <AccessTimeOutlinedIcon sx={{ fontSize: 15 }} />
           ) : locked ? (
             <LockOutlinedIcon sx={{ fontSize: 14 }} />
           ) : (
@@ -211,6 +224,9 @@ function LevelNode({ node, onNodeClick }) {
         </span>
       </span>
       <span className={styles.nodeTitle}>{node.title}</span>
+      {node.effectiveDueAt ? (
+        <span className={styles.dueBadge}>{expired ? "Deadline Passed" : `${node.hasExtension ? "Extension · " : ""}Due ${formatDue(node.effectiveDueAt)}`}</span>
+      ) : null}
       {completed && node.finalScore != null && (
         <span
           className={`${styles.scoreBadge} ${styles[`grade${grade}`] ?? ""}`}
@@ -225,6 +241,7 @@ function LevelNode({ node, onNodeClick }) {
         <strong>Level {levelLabel}: {node.title}</strong>
         <span>{node.topic}</span>
         <span>{statusLabel}{node.finalScore != null ? ` · Score ${node.finalScore}` : ""}</span>
+        {node.effectiveDueAt && <span>{node.hasExtension ? "Extension · " : ""}Due {formatDue(node.effectiveDueAt)}</span>}
         {node.attemptCount > 0 && <span>{node.attemptCount} attempt{node.attemptCount === 1 ? "" : "s"}</span>}
       </span>
     </button>
@@ -377,7 +394,8 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
           <span className={styles.detailsStatus}>{selectedNode.status}</span>
           <strong>{selectedNode.title}</strong>
           <p>{selectedNode.topic || "Open this level to view its learning objective."}</p>
-          <button type="button" className={styles.detailsPlay} onClick={() => onNodeClick?.(selectedNode)}>Play</button>
+          {selectedNode.effectiveDueAt && <p>{selectedNode.hasExtension ? "Extension granted · " : ""}Due {formatDue(selectedNode.effectiveDueAt)}</p>}
+          <button type="button" className={styles.detailsPlay} onClick={() => onNodeClick?.(selectedNode)}>{selectedNode.status === "expired" ? "View deadline" : "Play"}</button>
         </aside>
       )}
     </div>

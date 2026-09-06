@@ -934,6 +934,17 @@
 .nodeLabelCurrent { color: #8b2c1a; font-weight: 700; font-style: normal; font-variant: small-caps; letter-spacing: 0.5px; }
 .nodeLabelLocked  { color: #8b6f3f; font-weight: 500; }
 
+.deadlineBadge {
+  position: absolute;
+  top: calc(100% + 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  color: #a33f34;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 /* Stage 2 locked overlay */
 .stage2Overlay {
   position: absolute;

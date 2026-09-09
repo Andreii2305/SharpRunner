@@ -1037,6 +1037,8 @@ function GamePage({ levelConfig }) {
     mergedLevelConfig?.goal?.description ?? "Complete this level's coding objective.";
   const instructionTitle = mergedLevelConfig?.instruction?.title ?? "Instruction";
   const instructionItems = mergedLevelConfig?.instruction?.items ?? [];
+  const instructionImportant = mergedLevelConfig?.instruction?.important ?? "";
+  const instructionSuccess = mergedLevelConfig?.instruction?.success ?? "";
   const lessonCardTitle = mergedLevelConfig?.lessonCard?.title ?? "Lesson";
   const lessonCardDescription = mergedLevelConfig?.lessonCard?.description ?? "";
   const lessonCardSections = mergedLevelConfig?.lessonCard?.sections ?? [];
@@ -1391,6 +1393,18 @@ function GamePage({ levelConfig }) {
                 <li key={item}>{renderEmphasizedText(item)}</li>
               ))}
             </ul>
+            {instructionImportant && (
+              <>
+                <h3>Important</h3>
+                <p>{renderEmphasizedText(instructionImportant)}</p>
+              </>
+            )}
+            {instructionSuccess && (
+              <>
+                <h3>Success</h3>
+                <p>{renderEmphasizedText(instructionSuccess)}</p>
+              </>
+            )}
           </section>
 
           <section className={styles.card}>

@@ -82,16 +82,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "You failed. Use one int steps declaration and set the correct distance.",
     goal: {
       title: "Goal",
-      description:
-        "Declare one integer variable to control how far the hero walks to the portal.",
+      description: "Move Kai exactly onto the portal.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one declaration: int steps = <number>;",
-        "Set steps so the hero lands exactly on the portal.",
-        "Do not add other variable declarations in this level.",
+        "Change the value of the existing **int steps** variable to the number of walkable tiles between Kai and the portal.",
+        "Keep the prepared **WalkToPortal(steps)** call and do not add another variable.",
       ],
+      important: "An int stores a whole number. Count only the spaces Kai must walk.",
+      success: "Kai walks onto the portal and the level is completed.",
     },
     lessonCard: {
       title: "Declaring Variables",
@@ -196,16 +196,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       'You failed. Use only this declaration: string myName = "Kai";',
     goal: {
       title: "Goal",
-      description:
-        'Declare exactly one string variable so the NPC can identify the hero name.',
+      description: "Give the gatekeeper Kai's correct name.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        'Use exactly: string myName = "Kai";',
-        'Only lowercase string is accepted in this level.',
-        "Do not declare any other variable in this level.",
+        "Replace the empty text in the existing **string myName** variable with the exact name **\"Kai\"**.",
+        "Keep the prepared **IntroduceToNpc(myName)** call and do not add another variable.",
       ],
+      important: "C# string values use double quotes, and capitalization must match.",
+      success: "The gatekeeper accepts Kai's name and opens the route.",
     },
     lessonCard: {
       title: "String Variables",
@@ -305,17 +305,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid code. Declare voice1, voice2, and voice3 as non-empty strings.",
     goal: {
       title: "Goal",
-      description:
-        "Declare three string variables to restore the voices of the frozen villagers.",
+      description: "Restore all three villagers' voices.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        'Declare exactly three variables: voice1, voice2, and voice3.',
-        'Each must use type string and be assigned any non-empty quoted value.',
-        'Example: string voice1 = "hello"; — the value can be any word or phrase.',
-        "No other variable declarations are allowed in this level.",
+        "Assign any non-empty quoted text to each existing string variable: **voice1**, **voice2**, and **voice3**.",
+        "Do not add or rename variables.",
       ],
+      important: "An empty string contains no text; each villager needs at least one character.",
+      success: "All three villagers regain their voices and the route opens.",
     },
     lessonCard: {
       title: "String Variables",
@@ -387,16 +386,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
     errorResultMessage: "Invalid code. Declare: int coins = 20;",
     goal: {
       title: "Goal",
-      description:
-        "Declare one integer variable representing how many coins you carry to pay the toll and lower the bridge.",
+      description: "Pay the exact toll and lower the bridge.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one declaration: int coins = <number>;",
-        "The toll sign shows the required amount — match it exactly.",
-        "Do not declare any other variables in this level.",
+        "Change the value of the existing **int coins** variable to the whole-number amount shown on the toll sign.",
+        "Do not add or rename variables.",
       ],
+      important: "An int stores a whole number. The value must match the sign exactly.",
+      success: "The toll is paid and the bridge lowers.",
     },
     lessonCard: {
       title: "Integer Variables",
@@ -487,17 +486,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
     errorResultMessage: 'Invalid code. Declare: double measurement = 4.5;',
     goal: {
       title: "Goal",
-      description:
-        "Declare one decimal variable matching the value etched on the force seal to shatter it and activate the cauldron.",
+      description: "Enter the precise measurement that breaks the force seal.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one declaration: double measurement = <value>;",
-        "The seal inscription shows the required decimal number — match it exactly.",
-        "Use type double (not int) — whole numbers will be rejected.",
-        "Do not declare any other variables in this level.",
+        "Change the value of the existing **double measurement** variable to the decimal number shown on the seal.",
+        "Keep the **double** type and do not add another variable.",
       ],
+      important: "Use double for a number with a decimal part.",
+      success: "The seal shatters and the cauldron activates.",
     },
     lessonCard: {
       title: "Double Variables",
@@ -589,17 +587,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid array. Use exactly: int[] lanterns = { 1, 2, 3, 4 };",
     goal: {
       title: "Goal",
-      description:
-        "Declare one integer array that stores the lantern order for the haunted path.",
+      description: "Light the four lanterns in marker order.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one array declaration: int[] lanterns = { ... };",
-        "Place the numbers in the same order as the lantern markers.",
-        "For this first array level, the required order is 1, 2, 3, 4.",
-        "Do not declare other variables in this level.",
+        "Create exactly one **int[]** array named **lanterns**.",
+        "Place the four marker numbers in the array from left to right, without adding other variables.",
       ],
+      important: "Array values stay in the same order in which you write them.",
+      success: "All four lanterns light and the gate opens.",
     },
     lessonCard: {
       title: "Arrays",
@@ -729,17 +726,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid supplies array. Use one string[] named supplies with the crate items in order.",
     goal: {
       title: "Goal",
-      description:
-        "Declare one string array that stores the supplies in the order shown by the crates.",
+      description: "Protect all three supplies from the aswang.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one array declaration: string[] supplies = { ... };",
-        "Use double quotes around every text value.",
-        "Place the supplies in crate order: rice, salt, candle.",
-        "Do not declare other variables in this level.",
+        "Create exactly one **string[]** array named **supplies**.",
+        "Place the three crate labels—**\"rice\"**, **\"salt\"**, and **\"candle\"**—in the same left-to-right order shown in the scene.",
       ],
+      important: "Every string value must be inside double quotes.",
+      success: "The supplies are protected and the aswang retreats.",
     },
     lessonCard: {
       title: "String Arrays",
@@ -870,18 +866,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid attack target. Use the flames array and choose the boss fire by index.",
     goal: {
       title: "Goal",
-      description:
-        "Declare the flame array, then use one array index access to choose the boss fire Kai should attack.",
+      description: "Select and destroy the boss flame.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        'Declare exactly one string array named flames.',
-        'Label each flame as "normal" if it is ordinary or "boss" if it controls the flame line.',
-        "Declare exactly one string variable named attack.",
-        "Assign attack using flames[index], not a hardcoded word.",
-        "Use the index of the flame you believe Kai should attack.",
+        "Create a **string[]** named **flames** that labels the four flames, in scene order, as **\"normal\"** or **\"boss\"**.",
+        "Create a string named **attack** and assign it by accessing the boss value with **flames[index]**. Do not assign the word directly.",
       ],
+      important: "C# arrays start at index 0, so the third element is index 2.",
+      success: "Kai attacks the boss flame and the road opens.",
     },
     lessonCard: {
       title: "One Dimensional Arrays",
@@ -1015,18 +1009,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid inventory selection. Use string selectedItem = inventory[1]; to choose the key.",
     goal: {
       title: "Goal",
-      description:
-        "Declare an inventory array, then use one array index access to select the key for the locked house door.",
+      description: "Select the key and open the midnight door.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        'Declare exactly one string array named **inventory**.',
-        'Store the crate items in order: "candle", "key", "map".',
-        "Declare exactly one string variable named **selectedItem**.",
-        "Assign **selectedItem** using **inventory[index]**, not a hardcoded word.",
-        "Use the index of the key crate.",
+        "Create a **string[]** named **inventory** containing **\"candle\"**, **\"key\"**, and **\"map\"** in crate order.",
+        "Create a string named **selectedItem** and assign it by accessing the key with **inventory[index]**. Do not assign the word directly.",
       ],
+      important: "C# arrays start at index 0, so the second element is index 1.",
+      success: "The selected key opens the midnight door.",
     },
     lessonCard: {
       title: "Array Index Access",
@@ -1153,19 +1145,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid ward grid. Use a 3x3 int[,] named ward with the exact pattern.",
     goal: {
       title: "Goal",
-      description:
-        "Declare a 3x3 int[,] array where 1 marks the yellow ward runes and 0 marks the other runes.",
+      description: "Restore the yellow-rune pattern in the warding grid.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one declaration: int[,] ward = { ... };",
-        "Create 3 rows and 3 columns to match the rune grid.",
-        "Use 1 for each repeated yellow ward rune.",
-        "Use 0 for every other rune.",
-        "Read the grid row by row from top-left to bottom-right.",
-        "Do not use int[][] for this level.",
+        "Create exactly one 3-by-3, two-dimensional **int[,]** array named **ward**.",
+        "Read the scene row by row. Store **1** for each yellow ward rune and **0** for every other rune.",
       ],
+      important: "Use the rectangular **int[,]** form; each inner brace group represents one row.",
+      success: "The warding grid is restored and the path opens.",
     },
     lessonCard: {
       title: "Multi-Dimensional Arrays",
@@ -1286,20 +1275,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Invalid path map. Use a 3x3 int[,] named pathMap with the exact safe route.",
     goal: {
       title: "Goal",
-      description:
-        "Declare a 3x3 int[,] pathMap that marks one route through three checkpoints. Use 1 for the chosen path at each checkpoint and 0 for paths Kai should avoid.",
+      description: "Map the safe route through all three forest checkpoints.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Use exactly one declaration: int[,] pathMap = { ... };",
-        "Create 3 rows and 3 columns.",
-        "Rows represent the three path heights.",
-        "Columns represent checkpoints 1, 2, and 3 from left to right.",
-        "Each column should contain exactly one 1.",
-        "Use 0 for routes not chosen.",
-        "Do not use int[][] for this level.",
+        "Create exactly one 3-by-3, two-dimensional **int[,]** array named **pathMap**.",
+        "Use rows for path heights and columns for checkpoints from left to right. Store one **1** in each column for the safe height and **0** for the other paths.",
       ],
+      important: "In a two-dimensional array, the first position is the row and the second is the column.",
+      success: "The safe route appears and Kai can cross the forest.",
     },
     lessonCard: {
       title: "2D Arrays As Maps",
@@ -1411,20 +1396,17 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "Traversal failed. The curse remains because not every sign was checked with CheckName(names[i]).",
     goal: {
       title: "Goal",
-      description:
-        "Find the cursed name by declaring the names array, then using a for loop to check every sign from index 0 to names.Length - 1.",
+      description: "Check every sign so the cursed name cannot be missed.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        'Declare exactly one string array named names.',
-        'Use these values in order: "Lina", "Tomas", "Mira", "Niko".',
-        "Write a for loop with int i = 0.",
-        "Keep looping while i < names.Length.",
-        "Increment with i++.",
-        "Inside the loop, call CheckName(names[i]);",
-        "Do not skip any sign; the cursed name can be hidden at any index.",
+        "Create a **string[]** named **names** with **\"Lina\"**, **\"Tomas\"**, **\"Mira\"**, and **\"Niko\"** in that order.",
+        "Use a **for** loop that starts at index 0, continues while the index is less than **names.Length**, and increases by 1.",
+        "Inside the loop, pass the current element to the prepared **CheckName** method.",
       ],
+      important: "The loop must continue until every array element has been checked.",
+      success: "Every sign is checked and the Kapre lets Kai pass.",
     },
     lessonCard: {
       title: "Array Traversal",
@@ -1550,19 +1532,17 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "SCAN INCOMPLETE: traverse every jars[i] value with ScanJar.",
     goal: {
       title: "Goal",
-      description:
-        "Store the visible jar colors in an array, then scan every jar to reveal which hidden seal is cursed.",
+      description: "Scan every jar and leave the cursed jar sealed.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        'Declare string[] jars = { "blue", "green", "purple", "orange" };',
-        "Write a for loop beginning with int i = 0.",
-        "Continue while i < jars.Length.",
-        "Increment the index with i++.",
-        "Inside the loop, call ScanJar(jars[i]);",
-        "The colors identify the jars, but they do not reveal the hidden curse.",
+        "Create a **string[]** named **jars** with **\"blue\"**, **\"green\"**, **\"purple\"**, and **\"orange\"** in that order.",
+        "Use a **for** loop from index 0 while the index is less than **jars.Length**.",
+        "Inside the loop, pass the current array element to the prepared **ScanJar** method.",
       ],
+      important: "The loop must continue until every array element has been scanned.",
+      success: "All jars are scanned, the three safe jars are collected, and the cursed jar stays sealed.",
     },
     lessonCard: {
       title: "Scanning An Array",
@@ -1669,19 +1649,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "RITUAL INCOMPLETE: define StartRitual, then call it inside Main.",
     goal: {
       title: "Goal",
-      description:
-        "Create one reusable method named StartRitual, then call it from Main to open the shrine path.",
+      description: "Open the shrine with a reusable ritual method.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static void StartRitual()** in the Program class.",
-        "The method does **not need parameters**.",
-        "The method does **not return a value**.",
-        "The method body can stay **empty** in this first method level.",
-        "Inside **Main**, call **StartRitual();**",
-        "Defining a method **names** the action. Calling it **runs** the action.",
+        "Create a no-parameter **static void** method named **StartRitual**. Its body may remain empty.",
+        "Call **StartRitual** once inside **Main**.",
       ],
+      important: "Defining a method names the action; calling the method runs it.",
+      success: "The ritual runs and the shrine opens.",
     },
     lessonCard: {
       title: "Introduction To Methods",
@@ -1792,18 +1769,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "BELL SILENT: RingBell() is predefined, but the bell will not ring unless Main calls RingBell(); exactly once.",
     goal: {
       title: "Goal",
-      description:
-        "Call the predefined method RingBell() from Main so the Bell of Dawn can push back the ghosts blocking the road.",
+      description: "Ring the Bell of Dawn and clear the ghosts.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "**Do not create a new method** for this level.",
-        "Use the predefined **static void RingBell()** method.",
-        "Inside **Main**, call **RingBell();** to run the prepared bell action.",
-        "A method only performs its action when it is **called**.",
-        "Use exactly **one** call to RingBell().",
+        "Call the prepared **RingBell** method exactly once inside **Main**.",
+        "Do not create another RingBell method or pass it an argument.",
       ],
+      important: "A prepared method does nothing until it is called.",
+      success: "The bell rings and the ghosts fade away.",
     },
     lessonCard: {
       title: "Calling A Predefined Method",
@@ -1916,18 +1891,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "FLAME STILL DARK: define static void LightFlame(), then call LightFlame(); inside Main.",
     goal: {
       title: "Goal",
-      description:
-        "Define and call a no-parameter void method named LightFlame so the fixed warding flame burns away the shadow barrier.",
+      description: "Light the warding flame and remove the barrier.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static void LightFlame()** in the Program class.",
-        "Keep the parentheses **empty**: this method needs **no parameters**.",
-        "Keep the return type **void**: this method gives **no return value**.",
-        "Inside **Main**, call **LightFlame();**",
-        "The method body can stay **empty** for this beginner method lesson.",
+        "Create a no-parameter **static void** method named **LightFlame**. Its body may remain empty.",
+        "Call **LightFlame** once inside **Main**.",
       ],
+      important: "Use void because this method performs an action and returns no value.",
+      success: "The flame lights and burns away the barrier.",
     },
     lessonCard: {
       title: "No Parameters, No Return Value",
@@ -2040,18 +2013,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "SHRINE STILL CURSED: define static void SealShrine(), then call SealShrine(); inside Main.",
     goal: {
       title: "Goal",
-      description:
-        "Define and call a no-parameter void method named SealShrine so the cursed shrine breach seals before the manananggal gets through.",
+      description: "Seal the cursed shrine before the creature enters.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static void SealShrine()** in the Program class.",
-        "Keep the parentheses **empty** because the seal needs **no parameters**.",
-        "Keep the return type **void** because the seal gives **no return value**.",
-        "Inside **Main**, call **SealShrine();**",
-        "Use exactly **one** SealShrine method and call it once.",
+        "Create exactly one no-parameter **static void** method named **SealShrine**.",
+        "Call **SealShrine** once inside **Main**.",
       ],
+      important: "Creating the method is not enough; Main must call it.",
+      success: "The shrine seals and the creature retreats.",
     },
     lessonCard: {
       title: "Another Fixed Method",
@@ -2173,17 +2144,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "ORACLE SILENT: GetCode must return the counted number, and Main must store GetCode() in code.",
     goal: {
       title: "Goal",
-      description:
-        "Define a no-parameter method named GetCode that returns the oracle stone's counted code, then store that returned value in Main.",
+      description: "Read the oracle code and open the sealed path.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static int GetCode()** in the Program class.",
-        "Inside GetCode, use **return** to send back the number shown by the oracle lights.",
-        "Do **not** use void: this method must return an **int**.",
-        "Inside **Main**, store the returned value with **int code = GetCode();**",
+        "Create a no-parameter **static int** method named **GetCode** that returns the number of oracle lights shown in the scene.",
+        "Inside **Main**, store the returned value in an int named **code**.",
       ],
+      important: "Use return to send the integer back; printing it does not return it.",
+      success: "The returned code is stored and the sealed path opens.",
     },
     lessonCard: {
       title: "Methods With Return Values",
@@ -2300,17 +2270,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       'PATH UNSAFE: GetSafePath must return "up", and Main must store GetSafePath() in path.',
     goal: {
       title: "Goal",
-      description:
-        "Define a no-parameter method named GetSafePath that returns the safe route as text, then store the returned path in Main.",
+      description: "Reveal the safe path for Kai.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static string GetSafePath()** in the Program class.",
-        'Inside GetSafePath, use **return "up";**',
-        "Do **not** use void: this method must return a **string**.",
-        "Inside **Main**, store the returned value with **string path = GetSafePath();**",
+        "Create a no-parameter **static string** method named **GetSafePath** that returns the safe direction shown by the Diwata.",
+        "Inside **Main**, store the returned text in a string named **path**.",
       ],
+      important: "Use return to send text back from the method; do not print it.",
+      success: "The safe path lights and Kai crosses it.",
     },
     lessonCard: {
       title: "Returning Text From A Method",
@@ -2422,18 +2391,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       'OFFERING REJECTED: call PlaceOffering("rice"); inside Main.',
     goal: {
       title: "Goal",
-      description:
-        'Call the predefined method PlaceOffering with the string "rice" so the shrine receives the exact offering it asks for.',
+      description: "Place the offering requested by the shrine.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "**Do not create a new method** for this level.",
-        "Use the predefined **static void PlaceOffering(string item)** method.",
-        'Inside **Main**, call **PlaceOffering("rice");**',
-        "The word inside the parentheses is the **argument** passed into the method.",
-        "Because the method is **void**, it performs an action but does **not** return a value.",
+        "Call the prepared **PlaceOffering(string item)** method once inside **Main**.",
+        "Pass **\"rice\"** as its string argument. Do not redefine the method.",
       ],
+      important: "The argument in the call becomes the value of the method's item parameter.",
+      success: "The rice offering appears and the path opens.",
     },
     lessonCard: {
       title: "Methods With Parameters",
@@ -2554,19 +2521,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "SALT MISSED: count the target marker, then call ThrowSalt(5); inside Main.",
     goal: {
       title: "Goal",
-      description:
-        "Call the predefined method ThrowSalt with the integer 5 so Kai throws the right measured amount of salt.",
+      description: "Throw enough salt to reach the aswang.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "**Do not create a new method** for this level.",
-        "Use the predefined **static void ThrowSalt(int amount)** method.",
-        "Use the numbered distance markers to find the aswang's position.",
-        "Inside **Main**, call **ThrowSalt(5);**",
-        "The number inside the parentheses is the **argument** passed into the method.",
-        "Because the method is **void**, it performs the throw but does **not** return a value.",
+        "Call the prepared **ThrowSalt(int amount)** method once inside **Main**.",
+        "Pass the whole-number distance shown by the numbered markers. Do not redefine the method.",
       ],
+      important: "The integer argument in the call becomes the value of the amount parameter.",
+      success: "The salt reaches the aswang and clears the path.",
     },
     lessonCard: {
       title: "Numeric Parameters",
@@ -2682,18 +2646,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "POWER UNSTABLE: define CalculatePower with two int parameters, return their sum, and store CalculatePower(5, 3).",
     goal: {
       title: "Goal",
-      description:
-        "Define a method named CalculatePower that receives basePower and bonus, returns their sum, then store the result in power.",
+      description: "Calculate enough power to activate the anting-anting shield.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static int CalculatePower(int basePower, int bonus)** in the Program class.",
-        "Inside the method, write **return basePower + bonus;**",
-        "Inside **Main**, write **int power = CalculatePower(5, 3);**",
-        "The two numbers are **arguments**. They enter the method through the parameters.",
-        "The returned value must be stored in **power**.",
+        "Create **static int CalculatePower(int basePower, int bonus)** and return the sum of its two parameters.",
+        "Inside **Main**, call it with the displayed base power and bonus, then store the returned value in an int named **power**.",
       ],
+      important: "Calculate from the parameters and return the result; do not hardcode the final power.",
+      success: "The returned power activates the shield and blocks the shadow.",
     },
     lessonCard: {
       title: "Parameters And Return Values",
@@ -2815,18 +2777,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "HEALING FAILED: define Heal with two int parameters, multiply them, and store Heal(5, 2).",
     goal: {
       title: "Goal",
-      description:
-        "Define a method named Heal that receives herb and water, returns their product, then store the result in healing.",
+      description: "Produce enough healing power to restore the Diwata.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static int Heal(int herb, int water)** in the Program class.",
-        "Inside the method, write **return herb * water;**",
-        "Inside **Main**, write **int healing = Heal(5, 2);**",
-        "The returned value fills the Diwata's healing bar.",
-        "Do not type **int healing = 10;** directly. The value must come from the method call.",
+        "Create **static int Heal(int herb, int water)** and return the product of its two parameters.",
+        "Inside **Main**, call it with the displayed herb and water values, then store the returned value in an int named **healing**.",
       ],
+      important: "The value must come from the method call, not from a hardcoded final total.",
+      success: "The returned healing value restores the Diwata.",
     },
     lessonCard: {
       title: "Multiplying Parameters",
@@ -2928,18 +2888,17 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "STAIR RITUAL FAILED: check the base case, decreasing recursive call, and unwinding order.",
     goal: {
       title: "Goal",
-      description:
-        "Use recursion to build five bamboo stairs from the lowest step to the shrine.",
+      description: "Build all five bamboo stairs in order.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static void BuildStairs(int step)** in the Program class.",
-        "Add the base case **if (step == 0) return;**",
-        "Call **BuildStairs(step - 1);** so each call moves toward the base case.",
-        "After that call, write **CreateStep(step);** so stairs appear while recursion unwinds.",
-        "Inside **Main**, call **BuildStairs(5);** exactly once.",
+        "Create **static void BuildStairs(int step)**.",
+        "First add a base case that returns when step reaches 0. Otherwise call **BuildStairs** with one smaller step, then call the prepared **CreateStep** method for the current step.",
+        "Inside **Main**, start the recursion once with the five-step value shown in the scene.",
       ],
+      important: "The base case stops recursion; placing CreateStep after the recursive call builds from the lowest stair upward.",
+      success: "Five stairs appear in order and form a stable path.",
     },
     lessonCard: {
       title: "Recursion And The Call Stack",
@@ -3052,19 +3011,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "The lantern method could not receive the array. Check its parameter, declaration, and call.",
     goal: {
       title: "Goal",
-      description:
-        "Group the three lantern signals in one integer array and pass that array to LightLanterns.",
+      description: "Light all three lanterns with one array argument.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static void LightLanterns(int[] lanterns)** in the Program class.",
-        "The method body can remain **empty for now**. This level focuses on receiving and passing an array.",
-        "Inside **Main**, declare **int[] lanterns = { 1, 1, 1 };**",
-        "Each **1** means on; **0** would mean off for the lantern at the same array index.",
-        "Pass the whole array with **LightLanterns(lanterns);**",
-        "Do not call the method once for every value. One array argument carries the complete lantern line.",
+        "Create **static void LightLanterns(int[] lanterns)**. Its body may remain empty.",
+        "Inside **Main**, create an **int[]** named **lanterns** containing the three on-signals shown, then pass the whole array to LightLanterns once.",
       ],
+      important: "The int[] parameter receives the complete array, not one element at a time.",
+      success: "All three lanterns light.",
     },
     lessonCard: {
       title: "Passing Arrays To Methods",
@@ -3168,19 +3124,17 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "The inspection stopped. Check the method signature, loop, condition, counter, and returned value.",
     goal: {
       title: "Goal",
-      description:
-        "Pass the charm array into CountCursed, count every 0, and store the returned number.",
+      description: "Count every cursed charm and clear the checkpoint.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static int CountCursed(int[] charms)** in the Program class.",
-        "Start with **int count = 0;**",
-        "Use a **for loop** from index 0 to **charms.Length - 1**.",
-        "When **charms[i] == 0**, run **count++;**",
-        "After the loop, write **return count;**",
-        "Inside **Main**, store the result with **int cursedCount = CountCursed(charms);**",
+        "Create **static int CountCursed(int[] charms)** with an int counter named **count** that starts at 0.",
+        "Use a for loop to check every element in the existing **charms** array and increase count only when the current value is 0. Return count after the loop.",
+        "Inside **Main**, store the method's returned value in an int named **cursedCount**.",
       ],
+      important: "The loop must continue until every array element has been checked.",
+      success: "Both cursed charms are counted and the checkpoint clears.",
     },
     lessonCard: {
       title: "Counting Array Values In A Method",
@@ -3292,19 +3246,16 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "The grid could not be restored. Check the int[,] parameter, declaration and method call.",
     goal: {
       title: "Goal",
-      description:
-        "Select the blue runes with 1, mark every other rune with 0, and pass the complete 2D array into RestoreGrid.",
+      description: "Restore the shrine's two-dimensional warding grid.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static void RestoreGrid(int[,] grid)** in the Program class.",
-        "The method body may remain **empty for now**. This level focuses on receiving a two-dimensional array.",
-        "Inspect the shrine grid: encode each **blue rune as 1** and every **other rune as 0**.",
-        "Inside **Main**, declare **int[,] grid**. Read the **upper row first**, from left to right, followed by the lower row.",
-        "Pass the entire grid once with **RestoreGrid(grid);**",
-        "Use the rectangular form **int[,]**, not the jagged form **int[][]**.",
+        "Create **static void RestoreGrid(int[,] grid)**. Its body may remain empty.",
+        "Inside **Main**, create a 2-by-2 **int[,]** named **grid**. Read the scene row by row, using 1 for blue runes and 0 for the others, then pass the whole grid to RestoreGrid once.",
       ],
+      important: "Use the rectangular int[,] form, not int[][].",
+      success: "The complete grid reaches the method and the shrine floor becomes safe.",
     },
     lessonCard: {
       title: "Passing 2D Arrays To Methods",
@@ -3416,19 +3367,17 @@ const LEVEL_CONFIG_BY_NUMBER = {
       "The cemetery scan stopped. Check both GetLength loops, graves[row, col], the increment and the returned count.",
     goal: {
       title: "Goal",
-      description:
-        "Pass the 3 by 4 cemetery grid to a method, inspect every grave, count each blessed grave marked 1, and store the returned total.",
+      description: "Count every blessed grave and release its guardian spirit.",
     },
     instruction: {
-      title: "Instruction",
+      title: "Your Task",
       items: [
-        "Define **static int CountBlessedGraves(int[,] graves)** in the Program class.",
-        "Inside the method, begin with **int blessed = 0;**",
-        "Use an outer loop with **graves.GetLength(0)** to visit every row.",
-        "Inside it, use another loop with **graves.GetLength(1)** to visit every column.",
-        "When **graves[row, col] == 1**, increment **blessed**.",
-        "Return the count, then store it with **int blessed = CountBlessedGraves(graves);**",
+        "Create **static int CountBlessedGraves(int[,] graves)** with an int counter named **blessed** that starts at 0.",
+        "Use nested loops with **graves.GetLength(0)** and **graves.GetLength(1)** to visit every row and column in the existing grid. Increase blessed only when **graves[row, col]** is 1, then return it.",
+        "Inside **Main**, store the returned value in an int named **blessed**.",
       ],
+      important: "The outer and inner loops must visit all 12 cells; array indexes start at 0.",
+      success: "All 12 graves are checked and seven guardian spirits are released.",
     },
     lessonCard: {
       title: "Methods With 2D Arrays",
@@ -3571,7 +3520,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
     startWithDialogue: false,
     lockCodeUntilDialogueDone: true,
     defaultCode:
-      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Phase 2: traverse symbols and return the number of 0 values.\n    static int CountCorrupted(int[] symbols) {\n      // Write the counter and loop here.\n    }\n\n    // Phase 3: name the repair action.\n    static void RepairSymbol(int index) {\n    }\n\n    // Phase 4: combine two ward powers and return the result.\n    static int CalculateWard(int basePower, int bonus) {\n    }\n\n    // Phase 5: traverse every cell and return how many cells were visited.\n    static int CountMoonCells(int[,] moon) {\n    }\n\n    // Phase 6: stop at 0; otherwise call the next smaller phase.\n    static void BreakEclipse(int phase) {\n    }\n\n    static void Main(string[] args) {\n      // Phase 1\n      int[] symbols = { 1, 1, 0, 1 };\n      int[,] moon = { { 1, 1 }, { 1, 1 } };\n\n      // Call the five methods and store every returned value here.\n    }\n  }\n}",
+      "using System;\n\nnamespace SharpRunner {\n  class Program {\n    // Phase 2: traverse symbols and return the number of 0 values.\n    static int CountCorrupted(int[] symbols) {\n      // Write the counter and loop here.\n    }\n\n    // Phase 3: name the repair action.\n    static void RepairSymbol(int index) {\n    }\n\n    // Phase 4: combine two ward powers and return the result.\n    static int CalculateWard(int basePower, int bonus) {\n    }\n\n    // Phase 5: traverse every cell and return how many cells were visited.\n    static int CountMoonCells(int[,] moon) {\n    }\n\n    // Phase 6: stop at 0; otherwise call the next smaller phase.\n    static void BreakEclipse(int phase) {\n    }\n\n    static void Main(string[] args) {\n      // Phase 1\n      int[] symbols = { 1, 1, 0, 1 };\n      int[,] moon = { { 1, 1 }, { 1, 1 } };\n\n      // Call each required method here.\n    }\n  }\n}",
     hint:
       "Complete the phases in order: count the 0, repair index 2, add the ward powers, traverse both moon dimensions, then recurse from phase 6 down to 0.",
     idleResultMessage: "The eclipsed moon is waiting for the last compile.",
@@ -3579,20 +3528,20 @@ const LEVEL_CONFIG_BY_NUMBER = {
     errorResultMessage: "Bakunawa found a broken phase. Repair the first phase named in the result.",
     goal: {
       title: "Goal",
-      description:
-        "Complete one final C# program that combines arrays, traversal, parameters, return values, two-dimensional arrays, and recursion to restore the moon.",
+      description: "Complete all six seals and restore the moon.",
     },
     instruction: {
-      title: "The Six Seals",
+      title: "Your Task",
       items: [
-        "Keep **int[] symbols = { 1, 1, 0, 1 };**. The single 0 is the corrupted moon seal.",
-        "Define **static int CountCorrupted(int[] symbols)**. Traverse the array, count values equal to 0, and return the count.",
-        "Define **static void RepairSymbol(int index)** and call **RepairSymbol(2);** from Main.",
-        "Define **static int CalculateWard(int basePower, int bonus)** and return their sum.",
-        "Define **static int CountMoonCells(int[,] moon)**. Use nested GetLength loops, inspect **moon[row, col]**, and return the visited-cell count.",
-        "Define **static void BreakEclipse(int phase)**. Return when phase reaches 0; otherwise call **BreakEclipse(phase - 1)**. Begin with **BreakEclipse(6);**.",
-        "From Main, call CountCorrupted, CalculateWard, and CountMoonCells and store each returned result.",
+        "**Phase 1 — Array:** Keep the prepared **symbols** array unchanged; its 0 marks the corrupted seal.",
+        "**Phase 2 — Traversal:** Complete **CountCorrupted(int[] symbols)** so it loops through every symbol, counts values equal to 0, and returns the count. Call it from Main.",
+        "**Phase 3 — Parameter:** Keep **RepairSymbol(int index)** and call it for corrupted index 2.",
+        "**Phase 4 — Return value:** Complete **CalculateWard(int basePower, int bonus)** so it returns the sum of its parameters. Call it from Main.",
+        "**Phase 5 — 2D array:** Complete **CountMoonCells(int[,] moon)** with nested GetLength loops that access every **moon[row, col]** cell and return the visited-cell count. Call it from Main.",
+        "**Phase 6 — Recursion:** Complete **BreakEclipse(int phase)** with a base case at 0 and a recursive call using phase - 1. Start it from Main with phase 6.",
       ],
+      important: "Finish the phases in order. Each loop must reach every element, and the recursive call must move toward its base case.",
+      success: "All six seals break, the moon is restored, and dawn returns.",
     },
     lessonCard: {
       title: "The Last Compile",

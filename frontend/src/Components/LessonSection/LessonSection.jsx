@@ -7,7 +7,6 @@ import LockOutlineIcon from "@mui/icons-material/LockOutline";
 import CheckIcon from "@mui/icons-material/Check";
 import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
-import { useToast } from "../Toast/ToastProvider.jsx";
 import { FiArrowRight, FiPaperclip } from "react-icons/fi";
 
 const DEFAULT_LESSON_META = [
@@ -17,7 +16,7 @@ const DEFAULT_LESSON_META = [
     region: "First Compile Trial",
     description:
       "Finish the five existing onboarding levels before Kai enters Barangay Malumay.",
-    route: "/Map",
+    route: "/lesson/built-in/tutorial",
   },
   {
     lessonKey: "arrays",
@@ -25,7 +24,7 @@ const DEFAULT_LESSON_META = [
     region: "Barangay Malumay",
     description:
       "Collect, read, and traverse coded clues while learning one-dimensional and multi-dimensional arrays.",
-    route: "/Map",
+    route: "/lesson/built-in/arrays",
   },
   {
     lessonKey: "functions",
@@ -33,7 +32,7 @@ const DEFAULT_LESSON_META = [
     region: "Kapre's Trail",
     description:
       "Break bigger tasks into reusable methods, including parameterized, returning, and recursive methods.",
-    route: "/Map",
+    route: "/lesson/built-in/functions",
   },
   {
     lessonKey: "functions-with-arrays",
@@ -41,7 +40,7 @@ const DEFAULT_LESSON_META = [
     region: "Tikbalang Crossing",
     description:
       "Pass 1D and 2D arrays into methods to solve side-scroller challenges.",
-    route: "/Map",
+    route: "/lesson/built-in/functions-with-arrays",
   },
   {
     lessonKey: "final",
@@ -49,7 +48,7 @@ const DEFAULT_LESSON_META = [
     region: "Bakunawa Eclipse",
     description:
       "Combine arrays, functions, traversal, and array parameters in the final challenge.",
-    route: "/Map",
+    route: "/lesson/built-in/final",
   },
 ];
 
@@ -125,7 +124,7 @@ function buildOrderedLessonMeta(seedLessons = []) {
         seedLesson.levels?.[0]?.objective ??
         fallbackMeta?.description ??
         `Complete all levels in ${fallbackTitle}.`,
-      route: "/Map",
+      route: `/lesson/built-in/${lessonKey}`,
     });
 
     orderedKeys.push(lessonKey);
@@ -194,7 +193,7 @@ function buildLessonsFromData({ lessonMeta = [], progressLessons = [] }) {
     resolvedLessons.push({
       ...lesson,
       status,
-      route: status === "locked" ? null : lesson.route,
+      route: lesson.route,
     });
   }
 
@@ -226,31 +225,11 @@ function LessonIcon({ status }) {
   );
 }
 
-function ActionBtn({ status, onClick }) {
-  if (status === "completed") {
-    return (
-      <div className={`${styles.actionBtn} ${styles.actionDone}`}>
-        <CheckIcon sx={{ fontSize: 18, color: "#0F6E56" }} />
-      </div>
-    );
-  }
-
-  if (status === "locked") {
-    return (
-      <div className={`${styles.actionBtn} ${styles.actionLocked}`}>
-        <LockOutlineIcon sx={{ fontSize: 17, color: "#94a3b8" }} />
-      </div>
-    );
-  }
-
-  return (
-    <button className={`${styles.actionBtn} ${styles.actionPlay}`} onClick={onClick}>
-      <PlayArrowIcon sx={{ fontSize: 22, color: "#fff" }} />
-    </button>
-  );
+function ActionBtn({ onClick }) {
+  return <button className={styles.openModuleBtn} onClick={onClick}>Open Module <FiArrowRight /></button>;
 }
 
-function LessonCard({ lesson, onPlay, onLocked }) {
+function LessonCard({ lesson, onPlay }) {
   const cfg = STATUS_CONFIG[lesson.status];
   const isLocked = lesson.status === "locked";
 
@@ -260,7 +239,10 @@ function LessonCard({ lesson, onPlay, onLocked }) {
         ${lesson.status === "active" ? styles.cardActive : ""}
         ${isLocked ? styles.cardLocked : ""}
       `}
-      onClick={isLocked ? onLocked : undefined}
+      role="link"
+      tabIndex={0}
+      onClick={() => onPlay(lesson)}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onPlay(lesson); }}
     >
       <div className={`${styles.cardIcon} ${styles[cfg.iconWrapClass]}`}>
         <LessonIcon status={lesson.status} />
@@ -292,7 +274,7 @@ function LessonCard({ lesson, onPlay, onLocked }) {
         </div>
       </div>
 
-      <ActionBtn status={lesson.status} onClick={() => onPlay(lesson)} />
+      <ActionBtn onClick={(event) => { event.stopPropagation(); onPlay(lesson); }} />
     </div>
   );
 }
@@ -312,7 +294,6 @@ function ClassroomContentCard({ lesson, navigate, moduleTitle = null }) {
 
 function LessonSection() {
   const navigate = useNavigate();
-  const toast = useToast();
   const [progressLessons, setProgressLessons] = useState([]);
   const [lessonSeed, setLessonSeed] = useState([]);
   const [classroomLessons, setClassroomLessons] = useState([]);
@@ -374,10 +355,6 @@ function LessonSection() {
     }
   };
 
-  const handleLocked = () => {
-    toast.warning("This lesson is locked. Finish the current lesson to unlock it.");
-  };
-
   const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;
   const teacherMaterials = classroomLessons.filter((lesson) => lesson.contentType !== "assignment");
   const teacherAssignments = classroomLessons.filter((lesson) => lesson.contentType === "assignment");
@@ -396,14 +373,14 @@ function LessonSection() {
             <div className={styles.topTitle}>{activeLesson.title}</div>
             <div className={styles.topSub}>{activeLesson.region}</div>
           </div>
-          <button className={styles.btnContinue} onClick={() => handlePlay(activeLesson)}>
-            <PlayArrowIcon sx={{ fontSize: 16, color: "#fff" }} />
-            Continue Game
-          </button>
+          <div className={styles.currentActions}>
+            <button className={styles.btnContinue} onClick={() => handlePlay(activeLesson)}><FiArrowRight /> Continue Learning</button>
+            <button className={styles.btnGame} onClick={() => navigate("/Map")}><PlayArrowIcon sx={{ fontSize: 16 }} /> Continue Game</button>
+          </div>
         </div>
 
         <div className={styles.sectionHead}>
-          <div className={styles.sectionTitle}>All lessons</div>
+          <div className={styles.sectionTitle}>Built-in SharpRunner Lessons</div>
           <div className={styles.sectionCount}>
             {completedCount} / {lessons.length} completed
           </div>
@@ -415,7 +392,6 @@ function LessonSection() {
               key={lesson.id}
               lesson={lesson}
               onPlay={handlePlay}
-              onLocked={handleLocked}
             />
           ))}
         </div>

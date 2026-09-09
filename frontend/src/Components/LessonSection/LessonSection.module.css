@@ -87,6 +87,20 @@
   background: #16304f;
 }
 
+.currentActions { display: flex; gap: 9px; align-items: center; }
+.btnGame { display:flex;align-items:center;gap:7px;background:#fff;color:#26547c;border:1px solid #9fb4c6;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap; }
+.btnGame:hover { background:#eef4f8; }
+.openModuleBtn { align-self:center;display:flex;align-items:center;gap:7px;border:1px solid #8ca9be;background:#fff;color:#26547c;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap; }
+.openModuleBtn:hover { background:#eaf3f9; }
+.lessonCard[role="link"] { cursor:pointer; }
+.lessonCard[role="link"]:focus-visible { outline:3px solid #80b8e5;outline-offset:2px; }
+
+@media (max-width: 640px) {
+  .currentActions { width:100%; }
+  .currentActions button { flex:1;justify-content:center;padding-left:8px;padding-right:8px; }
+  .openModuleBtn { justify-content:center; }
+}
+
 /* ── Section heading ──────────────────── */
 .sectionHead {
   display: flex;

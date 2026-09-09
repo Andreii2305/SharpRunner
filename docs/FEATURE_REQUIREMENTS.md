@@ -306,3 +306,31 @@ SharpRunner currently prioritizes a stable classroom-based learning loop:
 6. Admin manages system users.
 
 The next strongest improvement is completing the remaining Lesson 1 levels so the app can demonstrate a full start-to-finish learning chapter.
+## Built-in Learning Modules
+
+SharpRunner's standardized curriculum follows a module-first student flow:
+
+`Learn → Examples → Practice → Quick Check → Apply in Game`
+
+The five built-in modules are C# Foundations, Arrays, Functions and Methods,
+Functions with Arrays, and Final Review / Bakunawa Eclipse. Built-in cards on
+the Lessons page open a reusable module reader before the game map. Each module
+contains learning objectives, concept explanations, multiple worked examples,
+common mistakes, hidden practice solutions, retryable non-graded checks, a
+summary, explicit connections to the live game levels, and a Start Adventure
+action. The game remains available through Continue Game and its existing
+progression rules remain authoritative.
+
+Module reading progress is separate from game progress. The client stores a
+user-scoped record of completed sections, completed checks, and the last opened
+section so a returning student can resume. This record never changes score, XP,
+grades, hints, attempts, timers, due dates, or level unlocks.
+
+Built-in SharpRunner Lessons and Modules and lessons from your teacher remain
+separate sections. Teacher-created modules, lessons, resources, and assignments
+remain supplemental classroom content and use the existing classroom system.
+
+External sources appear only in the understated References footer at the very
+bottom of each built-in module, after the summary and Start Adventure call to
+action. Each footer includes relevant Microsoft Learn sources and the CodeChum
+course-material alignment reference; no private CodeChum URL is invented.

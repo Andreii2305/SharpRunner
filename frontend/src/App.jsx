@@ -29,6 +29,7 @@ const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage.jsx"
 const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
 const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEditorPage.jsx"));
 const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPage.jsx"));
+const BuiltInModulePage = lazy(() => import("./pages/student/BuiltInModulePage.jsx"));
 
 const gameRouteFallback = (
   <div role="status" aria-live="polite" style={{ padding: "2rem", textAlign: "center" }}>
@@ -203,6 +204,7 @@ function App() {
 
         {/* ── Auth / misc ── */}
         <Route path="/lesson" element={<LessonSection />} />
+        <Route path="/lesson/built-in/:moduleId" element={<BuiltInModulePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/developer" element={<DeveloperPage />} />

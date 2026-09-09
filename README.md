@@ -361,3 +361,18 @@ SharpRunner is developed by Andrei Jay Amoroto.
 ## Preview
 
 ![SharpRunner](frontend/public/sharprunner.png)
+## Built-in Curriculum Learning Flow
+
+The student Lessons page separates standardized **Built-in SharpRunner
+Lessons** from supplemental teacher-created modules and lessons. Opening one of
+the five built-in cards now starts a responsive learning module:
+
+`Learn → Examples → Practice → Quick Check → Apply in Game`
+
+The shared reader supports structured prose, lists, highlighted and copyable C#
+examples, output panels, notes and warnings, diagrams, hidden solutions,
+retryable formative checks, section navigation, summaries, and a final game
+launch action. Module reading progress and resume location are stored separately
+from academic game progress. References are shown only at the bottom of each
+module and include topic-specific Microsoft Learn sources plus the CodeChum
+curriculum-alignment reference.

@@ -40,6 +40,9 @@ const titleCase = (value = "") => value
   .join(" ");
 
 const getStudentName = (student) => titleCase(student.studentName || student.username || "Student");
+const getStudentSections = (student) => student.sections?.length
+  ? student.sections
+  : [student.section].filter(Boolean);
 
 const getPerformance = (student) => {
   const progress = clampPercent(student.progressPercent);
@@ -53,7 +56,9 @@ const PAGE_SIZE = 8;
 
 function TeacherStudentsPage() {
   const [students, setStudents]     = useState([]);
+  const [overview, setOverview]     = useState(null);
   const [isLoading, setIsLoading]   = useState(true);
+  const [loadError, setLoadError]   = useState("");
   const [filter, setFilter]         = useState("all");
   const [search, setSearch]         = useState("");
   const [performanceFilter, setPerformanceFilter] = useState("all");
@@ -69,23 +74,29 @@ function TeacherStudentsPage() {
   useEffect(() => {
     (async () => {
       setIsLoading(true);
+      setLoadError("");
       try {
         const res = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
           headers: getAuthHeaders(),
         });
         setStudents(res.data?.studentPerformance ?? []);
+        setOverview(res.data?.overview ?? null);
+      } catch (error) {
+        setLoadError(error.response?.data?.message ?? "Failed to load students.");
       } finally {
         setIsLoading(false);
       }
     })();
   }, []);
 
-  const sections = [...new Set(students.map((s) => s.section).filter(Boolean))];
-  const sectionStudents = filter === "all" ? students : students.filter((s) => s.section === filter);
+  const sections = [...new Set(students.flatMap(getStudentSections))];
+  const sectionStudents = filter === "all"
+    ? students
+    : students.filter((student) => getStudentSections(student).includes(filter));
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     const matching = sectionStudents.filter((student) => {
-      const matchesSearch = !query || [student.studentName, student.username, student.section, student.classroomName]
+      const matchesSearch = !query || [student.studentName, student.username, getStudentSections(student).join(" "), student.classroomNames?.join(" ") || student.classroomName]
         .some((value) => String(value || "").toLowerCase().includes(query));
       const matchesPerformance = performanceFilter === "all" || getPerformance(student).key === performanceFilter;
       return matchesSearch && matchesPerformance;
@@ -201,7 +212,7 @@ function TeacherStudentsPage() {
           body: filtered.map((s) => [
             s.rank ?? "—",
             s.studentName || s.username,
-            s.section || "—",
+            getStudentSections(s).join(", ") || "—",
             `${clampPercent(s.progressPercent)}%`,
             s.avgScore != null ? s.avgScore : "—",
           ]),
@@ -229,7 +240,7 @@ function TeacherStudentsPage() {
             const byKey  = new Map(grades.map((g) => [g.levelKey, g]));
             return [
               s.studentName || s.username,
-              s.section || "—",
+              getStudentSections(s).join(", ") || "—",
               ...levelCols.map((l) => {
                 const g = byKey.get(l.levelKey);
                 return g?.isCompleted && g?.finalScore != null ? g.finalScore : "—";
@@ -256,7 +267,7 @@ function TeacherStudentsPage() {
             const grades = gradesMap.get(s.userId) ?? [];
             return [
               s.studentName || s.username,
-              s.section || "—",
+              getStudentSections(s).join(", ") || "—",
               ...lessonCols.map((l) => computeLessonAvg(grades, l.key) ?? "—"),
               s.avgScore ?? "—",
             ];
@@ -282,7 +293,7 @@ function TeacherStudentsPage() {
           ...filtered.map((s) => [
             s.rank ?? "",
             s.studentName || s.username,
-            s.section || "",
+            getStudentSections(s).join(", "),
             clampPercent(s.progressPercent),
             s.avgScore ?? "",
           ]),
@@ -301,7 +312,7 @@ function TeacherStudentsPage() {
             const byKey  = new Map(grades.map((g) => [g.levelKey, g]));
             return [
               s.studentName || s.username,
-              s.section || "",
+              getStudentSections(s).join(", "),
               ...levelCols.map((l) => {
                 const g = byKey.get(l.levelKey);
                 return g?.isCompleted && g?.finalScore != null ? g.finalScore : "";
@@ -323,7 +334,7 @@ function TeacherStudentsPage() {
             const grades = gradesMap.get(s.userId) ?? [];
             return [
               s.studentName || s.username,
-              s.section || "",
+              getStudentSections(s).join(", "),
               ...lessonCols.map((l) => computeLessonAvg(grades, l.key) ?? ""),
               s.avgScore ?? "",
             ];
@@ -377,7 +388,7 @@ function TeacherStudentsPage() {
                   <div className={pgStyles.stuAv}>{getStudentName(student).split(" ").map((part) => part[0]).join("").slice(0, 2)}</div>
                   <button type="button" className={pgStyles.studentNameBtn} onClick={() => openGrades(student)}>{getStudentName(student)}</button>
                 </div></td>
-                <td>{student.section || "No section"}</td>
+                <td>{getStudentSections(student).join(", ") || "No section"}</td>
                 <td><div className={pgStyles.progressCell}>
                   <div className={styles.miniBarTrack} style={{ width: 92 }} aria-hidden="true"><div className={styles.miniBarFill} style={{ width: `${clampPercent(student.progressPercent)}%` }} /></div>
                   <span className={pgStyles.progressPct}>{clampPercent(student.progressPercent)}%</span>
@@ -438,7 +449,7 @@ function TeacherStudentsPage() {
                         <span>{s.studentName || s.username}</span>
                       </div>
                     </td>
-                    <td>{s.section}</td>
+                    <td>{getStudentSections(s).join(", ") || "—"}</td>
                     {levelCols.map((l) => {
                       const g = byKey.get(l.levelKey);
                       const score = g?.isCompleted && g?.finalScore != null ? g.finalScore : null;
@@ -498,7 +509,7 @@ function TeacherStudentsPage() {
                         <span>{s.studentName || s.username}</span>
                       </div>
                     </td>
-                    <td>{s.section}</td>
+                    <td>{getStudentSections(s).join(", ") || "—"}</td>
                     {lessonCols.map((l) => {
                       const avg = computeLessonAvg(grades, l.key);
                       return (
@@ -547,13 +558,13 @@ function TeacherStudentsPage() {
           </div>
 
           <div className={styles.body}>
-            <section className={pgStyles.summaryGrid} aria-label="Student overview">
-              <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiUsers /></span><div><strong>{sectionStudents.length}</strong><span>Total students</span><small>{filter === "all" ? `${sections.length} section${sections.length === 1 ? "" : "s"}` : filter}</small></div></div>
+            {isLoading ? <div className={styles.loadingText}>Loading student totals...</div> : loadError ? <div className={styles.emptyText} role="alert">{loadError}</div> : <section className={pgStyles.summaryGrid} aria-label="Student overview">
+              <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiUsers /></span><div><strong>{overview?.totalStudents ?? students.length}</strong><span>Total students</span><small>{overview?.totalClassrooms ?? 0} active classroom{overview?.totalClassrooms === 1 ? "" : "s"}</small></div></div>
               <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiTrendingUp /></span><div><strong>{averageProgress}%</strong><span>Average progress</span><small>Across assigned levels</small></div></div>
               <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiBookOpen /></span><div><strong>{averageScore == null ? "—" : `${averageScore}%`}</strong><span>Class average</span><small>{scoredStudents.length} with graded work</small></div></div>
               <div className={`${pgStyles.summaryCard} ${attentionStudents.length ? pgStyles.summaryWarning : ""}`}><span className={pgStyles.summaryIcon}><FiAlertCircle /></span><div><strong>{attentionStudents.length}</strong><span>Need attention</span><small>Below 25% progress</small></div></div>
               <div className={pgStyles.summaryCard}><span className={pgStyles.summaryIcon}><FiActivity /></span><div><strong>{activeNow}</strong><span>Playing now</span><small>Live game activity</small></div></div>
-            </section>
+            </section>}
 
             <div className={styles.card}>
               {/* Tab navigation */}
@@ -609,6 +620,8 @@ function TeacherStudentsPage() {
               {/* Tab content */}
               {isLoading ? (
                 <div className={styles.loadingText}>Loading students…</div>
+              ) : loadError ? (
+                <div className={styles.emptyText} role="alert">Student data is unavailable. Please try again.</div>
               ) : (
                 <>
                   {activeTab === "list"      && renderList()}

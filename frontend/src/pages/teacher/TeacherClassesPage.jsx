@@ -44,6 +44,7 @@ function TeacherClassesPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const [classPerformance, setClassPerformance] = useState([]);
+  const [overview, setOverview] = useState({ totalStudents: 0, totalClassrooms: 0 });
   const [copiedCode, setCopiedCode] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -75,10 +76,20 @@ function TeacherClassesPage() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
-        headers: getAuthHeaders(),
-      });
-      setClassPerformance(res.data?.classPerformance ?? []);
+      const config = { headers: getAuthHeaders() };
+      const [dashboardResponse, classroomsResponse] = await Promise.all([
+        axios.get(buildApiUrl("/api/teacher/dashboard"), config),
+        axios.get(buildApiUrl("/api/teacher/classrooms"), config),
+      ]);
+      const dashboardRows = dashboardResponse.data?.classPerformance ?? [];
+      const performanceById = new Map(dashboardRows.map((item) => [item.classId, item]));
+      const allClassrooms = classroomsResponse.data?.classrooms ?? [];
+      setClassPerformance(allClassrooms.map((classroom) => performanceById.get(classroom.id) ?? {
+        ...classroom,
+        classId: classroom.id,
+        averageProgressPercent: 0,
+      }));
+      setOverview(dashboardResponse.data?.overview ?? { totalStudents: 0, totalClassrooms: 0 });
     } finally {
       setIsLoading(false);
     }
@@ -127,9 +138,10 @@ function TeacherClassesPage() {
     return map;
   }, [classPerformance]);
 
-  const totalStudents = classPerformance.reduce((sum, c) => sum + (c.studentCount ?? 0), 0);
-  const avgProgress = classPerformance.length === 0 ? 0 : Math.round(
-    classPerformance.reduce((sum, c) => sum + (c.averageProgressPercent ?? 0), 0) / classPerformance.length
+  const activeClassPerformance = classPerformance.filter((item) => item.isActive !== false);
+  const totalStudents = overview.totalStudents;
+  const avgProgress = activeClassPerformance.length === 0 ? 0 : Math.round(
+    activeClassPerformance.reduce((sum, c) => sum + (c.averageProgressPercent ?? 0), 0) / activeClassPerformance.length
   );
 
   const classAnalytics = useMemo(() => {
@@ -181,12 +193,12 @@ function TeacherClassesPage() {
           {!isLoading && classPerformance.length > 0 && (
             <div className={pgStyles.summaryRow}>
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{classPerformance.length}</span>
-                <span className={pgStyles.summaryLbl}>Classes</span>
+                <span className={pgStyles.summaryVal}>{overview.totalClassrooms}</span>
+                <span className={pgStyles.summaryLbl}>Active Classes</span>
               </div>
               <div className={pgStyles.summaryChip}>
                 <span className={pgStyles.summaryVal}>{totalStudents}</span>
-                <span className={pgStyles.summaryLbl}>Total Students</span>
+                <span className={pgStyles.summaryLbl}>Unique Students</span>
               </div>
               <div className={pgStyles.summaryChip}>
                 <span className={pgStyles.summaryVal}>{avgProgress}%</span>

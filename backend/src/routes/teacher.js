@@ -13,6 +13,7 @@ const {
   PLAYABLE_LEVEL_KEYS,
 } = require("../constants/progressDefaults");
 const { ensureProgressRowsForUser } = require("../services/progressService");
+const { getTeacherStudentScope } = require("../services/teacherStudentScopeService");
 const LevelContentOverride = require("../models/LevelContentOverride");
 const StudentLevelExtension = require("../models/StudentLevelExtension");
 const ClassroomLesson = require("../models/ClassroomLesson");
@@ -37,7 +38,6 @@ const { getEffectiveDueAt } = require("../services/levelAccessService");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
-const MAX_STUDENT_ROWS = 10;
 const CLASS_CODE_LENGTH = 6;
 const CLASS_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
@@ -252,9 +252,14 @@ const buildDefaultLessonStats = () =>
 
 const buildDashboardPayload = async (req) => {
   const scopeWhere = buildScopeWhere(req);
-  const classrooms = await Classroom.findAll({
-    where: scopeWhere,
-    attributes: [
+  const {
+    classrooms,
+    memberships: validMemberships,
+    students,
+    studentsById,
+  } = await getTeacherStudentScope({
+    classroomWhere: scopeWhere,
+    classroomAttributes: [
       "id",
       "className",
       "section",
@@ -266,7 +271,6 @@ const buildDashboardPayload = async (req) => {
       "isActive",
       "createdAt",
     ],
-    order: [["createdAt", "DESC"]],
   });
 
   if (classrooms.length === 0) {
@@ -296,42 +300,6 @@ const buildDashboardPayload = async (req) => {
   }
 
   const classroomIds = classrooms.map((classroom) => classroom.id);
-  const memberships = await ClassroomMembership.findAll({
-    where: {
-      classroomId: { [Op.in]: classroomIds },
-      status: "active",
-    },
-    attributes: ["classroomId", "studentId", "joinedAt", "updatedAt"],
-    order: [["updatedAt", "DESC"]],
-  });
-
-  const studentIds = Array.from(new Set(memberships.map((membership) => membership.studentId)));
-  const students = studentIds.length
-    ? await User.findAll({
-        where: {
-          id: { [Op.in]: studentIds },
-          role: "student",
-        },
-        attributes: [
-          "id",
-          "firstName",
-          "lastName",
-          "username",
-          "status",
-          "isPlayingGame",
-          "lastGameHeartbeatAt",
-          "gamificationPreference",
-          "createdAt",
-          "updatedAt",
-        ],
-      })
-    : [];
-
-  const studentsById = new Map(students.map((student) => [student.id, student]));
-  const validMemberships = memberships.filter((membership) =>
-    studentsById.has(membership.studentId)
-  );
-
   const validStudentIds = Array.from(
     new Set(validMemberships.map((membership) => membership.studentId))
   );
@@ -383,12 +351,18 @@ const buildDashboardPayload = async (req) => {
 
   const classroomById = new Map(classrooms.map((classroom) => [classroom.id, classroom]));
   const firstMembershipByStudent = new Map();
+  const membershipsByStudent = new Map();
   const studentIdsByClassroom = new Map(classroomIds.map((id) => [id, new Set()]));
 
   for (const membership of validMemberships) {
     if (!firstMembershipByStudent.has(membership.studentId)) {
       firstMembershipByStudent.set(membership.studentId, membership);
     }
+
+    if (!membershipsByStudent.has(membership.studentId)) {
+      membershipsByStudent.set(membership.studentId, []);
+    }
+    membershipsByStudent.get(membership.studentId).push(membership);
 
     studentIdsByClassroom.get(membership.classroomId)?.add(membership.studentId);
   }
@@ -461,6 +435,9 @@ const buildDashboardPayload = async (req) => {
     const classroom = firstMembership
       ? classroomById.get(firstMembership.classroomId)
       : null;
+    const classroomAssociations = (membershipsByStudent.get(studentId) ?? [])
+      .map((membership) => classroomById.get(membership.classroomId))
+      .filter(Boolean);
     const progressPercent =
       stats.levelCount === 0 ? 0 : Math.round(stats.totalProgress / stats.levelCount);
     const lastActivityAt =
@@ -483,6 +460,9 @@ const buildDashboardPayload = async (req) => {
       username: student.username,
       section: classroom?.section ?? DEFAULT_SECTION_NAME,
       classroomName: classroom?.className ?? "No classroom",
+      classroomIds: classroomAssociations.map((item) => item.id),
+      classroomNames: [...new Set(classroomAssociations.map((item) => item.className))],
+      sections: [...new Set(classroomAssociations.map((item) => item.section))],
       progressPercent,
       avgScore: stats.scoredLevels > 0
         ? Math.round(stats.totalScore / stats.scoredLevels * 10) / 10
@@ -554,7 +534,6 @@ const buildDashboardPayload = async (req) => {
 
       return b.completedLevels - a.completedLevels;
     })
-    .slice(0, MAX_STUDENT_ROWS)
     .map((student, index) => ({
       rank: index + 1,
       ...student,
@@ -686,23 +665,14 @@ router.get("/students/:studentId/grades", async (req, res) => {
 router.get("/classrooms", async (req, res) => {
   try {
     const scopeWhere = buildScopeWhere(req);
-    const classrooms = await Classroom.findAll({
-      where: scopeWhere,
-      order: [["createdAt", "DESC"]],
+    const { classrooms, memberships } = await getTeacherStudentScope({
+      classroomWhere: scopeWhere,
+      includeArchivedClassrooms: true,
     });
 
     if (classrooms.length === 0) {
       return res.json({ total: 0, classrooms: [] });
     }
-
-    const classIds = classrooms.map((classroom) => classroom.id);
-    const memberships = await ClassroomMembership.findAll({
-      where: {
-        classroomId: { [Op.in]: classIds },
-        status: "active",
-      },
-      attributes: ["classroomId", "studentId"],
-    });
 
     const studentCountByClassId = new Map();
     for (const membership of memberships) {

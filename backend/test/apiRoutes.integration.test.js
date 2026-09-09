@@ -124,6 +124,68 @@ test("GET /api/auth/me rejects an access token after its session version is revo
   });
 });
 
+test("teacher dashboard uses unique active students from active classrooms without truncating rows", async () => {
+  const classrooms = Array.from({ length: 5 }, (_, index) => ({
+    id: index + 1,
+    className: `Class ${index + 1}`,
+    section: `Section ${index + 1}`,
+    schoolYear: "2026-2027",
+    maxStudents: 30,
+    description: null,
+    classCode: `CODE${index + 1}`,
+    teacherId: 4,
+    isActive: true,
+    createdAt: new Date(),
+  }));
+  const students = Array.from({ length: 12 }, (_, index) => activeUser({
+    id: index + 1,
+    username: `student-${index + 1}`,
+    firstName: "Student",
+    lastName: String(index + 1),
+    isPlayingGame: false,
+    lastGameHeartbeatAt: null,
+    gamificationPreference: null,
+  }));
+  const memberships = students.map((student, index) => ({
+    classroomId: (index % 2) + 1,
+    studentId: student.id,
+    joinedAt: new Date(),
+    updatedAt: new Date(),
+  }));
+  memberships.push({ classroomId: 2, studentId: 1, joinedAt: new Date(), updatedAt: new Date() });
+
+  await withStubs([
+    [User, "findByPk", async () => activeUser({ id: 4, role: "teacher" })],
+    [Classroom, "findAll", async (options) => {
+      assert.equal(options.where.teacherId, 4);
+      assert.equal(options.where.isActive, true);
+      return classrooms;
+    }],
+    [ClassroomMembership, "findAll", async (options) => {
+      assert.equal(options.where.status, "active");
+      return memberships;
+    }],
+    [User, "findAll", async (options) => {
+      assert.equal(options.where.role, "student");
+      assert.equal(options.where.status, "active");
+      return students;
+    }],
+    [UserProgress, "findAll", async (options) => options.group
+      ? students.map((student) => ({ userId: student.id, rowCount: 100 }))
+      : []],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/dashboard", {
+      token: authToken(4, "teacher"),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.overview.totalStudents, 12);
+    assert.equal(payload.overview.totalClassrooms, 5);
+    assert.equal(payload.studentPerformance.length, 12);
+    assert.deepEqual(payload.studentPerformance.find((student) => student.userId === 1).sections.sort(), ["Section 1", "Section 2"]);
+  });
+});
+
 test("POST /api/classrooms/join creates an active membership", async () => {
   const classroom = {
     id: 9,

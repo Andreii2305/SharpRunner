@@ -329,6 +329,8 @@ or provider backup.
 - `/developer` - developer admin-invite tools
 - `/admin-invite` - admin invite registration
 
+Teacher-facing `Total Students` metrics count unique active student accounts with an active membership in one or more active classrooms managed by the current teacher. Archived classrooms, removed memberships, and inactive or archived student accounts are excluded from current totals.
+
 ### Backend
 
 - `/api/auth`

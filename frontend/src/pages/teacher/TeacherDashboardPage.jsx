@@ -168,6 +168,7 @@ function TeacherDashboardPage() {
   const [dashData, setDashData] = useState(null);
   const [annData, setAnnData] = useState({ classrooms: [], announcements: [] });
   const [isLoading, setIsLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
   const [isLoadingAnn, setIsLoadingAnn] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -244,11 +245,14 @@ function TeacherDashboardPage() {
   useEffect(() => {
     (async () => {
       setIsLoading(true);
+      setDashboardError("");
       try {
         const res = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
           headers: getAuthHeaders(),
         });
         setDashData(res.data);
+      } catch (error) {
+        setDashboardError(error.response?.data?.message ?? "Failed to load dashboard totals.");
       } finally {
         setIsLoading(false);
       }
@@ -393,7 +397,7 @@ function TeacherDashboardPage() {
 
         <div className={styles.body}>
           {/* Stat cards */}
-          <div className={styles.statRow}>
+          {isLoading ? <div className={styles.loadingText}>Loading overview...</div> : dashboardError ? <div className={styles.emptyText} role="alert">{dashboardError}</div> : <div className={styles.statRow}>
             <div
               className={styles.statCard}
               style={{ background: "#1e3a5f", borderColor: "#1e3a5f" }}
@@ -442,7 +446,7 @@ function TeacherDashboardPage() {
               </div>
               <div className={styles.statSub}>students online now</div>
             </div>
-          </div>
+          </div>}
 
           <div className={styles.card}>
             <div className={styles.sectionHead}>

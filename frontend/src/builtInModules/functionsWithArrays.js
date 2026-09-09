@@ -1,4 +1,4 @@
-import { check, code, codeChumReference, connection, diagram, list, microsoft, note, p, practice } from "./moduleHelpers.js";
+import { check, code, codeChumReference, connection, diagram, heading, list, microsoft, note, p, practice } from "./moduleHelpers.js";
 
 export default {
   id: "functions-with-arrays", title: "Functions with Arrays", eyebrow: "Built-in curriculum · Tikbalang Crossing",
@@ -13,9 +13,11 @@ export default {
       note("Integration goal", "This module assumes you know indexing, loops, parameters, calls, and return values. It focuses on connecting those ideas."),
     ]},
     { id: "passing-1d", title: "Passing a 1D array", blocks: [
-      p("An int[] parameter can receive a complete one-dimensional integer array. The call passes the array name without brackets."),
+      heading("From caller to method"),
+      p("An int[] parameter can receive a complete one-dimensional integer array. The call passes the array variable name without brackets because it is passing the whole array, not selecting one element."),
       code("static void ShowCharms(int[] charms)\n{\n    foreach (int charm in charms)\n    {\n        Console.WriteLine(charm);\n    }\n}\n\nint[] powers = { 10, 20, 30 };\nShowCharms(powers);", "10\n20\n30"),
       diagram(["Step", "Data"], [["Array", "powers"], ["Passed to method", "ShowCharms(powers)"], ["Method loops", "each charm"], ["Result", "each value displayed"]], "One argument carries the whole array."),
+      note("Why is the output 10, 20, 30?", "powers refers to all three values. ShowCharms receives that array as charms, and foreach visits each element in its original order."),
       code('static void ShowClues(string[] clues)\n{\n    foreach (string clue in clues)\n        Console.WriteLine(clue);\n}\n\nstring[] trail = { "river", "tree" };\nShowClues(trail);', "river\ntree", "A different element type"),
       connection("Process the Lantern Line requires one int[] argument and complete traversal inside a void method."),
     ]},
@@ -28,6 +30,7 @@ export default {
       p("A processing method can build one result while it traverses and return that result after the loop."),
       code("static int CountStrongCharms(int[] charms)\n{\n    int count = 0;\n\n    foreach (int charm in charms)\n    {\n        if (charm >= 50)\n        {\n            count++;\n        }\n    }\n\n    return count;\n}\n\nint[] values = { 20, 50, 80 };\nint strong = CountStrongCharms(values);\nConsole.WriteLine(strong);", "2"),
       code("static int CountStrongCharms(int[] charms)\n{\n    int count = 0;\n    foreach (int charm in charms)\n        if (charm >= 50) count++;\n    return count;\n}\n\nint[] secondSet = { 60, 10, 55, 5 };\nConsole.WriteLine(CountStrongCharms(secondSet));", "2", "Same method, different values"),
+      list("count begins at 0 before traversal.", "foreach checks every value.", "The condition is true for 50 and 80 in the first example.", "count++ adds one for each match.", "return runs after the loop and sends the final count to the caller."),
       note("Pattern", "Initialize the counter before the loop, test each element, increment only for a match, and return after traversal."),
       connection("Count the Cursed Charms validates this structure with a parallel condition and data set."),
     ]},
@@ -46,7 +49,7 @@ export default {
     { id: "return-2d", title: "Returning a result from a grid", blocks: [
       p("Use nested loops to inspect every cell. Keep the accumulator outside both loops so it is not reset while traversal continues."),
       code("static int CountOpenCells(int[,] map)\n{\n    int open = 0;\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            if (map[row, col] == 1) open++;\n        }\n    }\n    return open;\n}\n\nint[,] map = { { 1, 0, 1 }, { 0, 1, 0 } };\nConsole.WriteLine(CountOpenCells(map));", "3"),
-      code("int[,] smallMap = { { 1, 1 }, { 1, 0 } };\nConsole.WriteLine(CountOpenCells(smallMap));", "3", "Reuse with a second grid"),
+      code("int[,] smallMap = { { 1, 1 }, { 1, 0 } };\nConsole.WriteLine(CountOpenCells(smallMap));", "3", "Reuse with a second grid", false),
       connection("Ancient Cemetery of the Forgotten Spirits requires safe nested traversal, matching-value counting, and a returned result."),
     ]},
     { id: "mistakes", title: "Common integration mistakes", blocks: [
@@ -54,8 +57,8 @@ export default {
       check("fa-whole-array", "Which call passes the complete array powers?", ["ShowCharms(powers);", "ShowCharms(powers[0]);", "ShowCharms(int);"], 0, "Use the array variable name to pass the complete array."),
     ]},
     { id: "practice", title: "Practice and assessment", blocks: [
-      practice("Write SumValues(int[] values) so it traverses the array and returns the total.", "static int SumValues(int[] values)\n{\n    int total = 0;\n    foreach (int value in values)\n    {\n        total += value;\n    }\n    return total;\n}"),
-      practice("Write ShowMap(int[,] map) with safe nested loops that display every cell.", "static void ShowMap(int[,] map)\n{\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            Console.WriteLine(map[row, col]);\n        }\n    }\n}"),
+      practice("fa-sum", "Complete SumValues so it returns the total, then run the supplied call.", "static int SumValues(int[] values)\n{\n    int total = 0;\n    foreach (int value in values)\n    {\n        // Add value to total\n    }\n    return total;\n}\n\nConsole.WriteLine(SumValues(new int[] { 3, 4, 5 }));", "static int SumValues(int[] values)\n{\n    int total = 0;\n    foreach (int value in values)\n    {\n        total += value;\n    }\n    return total;\n}\n\nConsole.WriteLine(SumValues(new int[] { 3, 4, 5 }));", "12"),
+      practice("fa-grid", "Complete ShowMap so its nested loops display every cell.", "static void ShowMap(int[,] map)\n{\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            // Display the current cell\n        }\n    }\n}\n\nShowMap(new int[,] { { 1, 2 }, { 3, 4 } });", "static void ShowMap(int[,] map)\n{\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            Console.WriteLine(map[row, col]);\n        }\n    }\n}\n\nShowMap(new int[,] { { 1, 2 }, { 3, 4 } });", "1\n2\n3\n4"),
       check("fa-counter", "Where should a counter usually be initialized?", ["Before the traversal loops", "Inside the innermost loop", "After return"], 0, "Initialize it before traversal so earlier matches are preserved."),
       check("fa-grid-bounds", "What gives the number of columns in grid?", ["grid.Length", "grid.GetLength(0)", "grid.GetLength(1)"], 2, "Dimension 1 is the column dimension."),
     ]},

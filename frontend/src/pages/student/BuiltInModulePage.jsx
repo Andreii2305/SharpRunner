@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { FiArrowLeft, FiArrowRight, FiCheck, FiCheckCircle, FiChevronDown, FiClipboard, FiExternalLink, FiPlay, FiXCircle } from "react-icons/fi";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
+import PracticeCompiler from "../../Components/PracticeCompiler/PracticeCompiler.jsx";
 import { getBuiltInModule } from "../../builtInModules/index.js";
 import { calculateModulePercent, readModuleProgress, writeModuleProgress } from "../../builtInModules/progress.js";
 import styles from "./BuiltInModulePage.module.css";
@@ -36,15 +37,14 @@ function CodeBlock({ block }) {
   return <figure className={styles.codeCard}>
     <figcaption><span>{block.title}</span><button type="button" onClick={copy} aria-label={`Copy ${block.title}`}><FiClipboard /> {copied ? "Copied" : "Copy"}</button></figcaption>
     <pre><code><HighlightedCode value={block.value} /></code></pre>
-    {block.output != null && <div className={styles.output}><strong>Output</strong><pre>{block.output}</pre></div>}
+    {block.output != null && <div className={styles.expectedOutput}><strong>Expected output</strong><pre>{block.output}</pre></div>}
+    {block.runnable && <PracticeCompiler code={block.value} expectedOutput={block.output} showEditor={false} />}
   </figure>;
 }
 
-function PracticeBlock({ block }) {
-  const [shown, setShown] = useState(false);
+function PracticeBlock({ block, storageId }) {
   return <div className={styles.practice}><span className={styles.blockLabel}>Try it yourself</span><p>{block.prompt}</p>
-    <button type="button" onClick={() => setShown((value) => !value)}>{shown ? "Hide solution" : "Show solution"}</button>
-    {shown && <CodeBlock block={{ title: "One possible solution", value: block.solution }} />}
+    <PracticeCompiler code={block.starterCode} editable expectedOutput={block.expectedOutput} solution={block.solution} label="Run code" storageId={storageId} />
   </div>;
 }
 
@@ -64,12 +64,13 @@ function CheckBlock({ block, completed, onComplete }) {
   </fieldset>;
 }
 
-function ContentBlock({ block, progress, onCheckComplete }) {
+function ContentBlock({ block, progress, onCheckComplete, storageId }) {
+  if (block.type === "heading") return <h3>{block.text}</h3>;
   if (block.type === "paragraph") return <p>{block.text}</p>;
   if (block.type === "list") return <ul>{block.items.map((item) => <li key={item}>{item}</li>)}</ul>;
   if (block.type === "code") return <CodeBlock block={block} />;
   if (block.type === "note") return <aside className={`${styles.note} ${block.tone === "warning" ? styles.warning : ""}`}><strong>{block.label}</strong><p>{block.text}</p></aside>;
-  if (block.type === "practice") return <PracticeBlock block={block} />;
+  if (block.type === "practice") return <PracticeBlock block={block} storageId={storageId} />;
   if (block.type === "check") return <CheckBlock block={block} completed={progress.completedCheckIds.includes(block.id)} onComplete={onCheckComplete} />;
   if (block.type === "connection") return <aside className={styles.connection}><strong>Why this matters in SharpRunner</strong><p>{block.text}</p></aside>;
   if (block.type === "diagram") return <figure className={styles.diagram}><div className={styles.tableScroll}><table><thead><tr>{block.headers.map((header, index) => <th key={`${header}-${index}`}>{header}</th>)}</tr></thead><tbody>{block.rows.map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, index) => index === 0 ? <th scope="row" key={cell}>{cell}</th> : <td key={`${cell}-${index}`}>{cell}</td>)}</tr>)}</tbody></table></div><figcaption>{block.caption}</figcaption></figure>;
@@ -128,7 +129,7 @@ function BuiltInModulePage() {
       <article className={styles.lesson}>
         {sectionIndex === 0 && <div className={styles.intro}><p>{module.description}</p><h2>Learning objectives</h2><ul>{module.objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul></div>}
         <div className={styles.sectionKicker}>Section {sectionIndex + 1} of {module.sections.length}</div><h2>{section.title}</h2>
-        <div className={styles.blocks}>{section.blocks.map((block, index) => <ContentBlock key={`${block.type}-${block.id ?? index}`} block={block} progress={progress} onCheckComplete={completeCheck} />)}</div>
+        <div className={styles.blocks}>{section.blocks.map((block, index) => <ContentBlock key={`${block.type}-${block.id ?? index}`} block={block} progress={progress} onCheckComplete={completeCheck} storageId={`${module.id}:${section.id}:${block.id ?? index}`} />)}</div>
         <div className={styles.sectionNav}>
           <button type="button" disabled={sectionIndex === 0} onClick={() => setSectionIndex(sectionIndex - 1)}><FiArrowLeft /> Previous</button>
           <button type="button" className={styles.continue} onClick={finishSection}>{sectionIndex === module.sections.length - 1 ? "Finish module" : "Continue"}<FiArrowRight /></button>

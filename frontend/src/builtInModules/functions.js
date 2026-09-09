@@ -1,4 +1,4 @@
-import { check, code, codeChumReference, connection, diagram, list, microsoft, note, p, practice } from "./moduleHelpers.js";
+import { check, code, codeChumReference, connection, diagram, heading, list, microsoft, note, p, practice } from "./moduleHelpers.js";
 
 export default {
   id: "functions", title: "Functions and Methods", eyebrow: "Built-in curriculum · Kapre's Trail",
@@ -7,15 +7,20 @@ export default {
   objectives: ["Define and call a void method.", "Distinguish a method definition from a method call.", "Distinguish parameters from arguments.", "Return and store a value from a method.", "Trace a recursive method with a base case."],
   sections: [
     { id: "what-is-method", title: "What is a method?", blocks: [
-      p("A method is a named group of statements that performs a task. In C#, reusable functions defined inside a class or other type are commonly called methods. A clear method name describes the action or result."),
+      heading("What is a method?"),
+      p("A method is a named group of statements that performs one task. In C#, reusable functions defined inside a class or other type are commonly called methods. A clear method name describes the action or result, such as RingBell or CalculatePower."),
+      heading("Why methods matter"),
+      p("Methods let you solve a larger problem as smaller named jobs. You can call the same job more than once, change it in one place, and test it separately. They are useful whenever an action repeats or a calculation deserves a clear name."),
       code('static void RingBell()\n{\n    Console.WriteLine("Ding!");\n}', null, "A method definition"),
-      code("RingBell();", "Ding!", "A method call"),
+      list("static lets this example call the method from the program's static entry point.", "void says the method does not send a value back.", "RingBell is the method name.", "() is the parameter list; it is empty here.", "{ } contains the method body.", "Console.WriteLine is the statement that runs after a call."),
+      code("RingBell();", "Ding!", "A method call", false),
       note("Create versus call", "Creating the method defines its behavior. Calling the method makes that behavior run."),
       connection("The First Ritual validator requires both a method definition and a call."),
     ]},
     { id: "why-methods", title: "Why use methods?", blocks: [
       p("Methods divide a larger program into smaller jobs. They reduce repeated code, make intent easier to read, and let the same behavior run from more than one place."),
       code('static void ShowWarning()\n{\n    Console.WriteLine("Spirit nearby!");\n}\n\nShowWarning();\nShowWarning();', "Spirit nearby!\nSpirit nearby!"),
+      note("Why are there two output lines?", "The method is declared once but called twice. Each call starts the body and displays one line."),
       code('static void LightTorch()\n{\n    Console.WriteLine("Torch lit");\n}\n\nLightTorch();', "Torch lit", "One named action"),
       connection("Bell of Dawn focuses on calling prepared behavior, while the next shrine levels ask you to define and call it."),
     ]},
@@ -30,6 +35,7 @@ export default {
       p("A parameter is a named input in a method definition. An argument is the actual value supplied by a call."),
       code('static void ThrowSalt(int amount)\n{\n    Console.WriteLine($"Threw {amount} salt.");\n}\n\nThrowSalt(5);', "Threw 5 salt."),
       diagram(["Method call", "Parameter", "Received value"], [["ThrowSalt(5)", "amount", "5"]], "The argument 5 flows into the parameter amount."),
+      list("amount is the parameter: a name used by the method body.", "5 is the argument: the actual value supplied by this call.", "During this call, amount contains 5."),
       code('static void MarkPath(string direction, int steps)\n{\n    Console.WriteLine($"{direction}: {steps}");\n}\n\nMarkPath("east", 3);', "east: 3", "Two parameters"),
       note("Remember", "Argument order and types must match the parameter list."),
       connection("Shrine Offering and Salt Against the Aswang focus on a parameterized void method and its call."),
@@ -37,6 +43,7 @@ export default {
     { id: "return-values", title: "Return values", blocks: [
       p("A non-void method promises to send a value of its declared return type back to the caller. The return keyword supplies that value, and the caller can store it."),
       code("static int GetPower()\n{\n    return 50;\n}\n\nint power = GetPower();\nConsole.WriteLine(power);", "50"),
+      list("int before GetPower is the promised return type.", "return 50; ends the method and sends 50 to its caller.", "GetPower() calls the method.", "The returned 50 is stored in power before it is displayed."),
       code('static string FindPath()\n{\n    return "north";\n}\n\nstring path = FindPath();\nConsole.WriteLine(path);', "north"),
       note("Display is not return", "Console.WriteLine(50) displays 50. return 50 sends 50 back to the caller so the program can store or calculate with it."),
       connection("Oracle Stone returns an int, while Diwata's Safe Path returns a string."),
@@ -45,7 +52,7 @@ export default {
       p("A method can receive inputs, calculate with them, and return one result. This keeps the calculation reusable for different arguments."),
       code("static int AddPower(int basePower, int bonus)\n{\n    return basePower + bonus;\n}\n\nint total = AddPower(30, 20);\nConsole.WriteLine(total);", "50"),
       code("static int Double(int value)\n{\n    return value * 2;\n}\n\nConsole.WriteLine(Double(7));", "14", "Same pattern, different calculation"),
-      practice("Write a method named TotalCoins that receives two int values and returns their sum.", "static int TotalCoins(int first, int second)\n{\n    return first + second;\n}"),
+      practice("methods-total", "Complete TotalCoins, call it with 3 and 4, and display the result.", "static int TotalCoins(int first, int second)\n{\n    return 0; // Replace this value\n}\n\nConsole.WriteLine(TotalCoins(3, 4));", "static int TotalCoins(int first, int second)\n{\n    return first + second;\n}\n\nConsole.WriteLine(TotalCoins(3, 4));", "7"),
       connection("Anting-Anting Power and Healing Ritual validate int parameters, calculation, return, call, and stored result."),
     ]},
     { id: "scope", title: "Basic variable scope", blocks: [
@@ -67,8 +74,8 @@ export default {
       p("This displays 10 but does not satisfy the promise to return an int. The body needs return 10;."),
     ]},
     { id: "practice", title: "Practice and assessment", blocks: [
-      practice("Define and call a void method named LightLantern that displays Lit.", "static void LightLantern()\n{\n    Console.WriteLine(\"Lit\");\n}\n\nLightLantern();"),
-      practice("Write an int method named Multiply that accepts two parameters and returns their product.", "static int Multiply(int first, int second)\n{\n    return first * second;\n}"),
+      practice("methods-void", "Complete and call LightLantern so it displays Lit.", "static void LightLantern()\n{\n    // Display Lit\n}\n\n// Call the method", "static void LightLantern()\n{\n    Console.WriteLine(\"Lit\");\n}\n\nLightLantern();", "Lit"),
+      practice("methods-multiply", "Complete Multiply and display the product of 4 and 5.", "static int Multiply(int first, int second)\n{\n    return 0;\n}\n\nConsole.WriteLine(Multiply(4, 5));", "static int Multiply(int first, int second)\n{\n    return first * second;\n}\n\nConsole.WriteLine(Multiply(4, 5));", "20"),
       check("methods-create-call", "Which line makes RingBell run?", ["void RingBell()", "RingBell();", "return RingBell;"], 1, "A method call uses its name followed by parentheses."),
       check("methods-parameter", "In ThrowSalt(5), what is 5?", ["A parameter", "An argument", "A return type"], 1, "The call supplies the argument 5 to the method's parameter."),
       check("methods-recursion", "What must stop a recursive method?", ["A base case", "A string", "A second class"], 0, "A reachable base case prevents endless recursive calls."),

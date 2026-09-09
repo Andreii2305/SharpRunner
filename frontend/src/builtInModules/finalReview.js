@@ -52,7 +52,7 @@ export default {
       check("final-recursion", "What must recursion contain to stop safely?", ["A base case", "A 2D array", "Two return values"], 0, "A reachable base case stops further self-calls."),
     ]},
     { id: "readiness", title: "Final readiness check", blocks: [
-      practice("Without writing a complete level solution, outline the order for counting matching values in an array method.", "1. Receive the array as a parameter.\n2. Initialize a counter.\n3. Traverse every element.\n4. Test the current value.\n5. Increment for a match.\n6. Return the counter after the loop."),
+      practice("final-mini", "Complete this mini review: count values equal to 1 and display the returned result.", "static int CountOnes(int[] values)\n{\n    int count = 0;\n    foreach (int value in values)\n    {\n        // Increase count when value is 1\n    }\n    return count;\n}\n\nConsole.WriteLine(CountOnes(new int[] { 1, 0, 1 }));", "static int CountOnes(int[] values)\n{\n    int count = 0;\n    foreach (int value in values)\n    {\n        if (value == 1) count++;\n    }\n    return count;\n}\n\nConsole.WriteLine(CountOnes(new int[] { 1, 0, 1 }));", "2"),
       check("final-traversal", "Which can visit every 1D array element?", ["A safe for loop or foreach", "One fixed index", "A method name alone"], 0, "Both a safe for loop and foreach can traverse every 1D element."),
       check("final-grid", "Which pair gives row and column counts?", ["Length and Length - 1", "GetLength(0) and GetLength(1)", "row[0] and col[1]"], 1, "For rectangular arrays, dimensions 0 and 1 are rows and columns."),
     ]},

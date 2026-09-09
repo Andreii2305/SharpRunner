@@ -100,6 +100,34 @@ test("POST /api/auth/login authenticates a verified account and issues a JWT", a
   });
 });
 
+test("POST /api/practice/run requires a student and rejects unsafe APIs before execution", async () => {
+  const unauthenticated = await apiRequest("/api/practice/run", {
+    method: "POST",
+    body: { code: 'Console.WriteLine("Hello");' },
+  });
+  assert.equal(unauthenticated.response.status, 401);
+
+  await withStubs([[User, "findByPk", async () => activeUser({ id: 81, role: "teacher" })]], async () => {
+    const teacher = await apiRequest("/api/practice/run", {
+      method: "POST",
+      token: authToken(81, "teacher"),
+      body: { code: 'Console.WriteLine("Hello");' },
+    });
+    assert.equal(teacher.response.status, 403);
+  });
+
+  await withStubs([[User, "findByPk", async () => activeUser({ id: 82, role: "student" })]], async () => {
+    const unsafe = await apiRequest("/api/practice/run", {
+      method: "POST",
+      token: authToken(82, "student"),
+      body: { code: 'System.IO.File.ReadAllText("secret");' },
+    });
+    assert.equal(unsafe.response.status, 400);
+    assert.equal(unsafe.payload.rejected, true);
+    assert.match(unsafe.payload.stderr, /File access/);
+  });
+});
+
 test("GET /api/auth/me rejects an inactive account even with a valid token", async () => {
   await withStubs([
     [User, "findByPk", async () => activeUser({ status: "inactive" })],

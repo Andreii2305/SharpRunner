@@ -1,4 +1,4 @@
-import { check, code, codeChumReference, connection, list, microsoft, note, p, practice } from "./moduleHelpers.js";
+import { check, code, codeChumReference, connection, heading, list, microsoft, note, p, practice } from "./moduleHelpers.js";
 
 export default {
   id: "tutorial",
@@ -13,27 +13,38 @@ export default {
   ],
   sections: [
     { id: "welcome", title: "Welcome to C#", blocks: [
-      p("C# is a strongly typed programming language: every value has a type, and that type controls which operations make sense. SharpRunner begins with short input and value trials so you can learn to read code one piece at a time."),
+      heading("What is C#?"),
+      p("C# (pronounced C-sharp) is a programming language used to give a computer precise instructions. Developers use it for web services, desktop and mobile apps, cloud systems, and games. A C# program is written as source code, then a compiler checks that code and translates it into instructions the .NET runtime can execute."),
+      heading("Why types matter"),
+      p("C# is strongly typed: every value has a type, and that type controls which operations make sense. Types help the compiler catch mistakes before a program runs—for example, trying to store the word \"five\" in a whole-number variable."),
       note("How to study", "Read each example, predict what it displays, and then compare your prediction with the output."),
       connection("The Awakening introduces the editor and compile flow before later trials ask for text and number values."),
     ]},
     { id: "program", title: "What is a C# program?", blocks: [
-      p("A program is a set of instructions. Execution begins in Main in the style of program used by SharpRunner. Statements usually end with a semicolon, while braces group related statements."),
+      heading("Programs and statements"),
+      p("A program is an ordered set of instructions. The computer follows those instructions from top to bottom unless a condition, loop, or method call changes the flow. One complete instruction is usually called a statement."),
+      p("In the traditional program style below, execution begins in Main. A semicolon ends most statements, parentheses hold information for a method call, and braces group statements into a body."),
       code('using System;\n\nclass Program\n{\n    static void Main()\n    {\n        Console.WriteLine("Hello, Malumay!");\n    }\n}', "Hello, Malumay!"),
+      list("using System; makes common .NET names available.", "class Program groups this program's code.", "static void Main() is the starting method in this program style.", "Console.WriteLine(...) displays one line.", "The semicolon finishes the display statement."),
       note("Common mistake", "C# is case-sensitive. Console.WriteLine is correct; console.writeline is not.", "warning"),
     ]},
     { id: "variables", title: "Variables and values", blocks: [
-      p("A variable is a named storage place. In int lanterns = 5;, int is the type, lanterns is the variable name, and 5 is the assigned value."),
+      heading("Declare and assign"),
+      p("A variable is a named storage place for a value your program may need again. Declaration introduces its type and name; assignment uses = to place a value in it. A useful name such as lanterns explains the value better than a vague name such as x."),
+      code("int lanterns = 5;", null, "Anatomy of a variable statement"),
+      list("int → the data type", "lanterns → the variable name", "= → the assignment operator", "5 → the value being stored", "; → the end of the statement"),
       code("int lanterns = 5;\nConsole.WriteLine(lanterns);", "5", "A whole-number variable"),
+      note("Why is the output 5?", "The first statement stores 5 in lanterns. Console.WriteLine then reads the current value of lanterns and displays it."),
       code("int coins = 8;\ncoins = 10;\nConsole.WriteLine(coins);", "10", "Updating a value"),
       note("Remember", "Use = to assign a value. The variable name goes on the left and the new value goes on the right."),
       connection("The Coin Keeper checks that you can represent a required whole-number value."),
     ]},
     { id: "types", title: "Common data types", blocks: [
-      p("Choose a type that matches the kind of information you need to store."),
+      p("Choose a type that matches the kind of information you need to store. This matters because C# treats text, whole numbers, decimal numbers, and true/false facts differently."),
       list("int stores whole numbers, such as 12.", "double stores numbers with a decimal part, such as 2.5.", "string stores text inside double quotes.", "bool stores either true or false."),
       code('int coins = 12;\nstring guideName = "Kai";\ndouble potionLiters = 2.5;\nbool gateOpen = false;\n\nConsole.WriteLine(guideName);', "Kai"),
       code('string spirit = "Kapre";\nbool isFriendly = true;\nConsole.WriteLine(spirit);\nConsole.WriteLine(isFriendly);', "Kapre\nTrue", "Text and true/false values"),
+      code("int lanterns = 6;\ndouble fuel = 2.5;\nConsole.WriteLine(lanterns);\nConsole.WriteLine(fuel);", "6\n2.5", "Whole and decimal numbers"),
       note("Common mistake", 'Text needs double quotes: string name = "Kai";. A decimal value belongs in a suitable type such as double, not int.', "warning"),
       connection("What Is Your Name? and Voices of the Village use text; Potion Measure uses a decimal value."),
     ]},
@@ -44,10 +55,11 @@ export default {
       note("Remember", "Console.WriteLine displays a value. It does not store that value for later."),
     ]},
     { id: "arithmetic", title: "Simple arithmetic", blocks: [
-      p("Numeric variables can take part in calculations. C# evaluates the expression on the right before assigning its result."),
+      p("An expression combines values and operators to produce a new value. Numeric variables can use + for addition, - for subtraction, * for multiplication, and / for division. C# evaluates the expression on the right before assigning its result."),
       code("int blueLanterns = 3;\nint redLanterns = 2;\nint totalLanterns = blueLanterns + redLanterns;\nConsole.WriteLine(totalLanterns);", "5"),
+      note("Why is the output 5?", "blueLanterns contributes 3 and redLanterns contributes 2. The expression 3 + 2 becomes 5 before that result is stored in totalLanterns."),
       code("double dose = 1.5;\ndouble twoDoses = dose * 2;\nConsole.WriteLine(twoDoses);", "3"),
-      practice("Create two int variables named shells and stones. Add them and display the total.", "int shells = 4;\nint stones = 6;\nint total = shells + stones;\nConsole.WriteLine(total);"),
+      practice("tutorial-arithmetic", "Complete the expression so the program adds shells and stones, then run it.", "int shells = 4;\nint stones = 6;\nint total = 0; // Replace 0 with an expression\nConsole.WriteLine(total);", "int shells = 4;\nint stones = 6;\nint total = shells + stones;\nConsole.WriteLine(total);", "10"),
     ]},
     { id: "mistakes", title: "Common beginner mistakes", blocks: [
       list("Using the wrong capitalization in a name.", "Forgetting a semicolon after a statement.", "Using a variable before declaring it.", "Putting text in an int variable.", "Using a comma instead of a decimal point in a numeric literal."),
@@ -55,7 +67,7 @@ export default {
       note("Why it fails", '"five" is text, but lanterns was declared as an int. Use int lanterns = 5; or string lanterns = "five".', "warning"),
     ]},
     { id: "practice", title: "Practice and quick check", blocks: [
-      practice("Declare a string for a village name, an int for its lantern count, and display both values.", 'string village = "Malumay";\nint lanternCount = 5;\nConsole.WriteLine(village);\nConsole.WriteLine(lanternCount);'),
+      practice("tutorial-types", "Declare an int named lanternCount with value 5, then display the village and the count.", 'string village = "Malumay";\n// Add lanternCount here\nConsole.WriteLine(village);', 'string village = "Malumay";\nint lanternCount = 5;\nConsole.WriteLine(village);\nConsole.WriteLine(lanternCount);', "Malumay\n5"),
       check("tutorial-type", "Which type is suitable for the value 3.75?", ["int", "double", "bool"], 1, "double can represent a number with a decimal part."),
       check("tutorial-output", "What does Console.WriteLine(lanterns); do?", ["Stores a new value", "Displays the current value", "Changes the variable type"], 1, "Console.WriteLine displays the value; assignment changes stored data."),
     ]},

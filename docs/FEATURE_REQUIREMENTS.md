@@ -334,3 +334,23 @@ External sources appear only in the understated References footer at the very
 bottom of each built-in module, after the summary and Start Adventure call to
 action. Each footer includes relevant Microsoft Learn sources and the CodeChum
 course-material alignment reference; no private CodeChum URL is invented.
+
+## Requirement 10 - Non-Graded Practice Compiler
+
+**Status: Implemented; container runtime required on the API host**
+
+Built-in modules follow `Explain -> Example -> Run -> Try -> Check -> Apply in
+Game`. Worked examples are read-only and runnable. Try It Yourself activities use
+a reusable editable Monaco surface with reset, run, optional solution, loading,
+clean output/error, formative expected-output feedback, and session draft state.
+
+`POST /api/practice/run` requires an active student JWT, allows 30 runs per user
+per minute, and stores no submissions. It is independent of progress, score, XP,
+attempt, hint, deadline, timer, completion, unlock, and leaderboard services.
+
+Execution uses a disposable .NET SDK container launched without interpolating
+student code into a shell command. It has networking disabled, a read-only root,
+a bounded temporary filesystem, dropped capabilities, `no-new-privileges`, and
+CPU, memory, PID, source-size, output, and wall-clock limits. A conservative
+source policy rejects file, network, process, environment, reflection, native,
+unsafe, and dynamic APIs. There is intentionally no host-execution fallback.

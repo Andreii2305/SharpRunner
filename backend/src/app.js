@@ -68,6 +68,7 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/teacher", require("./routes/teacher"));
 app.use("/api/classrooms", require("./routes/classrooms"));
 app.use("/api/notifications", require("./routes/notifications"));
+app.use("/api/practice", require("./routes/practice"));
 app.use("/api/developer", require("./routes/developer"));
 
 app.use((_req, res) => {

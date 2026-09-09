@@ -376,3 +376,22 @@ launch action. Module reading progress and resume location are stored separately
 from academic game progress. References are shown only at the bottom of each
 module and include topic-specific Microsoft Learn sources plus the CodeChum
 curriculum-alignment reference.
+
+### Non-graded module practice
+
+The module flow is `Explain -> Example -> Run -> Try -> Check -> Apply in Game`.
+Worked examples are read-only and runnable. Try It Yourself cards use the shared
+Monaco editor with Reset Code, Run Code, optional solutions, formative output
+checks, and browser-session draft retention.
+
+Practice uses the authenticated `POST /api/practice/run` endpoint and never calls
+game validators or progress submission. Source and run history are transient and
+cannot affect score, grade, XP, attempts, hints, timers, deadlines, unlocks, or
+leaderboards.
+
+The API host must have Docker and the configured .NET SDK image pre-pulled. The
+runner uses a disposable container with networking disabled, a read-only root,
+dropped capabilities, CPU/memory/PID restrictions, a five-second timeout, and a
+32 KB output cap. Unsafe APIs are rejected before execution, and there is no
+host-execution fallback. See `docs/PRACTICE_COMPILER.md` and
+`backend/.env.example` for deployment details.

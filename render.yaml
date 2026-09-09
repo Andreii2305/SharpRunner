@@ -44,3 +44,13 @@ services:
         value: "5"
       - key: LESSON_UPLOAD_MAX_MB
         value: "25"
+      # Render's Node runtime has no Docker daemon. These must target a
+      # separately deployed, container/microVM-isolated practice runner.
+      - key: PRACTICE_RUNNER_URL
+        sync: false
+      - key: PRACTICE_RUNNER_TOKEN
+        sync: false
+      - key: PRACTICE_RUNNER_TIMEOUT_MS
+        value: "5000"
+      - key: PRACTICE_RUNNER_OUTPUT_LIMIT
+        value: "32768"

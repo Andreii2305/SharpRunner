@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { sanitizeRunnerText, validatePracticeCode } = require("../src/services/practiceRunnerService");
+const { normalizeRunnerResult, sanitizeRunnerText, validatePracticeCode } = require("../src/services/practiceRunnerService");
 
 assert.equal(validatePracticeCode('Console.WriteLine("Hello");').allowed, true);
 assert.equal(validatePracticeCode('int x = "abc";').allowed, true, "Compiler errors should reach the compiler");
@@ -14,5 +14,8 @@ assert.equal(validatePracticeCode("Console.Out.GetType().Assembly.FullName").all
 assert.equal(validatePracticeCode("System.\\u0049O.File.ReadAllText(\"secret\")").allowed, false);
 assert.equal(validatePracticeCode('Console.WriteLine("System.IO.File is text here");').allowed, true, "Blocked words in strings are harmless");
 assert.match(sanitizeRunnerText("/source/Program.cs(3,4): error CS1002: ; expected"), /^Line 3, column 4/);
+assert.deepEqual(normalizeRunnerResult({ success: true, stdout: "Hello\r\n", stderr: "" }), { success: true, stdout: "Hello", stderr: "" });
+assert.equal(normalizeRunnerResult({ success: false, stdout: "", stderr: "error CS1002", errorType: "compiler" }).errorType, "compiler");
+assert.equal(normalizeRunnerResult({ success: false, stdout: "x".repeat(100), stderr: "" }, 10).outputLimited, true);
 
 console.log("Practice runner policy tests passed");

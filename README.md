@@ -389,9 +389,12 @@ game validators or progress submission. Source and run history are transient and
 cannot affect score, grade, XP, attempts, hints, timers, deadlines, unlocks, or
 leaderboards.
 
-The API host must have Docker and the configured .NET SDK image pre-pulled. The
-runner uses a disposable container with networking disabled, a read-only root,
+In production, the API uses `PRACTICE_RUNNER_URL` and
+`PRACTICE_RUNNER_TOKEN` to reach a dedicated container- or microVM-isolated
+runner. Docker-capable local/self-hosted API installations can use the built-in
+Docker adapter instead. Each run has networking disabled, a read-only root,
 dropped capabilities, CPU/memory/PID restrictions, a five-second timeout, and a
-32 KB output cap. Unsafe APIs are rejected before execution, and there is no
-host-execution fallback. See `docs/PRACTICE_COMPILER.md` and
-`backend/.env.example` for deployment details.
+32 KB output cap. Compilation requires the .NET SDK (the runtime alone is not
+enough). Unsafe APIs are rejected before execution, and there is no direct host
+execution or expected-output fallback. See `docs/PRACTICE_COMPILER.md` and
+`backend/.env.example` for the runner contract and deployment requirements.

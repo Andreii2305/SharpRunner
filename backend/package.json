@@ -8,6 +8,7 @@
     "dev:nodemon": "nodemon --legacy-watch src/server.js",
     "db:migrate": "node src/migrate.js",
     "start": "node src/server.js",
+    "start:practice-runner": "node src/practiceRunnerServer.js",
     "test": "node test/runTests.js"
   },
   "keywords": [],

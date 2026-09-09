@@ -13,6 +13,32 @@ const friendlyRuntimeHint = (stderr) => {
   return null;
 };
 
+const classifyRequestError = (error) => {
+  const status = error.response?.status;
+  const data = error.response?.data;
+  if (data?.stdout != null || data?.stderr != null) return data;
+  if (status === 401 || status === 403) return { success: false, errorType: "auth", stderr: "Your session is no longer authorized to run practice code. Sign in again, then retry." };
+  if (status === 400) return { success: false, rejected: true, stderr: data?.message || "The practice request was invalid. Check the code and try again." };
+  if (status === 408) return { success: false, timedOut: true, errorType: "timeout", stderr: data?.message || "Execution took too long and was stopped." };
+  if (status === 429) return { success: false, errorType: "rate_limit", stderr: data?.message || "Too many runs. Please wait a moment and try again." };
+  if (status === 500) return { success: false, errorType: "internal", stderr: data?.message || "The compiler encountered an internal error. Try again in a moment." };
+  return { success: false, unavailable: true, errorType: "unavailable", stderr: data?.message || "We couldn't reach the practice compiler. You can continue reading this lesson and try again later." };
+};
+
+const resultTitle = (result) => {
+  if (result.success) return "Actual output";
+  if (result.unavailable) return "Compiler temporarily unavailable";
+  if (result.rejected) return "Practice safety check";
+  if (result.errorType === "auth") return "Sign-in required";
+  if (result.errorType === "rate_limit") return "Too many runs";
+  if (result.outputLimited || result.errorType === "output_limit") return "Output limit reached";
+  if (result.timedOut || result.errorType === "timeout") return "Execution timed out";
+  if (result.errorType === "compiler") return "Compiler error";
+  if (result.errorType === "runtime") return "Runtime error";
+  if (result.errorType === "internal") return "Compiler service error";
+  return "Compiler or runtime error";
+};
+
 export default function PracticeCompiler({ code, editable = false, expectedOutput, label = "Run example", showEditor = true, solution, storageId }) {
   const currentUser = getUser();
   const userScope = currentUser?.id ?? currentUser?.userId ?? currentUser?.username ?? "student";
@@ -33,15 +59,12 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   const run = async () => {
     if (running) return;
     setRunning(true);
-    setResult(null);
+    if (!result?.unavailable) setResult(null);
     try {
       const response = await axios.post(buildApiUrl("/api/practice/run"), { code: value }, { headers: getAuthHeaders() });
       setResult(response.data);
     } catch (error) {
-      const data = error.response?.data;
-      setResult(data?.stdout != null || data?.stderr != null
-        ? data
-        : { success: false, unavailable: true, stderr: data?.message || "Practice compiler is temporarily unavailable. You can still continue reading the lesson." });
+      setResult(classifyRequestError(error));
     } finally {
       setRunning(false);
     }
@@ -72,14 +95,22 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
       <button type="button" onClick={() => setShowSolution((shown) => !shown)}>{showSolution ? "Hide solution" : "Show solution"}</button>
       {showSolution && <pre><code>{solution}</code></pre>}
     </div>}
-    {result && <div className={`${styles.output} ${result.success ? styles.outputSuccess : styles.outputError}`} aria-live="polite">
-      <strong>{result.success ? "Output" : result.unavailable ? "Compiler unavailable" : result.rejected ? "Practice safety check" : "Compiler or runtime error"}</strong>
-      {result.stdout && <pre>{result.stdout}</pre>}
-      {result.stderr && <pre>{result.stderr}</pre>}
-      {runtimeHint && <p><strong>What this usually means:</strong> {runtimeHint}</p>}
-      {noOutput && <p>Program completed successfully. No output was produced.</p>}
-      {matched && <p className={styles.correct}><FiCheckCircle /> Correct! Your output matches the quick self-check.</p>}
-    </div>}
+    <div className={styles.outputGrid}>
+      <div className={styles.expected}>
+        <strong>Expected output</strong>
+        <pre>{expectedOutput == null ? "Not provided" : expectedOutput === "" ? "No output expected" : expectedOutput}</pre>
+      </div>
+      <div className={`${styles.output} ${!result ? styles.outputIdle : result.success ? styles.outputSuccess : styles.outputError}`} aria-live="polite">
+        <strong>{result ? resultTitle(result) : "Actual output"}</strong>
+        {!result && <p>Not run yet</p>}
+        {result?.stdout && <pre>{result.stdout}</pre>}
+        {result?.stderr && <pre>{result.stderr}</pre>}
+        {runtimeHint && <p><strong>What this usually means:</strong> {runtimeHint}</p>}
+        {noOutput && <p>Program completed successfully. No output was produced.</p>}
+        {matched && <p className={styles.correct}><FiCheckCircle /> Correct! Your output matches the quick self-check.</p>}
+        {result?.unavailable && <button type="button" className={styles.retry} onClick={run} disabled={running}><FiRefreshCw /> {running ? "Checking..." : "Try again"}</button>}
+      </div>
+    </div>
     <p className={styles.disclaimer}>Practice runs are private and non-graded. They do not affect score, XP, attempts, hints, or level progress.</p>
   </div>;
 }

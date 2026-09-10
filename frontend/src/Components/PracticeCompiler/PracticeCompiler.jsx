@@ -5,6 +5,14 @@ import { FiCheckCircle, FiPlay, FiRefreshCw } from "react-icons/fi";
 import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth.js";
 import styles from "./PracticeCompiler.module.css";
 
+let compilerWarmupPromise;
+const warmPracticeCompiler = () => {
+  compilerWarmupPromise ??= axios
+    .get(buildApiUrl("/api/practice/health"), { headers: getAuthHeaders() })
+    .catch(() => null);
+  return compilerWarmupPromise;
+};
+
 const normalizeOutput = (value) => String(value ?? "").replace(/\r\n/g, "\n").trim();
 const friendlyRuntimeHint = (stderr) => {
   if (/IndexOutOfRangeException/.test(stderr || "")) return "An array index was outside its valid range. Remember: the last index is Length - 1.";
@@ -51,7 +59,10 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   });
   const [result, setResult] = useState(null);
   const [running, setRunning] = useState(false);
+  const [runStatus, setRunStatus] = useState("");
   const [showSolution, setShowSolution] = useState(false);
+
+  useEffect(() => { void warmPracticeCompiler(); }, []);
 
   useEffect(() => {
     if (!editable || !storageKey) return;
@@ -61,13 +72,19 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   const run = async () => {
     if (running) return;
     setRunning(true);
+    setRunStatus("Running...");
     if (!result?.unavailable) setResult(null);
+    const wakeTimer = window.setTimeout(() => setRunStatus("Waking compiler..."), 3_000);
+    const slowWakeTimer = window.setTimeout(() => setRunStatus("Compiler is still starting..."), 60_000);
     try {
       const response = await axios.post(buildApiUrl("/api/practice/run"), { code: value }, { headers: getAuthHeaders() });
       setResult(response.data);
     } catch (error) {
       setResult(classifyRequestError(error));
     } finally {
+      window.clearTimeout(wakeTimer);
+      window.clearTimeout(slowWakeTimer);
+      setRunStatus("");
       setRunning(false);
     }
   };
@@ -91,7 +108,7 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
     </div>}
     <div className={styles.actions}>
       <div>{editable && <button type="button" className={styles.reset} onClick={reset} disabled={running}><FiRefreshCw /> Reset code</button>}</div>
-      <button type="button" className={styles.run} onClick={run} disabled={running || !value.trim()}><FiPlay /> {running ? "Running..." : label}</button>
+      <button type="button" className={styles.run} onClick={run} disabled={running || !value.trim()}><FiPlay /> {running ? runStatus : label}</button>
     </div>
     {editable && solution && <div className={styles.solutionToggle}>
       <button type="button" onClick={() => setShowSolution((shown) => !shown)}>{showSolution ? "Hide solution" : "Show solution"}</button>

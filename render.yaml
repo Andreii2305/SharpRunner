@@ -63,7 +63,7 @@ services:
       - key: PRACTICE_RUNNER_BUILD_TIMEOUT_MS
         value: "30000"
       - key: PRACTICE_RUNNER_WAKE_TIMEOUT_MS
-        value: "75000"
+        value: "180000"
       - key: PRACTICE_RUNNER_OUTPUT_LIMIT
         value: "32768"
 

@@ -136,7 +136,10 @@ error, and 503 when the execution capability cannot be reached.
   `IndexOutOfRangeException`, infinite-loop termination, large-output termination,
   and blocked file/network/process attempts on a Docker-enabled host.
 
-Free services spin down after inactivity. The API allows up to 75 seconds for
-the runner wake-up, separately from the 30-second compilation limit and
-five-second student execution limit. A failed health check is not cached, so
-**Try again** performs a new request and can succeed after the runner wakes.
+Free services spin down after inactivity. Opening a built-in module starts one
+authenticated readiness request in the background so the runner can wake while
+the student reads. The API allows up to 180 seconds for a Render wake-up,
+separately from the 30-second compilation limit and five-second student
+execution limit. The Run button reports when it is waking the compiler. A
+failed health check is not cached, so **Try again** performs a new request and
+can succeed after the runner wakes.

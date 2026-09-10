@@ -10,7 +10,7 @@ const DEFAULT_CODE_LIMIT = 16 * 1024;
 const DEFAULT_IMAGE = "mcr.microsoft.com/dotnet/sdk:8.0";
 // Includes free-tier service wake-up time; compilation and execution have their own limits.
 const DEFAULT_BUILD_TIMEOUT_MS = 30_000;
-const DEFAULT_WAKE_TIMEOUT_MS = 75_000;
+const DEFAULT_WAKE_TIMEOUT_MS = 180_000;
 
 const blockedApiPatterns = [
   [/(?:global\s*::\s*)?System\s*\.\s*IO\b|\b(?:File|Directory|Path|FileInfo|DirectoryInfo|DriveInfo|FileSystemWatcher|FileStream|StreamReader|StreamWriter|BinaryReader|BinaryWriter|RandomAccess)\s*(?:\.|\()/i, "File access is not available in practice code."],

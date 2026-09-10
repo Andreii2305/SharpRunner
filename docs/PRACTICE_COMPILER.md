@@ -22,8 +22,9 @@ matching expected output is only a local formative check.
 The authenticated SharpRunner API validates source and dispatches it to one of
 two interchangeable execution backends:
 
-- **Production:** `PRACTICE_RUNNER_URL` points to a dedicated sandbox service.
-  `PRACTICE_RUNNER_TOKEN` is sent only server-to-server as a bearer token.
+- **Production:** `render.yaml` creates a dedicated Docker service containing
+  Node 22 and the .NET 8 SDK. Render injects its address and a generated shared
+  token into the API service; no manual compiler host is required.
 - **Local/self-hosted:** when the URL is absent, the API invokes a local Docker
   daemon and starts one disposable container per run.
 
@@ -35,43 +36,37 @@ The remote service contract is intentionally small:
   `{ "success", "stdout", "stderr" }`, with optional `timedOut`,
   `outputLimited`, and `errorType` fields.
 
-The service must authenticate `PRACTICE_RUNNER_TOKEN` and enforce isolation at
-the container or microVM boundary. Do not deploy it as an ordinary process on
-the API host. Do not substitute a general host `dotnet`, shell, or expected
-output fallback.
+The service authenticates `PRACTICE_RUNNER_TOKEN` and is isolated from the API,
+database, and user data at the service-container boundary. It compiles a unique
+temporary top-level-statement project, then executes the resulting assembly in
+a separate unprivileged process with a scrubbed environment. Source is never
+placed in a shell command and expected output is never used as actual output.
 
-This repository includes the receiver as `backend/src/practiceRunnerServer.js`.
-On a dedicated Docker-capable Linux VM, install the backend dependencies, pull
-the configured SDK image, set a 32+ character `PRACTICE_RUNNER_TOKEN`, and start
-it with `npm --prefix backend run start:practice-runner`. Put it behind HTTPS
-and firewall it to the API service where possible. The receiver ignores client-
-supplied resource limits and uses its own `PRACTICE_RUNNER_TIMEOUT_MS` and
-`PRACTICE_RUNNER_OUTPUT_LIMIT` values.
+The receiver is `backend/src/practiceRunnerServer.js`; its reproducible image is
+`backend/Dockerfile.practice-runner`. The receiver ignores client-supplied
+resource limits and uses its own timeout, output-limit, and concurrency values.
 
 ## Deployment and safety
 
-The committed Render blueprint is a native Node service. Render's native runtime
-does not provide Docker or the .NET toolchain, so production **must** set
-`PRACTICE_RUNNER_URL` and `PRACTICE_RUNNER_TOKEN` to a separately deployed,
-purpose-built sandbox. This is the production fix for the former unconditional
-local `docker` spawn. A Docker-capable VM may instead host the API without the
-remote adapter.
+The prior blueprint deployed only the native Node API, which has neither Docker
+nor a .NET SDK. It declared `PRACTICE_RUNNER_URL` and token as manual settings
+without deploying the required service, so `/api/practice/run` could only return
+503. The blueprint now deploys and wires the runner alongside the API. Syncing
+the Blueprint builds the SDK into the runner image before it starts.
 
 Each request requires an active student account and is rate-limited per user.
-Source is capped at 16 KB. The runner starts an ephemeral container with no
-network, read-only root filesystem, a small temporary filesystem, dropped Linux
-capabilities, `no-new-privileges`, and limits for memory, CPU, PIDs, output, and
-wall-clock time. Only the request's source directory is mounted read-only. A
-preflight policy blocks APIs for files, networking, processes, environment
-variables, reflection, native interop, unsafe code, and dynamic dispatch. The
-container is forcibly removed and its temporary source directory cleaned after
-every result.
+Source is capped at 16 KB. The production service permits one execution at a
+time, runs student assemblies as Linux `nobody`, exposes only an allowlisted
+non-secret process environment, caps output at 32 KB, and kills execution after
+five seconds. A preflight policy blocks file, network, process, environment,
+reflection, native interop, unsafe, and dynamic APIs. Every request uses a
+random temporary directory that is removed after success, failure, or timeout.
+Local Docker mode additionally uses no networking, a read-only root filesystem,
+dropped capabilities, `no-new-privileges`, and CPU/memory/PID limits.
 
-Compilation requires the **.NET SDK**, not only the .NET runtime. The local
-default is `mcr.microsoft.com/dotnet/sdk:8.0`; pre-pull and pin an image digest
-on a Docker-capable host. If the selected sandbox, SDK image, or remote service
-is absent, the endpoint returns 503 and the module displays a compact,
-non-blocking retry card.
+Compilation requires the **.NET 8 SDK**, not only the runtime. The production
+Dockerfile derives from `mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim` and the
+local Docker adapter uses `mcr.microsoft.com/dotnet/sdk:8.0`.
 
 `GET /api/practice/health` is authenticated for students and exposes only
 `{ "available": boolean }`. It never returns image names, paths, credentials, or
@@ -81,7 +76,8 @@ error, and 503 when the execution capability cannot be reached.
 
 ## Verification
 
-- `npm --prefix backend test` includes practice source-policy tests.
+- `npm --prefix backend test` performs real compilation/execution tests for
+  output, edited output, compile/runtime errors, timeout, and empty output.
 - `npm --prefix frontend run test:practice-content` audits all five modules and
   compiles every runnable worked example and Try It Yourself solution.
 - Manually verify `GET /api/practice/health`, authenticated valid output, compiler error,

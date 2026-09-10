@@ -44,13 +44,42 @@ services:
         value: "5"
       - key: LESSON_UPLOAD_MAX_MB
         value: "25"
-      # Render's Node runtime has no Docker daemon. These must target a
-      # separately deployed, container/microVM-isolated practice runner.
+      # Wired automatically to the dedicated .NET runner below.
       - key: PRACTICE_RUNNER_URL
-        sync: false
+        fromService:
+          type: web
+          name: sharprunner-practice-runner
+          property: hostport
       - key: PRACTICE_RUNNER_TOKEN
-        sync: false
+        fromService:
+          type: web
+          name: sharprunner-practice-runner
+          envVarKey: PRACTICE_RUNNER_TOKEN
       - key: PRACTICE_RUNNER_TIMEOUT_MS
         value: "5000"
+      - key: PRACTICE_RUNNER_BUILD_TIMEOUT_MS
+        value: "30000"
       - key: PRACTICE_RUNNER_OUTPUT_LIMIT
         value: "32768"
+
+  - type: web
+    name: sharprunner-practice-runner
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile.practice-runner
+    dockerContext: .
+    envVars:
+      - key: PRACTICE_RUNNER_TOKEN
+        generateValue: true
+      - key: PRACTICE_RUNNER_MODE
+        value: direct
+      - key: PRACTICE_DOTNET_TARGET
+        value: net8.0
+      - key: PRACTICE_RUNNER_TIMEOUT_MS
+        value: "5000"
+      - key: PRACTICE_RUNNER_BUILD_TIMEOUT_MS
+        value: "30000"
+      - key: PRACTICE_RUNNER_OUTPUT_LIMIT
+        value: "32768"
+      - key: PRACTICE_RUNNER_MAX_CONCURRENT
+        value: "1"

@@ -6,9 +6,14 @@ assert.equal(validatePracticeCode('int x = "abc";').allowed, true, "Compiler err
 assert.equal(validatePracticeCode('int[] x = { 1 }; Console.WriteLine(x[5]);').allowed, true, "Runtime errors should reach the sandbox");
 assert.equal(validatePracticeCode("while (true) { }").allowed, true, "Infinite loops are handled by the timeout");
 assert.equal(validatePracticeCode("System.IO.File.ReadAllText(\"secret\")").allowed, false);
+assert.equal(validatePracticeCode("new FileInfo(\"secret\").OpenRead()").allowed, false);
+assert.equal(validatePracticeCode("Path.GetTempPath()").allowed, false);
 assert.equal(validatePracticeCode("new System.Net.Http.HttpClient()").allowed, false);
+assert.equal(validatePracticeCode("Dns.GetHostAddresses(\"example.com\")").allowed, false);
 assert.equal(validatePracticeCode("System.Diagnostics.Process.Start(\"cmd\")").allowed, false);
+assert.equal(validatePracticeCode("new ProcessStartInfo(\"sh\")").allowed, false);
 assert.equal(validatePracticeCode("Environment.GetEnvironmentVariable(\"JWT_SECRET\")").allowed, false);
+assert.equal(validatePracticeCode('Console.WriteLine($"{Environment.GetEnvironmentVariable("JWT_SECRET")}");').allowed, false);
 assert.equal(validatePracticeCode("using S = System; S.IO.File.ReadAllText(\"secret\");").allowed, false);
 assert.equal(validatePracticeCode("Console.Out.GetType().Assembly.FullName").allowed, false);
 assert.equal(validatePracticeCode("System.\\u0049O.File.ReadAllText(\"secret\")").allowed, false);

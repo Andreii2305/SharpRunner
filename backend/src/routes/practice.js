@@ -20,7 +20,7 @@ router.get("/health", authMiddleware, requireRole("student"), async (_req, res) 
 router.post("/run", authMiddleware, requireRole("student"), practiceRateLimit, async (req, res) => {
   try {
     const result = await runPracticeCode(req.body?.code);
-    const status = result.rejected ? 400 : result.timedOut ? 408 : 200;
+    const status = result.rejected ? 400 : result.timedOut ? 408 : result.errorType === "rate_limit" ? 429 : 200;
     return res.status(status).json(result);
   } catch (error) {
     if (error.code === "RUNNER_UNAVAILABLE") {

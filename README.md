@@ -389,12 +389,11 @@ game validators or progress submission. Source and run history are transient and
 cannot affect score, grade, XP, attempts, hints, timers, deadlines, unlocks, or
 leaderboards.
 
-In production, the API uses `PRACTICE_RUNNER_URL` and
-`PRACTICE_RUNNER_TOKEN` to reach a dedicated container- or microVM-isolated
-runner. Docker-capable local/self-hosted API installations can use the built-in
-Docker adapter instead. Each run has networking disabled, a read-only root,
-dropped capabilities, CPU/memory/PID restrictions, a five-second timeout, and a
-32 KB output cap. Compilation requires the .NET SDK (the runtime alone is not
-enough). Unsafe APIs are rejected before execution, and there is no direct host
-execution or expected-output fallback. See `docs/PRACTICE_COMPILER.md` and
-`backend/.env.example` for the runner contract and deployment requirements.
+`render.yaml` deploys a dedicated Docker-based practice service with Node 22 and
+the .NET 8 SDK, then automatically wires its address and generated token into
+the API. Docker-capable local installations can still use the per-run Docker
+adapter. Production student processes are unprivileged, receive a scrubbed
+non-secret environment, run in unique temporary directories, and have a
+five-second timeout, 32 KB output cap, concurrency guard, and restricted API
+policy. Compilation requires the SDK (the runtime alone is insufficient), and
+there is no expected-output fallback. See `docs/PRACTICE_COMPILER.md`.

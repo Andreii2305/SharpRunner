@@ -9,7 +9,8 @@
     "db:migrate": "node src/migrate.js",
     "start": "node src/server.js",
     "start:practice-runner": "node src/practiceRunnerServer.js",
-    "test": "node test/runTests.js"
+    "test": "node test/runTests.js",
+    "test:practice-runner": "node test/practiceRunner.execution.test.js"
   },
   "keywords": [],
   "author": "",

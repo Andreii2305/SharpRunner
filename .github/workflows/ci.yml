@@ -20,6 +20,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
       - run: npm ci
       - run: npm run lint
       - run: npm test
@@ -37,5 +40,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: backend/package-lock.json
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
       - run: npm ci
       - run: npm test
+      - run: docker build --file Dockerfile.practice-runner --tag sharprunner-practice-runner:test ..

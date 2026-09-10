@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const express = require("express");
-const { getPracticeRunnerHealth, runPracticeCode } = require("./services/practiceRunnerService");
+const { getPracticeRunnerDiagnostic, getPracticeRunnerHealth, runPracticeCode } = require("./services/practiceRunnerService");
 
 // This process is the remote sandbox receiver, never a client of itself.
 delete process.env.PRACTICE_RUNNER_URL;
@@ -17,6 +17,8 @@ const tokenMatches = (authorization = "") => {
 };
 
 const app = express();
+const maxConcurrentRuns = Math.max(1, Number(process.env.PRACTICE_RUNNER_MAX_CONCURRENT) || 1);
+let activeRuns = 0;
 app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
 app.use((req, res, next) => {
@@ -30,6 +32,8 @@ app.get("/health", async (_req, res) => {
 });
 
 app.post("/run", async (req, res) => {
+  if (activeRuns >= maxConcurrentRuns) return res.status(429).json({ message: "Runner is busy" });
+  activeRuns += 1;
   try {
     // Limits come from this service's environment, not from request-controlled values.
     const result = await runPracticeCode(req.body?.code);
@@ -39,10 +43,16 @@ app.post("/run", async (req, res) => {
     if (error.code === "RUNNER_UNAVAILABLE") return res.status(503).json({ message: "Runner unavailable" });
     console.error("Isolated practice runner failed", error);
     return res.status(500).json({ message: "Runner error" });
+  } finally {
+    activeRuns -= 1;
   }
 });
 
 app.use((_req, res) => res.status(404).json({ message: "Not found" }));
 
 const port = Number(process.env.PRACTICE_RUNNER_PORT || process.env.PORT) || 5050;
-app.listen(port, "0.0.0.0", () => console.log(`Practice runner listening on port ${port}`));
+app.listen(port, "0.0.0.0", async () => {
+  console.log(`Practice runner listening on port ${port}`);
+  const diagnostic = await getPracticeRunnerDiagnostic();
+  console.log(`C# Practice Runtime ${diagnostic.available ? "READY" : "UNAVAILABLE"} (${diagnostic.mode}): ${diagnostic.reason}`);
+});

@@ -23,15 +23,18 @@ The authenticated SharpRunner API validates source and dispatches it to one of
 two interchangeable execution backends:
 
 - **Production:** `render.yaml` creates a dedicated Docker service containing
-  Node 22 and the .NET 8 SDK. Render injects its address and a generated shared
-  token into the API service; no manual compiler host is required.
+  Node 22 and the .NET 8 SDK. Render injects its public HTTPS URL and a generated
+  shared token into the API service; no manual compiler host is required.
 - **Local/self-hosted:** when the URL is absent, the API invokes a local Docker
   daemon and starts one disposable container per run.
 
 The remote service contract is intentionally small:
 
-- `GET /health` returns `{ "available": true }` only when its C# SDK and sandbox
-  are ready.
+- Public `GET /health` returns `{ "status": "ok", "dotnet": true }` only when
+  its C# SDK and runtime are ready. It is public because Render health checks
+  cannot send a bearer token and it exposes no host, path, or secret.
+- `GET /health/auth` performs the same check behind runner authentication. The
+  main API uses it to detect a mismatched shared token.
 - `POST /run` accepts `{ "code", "timeoutMs", "outputLimit" }` and returns
   `{ "success", "stdout", "stderr" }`, with optional `timedOut`,
   `outputLimited`, and `errorType` fields.
@@ -48,11 +51,49 @@ resource limits and uses its own timeout, output-limit, and concurrency values.
 
 ## Deployment and safety
 
-The prior blueprint deployed only the native Node API, which has neither Docker
-nor a .NET SDK. It declared `PRACTICE_RUNNER_URL` and token as manual settings
-without deploying the required service, so `/api/practice/run` could only return
-503. The blueprint now deploys and wires the runner alongside the API. Syncing
-the Blueprint builds the SDK into the runner image before it starts.
+Two deployment mistakes can produce the generic unavailable message:
+
+1. A manually created API service does not create services later added to
+   `render.yaml`. In that case the runner does not exist at all.
+2. Render's `fromService.property: hostport` value is an internal address such
+   as `service:10000`, with no URL scheme. Although the API normalizes that form
+   to `http://`, a **free** Render web service cannot receive private-network
+   traffic. The old free-plan wiring was therefore unreachable. The Blueprint
+   now copies the runner's Render-provided `RENDER_EXTERNAL_URL` instead. This is
+   an HTTPS public route, but `/run` and `/health/auth` remain bearer-protected.
+
+The current Blueprint deploys and wires the runner alongside the API and sets
+the runner's Render health check to `/health`. Syncing it builds the SDK into
+the runner image before startup.
+
+### Existing manual Render deployment migration
+
+Preferred migration (reproducible):
+
+1. Push the commit containing the corrected `render.yaml`.
+2. In Render Dashboard select **New + > Blueprint**.
+3. Connect GitHub if needed, select the `Andreii2305/SharpRunner` repository,
+   select the production branch, and confirm the root Blueprint path is
+   `render.yaml`.
+4. Enter the prompted `DATABASE_URL`, `FRONTEND_URL`, SMTP values, and any other
+   existing `sync: false` values. Do not manually invent either practice runner
+   variable.
+5. Click **Apply** and confirm that both `sharprunner-api-andreii2305` and
+   `sharprunner-practice-runner` appear in the Blueprint deployment.
+6. In the runner's **Deploys** page, confirm the Docker build succeeds and its
+   `/health` check passes. In its logs, confirm `Practice runner ready`, an
+   available SDK, target `net8.0`, and the bound port.
+7. In the API's **Environment** page, confirm `PRACTICE_RUNNER_URL` is sourced
+   from the runner's `RENDER_EXTERNAL_URL` and `PRACTICE_RUNNER_TOKEN` is sourced
+   from the runner variable. Values should remain hidden.
+8. Redeploy the frontend only if the API hostname changed.
+
+If the existing API must remain manually managed, create a second **Web Service**
+from the same repository using Docker, `backend/Dockerfile.practice-runner`, and
+repository-root Docker context. Set a single 32+ character token on the runner,
+set the API's `PRACTICE_RUNNER_URL` to the runner's full `https://...onrender.com`
+URL, and set the API's token to the exact same value. Set runner health check
+path `/health`, save and deploy both services. Blueprint deployment is preferred.
 
 Each request requires an active student account and is rate-limited per user.
 Source is capped at 16 KB. The production service permits one execution at a
@@ -69,8 +110,11 @@ Dockerfile derives from `mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim` and the
 local Docker adapter uses `mcr.microsoft.com/dotnet/sdk:8.0`.
 
 `GET /api/practice/health` is authenticated for students and exposes only
-`{ "available": boolean }`. It never returns image names, paths, credentials, or
-host details. `POST /api/practice/run` uses 400 for source-policy/input rejection,
+`{ "available": true }` or `{ "available": false, "reason": "..." }`. Sanitized
+reasons include `runner_url_missing`, `runner_url_invalid`, `runner_token_missing`,
+`runner_auth_failed`, `runner_unreachable`, `runner_timeout`, and
+`runtime_unavailable`. It never returns image names, paths, credentials, or host
+details. `POST /api/practice/run` uses 400 for source-policy/input rejection,
 408 for a sandbox timeout, 429 for rate limiting, 500 for an unexpected API
 error, and 503 when the execution capability cannot be reached.
 
@@ -83,3 +127,8 @@ error, and 503 when the execution capability cannot be reached.
 - Manually verify `GET /api/practice/health`, authenticated valid output, compiler error,
   `IndexOutOfRangeException`, infinite-loop termination, large-output termination,
   and blocked file/network/process attempts on a Docker-enabled host.
+
+Free services spin down after inactivity. The API allows up to 75 seconds for
+the runner wake-up, separately from the 30-second compilation limit and
+five-second student execution limit. A failed health check is not cached, so
+**Try again** performs a new request and can succeed after the runner wakes.

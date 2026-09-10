@@ -390,10 +390,20 @@ cannot affect score, grade, XP, attempts, hints, timers, deadlines, unlocks, or
 leaderboards.
 
 `render.yaml` deploys a dedicated Docker-based practice service with Node 22 and
-the .NET 8 SDK, then automatically wires its address and generated token into
-the API. Docker-capable local installations can still use the per-run Docker
+the .NET 8 SDK, then automatically wires its Render-managed public HTTPS URL and
+generated token into the API. The public URL is required on the free plan because
+free web services cannot receive private-network traffic; execution remains
+protected by the generated bearer token. Docker-capable local installations can still use the per-run Docker
 adapter. Production student processes are unprivileged, receive a scrubbed
 non-secret environment, run in unique temporary directories, and have a
 five-second timeout, 32 KB output cap, concurrency guard, and restricted API
 policy. Compilation requires the SDK (the runtime alone is insufficient), and
 there is no expected-output fallback. See `docs/PRACTICE_COMPILER.md`.
+
+An existing manually created Render API is not automatically converted into a
+two-service deployment when `render.yaml` changes. In Render choose **New + >
+Blueprint**, select this repository and apply the Blueprint; verify that both
+`sharprunner-api-andreii2305` and `sharprunner-practice-runner` are created.
+Then call authenticated `GET /api/practice/health`; it must return
+`{ "available": true }`. Exact migration and diagnosis steps are in
+`docs/PRACTICE_COMPILER.md`.

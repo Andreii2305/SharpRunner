@@ -9,8 +9,8 @@ const DEFAULT_OUTPUT_LIMIT = 32 * 1024;
 const DEFAULT_CODE_LIMIT = 16 * 1024;
 const DEFAULT_IMAGE = "mcr.microsoft.com/dotnet/sdk:8.0";
 // Includes free-tier service wake-up time; compilation and execution have their own limits.
-const DEFAULT_REMOTE_TIMEOUT_MS = 60_000;
 const DEFAULT_BUILD_TIMEOUT_MS = 30_000;
+const DEFAULT_WAKE_TIMEOUT_MS = 75_000;
 
 const blockedApiPatterns = [
   [/(?:global\s*::\s*)?System\s*\.\s*IO\b|\b(?:File|Directory|Path|FileInfo|DirectoryInfo|DriveInfo|FileSystemWatcher|FileStream|StreamReader|StreamWriter|BinaryReader|BinaryWriter|RandomAccess)\s*(?:\.|\()/i, "File access is not available in practice code."],
@@ -73,22 +73,34 @@ const removeContainer = (dockerBinary, containerName) => new Promise((resolve) =
   }
 });
 
-const unavailableError = (message = "Practice runner is unavailable") => {
+const unavailableError = (message = "Practice runner is unavailable", reason = "runner_unreachable") => {
   const error = new Error(message);
   error.code = "RUNNER_UNAVAILABLE";
+  error.reason = reason;
   return error;
 };
 
 const remoteHeaders = () => {
   const headers = { "content-type": "application/json", accept: "application/json" };
-  if (process.env.PRACTICE_RUNNER_TOKEN) headers.authorization = `Bearer ${process.env.PRACTICE_RUNNER_TOKEN}`;
+  const token = String(process.env.PRACTICE_RUNNER_TOKEN || "").trim();
+  if (token) headers.authorization = `Bearer ${token}`;
   return headers;
 };
 
 const configuredRemoteBaseUrl = () => {
-  const configured = String(process.env.PRACTICE_RUNNER_URL || "").trim().replace(/\/$/, "");
+  const configured = String(process.env.PRACTICE_RUNNER_URL || "").trim().replace(/\/+$/, "");
   if (!configured) return "";
-  return /^[a-z][a-z\d+.-]*:\/\//i.test(configured) ? configured : `http://${configured}`;
+  const candidate = /^https?:\/\//i.test(configured)
+    ? configured
+    : /^[a-z][a-z\d+.-]*:\/\//i.test(configured)
+      ? ""
+      : `http://${configured}`;
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? candidate : "";
+  } catch {
+    return "";
+  }
 };
 
 const remoteUrl = (pathName) => `${configuredRemoteBaseUrl()}${pathName}`;
@@ -113,10 +125,21 @@ const normalizeRunnerResult = (value, outputLimit = DEFAULT_OUTPUT_LIMIT) => {
 };
 
 const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
-  if (!process.env.PRACTICE_RUNNER_TOKEN) throw unavailableError("Remote practice runner authentication is not configured");
+  if (!String(process.env.PRACTICE_RUNNER_TOKEN || "").trim()) {
+    console.error("Practice runner token not configured");
+    throw unavailableError("Remote practice runner authentication is not configured", "runner_token_missing");
+  }
   const controller = new AbortController();
   const buildTimeoutMs = Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
-  const timer = setTimeout(() => controller.abort(), buildTimeoutMs + timeoutMs + DEFAULT_REMOTE_TIMEOUT_MS);
+  const wakeTimeoutMs = Number(process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS) || DEFAULT_WAKE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), buildTimeoutMs + timeoutMs + wakeTimeoutMs);
+  const baseUrl = configuredRemoteBaseUrl();
+  if (!baseUrl) {
+    clearTimeout(timer);
+    console.error("PRACTICE_RUNNER_URL invalid");
+    throw unavailableError("Remote practice runner URL is invalid", "runner_url_invalid");
+  }
+  console.info(`Practice runner request attempted (configured=true, normalized=true, protocol=${new URL(baseUrl).protocol.replace(":", "")})`);
   try {
     const response = await fetch(remoteUrl("/run"), {
       method: "POST",
@@ -128,8 +151,17 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
     if (response.status === 429) {
       return { success: false, stdout: "", stderr: "The practice runner is busy. Wait a moment and try again.", errorType: "rate_limit" };
     }
-    if (response.status === 401 || response.status === 403 || response.status === 404 || response.status >= 500) {
-      throw unavailableError(`Practice runner request failed with status ${response.status}`);
+    if (response.status === 401 || response.status === 403) {
+      console.error("Practice runner authentication failed");
+      throw unavailableError(`Practice runner request failed with status ${response.status}`, "runner_auth_failed");
+    }
+    if (response.status === 503) {
+      console.error("Practice compiler runtime unavailable");
+      throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
+    }
+    if (response.status === 404 || response.status >= 500) {
+      console.error(`Practice runner HTTP failure (status=${response.status})`);
+      throw unavailableError(`Practice runner request failed with status ${response.status}`, "runner_http_error");
     }
     const text = await response.text();
     if (Buffer.byteLength(text, "utf8") > outputLimit * 2) throw unavailableError("Practice runner response was too large");
@@ -138,7 +170,9 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
     return normalizeRunnerResult(payload, outputLimit);
   } catch (error) {
     if (error.code === "RUNNER_UNAVAILABLE") throw error;
-    throw unavailableError(error.name === "AbortError" ? "Practice runner did not respond in time" : "Practice runner could not be reached");
+    const detail = error.cause?.code || error.code || error.name || "unknown";
+    console.error(`Practice runner unreachable (${detail})`);
+    throw unavailableError(error.name === "AbortError" ? "Practice runner did not respond in time" : "Practice runner could not be reached", error.name === "AbortError" ? "runner_timeout" : "runner_unreachable");
   } finally {
     clearTimeout(timer);
   }
@@ -310,21 +344,27 @@ const getPracticeRunnerDiagnostic = async () => {
     return { available: false, mode: "disabled", reason: "execution is disabled by PRACTICE_RUNNER_ENABLED" };
   }
   if (process.env.PRACTICE_RUNNER_URL) {
-    if (!process.env.PRACTICE_RUNNER_TOKEN) return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_TOKEN is missing" };
+    if (!String(process.env.PRACTICE_RUNNER_TOKEN || "").trim()) return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_TOKEN is missing", reasonCode: "runner_token_missing" };
+    if (!configuredRemoteBaseUrl()) return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_URL is invalid", reasonCode: "runner_url_invalid" };
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3_000);
+    const wakeTimeoutMs = Number(process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS) || DEFAULT_WAKE_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), wakeTimeoutMs);
     try {
-      const response = await fetch(remoteUrl("/health"), { headers: remoteHeaders(), signal: controller.signal, redirect: "error" });
-      if (!response.ok) return { available: false, mode: "remote", reason: `health request returned HTTP ${response.status}` };
+      const response = await fetch(remoteUrl("/health/auth"), { headers: remoteHeaders(), signal: controller.signal, redirect: "error" });
+      if (response.status === 401 || response.status === 403) return { available: false, mode: "remote", reason: "runner authentication failed", reasonCode: "runner_auth_failed" };
+      if (!response.ok) return { available: false, mode: "remote", reason: `health request returned HTTP ${response.status}`, reasonCode: response.status === 503 ? "runtime_unavailable" : "runner_http_error" };
       const result = await response.json();
-      return result.available === true
+      return result.status === "ok" && result.dotnet === true
         ? { available: true, mode: "remote", reason: "remote runner is healthy" }
-        : { available: false, mode: "remote", reason: "remote runner reported unavailable" };
+        : { available: false, mode: "remote", reason: "remote runner reported unavailable", reasonCode: "runtime_unavailable" };
     } catch (error) {
-      return { available: false, mode: "remote", reason: error.name === "AbortError" ? "health request timed out" : `health request failed: ${error.message}` };
+      return { available: false, mode: "remote", reason: error.name === "AbortError" ? "health request timed out" : `health request failed: ${error.message}`, reasonCode: error.name === "AbortError" ? "runner_timeout" : "runner_unreachable" };
     } finally {
       clearTimeout(timer);
     }
+  }
+  if (process.env.NODE_ENV === "production" && String(process.env.PRACTICE_RUNNER_MODE || "").toLowerCase() !== "direct") {
+    return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_URL is missing", reasonCode: "runner_url_missing" };
   }
   if (String(process.env.PRACTICE_RUNNER_MODE || "docker").toLowerCase() === "direct") {
     try {
@@ -334,10 +374,11 @@ const getPracticeRunnerDiagnostic = async () => {
         execFileResult(dotnetBinary, ["--list-sdks"], { timeout: 3_000, env: checkEnvironment }),
         execFileResult(dotnetBinary, ["--list-runtimes"], { timeout: 3_000, env: checkEnvironment }),
       ]);
-      const sdkFound = /^\d+\.\d+\.\d+/m.test(sdks.stdout);
+      const sdkVersion = sdks.stdout.match(/^(\d+\.\d+\.\d+)/m)?.[1];
+      const sdkFound = Boolean(sdkVersion);
       const runtimeFound = /^Microsoft\.NETCore\.App\s+\d+/m.test(runtimes.stdout);
       return sdkFound && runtimeFound
-        ? { available: true, mode: "direct", reason: ".NET SDK and runtime found" }
+        ? { available: true, mode: "direct", reason: ".NET SDK and runtime found", sdkVersion }
         : !sdkFound
           ? { available: false, mode: "direct", reason: "dotnet exists but no SDK is installed" }
           : { available: false, mode: "direct", reason: ".NET SDK exists but the runtime is missing" };
@@ -358,7 +399,17 @@ const getPracticeRunnerDiagnostic = async () => {
 
 const getPracticeRunnerHealth = async () => {
   const diagnostic = await getPracticeRunnerDiagnostic();
-  return { available: diagnostic.available };
+  if (!diagnostic.available) {
+    if (diagnostic.reasonCode === "runner_url_missing") console.error("PRACTICE_RUNNER_URL not configured");
+    else if (diagnostic.reasonCode === "runner_url_invalid") console.error("PRACTICE_RUNNER_URL invalid");
+    else if (diagnostic.reasonCode === "runner_token_missing") console.error("Practice runner token not configured");
+    else if (diagnostic.reasonCode === "runner_auth_failed") console.error("Practice runner authentication failed");
+    else if (diagnostic.reasonCode === "runtime_unavailable") console.error("Practice compiler runtime unavailable");
+    else console.error(`Practice runner unreachable (${diagnostic.reasonCode || "unknown"})`);
+  }
+  return diagnostic.available
+    ? { available: true }
+    : { available: false, reason: diagnostic.reasonCode || "runtime_unavailable" };
 };
 
 const runPracticeCode = async (code, options = {}) => {
@@ -371,6 +422,10 @@ const runPracticeCode = async (code, options = {}) => {
   }
 
   if (process.env.PRACTICE_RUNNER_URL) return runRemotePracticeCode(code, { timeoutMs, outputLimit });
+  if (process.env.NODE_ENV === "production" && String(process.env.PRACTICE_RUNNER_MODE || "").toLowerCase() !== "direct") {
+    console.error("PRACTICE_RUNNER_URL not configured");
+    throw unavailableError("Remote practice runner URL is not configured", "runner_url_missing");
+  }
   if (String(process.env.PRACTICE_RUNNER_MODE || "docker").toLowerCase() === "direct") {
     return runDirectPracticeCode(code, { timeoutMs, outputLimit });
   }
@@ -460,4 +515,4 @@ const runPracticeCode = async (code, options = {}) => {
   }
 };
 
-module.exports = { getPracticeRunnerDiagnostic, getPracticeRunnerHealth, normalizeRunnerResult, runDirectPracticeCode, runPracticeCode, sanitizeRunnerText, validatePracticeCode };
+module.exports = { configuredRemoteBaseUrl, getPracticeRunnerDiagnostic, getPracticeRunnerHealth, normalizeRunnerResult, runDirectPracticeCode, runPracticeCode, sanitizeRunnerText, validatePracticeCode };

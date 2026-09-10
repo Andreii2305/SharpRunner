@@ -128,6 +128,91 @@ test("POST /api/practice/run requires a student and rejects unsafe APIs before e
   });
 });
 
+test("practice API reports remote health and preserves runner result types", async () => {
+  const http = require("node:http");
+  const runnerToken = "remote-runner-token-that-is-at-least-32-characters";
+  let runnerMode = "success";
+  const runnerServer = http.createServer((req, res) => {
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/health/auth") {
+      if (req.headers.authorization !== `Bearer ${runnerToken}` || runnerMode === "auth") {
+        res.statusCode = 401;
+        res.end(JSON.stringify({ message: "Unauthorized" }));
+      } else if (runnerMode === "unhealthy") {
+        res.statusCode = 503;
+        res.end(JSON.stringify({ status: "error", dotnet: false }));
+      } else {
+        res.end(JSON.stringify({ status: "ok", dotnet: true }));
+      }
+      return;
+    }
+    if (req.url !== "/run" || req.method !== "POST") {
+      res.statusCode = 404;
+      res.end(JSON.stringify({ message: "Not found" }));
+      return;
+    }
+    if (req.headers.authorization !== `Bearer ${runnerToken}` || runnerMode === "auth") {
+      res.statusCode = 401;
+      res.end(JSON.stringify({ message: "Unauthorized" }));
+      return;
+    }
+    if (runnerMode === "unhealthy") {
+      res.statusCode = 503;
+      res.end(JSON.stringify({ message: "Runner unavailable" }));
+      return;
+    }
+    const results = {
+      success: { success: true, stdout: "api works", stderr: "" },
+      compiler: { success: false, stdout: "", stderr: "error CS1002", errorType: "compiler" },
+      runtime: { success: false, stdout: "", stderr: "IndexOutOfRangeException", errorType: "runtime" },
+      timeout: { success: false, stdout: "", stderr: "Execution timed out", timedOut: true, errorType: "timeout" },
+    };
+    res.end(JSON.stringify(results[runnerMode]));
+  });
+  await new Promise((resolve) => runnerServer.listen(0, "127.0.0.1", resolve));
+
+  const previous = Object.fromEntries(["NODE_ENV", "PRACTICE_RUNNER_URL", "PRACTICE_RUNNER_TOKEN", "PRACTICE_RUNNER_WAKE_TIMEOUT_MS"].map((key) => [key, process.env[key]]));
+  process.env.NODE_ENV = "production";
+  process.env.PRACTICE_RUNNER_URL = `127.0.0.1:${runnerServer.address().port}`;
+  process.env.PRACTICE_RUNNER_TOKEN = ` ${runnerToken} `;
+  process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS = "200";
+  const studentStub = [[User, "findByPk", async () => activeUser({ id: 83, role: "student" })]];
+  try {
+    await withStubs(studentStub, async () => {
+      const health = await apiRequest("/api/practice/health", { token: authToken(83, "student") });
+      assert.equal(health.response.status, 200);
+      assert.deepEqual(health.payload, { available: true });
+
+      for (const mode of ["success", "compiler", "runtime", "timeout"]) {
+        runnerMode = mode;
+        const result = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: `// ${mode}\nConsole.WriteLine(1);` } });
+        assert.equal(result.response.status, mode === "timeout" ? 408 : 200);
+        assert.equal(result.payload.errorType, mode === "success" ? undefined : mode);
+      }
+
+      runnerMode = "auth";
+      assert.equal((await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } })).response.status, 503);
+      runnerMode = "unhealthy";
+      assert.equal((await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } })).response.status, 503);
+    });
+
+    await new Promise((resolve) => runnerServer.close(resolve));
+    await withStubs(studentStub, async () => {
+      const unreachable = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(unreachable.response.status, 503);
+      delete process.env.PRACTICE_RUNNER_URL;
+      const missing = await apiRequest("/api/practice/health", { token: authToken(83, "student") });
+      assert.equal(missing.response.status, 503);
+      assert.deepEqual(missing.payload, { available: false, reason: "runner_url_missing" });
+    });
+  } finally {
+    if (runnerServer.listening) await new Promise((resolve) => runnerServer.close(resolve));
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test("GET /api/auth/me rejects an inactive account even with a valid token", async () => {
   await withStubs([
     [User, "findByPk", async () => activeUser({ status: "inactive" })],

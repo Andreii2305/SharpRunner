@@ -51,6 +51,19 @@ npm --prefix frontend run dev:local
 
 For a deployed demo, perform the two checks above using the deployed API and frontend URLs as well.
 
+Set `DEMO_API_URL` to the deployed API origin and `DEMO_STUDENT_TOKEN` to a
+short-lived token for a disposable active student before running preflight. It
+must print `Practice compiler: READY`. Then verify:
+
+- [ ] Runner logs show `Practice runner ready`, an available .NET SDK, target
+  `net8.0`, and the Render port.
+- [ ] Authenticated `GET /api/practice/health` returns `{ "available": true }`.
+- [ ] `Console.WriteLine("Hello SharpRunner");` displays `Hello SharpRunner`.
+- [ ] The arrays example displays `20` for `powers[1]` and `30` for `powers[2]`.
+- [ ] Changing the Try It Yourself rune value at index 2 to 6 displays `6`.
+- [ ] After an idle cold start, **Try again** makes a new request and eventually
+  becomes available.
+
 ## 3. Public and Authentication Smoke Test
 
 - [ ] Landing-page navigation, primary call-to-action, and login link work.

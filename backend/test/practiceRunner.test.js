@@ -1,5 +1,7 @@
 const assert = require("assert");
-const { normalizeRunnerResult, sanitizeRunnerText, validatePracticeCode } = require("../src/services/practiceRunnerService");
+const test = require("node:test");
+const { createPracticeRunnerApp } = require("../src/practiceRunnerServer");
+const { configuredRemoteBaseUrl, normalizeRunnerResult, sanitizeRunnerText, validatePracticeCode } = require("../src/services/practiceRunnerService");
 
 assert.equal(validatePracticeCode('Console.WriteLine("Hello");').allowed, true);
 assert.equal(validatePracticeCode('int x = "abc";').allowed, true, "Compiler errors should reach the compiler");
@@ -22,5 +24,40 @@ assert.match(sanitizeRunnerText("/source/Program.cs(3,4): error CS1002: ; expect
 assert.deepEqual(normalizeRunnerResult({ success: true, stdout: "Hello\r\n", stderr: "" }), { success: true, stdout: "Hello", stderr: "" });
 assert.equal(normalizeRunnerResult({ success: false, stdout: "", stderr: "error CS1002", errorType: "compiler" }).errorType, "compiler");
 assert.equal(normalizeRunnerResult({ success: false, stdout: "x".repeat(100), stderr: "" }, 10).outputLimited, true);
+
+const originalRunnerUrl = process.env.PRACTICE_RUNNER_URL;
+process.env.PRACTICE_RUNNER_URL = "runner.internal:10000/";
+assert.equal(configuredRemoteBaseUrl(), "http://runner.internal:10000");
+process.env.PRACTICE_RUNNER_URL = "https://runner.example.com///";
+assert.equal(configuredRemoteBaseUrl(), "https://runner.example.com");
+process.env.PRACTICE_RUNNER_URL = "ftp://runner.example.com";
+assert.equal(configuredRemoteBaseUrl(), "");
+if (originalRunnerUrl === undefined) delete process.env.PRACTICE_RUNNER_URL;
+else process.env.PRACTICE_RUNNER_URL = originalRunnerUrl;
+
+test("runner health is public but authenticated health rejects a bad token", async () => {
+  const previousMode = process.env.PRACTICE_RUNNER_MODE;
+  const previousTarget = process.env.PRACTICE_DOTNET_TARGET;
+  process.env.PRACTICE_RUNNER_MODE = "direct";
+  const sdkMajor = require("node:child_process").execFileSync("dotnet", ["--list-sdks"], { encoding: "utf8" }).trim().split(/\r?\n/).at(-1).match(/^(\d+)/)?.[1];
+  process.env.PRACTICE_DOTNET_TARGET = `net${sdkMajor}.0`;
+  const token = "runner-test-token-that-is-at-least-32-characters";
+  const app = createPracticeRunnerApp({ serviceToken: token });
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  const url = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const publicHealth = await fetch(`${url}/health`);
+    assert.equal(publicHealth.status, 200);
+    assert.deepEqual(await publicHealth.json(), { status: "ok", dotnet: true });
+    assert.equal((await fetch(`${url}/health/auth`)).status, 401);
+    assert.equal((await fetch(`${url}/health/auth`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (previousMode === undefined) delete process.env.PRACTICE_RUNNER_MODE; else process.env.PRACTICE_RUNNER_MODE = previousMode;
+    if (previousTarget === undefined) delete process.env.PRACTICE_DOTNET_TARGET; else process.env.PRACTICE_DOTNET_TARGET = previousTarget;
+  }
+});
 
 console.log("Practice runner policy tests passed");

@@ -56,7 +56,38 @@ function printEnvironmentReadiness() {
   }
 }
 
+async function checkDeployedPracticeCompiler() {
+  const apiUrl = String(process.env.DEMO_API_URL || "").trim().replace(/\/+$/u, "");
+  const studentToken = String(process.env.DEMO_STUDENT_TOKEN || "").trim();
+  if (!apiUrl) {
+    console.log("  INFO Practice compiler: NOT CHECKED (set DEMO_API_URL and DEMO_STUDENT_TOKEN for a deployed check)");
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000);
+  try {
+    const apiResponse = await fetch(`${apiUrl}/api/health`, { signal: controller.signal });
+    console.log(`  ${apiResponse.ok ? "PASS" : "WARN"} Main API health (HTTP ${apiResponse.status})`);
+    if (!studentToken) {
+      console.log("  WARN Practice compiler: NOT CHECKED (DEMO_STUDENT_TOKEN is missing)");
+      return;
+    }
+    const practiceResponse = await fetch(`${apiUrl}/api/practice/health`, {
+      headers: { authorization: `Bearer ${studentToken}` },
+      signal: controller.signal,
+    });
+    const practice = await practiceResponse.json().catch(() => ({}));
+    console.log(`  ${practiceResponse.ok && practice.available === true ? "PASS" : "WARN"} Practice compiler: ${practiceResponse.ok && practice.available === true ? "READY" : `UNAVAILABLE (${practice.reason || `HTTP ${practiceResponse.status}`})`}`);
+  } catch (error) {
+    console.log(`  WARN Practice compiler: UNAVAILABLE (${error.name === "AbortError" ? "health check timed out" : "API unreachable"})`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 printEnvironmentReadiness();
+await checkDeployedPracticeCompiler();
 
 for (const [name, command, args] of checks) {
   console.log(`\n=== ${name} ===`);

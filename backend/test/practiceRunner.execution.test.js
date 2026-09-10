@@ -12,9 +12,10 @@ const execute = (code, timeoutMs = 2_000) => runDirectPracticeCode(code, { timeo
 
 test("the direct C# runner returns real output and classifies failures", async () => {
   const cases = [
-    ["hello", 'Console.WriteLine("Hello");', "Hello"],
+    ["hello", 'Console.WriteLine("Hello SharpRunner");', "Hello SharpRunner"],
     ["array index", "int[] powers = { 10, 20, 30 }; Console.WriteLine(powers[1]);", "20"],
     ["changed array index", "int[] powers = { 10, 20, 30 }; Console.WriteLine(powers[2]);", "30"],
+    ["edited try it yourself", "int[] runes = { 2, 4, 0 }; runes[2] = 6; Console.WriteLine(runes[2]);", "6"],
     ["foreach", "int[] powers = { 10, 20, 30 }; foreach (int power in powers) { Console.WriteLine(power); }", "10\n20\n30"],
     ["local method", 'void RingBell() { Console.WriteLine("Ding!"); } RingBell();', "Ding!"],
     ["returning method", "int GetPower() { return 50; } Console.WriteLine(GetPower());", "50"],

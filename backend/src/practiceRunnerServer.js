@@ -23,7 +23,14 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
 
   const sendHealth = async (_req, res) => {
     const diagnostic = await getPracticeRunnerDiagnostic();
-    return res.status(diagnostic.available ? 200 : 503).json({ status: diagnostic.available ? "ok" : "error", dotnet: diagnostic.available });
+    return res.status(diagnostic.available ? 200 : 503).json({
+      status: diagnostic.available ? "ok" : "error",
+      compilerAvailable: diagnostic.available,
+      // Retained for compatibility with API instances deployed before this field
+      // was named explicitly.
+      dotnet: diagnostic.available,
+      ...(diagnostic.sdkVersion ? { sdkVersion: diagnostic.sdkVersion } : {}),
+    });
   };
 
   // Render cannot attach an Authorization header to health checks. This route

@@ -30,9 +30,10 @@ two interchangeable execution backends:
 
 The remote service contract is intentionally small:
 
-- Public `GET /health` returns `{ "status": "ok", "dotnet": true }` only when
-  its C# SDK and runtime are ready. It is public because Render health checks
-  cannot send a bearer token and it exposes no host, path, or secret.
+- Public `GET /health` returns readiness, `compilerAvailable`, and the detected
+  SDK version only when its C# SDK and runtime are ready. It is public because
+  Render health checks cannot send a bearer token and it exposes no host, path,
+  or secret. The legacy `dotnet` boolean remains during rolling deployments.
 - `GET /health/auth` performs the same check behind runner authentication. The
   main API uses it to detect a mismatched shared token.
 - `POST /run` accepts `{ "code", "timeoutMs", "outputLimit" }` and returns
@@ -71,22 +72,29 @@ the runner image before startup.
 Preferred migration (reproducible):
 
 1. Push the commit containing the corrected `render.yaml`.
-2. In Render Dashboard select **New + > Blueprint**.
-3. Connect GitHub if needed, select the `Andreii2305/SharpRunner` repository,
+2. If the repository already has a Render Blueprint, open it and click
+   **Sync Blueprint**. This step is mandatory: a normal Git auto-deploy updates
+   application code, but it does not refresh `fromService` environment-variable
+   references. Confirm the sync changes `PRACTICE_RUNNER_URL` from the old
+   private `hostport` reference to the runner's `RENDER_EXTERNAL_URL` reference.
+3. If no Blueprint exists, in Render Dashboard select **New + > Blueprint**.
+4. Connect GitHub if needed, select the `Andreii2305/SharpRunner` repository,
    select the production branch, and confirm the root Blueprint path is
    `render.yaml`.
-4. Enter the prompted `DATABASE_URL`, `FRONTEND_URL`, SMTP values, and any other
+5. Enter the prompted `DATABASE_URL`, `FRONTEND_URL`, SMTP values, and any other
    existing `sync: false` values. Do not manually invent either practice runner
    variable.
-5. Click **Apply** and confirm that both `sharprunner-api-andreii2305` and
+6. Click **Apply** (new Blueprint) or complete the sync (existing Blueprint),
+   and confirm that both `sharprunner-api-andreii2305` and
    `sharprunner-practice-runner` appear in the Blueprint deployment.
-6. In the runner's **Deploys** page, confirm the Docker build succeeds and its
+7. In the runner's **Deploys** page, confirm the Docker build succeeds and its
    `/health` check passes. In its logs, confirm `Practice runner ready`, an
    available SDK, target `net8.0`, and the bound port.
-7. In the API's **Environment** page, confirm `PRACTICE_RUNNER_URL` is sourced
+8. In the API's **Environment** page, confirm `PRACTICE_RUNNER_URL` is sourced
    from the runner's `RENDER_EXTERNAL_URL` and `PRACTICE_RUNNER_TOKEN` is sourced
    from the runner variable. Values should remain hidden.
-8. Redeploy the frontend only if the API hostname changed.
+9. Redeploy the API after the sync if Render does not start a deployment
+   automatically. Redeploy the frontend only if the API hostname changed.
 
 If the existing API must remain manually managed, create a second **Web Service**
 from the same repository using Docker, `backend/Dockerfile.practice-runner`, and

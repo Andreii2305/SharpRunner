@@ -50,7 +50,11 @@ test("runner health is public but authenticated health rejects a bad token", asy
   try {
     const publicHealth = await fetch(`${url}/health`);
     assert.equal(publicHealth.status, 200);
-    assert.deepEqual(await publicHealth.json(), { status: "ok", dotnet: true });
+    const publicHealthPayload = await publicHealth.json();
+    assert.equal(publicHealthPayload.status, "ok");
+    assert.equal(publicHealthPayload.compilerAvailable, true);
+    assert.equal(publicHealthPayload.dotnet, true);
+    assert.match(publicHealthPayload.sdkVersion, /^\d+\.\d+\.\d+$/);
     assert.equal((await fetch(`${url}/health/auth`)).status, 401);
     assert.equal((await fetch(`${url}/health/auth`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
   } finally {

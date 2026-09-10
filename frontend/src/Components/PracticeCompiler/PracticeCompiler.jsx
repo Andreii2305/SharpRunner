@@ -27,7 +27,9 @@ const classifyRequestError = (error) => {
 
 const resultTitle = (result) => {
   if (result.success) return "Actual output";
-  if (result.unavailable) return "Compiler temporarily unavailable";
+  if (result.errorType === "authentication") return "Compiler authentication error";
+  if (result.errorType === "service_timeout") return "Compiler startup timed out";
+  if (result.errorType === "service_unavailable" || result.unavailable) return "Compiler temporarily unavailable";
   if (result.rejected) return "Practice safety check";
   if (result.errorType === "auth") return "Sign-in required";
   if (result.errorType === "rate_limit") return "Too many runs";

@@ -354,7 +354,8 @@ const getPracticeRunnerDiagnostic = async () => {
       if (response.status === 401 || response.status === 403) return { available: false, mode: "remote", reason: "runner authentication failed", reasonCode: "runner_auth_failed" };
       if (!response.ok) return { available: false, mode: "remote", reason: `health request returned HTTP ${response.status}`, reasonCode: response.status === 503 ? "runtime_unavailable" : "runner_http_error" };
       const result = await response.json();
-      return result.status === "ok" && result.dotnet === true
+      const compilerAvailable = result.compilerAvailable === true || result.dotnet === true;
+      return result.status === "ok" && compilerAvailable
         ? { available: true, mode: "remote", reason: "remote runner is healthy" }
         : { available: false, mode: "remote", reason: "remote runner reported unavailable", reasonCode: "runtime_unavailable" };
     } catch (error) {

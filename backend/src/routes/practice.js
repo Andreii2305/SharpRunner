@@ -5,6 +5,47 @@ const { createRateLimit } = require("../middleware/rateLimit");
 const { getPracticeRunnerHealth, runPracticeCode } = require("../services/practiceRunnerService");
 
 const router = express.Router();
+const runnerFailureResponse = (error) => {
+  const reason = [
+    "runner_url_missing",
+    "runner_url_invalid",
+    "runner_token_missing",
+    "runner_auth_failed",
+    "runner_unreachable",
+    "runner_timeout",
+    "runner_http_error",
+    "runtime_unavailable",
+  ].includes(error.reason) ? error.reason : "runner_unreachable";
+
+  if (reason === "runner_auth_failed" || reason === "runner_token_missing") {
+    return {
+      success: false,
+      stdout: "",
+      stderr: "The practice compiler could not authenticate with its execution service.",
+      unavailable: true,
+      errorType: "authentication",
+      reason,
+    };
+  }
+  if (reason === "runner_timeout") {
+    return {
+      success: false,
+      stdout: "",
+      stderr: "The practice compiler did not finish starting in time. Try again to wake it.",
+      unavailable: true,
+      errorType: "service_timeout",
+      reason,
+    };
+  }
+  return {
+    success: false,
+    stdout: "",
+    stderr: "The practice compiler execution service is unavailable. You can continue reading the lesson and retry shortly.",
+    unavailable: true,
+    errorType: "service_unavailable",
+    reason,
+  };
+};
 const practiceRateLimit = createRateLimit({
   windowMs: 60_000,
   max: 30,
@@ -24,7 +65,7 @@ router.post("/run", authMiddleware, requireRole("student"), practiceRateLimit, a
     return res.status(status).json(result);
   } catch (error) {
     if (error.code === "RUNNER_UNAVAILABLE") {
-      return res.status(503).json({ message: "Practice compiler is temporarily unavailable. You can still continue reading the lesson." });
+      return res.status(503).json(runnerFailureResponse(error));
     }
     console.error("Practice runner failed", error);
     return res.status(500).json({ message: "The practice compiler encountered an internal error. Try again in a moment." });

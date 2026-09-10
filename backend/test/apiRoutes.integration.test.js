@@ -191,9 +191,17 @@ test("practice API reports remote health and preserves runner result types", asy
       }
 
       runnerMode = "auth";
-      assert.equal((await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } })).response.status, 503);
+      const authFailure = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(authFailure.response.status, 503);
+      assert.equal(authFailure.payload.errorType, "authentication");
+      assert.equal(authFailure.payload.reason, "runner_auth_failed");
+      assert.equal(authFailure.payload.unavailable, true);
+      assert.equal(authFailure.payload.stdout, "");
       runnerMode = "unhealthy";
-      assert.equal((await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } })).response.status, 503);
+      const runtimeFailure = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(runtimeFailure.response.status, 503);
+      assert.equal(runtimeFailure.payload.errorType, "service_unavailable");
+      assert.equal(runtimeFailure.payload.reason, "runtime_unavailable");
     });
 
     await new Promise((resolve) => runnerServer.close(resolve));

@@ -140,6 +140,9 @@ Free services spin down after inactivity. Opening a built-in module starts one
 authenticated readiness request in the background so the runner can wake while
 the student reads. The API allows up to 180 seconds for a Render wake-up,
 separately from the 30-second compilation limit and five-second student
-execution limit. The Run button reports when it is waking the compiler. A
-failed health check is not cached, so **Try again** performs a new request and
-can succeed after the runner wakes.
+execution limit. During that window the API polls authenticated readiness and
+accepts only the runner's JSON health response. Render's temporary HTML
+"service waking up" page and transient gateway responses are retried instead of
+being mistaken for compiler output. The Run button reports when it is waking
+the compiler. A failed health check is not cached, so **Try again** performs a
+new request and can succeed after the runner wakes.

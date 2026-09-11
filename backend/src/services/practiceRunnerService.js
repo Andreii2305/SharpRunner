@@ -104,6 +104,62 @@ const configuredRemoteBaseUrl = () => {
 };
 
 const remoteUrl = (pathName) => `${configuredRemoteBaseUrl()}${pathName}`;
+const waitForDelay = (delayMs, signal) => new Promise((resolve, reject) => {
+  const onAbort = () => {
+    clearTimeout(timer);
+    const error = new Error("Runner wake-up aborted");
+    error.name = "AbortError";
+    reject(error);
+  };
+  const timer = setTimeout(() => {
+    signal.removeEventListener("abort", onAbort);
+    resolve();
+  }, delayMs);
+  signal.addEventListener("abort", onAbort, { once: true });
+});
+
+const waitForRemoteRunner = async ({ signal, wakeTimeoutMs }) => {
+  const deadline = Date.now() + wakeTimeoutMs;
+  let lastStatus;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetch(remoteUrl("/health/auth"), {
+        headers: remoteHeaders(),
+        signal,
+        redirect: "error",
+      });
+      lastStatus = response.status;
+      if (response.status === 401 || response.status === 403) {
+        throw unavailableError("Practice runner authentication failed", "runner_auth_failed");
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (response.ok && contentType.includes("application/json")) {
+        const result = await response.json();
+        const compilerAvailable = result.compilerAvailable === true || result.dotnet === true;
+        if (result.status === "ok" && compilerAvailable) return result;
+        throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
+      }
+      // A sleeping Render free service can temporarily return an HTML loading
+      // page (including HTTP 200) or a gateway response. Consuming the body and
+      // retrying prevents that page from being mistaken for compiler output.
+      await response.text();
+      if (response.status === 404) {
+        throw unavailableError("Practice runner health endpoint was not found", "runner_http_error");
+      }
+      if (response.status === 503 && contentType.includes("application/json")) {
+        throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
+      }
+    } catch (error) {
+      if (error.code === "RUNNER_UNAVAILABLE") throw error;
+      if (error.name === "AbortError" || signal.aborted) throw error;
+      // Connection and gateway failures are expected while the instance is
+      // being allocated. Retry them within the dedicated wake-up window.
+    }
+    await waitForDelay(Math.min(1_500, Math.max(0, deadline - Date.now())), signal);
+  }
+  throw unavailableError(`Practice runner did not become ready${lastStatus ? ` (last status ${lastStatus})` : ""}`, "runner_timeout");
+};
 
 const normalizeRunnerResult = (value, outputLimit = DEFAULT_OUTPUT_LIMIT) => {
   if (!value || typeof value !== "object" || typeof value.success !== "boolean") {
@@ -141,6 +197,7 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
   }
   console.info(`Practice runner request attempted (configured=true, normalized=true, protocol=${new URL(baseUrl).protocol.replace(":", "")})`);
   try {
+    await waitForRemoteRunner({ signal: controller.signal, wakeTimeoutMs });
     const response = await fetch(remoteUrl("/run"), {
       method: "POST",
       headers: remoteHeaders(),
@@ -350,15 +407,12 @@ const getPracticeRunnerDiagnostic = async () => {
     const wakeTimeoutMs = Number(process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS) || DEFAULT_WAKE_TIMEOUT_MS;
     const timer = setTimeout(() => controller.abort(), wakeTimeoutMs);
     try {
-      const response = await fetch(remoteUrl("/health/auth"), { headers: remoteHeaders(), signal: controller.signal, redirect: "error" });
-      if (response.status === 401 || response.status === 403) return { available: false, mode: "remote", reason: "runner authentication failed", reasonCode: "runner_auth_failed" };
-      if (!response.ok) return { available: false, mode: "remote", reason: `health request returned HTTP ${response.status}`, reasonCode: response.status === 503 ? "runtime_unavailable" : "runner_http_error" };
-      const result = await response.json();
-      const compilerAvailable = result.compilerAvailable === true || result.dotnet === true;
-      return result.status === "ok" && compilerAvailable
-        ? { available: true, mode: "remote", reason: "remote runner is healthy" }
-        : { available: false, mode: "remote", reason: "remote runner reported unavailable", reasonCode: "runtime_unavailable" };
+      await waitForRemoteRunner({ signal: controller.signal, wakeTimeoutMs });
+      return { available: true, mode: "remote", reason: "remote runner is healthy" };
     } catch (error) {
+      if (error.code === "RUNNER_UNAVAILABLE") {
+        return { available: false, mode: "remote", reason: error.message, reasonCode: error.reason };
+      }
       return { available: false, mode: "remote", reason: error.name === "AbortError" ? "health request timed out" : `health request failed: ${error.message}`, reasonCode: error.name === "AbortError" ? "runner_timeout" : "runner_unreachable" };
     } finally {
       clearTimeout(timer);

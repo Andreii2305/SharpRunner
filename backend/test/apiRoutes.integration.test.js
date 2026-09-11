@@ -132,6 +132,7 @@ test("practice API reports remote health and preserves runner result types", asy
   const http = require("node:http");
   const runnerToken = "remote-runner-token-that-is-at-least-32-characters";
   let runnerMode = "success";
+  let coldHealthRequests = 0;
   const runnerServer = http.createServer((req, res) => {
     res.setHeader("content-type", "application/json");
     if (req.url === "/health/auth") {
@@ -141,6 +142,9 @@ test("practice API reports remote health and preserves runner result types", asy
       } else if (runnerMode === "unhealthy") {
         res.statusCode = 503;
         res.end(JSON.stringify({ status: "error", dotnet: false }));
+      } else if (runnerMode === "loading" || (runnerMode === "cold" && coldHealthRequests++ < 2)) {
+        res.setHeader("content-type", "text/html; charset=utf-8");
+        res.end("<html><body>Service waking up</body></html>");
       } else {
         res.end(JSON.stringify({ status: "ok", dotnet: true }));
       }
@@ -163,6 +167,7 @@ test("practice API reports remote health and preserves runner result types", asy
     }
     const results = {
       success: { success: true, stdout: "api works", stderr: "" },
+      cold: { success: true, stdout: "runner woke", stderr: "" },
       compiler: { success: false, stdout: "", stderr: "error CS1002", errorType: "compiler" },
       runtime: { success: false, stdout: "", stderr: "IndexOutOfRangeException", errorType: "runtime" },
       timeout: { success: false, stdout: "", stderr: "Execution timed out", timedOut: true, errorType: "timeout" },
@@ -189,6 +194,21 @@ test("practice API reports remote health and preserves runner result types", asy
         assert.equal(result.response.status, mode === "timeout" ? 408 : 200);
         assert.equal(result.payload.errorType, mode === "success" ? undefined : mode);
       }
+
+      runnerMode = "cold";
+      coldHealthRequests = 0;
+      process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS = "5000";
+      const coldStart = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(coldStart.response.status, 200);
+      assert.equal(coldStart.payload.stdout, "runner woke");
+      assert.equal(coldHealthRequests, 3);
+
+      runnerMode = "loading";
+      process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS = "200";
+      const wakeTimeout = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(wakeTimeout.response.status, 503);
+      assert.equal(wakeTimeout.payload.errorType, "service_timeout");
+      assert.equal(wakeTimeout.payload.reason, "runner_timeout");
 
       runnerMode = "auth";
       const authFailure = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });

@@ -37,8 +37,7 @@ function CodeBlock({ block }) {
   return <figure className={styles.codeCard}>
     <figcaption><span>{block.title}</span><button type="button" onClick={copy} aria-label={`Copy ${block.title}`}><FiClipboard /> {copied ? "Copied" : "Copy"}</button></figcaption>
     <pre><code><HighlightedCode value={block.value} /></code></pre>
-    {block.output != null && !block.runnable && <div className={styles.expectedOutput}><strong>Expected output</strong><pre>{block.output}</pre></div>}
-    {block.runnable && <PracticeCompiler code={block.value} expectedOutput={block.output} showEditor={false} />}
+    {block.output != null && <div className={styles.expectedOutput}><strong>Expected output</strong><pre>{block.output}</pre></div>}
   </figure>;
 }
 

@@ -1,5 +1,6 @@
 const { spawn, execFile } = require("child_process");
 const { randomUUID } = require("crypto");
+const { constants: fsConstants } = require("fs");
 const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
@@ -8,9 +9,11 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_OUTPUT_LIMIT = 32 * 1024;
 const DEFAULT_CODE_LIMIT = 16 * 1024;
 const DEFAULT_IMAGE = "mcr.microsoft.com/dotnet/sdk:8.0";
-// Includes free-tier service wake-up time; compilation and execution have their own limits.
 const DEFAULT_BUILD_TIMEOUT_MS = 30_000;
-const DEFAULT_WAKE_TIMEOUT_MS = 180_000;
+const DEFAULT_READY_TIMEOUT_MS = 3_000;
+const DEFAULT_RETRY_AFTER_MS = 5_000;
+const directTemplatePromises = new Map();
+const directDiagnosticPromises = new Map();
 
 const blockedApiPatterns = [
   [/(?:global\s*::\s*)?System\s*\.\s*IO\b|\b(?:File|Directory|Path|FileInfo|DirectoryInfo|DriveInfo|FileSystemWatcher|FileStream|StreamReader|StreamWriter|BinaryReader|BinaryWriter|RandomAccess)\s*(?:\.|\()/i, "File access is not available in practice code."],
@@ -104,61 +107,34 @@ const configuredRemoteBaseUrl = () => {
 };
 
 const remoteUrl = (pathName) => `${configuredRemoteBaseUrl()}${pathName}`;
-const waitForDelay = (delayMs, signal) => new Promise((resolve, reject) => {
-  const onAbort = () => {
-    clearTimeout(timer);
-    const error = new Error("Runner wake-up aborted");
-    error.name = "AbortError";
-    reject(error);
-  };
-  const timer = setTimeout(() => {
-    signal.removeEventListener("abort", onAbort);
-    resolve();
-  }, delayMs);
-  signal.addEventListener("abort", onAbort, { once: true });
-});
-
-const waitForRemoteRunner = async ({ signal, wakeTimeoutMs }) => {
-  const deadline = Date.now() + wakeTimeoutMs;
-  let lastStatus;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(remoteUrl("/health/auth"), {
-        headers: remoteHeaders(),
-        signal,
-        redirect: "error",
-      });
-      lastStatus = response.status;
-      if (response.status === 401 || response.status === 403) {
-        throw unavailableError("Practice runner authentication failed", "runner_auth_failed");
-      }
-
-      const contentType = response.headers.get("content-type") || "";
-      if (response.ok && contentType.includes("application/json")) {
-        const result = await response.json();
-        const compilerAvailable = result.compilerAvailable === true || result.dotnet === true;
-        if (result.status === "ok" && compilerAvailable) return result;
-        throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
-      }
-      // A sleeping Render free service can temporarily return an HTML loading
-      // page (including HTTP 200) or a gateway response. Consuming the body and
-      // retrying prevents that page from being mistaken for compiler output.
-      await response.text();
-      if (response.status === 404) {
-        throw unavailableError("Practice runner health endpoint was not found", "runner_http_error");
-      }
-      if (response.status === 503 && contentType.includes("application/json")) {
-        throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
-      }
-    } catch (error) {
-      if (error.code === "RUNNER_UNAVAILABLE") throw error;
-      if (error.name === "AbortError" || signal.aborted) throw error;
-      // Connection and gateway failures are expected while the instance is
-      // being allocated. Retry them within the dedicated wake-up window.
+const probeRemoteRunner = async ({ signal }) => {
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(remoteUrl("/health/auth"), {
+      headers: remoteHeaders(), signal, redirect: "error",
+    });
+    const contentType = response.headers.get("content-type") || "";
+    if (response.status === 401 || response.status === 403) {
+      throw unavailableError("Practice runner authentication failed", "runner_auth_failed");
     }
-    await waitForDelay(Math.min(1_500, Math.max(0, deadline - Date.now())), signal);
+    if (response.ok && contentType.includes("application/json")) {
+      const result = await response.json();
+      if (result.status === "ok" && (result.compilerAvailable === true || result.dotnet === true)) return result;
+      throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
+    }
+    await response.text();
+    if (response.status === 404) throw unavailableError("Practice runner health endpoint was not found", "runner_http_error");
+    if (response.status === 503 && contentType.includes("application/json")) {
+      throw unavailableError("Practice runner reported an unavailable runtime", "runtime_unavailable");
+    }
+    throw unavailableError("Practice runner is starting", "runner_starting");
+  } catch (error) {
+    if (error.code === "RUNNER_UNAVAILABLE") throw error;
+    if (error.name === "AbortError" || signal.aborted) throw unavailableError("Practice runner is starting", "runner_starting");
+    throw unavailableError("Practice runner could not be reached", "runner_unreachable");
+  } finally {
+    console.info(`Practice runner readiness check (durationMs=${Date.now() - startedAt})`);
   }
-  throw unavailableError(`Practice runner did not become ready${lastStatus ? ` (last status ${lastStatus})` : ""}`, "runner_timeout");
 };
 
 const normalizeRunnerResult = (value, outputLimit = DEFAULT_OUTPUT_LIMIT) => {
@@ -186,9 +162,9 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
     throw unavailableError("Remote practice runner authentication is not configured", "runner_token_missing");
   }
   const controller = new AbortController();
-  const buildTimeoutMs = Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
-  const wakeTimeoutMs = Number(process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS) || DEFAULT_WAKE_TIMEOUT_MS;
-  const timer = setTimeout(() => controller.abort(), buildTimeoutMs + timeoutMs + wakeTimeoutMs);
+  const buildTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
+  const readyTimeoutMs = Number(process.env.PRACTICE_RUNNER_READY_TIMEOUT_MS) || DEFAULT_READY_TIMEOUT_MS;
+  let timer = setTimeout(() => controller.abort(), readyTimeoutMs);
   const baseUrl = configuredRemoteBaseUrl();
   if (!baseUrl) {
     clearTimeout(timer);
@@ -197,7 +173,10 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
   }
   console.info(`Practice runner request attempted (configured=true, normalized=true, protocol=${new URL(baseUrl).protocol.replace(":", "")})`);
   try {
-    await waitForRemoteRunner({ signal: controller.signal, wakeTimeoutMs });
+    await probeRemoteRunner({ signal: controller.signal });
+    clearTimeout(timer);
+    timer = setTimeout(() => controller.abort(), buildTimeoutMs + timeoutMs + 2_000);
+    const runStartedAt = Date.now();
     const response = await fetch(remoteUrl("/run"), {
       method: "POST",
       headers: remoteHeaders(),
@@ -206,7 +185,8 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
       redirect: "error",
     });
     if (response.status === 429) {
-      return { success: false, stdout: "", stderr: "The practice runner is busy. Wait a moment and try again.", errorType: "rate_limit" };
+      console.info(`Practice runner busy rejection (durationMs=${Date.now() - runStartedAt})`);
+      return { success: false, code: "PRACTICE_RUNNER_BUSY", stdout: "", stderr: "The compiler is busy. Please try again in a moment.", errorType: "runner_busy", retryAfterMs: DEFAULT_RETRY_AFTER_MS };
     }
     if (response.status === 401 || response.status === 403) {
       console.error("Practice runner authentication failed");
@@ -224,6 +204,7 @@ const runRemotePracticeCode = async (code, { timeoutMs, outputLimit }) => {
     if (Buffer.byteLength(text, "utf8") > outputLimit * 2) throw unavailableError("Practice runner response was too large");
     let payload;
     try { payload = JSON.parse(text); } catch { throw unavailableError("Practice runner returned non-JSON data"); }
+    console.info(`Practice runner request completed (status=${response.status}, durationMs=${Date.now() - runStartedAt})`);
     return normalizeRunnerResult(payload, outputLimit);
   } catch (error) {
     if (error.code === "RUNNER_UNAVAILABLE") throw error;
@@ -241,12 +222,12 @@ const execFileResult = (file, args, options = {}) => new Promise((resolve, rejec
   });
 });
 
-const directDotnetEnvironment = (tempDirectory) => {
+const directDotnetEnvironment = (tempDirectory, packageDirectory) => {
   const environment = {
     PATH: process.env.PATH,
     DOTNET_ROOT: process.env.DOTNET_ROOT,
     DOTNET_CLI_HOME: path.join(tempDirectory, ".dotnet"),
-    NUGET_PACKAGES: path.join(tempDirectory, ".nuget"),
+    NUGET_PACKAGES: packageDirectory,
     HOME: tempDirectory,
     USERPROFILE: tempDirectory,
     DOTNET_NOLOGO: "1",
@@ -331,30 +312,78 @@ const collectProcess = (file, args, {
 
 const directProject = (targetFramework) => `<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>${targetFramework}</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><WarningLevel>0</WarningLevel><UseSharedCompilation>false</UseSharedCompilation></PropertyGroup></Project>`;
 
+const chownTree = async (target, uid, gid) => {
+  const entries = await fs.readdir(target, { withFileTypes: true });
+  await Promise.all(entries.map(async (entry) => {
+    const child = path.join(target, entry.name);
+    if (entry.isDirectory()) await chownTree(child, uid, gid);
+    await fs.chown(child, uid, gid);
+  }));
+};
+
+const prepareDirectTemplate = (dotnetBinary, targetFramework) => {
+  const configuredTemplate = String(process.env.PRACTICE_TEMPLATE_DIR || "").trim();
+  const cacheKey = `${dotnetBinary}:${targetFramework}:${configuredTemplate}`;
+  if (!directTemplatePromises.has(cacheKey)) {
+    directTemplatePromises.set(cacheKey, (async () => {
+      if (configuredTemplate) {
+        return {
+          templateDirectory: configuredTemplate,
+          packageDirectory: process.env.PRACTICE_NUGET_PACKAGES || path.join(configuredTemplate, ".nuget"),
+        };
+      }
+      // Local/self-hosted direct mode prepares one process-wide template. The
+      // production image supplies PRACTICE_TEMPLATE_DIR, so user requests never
+      // perform restore work there.
+      const templateDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "sharprunner-template-"));
+      const packageDirectory = path.join(templateDirectory, ".nuget");
+      await fs.writeFile(path.join(templateDirectory, "Practice.csproj"), directProject(targetFramework), "utf8");
+      const environment = directDotnetEnvironment(templateDirectory, packageDirectory);
+      await execFileResult(dotnetBinary, ["restore", "Practice.csproj", "--nologo", "--verbosity", "quiet"], {
+        cwd: templateDirectory,
+        env: environment,
+        timeout: Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS,
+        maxBuffer: DEFAULT_OUTPUT_LIMIT,
+      });
+      return { templateDirectory, packageDirectory };
+    })());
+  }
+  return directTemplatePromises.get(cacheKey);
+};
+
 const runDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
   const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
   const targetFramework = process.env.PRACTICE_DOTNET_TARGET || "net8.0";
-  const buildTimeoutMs = Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
+  const buildTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
   const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "sharprunner-practice-"));
   const outputDirectory = path.join(tempDirectory, "build");
   const projectPath = path.join(tempDirectory, "Practice.csproj");
-  const environment = directDotnetEnvironment(tempDirectory);
+  let templateDirectory;
+  let packageDirectory;
+  try {
+    ({ templateDirectory, packageDirectory } = await prepareDirectTemplate(dotnetBinary, targetFramework));
+  } catch (error) {
+    await fs.rm(tempDirectory, { recursive: true, force: true });
+    throw error;
+  }
+  const environment = directDotnetEnvironment(tempDirectory, packageDirectory);
   const runAsUnprivilegedUser = process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0;
   const spawnOptions = runAsUnprivilegedUser ? { uid: 65534, gid: 65534 } : {};
 
   try {
-    await fs.writeFile(projectPath, directProject(targetFramework), { encoding: "utf8", flag: "wx", mode: 0o600 });
+    console.info("Practice compile started");
+    await fs.copyFile(path.join(templateDirectory, "Practice.csproj"), projectPath, fsConstants.COPYFILE_EXCL);
+    await fs.cp(path.join(templateDirectory, "obj"), path.join(tempDirectory, "obj"), { recursive: true });
     const sourcePath = path.join(tempDirectory, "Program.cs");
     await fs.writeFile(sourcePath, code, { encoding: "utf8", flag: "wx", mode: 0o600 });
     if (runAsUnprivilegedUser) {
-      await Promise.all([
-        fs.chown(tempDirectory, 65534, 65534),
-        fs.chown(projectPath, 65534, 65534),
-        fs.chown(sourcePath, 65534, 65534),
-      ]);
+      await chownTree(tempDirectory, 65534, 65534);
+      await fs.chown(tempDirectory, 65534, 65534);
     }
+    const compileStartedAt = Date.now();
     const build = await collectProcess(dotnetBinary, [
       "build", projectPath,
+      "--no-restore",
       "--configuration", "Release",
       "--output", outputDirectory,
       "--nologo", "--verbosity", "quiet",
@@ -368,19 +397,26 @@ const runDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
       timeoutMessage: "Compilation exceeded the allowed time.",
       spawnOptions,
     });
+    const compileDurationMs = Date.now() - compileStartedAt;
+    console.info(`Practice compile finished (durationMs=${compileDurationMs}, exitCode=${build.exitCode ?? "none"}, timedOut=${Boolean(build.timedOut)})`);
     const buildText = sanitizeRunnerText(`${build.stdout}\n${build.stderr}`, tempDirectory);
     if (build.outputLimited) return { success: false, stdout: "", stderr: "Compiler output limit exceeded.", outputLimited: true, errorType: "output_limit" };
     if (build.timedOut) return { success: false, stdout: "", stderr: build.stderr, timedOut: true, errorType: "timeout" };
     if (build.exitCode !== 0) return { success: false, stdout: "", stderr: buildText, errorType: "compiler" };
 
+    const executionStartedAt = Date.now();
+    const executionMemoryMb = Math.max(32, Number(process.env.PRACTICE_EXEC_MEMORY_LIMIT_MB) || 128);
     const execution = await collectProcess(dotnetBinary, [path.join(outputDirectory, "Practice.dll")], {
       cwd: tempDirectory,
-      env: environment,
+      // This caps the managed heap in addition to the service/container plan's
+      // process memory limit. Execution remains a separate unprivileged process.
+      env: { ...environment, DOTNET_GCHeapHardLimit: (executionMemoryMb * 1024 * 1024).toString(16) },
       timeoutMs,
       outputLimit,
       timeoutMessage: `Program terminated after execution timeout (${timeoutMs / 1000} seconds).`,
       spawnOptions,
     });
+    console.info(`Practice execution finished (durationMs=${Date.now() - executionStartedAt}, exitCode=${execution.exitCode ?? "none"}, timedOut=${Boolean(execution.timedOut)}, outputLimited=${Boolean(execution.outputLimited)})`);
     if (execution.outputLimited) {
       return { success: false, stdout: sanitizeRunnerText(execution.stdout, tempDirectory), stderr: "Output limit exceeded. Reduce the amount your program prints.", outputLimited: true, errorType: "output_limit" };
     }
@@ -392,7 +428,9 @@ const runDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
       ...(execution.exitCode === 0 ? {} : { errorType: "runtime" }),
     };
   } finally {
+    const cleanupStartedAt = Date.now();
     await fs.rm(tempDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+    console.info(`Practice job cleanup finished (durationMs=${Date.now() - cleanupStartedAt})`);
   }
 };
 
@@ -404,10 +442,10 @@ const getPracticeRunnerDiagnostic = async () => {
     if (!String(process.env.PRACTICE_RUNNER_TOKEN || "").trim()) return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_TOKEN is missing", reasonCode: "runner_token_missing" };
     if (!configuredRemoteBaseUrl()) return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_URL is invalid", reasonCode: "runner_url_invalid" };
     const controller = new AbortController();
-    const wakeTimeoutMs = Number(process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS) || DEFAULT_WAKE_TIMEOUT_MS;
-    const timer = setTimeout(() => controller.abort(), wakeTimeoutMs);
+    const readyTimeoutMs = Number(process.env.PRACTICE_RUNNER_READY_TIMEOUT_MS) || DEFAULT_READY_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), readyTimeoutMs);
     try {
-      await waitForRemoteRunner({ signal: controller.signal, wakeTimeoutMs });
+      await probeRemoteRunner({ signal: controller.signal });
       return { available: true, mode: "remote", reason: "remote runner is healthy" };
     } catch (error) {
       if (error.code === "RUNNER_UNAVAILABLE") {
@@ -422,8 +460,10 @@ const getPracticeRunnerDiagnostic = async () => {
     return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_URL is missing", reasonCode: "runner_url_missing" };
   }
   if (String(process.env.PRACTICE_RUNNER_MODE || "docker").toLowerCase() === "direct") {
-    try {
-      const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
+    const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
+    const cacheKey = `${dotnetBinary}:${process.env.PRACTICE_DOTNET_TARGET || "net8.0"}`;
+    if (!directDiagnosticPromises.has(cacheKey)) directDiagnosticPromises.set(cacheKey, (async () => {
+      try {
       const checkEnvironment = { PATH: process.env.PATH, DOTNET_ROOT: process.env.DOTNET_ROOT };
       const [sdks, runtimes] = await Promise.all([
         execFileResult(dotnetBinary, ["--list-sdks"], { timeout: 3_000, env: checkEnvironment }),
@@ -437,9 +477,11 @@ const getPracticeRunnerDiagnostic = async () => {
         : !sdkFound
           ? { available: false, mode: "direct", reason: "dotnet exists but no SDK is installed" }
           : { available: false, mode: "direct", reason: ".NET SDK exists but the runtime is missing" };
-    } catch (error) {
-      return { available: false, mode: "direct", reason: `dotnet SDK check failed: ${error.code || error.message}` };
-    }
+      } catch (error) {
+        return { available: false, mode: "direct", reason: `dotnet SDK check failed: ${error.code || error.message}` };
+      }
+    })());
+    return directDiagnosticPromises.get(cacheKey);
   }
   try {
     const dockerBinary = process.env.PRACTICE_DOCKER_BIN || "docker";
@@ -468,7 +510,7 @@ const getPracticeRunnerHealth = async () => {
 };
 
 const runPracticeCode = async (code, options = {}) => {
-  const timeoutMs = options.timeoutMs ?? (Number(process.env.PRACTICE_RUNNER_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? (Number(process.env.PRACTICE_EXEC_TIMEOUT_MS) || Number(process.env.PRACTICE_RUNNER_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS);
   const outputLimit = options.outputLimit ?? (Number(process.env.PRACTICE_RUNNER_OUTPUT_LIMIT) || DEFAULT_OUTPUT_LIMIT);
   const policy = validatePracticeCode(code, options.codeLimit);
   if (!policy.allowed) return { success: false, stdout: "", stderr: policy.message, rejected: true };

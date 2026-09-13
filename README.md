@@ -398,7 +398,10 @@ adapter. Production student processes are unprivileged, receive a scrubbed
 non-secret environment, run in unique temporary directories, and have a
 five-second timeout, 32 KB output cap, concurrency guard, and restricted API
 policy. Compilation requires the SDK (the runtime alone is insufficient), and
-there is no expected-output fallback. See `docs/PRACTICE_COMPILER.md`.
+the image restores a reusable project once before deployment so per-run builds
+use isolated directories with `--no-restore`. Sleeping runners return a quick,
+retryable `PRACTICE_RUNNER_STARTING` response instead of holding a request for
+minutes. There is no expected-output fallback. See `docs/PRACTICE_COMPILER.md`.
 
 An existing manually created Render API is not automatically converted into a
 two-service deployment when `render.yaml` changes. In Render choose **New + >

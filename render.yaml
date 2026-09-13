@@ -58,12 +58,12 @@ services:
           type: web
           name: sharprunner-practice-runner
           envVarKey: PRACTICE_RUNNER_TOKEN
-      - key: PRACTICE_RUNNER_TIMEOUT_MS
+      - key: PRACTICE_EXEC_TIMEOUT_MS
         value: "5000"
-      - key: PRACTICE_RUNNER_BUILD_TIMEOUT_MS
+      - key: PRACTICE_COMPILE_TIMEOUT_MS
         value: "30000"
-      - key: PRACTICE_RUNNER_WAKE_TIMEOUT_MS
-        value: "180000"
+      - key: PRACTICE_RUNNER_READY_TIMEOUT_MS
+        value: "3000"
       - key: PRACTICE_RUNNER_OUTPUT_LIMIT
         value: "32768"
 
@@ -81,10 +81,12 @@ services:
         value: direct
       - key: PRACTICE_DOTNET_TARGET
         value: net8.0
-      - key: PRACTICE_RUNNER_TIMEOUT_MS
+      - key: PRACTICE_EXEC_TIMEOUT_MS
         value: "5000"
-      - key: PRACTICE_RUNNER_BUILD_TIMEOUT_MS
+      - key: PRACTICE_COMPILE_TIMEOUT_MS
         value: "30000"
+      - key: PRACTICE_EXEC_MEMORY_LIMIT_MB
+        value: "128"
       - key: PRACTICE_RUNNER_OUTPUT_LIMIT
         value: "32768"
       - key: PRACTICE_RUNNER_MAX_CONCURRENT

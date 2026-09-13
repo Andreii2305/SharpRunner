@@ -41,9 +41,13 @@ The remote service contract is intentionally small:
   `outputLimited`, and `errorType` fields.
 
 The service authenticates `PRACTICE_RUNNER_TOKEN` and is isolated from the API,
-database, and user data at the service-container boundary. It compiles a unique
-temporary top-level-statement project, then executes the resulting assembly in
-a separate unprivileged process with a scrubbed environment. Source is never
+database, and user data at the service-container boundary. The image restores a
+stable top-level-statement project once during its build. Each request copies
+that project's immutable metadata and restore assets into a unique job directory,
+writes only that student's source, and builds with `--no-restore`. The shared
+NuGet cache is prepared in the image and is only read by jobs. The resulting
+assembly still executes in a separate unprivileged process with a scrubbed
+environment. Source is never
 placed in a shell command and expected output is never used as actual output.
 
 The receiver is `backend/src/practiceRunnerServer.js`; its reproducible image is
@@ -122,7 +126,10 @@ local Docker adapter uses `mcr.microsoft.com/dotnet/sdk:8.0`.
 reasons include `runner_url_missing`, `runner_url_invalid`, `runner_token_missing`,
 `runner_auth_failed`, `runner_unreachable`, `runner_timeout`, and
 `runtime_unavailable`. It never returns image names, paths, credentials, or host
-details. `POST /api/practice/run` uses 400 for source-policy/input rejection,
+details. It makes one readiness probe with the short
+`PRACTICE_RUNNER_READY_TIMEOUT_MS` budget; it never compiles or polls for minutes.
+The runner's public `/health` is a constant-time liveness check, while authenticated
+`/ready` and legacy `/health/auth` report cached SDK readiness. `POST /api/practice/run` uses 400 for source-policy/input rejection,
 408 for a sandbox timeout, 429 for rate limiting, 500 for an unexpected API
 error, and 503 when the execution capability cannot be reached.
 
@@ -136,13 +143,25 @@ error, and 503 when the execution capability cannot be reached.
   `IndexOutOfRangeException`, infinite-loop termination, large-output termination,
   and blocked file/network/process attempts on a Docker-enabled host.
 
-Free services spin down after inactivity. Opening a built-in module starts one
-authenticated readiness request in the background so the runner can wake while
-the student reads. The API allows up to 180 seconds for a Render wake-up,
-separately from the 30-second compilation limit and five-second student
-execution limit. During that window the API polls authenticated readiness and
-accepts only the runner's JSON health response. Render's temporary HTML
-"service waking up" page and transient gateway responses are retried instead of
-being mistaken for compiler output. The Run button reports when it is waking
-the compiler. A failed health check is not cached, so **Try again** performs a
-new request and can succeed after the runner wakes.
+Free services spin down after inactivity. Mounting the shared practice component
+starts one authenticated readiness request in the background, throttled to once
+per five-minute browser session interval, so the runner can wake while the
+student reads. A run performs only one readiness probe (three seconds by default).
+If Render is still waking, the API returns HTTP 503 with
+`PRACTICE_RUNNER_STARTING`, `retryAfterMs`, and `Retry-After`; it does not hold the
+student request open. **Try again** becomes available after that short interval.
+
+## Timing and benchmarking
+
+Runner logs include readiness, compilation, execution, cleanup, and total-run
+durations without logging source or credentials. For an awake-service benchmark,
+open Chrome DevTools **Network**, run `Console.WriteLine("Hello");` three times,
+and record each `/api/practice/run` duration. Compare those totals with the
+`Practice compile finished`, `Practice execution finished`, and `Practice run
+finished` log fields in Render. The first request after a new image may initialize
+process-local SDK state; later requests should reuse the image's restore assets.
+
+`UseSharedCompilation=false` and `MSBUILDDISABLENODEREUSE=1` remain intentional:
+compiler/server reuse would retain more state across mutually untrusted jobs.
+The optimized path instead reuses immutable restore inputs while preserving
+process and directory isolation.

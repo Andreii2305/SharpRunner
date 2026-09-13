@@ -4,12 +4,20 @@ import axios from "axios";
 import { FiCheckCircle, FiPlay, FiRefreshCw } from "react-icons/fi";
 import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth.js";
 import styles from "./PracticeCompiler.module.css";
+import { classifyPracticeRequestError } from "./practiceCompilerState.js";
 
 let compilerWarmupPromise;
+const WARMUP_INTERVAL_MS = 5 * 60 * 1000;
+const WARMUP_STORAGE_KEY = "sharprunner:practice-warmup-at:v1";
 const warmPracticeCompiler = () => {
-  compilerWarmupPromise ??= axios
-    .get(buildApiUrl("/api/practice/health"), { headers: getAuthHeaders() })
-    .catch(() => null);
+  let lastWarmup = 0;
+  try { lastWarmup = Number(window.sessionStorage.getItem(WARMUP_STORAGE_KEY)) || 0; } catch { /* Optional throttle storage. */ }
+  if (Date.now() - lastWarmup < WARMUP_INTERVAL_MS) return compilerWarmupPromise ?? Promise.resolve();
+  try { window.sessionStorage.setItem(WARMUP_STORAGE_KEY, String(Date.now())); } catch { /* Optional throttle storage. */ }
+  compilerWarmupPromise = axios
+    .get(buildApiUrl("/api/practice/health"), { headers: getAuthHeaders(), timeout: 4_000 })
+    .catch(() => null)
+    .finally(() => { compilerWarmupPromise = undefined; });
   return compilerWarmupPromise;
 };
 
@@ -21,26 +29,14 @@ const friendlyRuntimeHint = (stderr) => {
   return null;
 };
 
-const classifyRequestError = (error) => {
-  const status = error.response?.status;
-  const data = error.response?.data;
-  if (data?.stdout != null || data?.stderr != null) return data;
-  if (status === 401 || status === 403) return { success: false, errorType: "auth", stderr: "Your session is no longer authorized to run practice code. Sign in again, then retry." };
-  if (status === 400) return { success: false, rejected: true, stderr: data?.message || "The practice request was invalid. Check the code and try again." };
-  if (status === 408) return { success: false, timedOut: true, errorType: "timeout", stderr: data?.message || "Execution took too long and was stopped." };
-  if (status === 429) return { success: false, errorType: "rate_limit", stderr: data?.message || "Too many runs. Please wait a moment and try again." };
-  if (status === 500) return { success: false, errorType: "internal", stderr: data?.message || "The compiler encountered an internal error. Try again in a moment." };
-  return { success: false, unavailable: true, errorType: "unavailable", stderr: data?.message || "We couldn't reach the practice compiler. You can continue reading this lesson and try again later." };
-};
-
 const resultTitle = (result) => {
   if (result.success) return "Actual output";
   if (result.errorType === "authentication") return "Compiler authentication error";
-  if (result.errorType === "service_timeout") return "Compiler startup timed out";
+  if (result.errorType === "service_starting") return "Compiler is starting...";
   if (result.errorType === "service_unavailable" || result.unavailable) return "Compiler temporarily unavailable";
   if (result.rejected) return "Practice safety check";
   if (result.errorType === "auth") return "Sign-in required";
-  if (result.errorType === "rate_limit") return "Too many runs";
+  if (["rate_limit", "runner_busy"].includes(result.errorType)) return "Compiler busy";
   if (result.outputLimited || result.errorType === "output_limit") return "Output limit reached";
   if (result.timedOut || result.errorType === "timeout") return "Execution timed out";
   if (result.errorType === "compiler") return "Compiler error";
@@ -61,8 +57,16 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   const [running, setRunning] = useState(false);
   const [runStatus, setRunStatus] = useState("");
   const [showSolution, setShowSolution] = useState(false);
+  const [retryUntil, setRetryUntil] = useState(0);
+  const retryBlocked = retryUntil > Date.now();
 
   useEffect(() => { void warmPracticeCompiler(); }, []);
+
+  useEffect(() => {
+    if (!retryUntil) return undefined;
+    const timer = window.setTimeout(() => setRetryUntil(0), Math.max(0, retryUntil - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [retryUntil]);
 
   useEffect(() => {
     if (!editable || !storageKey) return;
@@ -70,20 +74,18 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   }, [editable, storageKey, value]);
 
   const run = async () => {
-    if (running) return;
+    if (running || retryBlocked) return;
     setRunning(true);
     setRunStatus("Running...");
     if (!result?.unavailable) setResult(null);
-    const wakeTimer = window.setTimeout(() => setRunStatus("Waking compiler..."), 3_000);
-    const slowWakeTimer = window.setTimeout(() => setRunStatus("Compiler is still starting..."), 60_000);
     try {
       const response = await axios.post(buildApiUrl("/api/practice/run"), { code: value }, { headers: getAuthHeaders() });
       setResult(response.data);
     } catch (error) {
-      setResult(classifyRequestError(error));
+      const nextResult = classifyPracticeRequestError(error);
+      setResult(nextResult);
+      if (nextResult.retryAfterMs) setRetryUntil(Date.now() + nextResult.retryAfterMs);
     } finally {
-      window.clearTimeout(wakeTimer);
-      window.clearTimeout(slowWakeTimer);
       setRunStatus("");
       setRunning(false);
     }
@@ -127,7 +129,7 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
         {runtimeHint && <p><strong>What this usually means:</strong> {runtimeHint}</p>}
         {noOutput && <p>Program completed successfully. No output was produced.</p>}
         {matched && <p className={styles.correct}><FiCheckCircle /> Correct! Your output matches the quick self-check.</p>}
-        {result?.unavailable && <button type="button" className={styles.retry} onClick={run} disabled={running}><FiRefreshCw /> {running ? "Checking..." : "Try again"}</button>}
+        {(result?.unavailable || result?.errorType === "runner_busy") && <button type="button" className={styles.retry} onClick={run} disabled={running || retryBlocked}><FiRefreshCw /> {running ? "Checking..." : retryBlocked ? "Try again shortly" : "Try again"}</button>}
       </div>
     </div>
     <p className={styles.disclaimer}>Practice runs are private and non-graded. They do not affect score, XP, attempts, hints, or level progress.</p>

@@ -176,11 +176,11 @@ test("practice API reports remote health and preserves runner result types", asy
   });
   await new Promise((resolve) => runnerServer.listen(0, "127.0.0.1", resolve));
 
-  const previous = Object.fromEntries(["NODE_ENV", "PRACTICE_RUNNER_URL", "PRACTICE_RUNNER_TOKEN", "PRACTICE_RUNNER_WAKE_TIMEOUT_MS"].map((key) => [key, process.env[key]]));
+  const previous = Object.fromEntries(["NODE_ENV", "PRACTICE_RUNNER_URL", "PRACTICE_RUNNER_TOKEN", "PRACTICE_RUNNER_READY_TIMEOUT_MS"].map((key) => [key, process.env[key]]));
   process.env.NODE_ENV = "production";
   process.env.PRACTICE_RUNNER_URL = `127.0.0.1:${runnerServer.address().port}`;
   process.env.PRACTICE_RUNNER_TOKEN = ` ${runnerToken} `;
-  process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS = "200";
+  process.env.PRACTICE_RUNNER_READY_TIMEOUT_MS = "200";
   const studentStub = [[User, "findByPk", async () => activeUser({ id: 83, role: "student" })]];
   try {
     await withStubs(studentStub, async () => {
@@ -197,18 +197,22 @@ test("practice API reports remote health and preserves runner result types", asy
 
       runnerMode = "cold";
       coldHealthRequests = 0;
-      process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS = "5000";
+      const startingOne = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(startingOne.response.status, 503);
+      assert.equal(startingOne.payload.code, "PRACTICE_RUNNER_STARTING");
+      assert.equal(startingOne.response.headers.get("retry-after"), "5");
+      const startingTwo = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
+      assert.equal(startingTwo.response.status, 503);
       const coldStart = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
       assert.equal(coldStart.response.status, 200);
       assert.equal(coldStart.payload.stdout, "runner woke");
       assert.equal(coldHealthRequests, 3);
 
       runnerMode = "loading";
-      process.env.PRACTICE_RUNNER_WAKE_TIMEOUT_MS = "200";
       const wakeTimeout = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });
       assert.equal(wakeTimeout.response.status, 503);
-      assert.equal(wakeTimeout.payload.errorType, "service_timeout");
-      assert.equal(wakeTimeout.payload.reason, "runner_timeout");
+      assert.equal(wakeTimeout.payload.errorType, "service_starting");
+      assert.equal(wakeTimeout.payload.reason, "runner_starting");
 
       runnerMode = "auth";
       const authFailure = await apiRequest("/api/practice/run", { method: "POST", token: authToken(83, "student"), body: { code: "Console.WriteLine(1);" } });

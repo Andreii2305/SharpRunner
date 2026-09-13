@@ -21,7 +21,7 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
   app.disable("x-powered-by");
   app.use(express.json({ limit: "20kb" }));
 
-  const sendHealth = async (_req, res) => {
+  const sendReadiness = async (_req, res) => {
     const diagnostic = await getPracticeRunnerDiagnostic();
     return res.status(diagnostic.available ? 200 : 503).json({
       status: diagnostic.available ? "ok" : "error",
@@ -33,18 +33,25 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
     });
   };
 
-  // Render cannot attach an Authorization header to health checks. This route
-  // exposes only readiness; execution and the authenticated probe stay protected.
-  app.get("/health", sendHealth);
+  // Render liveness must be constant-time and must never spawn dotnet. The
+  // authenticated readiness endpoints below use the cached startup diagnostic.
+  app.get("/health", (_req, res) => res.json({ status: "ok" }));
   app.use((req, res, next) => {
     if (!tokenMatches(req.get("authorization"))) return res.status(401).json({ message: "Unauthorized" });
     return next();
   });
-  app.get("/health/auth", sendHealth);
+  app.get("/ready", sendReadiness);
+  app.get("/health/auth", sendReadiness);
 
   app.post("/run", async (req, res) => {
-    if (activeRuns >= maxConcurrentRuns) return res.status(429).json({ message: "Runner is busy" });
+    if (activeRuns >= maxConcurrentRuns) {
+      console.info(`Practice runner busy rejection (activeRuns=${activeRuns}, maxConcurrentRuns=${maxConcurrentRuns})`);
+      res.set("Retry-After", "5");
+      return res.status(429).json({ success: false, code: "PRACTICE_RUNNER_BUSY", message: "The compiler is busy. Please try again in a moment.", retryAfterMs: 5000 });
+    }
     activeRuns += 1;
+    const startedAt = Date.now();
+    console.info(`Practice run started (activeRuns=${activeRuns})`);
     try {
       const result = await runPracticeCode(req.body?.code);
       const status = result.rejected ? 400 : result.timedOut ? 408 : 200;
@@ -55,6 +62,7 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
       return res.status(500).json({ message: "Runner error" });
     } finally {
       activeRuns -= 1;
+      console.info(`Practice run finished (durationMs=${Date.now() - startedAt}, activeRuns=${activeRuns})`);
     }
   });
   app.use((_req, res) => res.status(404).json({ message: "Not found" }));

@@ -47,6 +47,11 @@ test("the direct C# runner returns real output and classifies failures", async (
   assert.equal(timedOut.errorType, "timeout");
   assert.match(timedOut.stderr, /terminated after execution timeout/);
 
+  const outputLimited = await runDirectPracticeCode('while (true) Console.WriteLine("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx");', { timeoutMs: 2_000, outputLimit: 1024 });
+  assert.equal(outputLimited.success, false);
+  assert.equal(outputLimited.outputLimited, true);
+  assert.equal(outputLimited.errorType, "output_limit");
+
   const editedA = await execute('Console.WriteLine("A");');
   const editedB = await execute('Console.WriteLine("B");');
   assert.equal(editedA.stdout, "A");

@@ -1,7 +1,7 @@
 const assert = require("assert");
 const test = require("node:test");
 const { createPracticeRunnerApp } = require("../src/practiceRunnerServer");
-const { configuredRemoteBaseUrl, normalizeRunnerResult, sanitizeRunnerText, validatePracticeCode } = require("../src/services/practiceRunnerService");
+const { configuredRemoteBaseUrl, normalizeRunnerResult, runPracticeCode, sanitizeRunnerText, validatePracticeCode } = require("../src/services/practiceRunnerService");
 
 assert.equal(validatePracticeCode('Console.WriteLine("Hello");').allowed, true);
 assert.equal(validatePracticeCode('int x = "abc";').allowed, true, "Compiler errors should reach the compiler");
@@ -35,7 +35,7 @@ assert.equal(configuredRemoteBaseUrl(), "");
 if (originalRunnerUrl === undefined) delete process.env.PRACTICE_RUNNER_URL;
 else process.env.PRACTICE_RUNNER_URL = originalRunnerUrl;
 
-test("runner health is public but authenticated health rejects a bad token", async () => {
+test("runner liveness is cheap but readiness requires authentication", async () => {
   const previousMode = process.env.PRACTICE_RUNNER_MODE;
   const previousTarget = process.env.PRACTICE_DOTNET_TARGET;
   process.env.PRACTICE_RUNNER_MODE = "direct";
@@ -48,15 +48,18 @@ test("runner health is public but authenticated health rejects a bad token", asy
   });
   const url = `http://127.0.0.1:${server.address().port}`;
   try {
+    const healthStartedAt = Date.now();
     const publicHealth = await fetch(`${url}/health`);
+    assert.ok(Date.now() - healthStartedAt < 250, "liveness should be constant-time");
     assert.equal(publicHealth.status, 200);
     const publicHealthPayload = await publicHealth.json();
     assert.equal(publicHealthPayload.status, "ok");
-    assert.equal(publicHealthPayload.compilerAvailable, true);
-    assert.equal(publicHealthPayload.dotnet, true);
-    assert.match(publicHealthPayload.sdkVersion, /^\d+\.\d+\.\d+$/);
     assert.equal((await fetch(`${url}/health/auth`)).status, 401);
-    assert.equal((await fetch(`${url}/health/auth`, { headers: { authorization: `Bearer ${token}` } })).status, 200);
+    const readyResponse = await fetch(`${url}/ready`, { headers: { authorization: `Bearer ${token}` } });
+    assert.equal(readyResponse.status, 200);
+    const readyPayload = await readyResponse.json();
+    assert.equal(readyPayload.compilerAvailable, true);
+    assert.match(readyPayload.sdkVersion, /^\d+\.\d+\.\d+$/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     if (previousMode === undefined) delete process.env.PRACTICE_RUNNER_MODE; else process.env.PRACTICE_RUNNER_MODE = previousMode;
@@ -64,4 +67,62 @@ test("runner health is public but authenticated health rejects a bad token", asy
   }
 });
 
+test("runner rejects excess concurrent work with a retryable 429", async () => {
+  const previousMode = process.env.PRACTICE_RUNNER_MODE;
+  const previousConcurrency = process.env.PRACTICE_RUNNER_MAX_CONCURRENT;
+  const previousTimeout = process.env.PRACTICE_RUNNER_TIMEOUT_MS;
+  process.env.PRACTICE_RUNNER_MODE = "direct";
+  process.env.PRACTICE_RUNNER_MAX_CONCURRENT = "1";
+  process.env.PRACTICE_RUNNER_TIMEOUT_MS = "800";
+  const token = "runner-busy-test-token-at-least-32-characters";
+  const app = createPracticeRunnerApp({ serviceToken: token });
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  const url = `http://127.0.0.1:${server.address().port}`;
+  const options = { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" } };
+  try {
+    const firstRun = fetch(`${url}/run`, { ...options, body: JSON.stringify({ code: "while (true) { }" }) });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const busyResponse = await fetch(`${url}/run`, { ...options, body: JSON.stringify({ code: "Console.WriteLine(1);" }) });
+    assert.equal(busyResponse.status, 429);
+    assert.equal(busyResponse.headers.get("retry-after"), "5");
+    assert.equal((await busyResponse.json()).code, "PRACTICE_RUNNER_BUSY");
+    await firstRun;
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    if (previousMode === undefined) delete process.env.PRACTICE_RUNNER_MODE; else process.env.PRACTICE_RUNNER_MODE = previousMode;
+    if (previousConcurrency === undefined) delete process.env.PRACTICE_RUNNER_MAX_CONCURRENT; else process.env.PRACTICE_RUNNER_MAX_CONCURRENT = previousConcurrency;
+    if (previousTimeout === undefined) delete process.env.PRACTICE_RUNNER_TIMEOUT_MS; else process.env.PRACTICE_RUNNER_TIMEOUT_MS = previousTimeout;
+  }
+});
+
 console.log("Practice runner policy tests passed");
+
+test("a waking remote runner fails fast with a machine-readable reason", async () => {
+  const previous = {
+    fetch: global.fetch,
+    url: process.env.PRACTICE_RUNNER_URL,
+    token: process.env.PRACTICE_RUNNER_TOKEN,
+    timeout: process.env.PRACTICE_RUNNER_READY_TIMEOUT_MS,
+  };
+  process.env.PRACTICE_RUNNER_URL = "https://runner.example.test";
+  process.env.PRACTICE_RUNNER_TOKEN = "remote-runner-test-token-at-least-32-characters";
+  process.env.PRACTICE_RUNNER_READY_TIMEOUT_MS = "50";
+  global.fetch = (_url, { signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })), { once: true });
+  });
+  const startedAt = Date.now();
+  try {
+    await assert.rejects(
+      () => runPracticeCode('Console.WriteLine("Hello");'),
+      (error) => error.code === "RUNNER_UNAVAILABLE" && error.reason === "runner_starting",
+    );
+    assert.ok(Date.now() - startedAt < 500, "readiness should not enter a long wake loop");
+  } finally {
+    global.fetch = previous.fetch;
+    for (const [key, value] of [["PRACTICE_RUNNER_URL", previous.url], ["PRACTICE_RUNNER_TOKEN", previous.token], ["PRACTICE_RUNNER_READY_TIMEOUT_MS", previous.timeout]]) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});

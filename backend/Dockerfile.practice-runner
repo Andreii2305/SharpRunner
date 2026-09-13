@@ -11,12 +11,25 @@ RUN npm --prefix backend ci --omit=dev --ignore-scripts \
     && dotnet --info
 
 COPY backend/src ./backend/src
+COPY backend/practice-template/Practice.csproj /opt/sharprunner/practice-template/Practice.csproj
+
+# Restore the immutable project once while building the image. Each request
+# copies this project and its assets into a private job directory and builds
+# with --no-restore, so user traffic never performs a network package restore.
+RUN mkdir -p /opt/sharprunner/nuget /opt/sharprunner/dotnet-home \
+    && DOTNET_CLI_HOME=/opt/sharprunner/dotnet-home \
+       NUGET_PACKAGES=/opt/sharprunner/nuget \
+       dotnet restore /opt/sharprunner/practice-template/Practice.csproj --nologo \
+    && chmod -R a+rX /opt/sharprunner
 
 ENV NODE_ENV=production \
     PRACTICE_RUNNER_MODE=direct \
     PRACTICE_DOTNET_TARGET=net8.0 \
-    PRACTICE_RUNNER_TIMEOUT_MS=5000 \
-    PRACTICE_RUNNER_BUILD_TIMEOUT_MS=30000 \
+    PRACTICE_TEMPLATE_DIR=/opt/sharprunner/practice-template \
+    PRACTICE_NUGET_PACKAGES=/opt/sharprunner/nuget \
+    PRACTICE_EXEC_TIMEOUT_MS=5000 \
+    PRACTICE_COMPILE_TIMEOUT_MS=30000 \
+    PRACTICE_EXEC_MEMORY_LIMIT_MB=128 \
     PRACTICE_RUNNER_OUTPUT_LIMIT=32768 \
     PRACTICE_RUNNER_MAX_CONCURRENT=1 \
     DOTNET_NOLOGO=1 \

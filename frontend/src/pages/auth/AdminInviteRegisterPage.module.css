@@ -124,6 +124,29 @@
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+.form .agreementBox,
+.form .researchBox {
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--bg);
+  font-size: .76rem;
+  line-height: 1.55;
+}
+
+.form .agreementBox,
+.researchBox > div { display: grid; grid-template-columns: 18px 1fr; gap: 10px; align-items: start; }
+.form .agreementBox input,
+.form .researchBox input { width: 17px; height: 17px; margin: 2px 0 0; accent-color: var(--accent); }
+.form .agreementBox label,
+.form .researchBox label { margin: 0; color: var(--text-muted); font-family: var(--sans); font-size: .76rem; font-weight: 400; letter-spacing: 0; text-transform: none; cursor: pointer; }
+.form .agreementBox a { color: #79b4ff; font-weight: 600; }
+.form .researchBox { padding-top: 8px; }
+.form .researchBox legend { padding: 0 6px; color: var(--text-dim); font-family: var(--mono); font-size: .68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.form .researchBox p { margin: 9px 0 0 28px; font-size: .68rem; }
+
 .emailSummary {
   display: grid;
   gap: 5px;

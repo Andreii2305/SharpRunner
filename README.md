@@ -328,12 +328,19 @@ or provider backup.
 - `/admin` - admin dashboard
 - `/developer` - developer admin-invite tools
 - `/admin-invite` - admin invite registration
+- `/legal` - legal documents and signed-in research-consent management
+- `/privacy-policy` - public SharpRunner Privacy Policy
+- `/terms` - public SharpRunner Terms & Conditions
 
 Teacher-facing `Total Students` metrics count unique active student accounts with an active membership in one or more active classrooms managed by the current teacher. Archived classrooms, removed memberships, and inactive or archived student accounts are excluded from current totals.
 
 ### Backend
 
 - `/api/auth`
+  - `POST /api/auth/register` - student registration; requires Terms agreement and Privacy Policy acknowledgement, with separate optional research consent
+  - `GET /api/auth/me` - authenticated account and current policy status
+  - `PUT /api/auth/me/policy-acceptance` - accept the server-controlled current Terms and acknowledge the current Privacy Policy
+  - `PUT /api/auth/me/research-consent` - enable or withdraw the authenticated user's optional research participation
   - `POST /api/auth/forgot-password` - generic response; 5 requests per 15 minutes per IP and a 60-second per-account email cooldown
   - `POST /api/auth/reset-password` - consume a reset token and revoke prior sessions; 10 attempts per 15 minutes per IP
 - `/api/progress`
@@ -344,6 +351,11 @@ Teacher-facing `Total Students` metrics count unique active student accounts wit
 - `/api/classrooms`
 - `/api/notifications`
 - `/api/developer`
+
+Current required document versions are centralized in
+`backend/src/constants/policyVersions.js`. Changing either version causes
+accounts with an older or missing version to receive the blocking acceptance
+flow. Apply the database fields with `npm --prefix backend run db:migrate`.
 
 ## Current Priorities
 

@@ -22,6 +22,8 @@ const SignUp = () => {
     email: "",
     password: "",
     confirmPassword: "",
+    requiredAgreement: false,
+    researchConsent: false,
   });
 
   useEffect(() => {
@@ -31,7 +33,10 @@ const SignUp = () => {
   }, [navigate]);
 
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.type === "checkbox" ? e.target.checked : e.target.value,
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -54,6 +59,11 @@ const SignUp = () => {
       return;
     }
 
+    if (!formData.requiredAgreement) {
+      toast.error("Please agree to the Terms & Conditions and acknowledge the Privacy Policy.");
+      return;
+    }
+
     submittingRef.current = true;
     setIsSubmitting(true);
 
@@ -65,6 +75,9 @@ const SignUp = () => {
         email: formData.email,
         password: formData.password,
         role: "student",
+        acceptTerms: formData.requiredAgreement,
+        acknowledgePrivacy: formData.requiredAgreement,
+        researchConsent: formData.researchConsent,
       });
 
       toast.success(res.data.message);

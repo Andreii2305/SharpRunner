@@ -30,6 +30,9 @@ const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
 const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEditorPage.jsx"));
 const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPage.jsx"));
 const BuiltInModulePage = lazy(() => import("./pages/student/BuiltInModulePage.jsx"));
+const LegalCenterPage = lazy(() => import("./pages/legal/LegalCenterPage.jsx"));
+const PrivacyPolicyPage = lazy(() => import("./pages/legal/LegalDocumentPage.jsx").then((module) => ({ default: module.PrivacyPolicyPage })));
+const TermsPage = lazy(() => import("./pages/legal/LegalDocumentPage.jsx").then((module) => ({ default: module.TermsPage })));
 
 const gameRouteFallback = (
   <div role="status" aria-live="polite" style={{ padding: "2rem", textAlign: "center" }}>
@@ -214,6 +217,9 @@ function App() {
         <Route path="/admin-verify-email" element={<AdminEmailVerificationPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/legal" element={<LegalCenterPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsPage />} />
       </Routes>
       </Suspense>
     </BrowserRouter>

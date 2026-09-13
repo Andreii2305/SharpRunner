@@ -15,6 +15,7 @@ const { logAdminActivity } = require("../services/adminActivityLogService");
 const { validateEmailAddress } = require("../services/emailValidationService");
 const { sendTeacherInviteEmail, sendTemporaryPasswordEmail } = require("../services/emailService");
 const { createRateLimit } = require("../middleware/rateLimit");
+const { getPolicyStatus } = require("../constants/policyVersions");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
 const ALLOWED_STATUSES = new Set(["active", "inactive", "pending", "archived"]);
@@ -61,6 +62,7 @@ const sanitizeUser = (user) => ({
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
   lastLoginAt: user.lastLoginAt,
+  policyStatus: getPolicyStatus(user),
 });
 
 const sanitizeActivityLog = (log) => ({

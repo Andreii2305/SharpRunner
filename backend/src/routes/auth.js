@@ -23,6 +23,12 @@ const {
   GAMIFICATION_PREFERENCES,
   LEARNING_GAME_INTERESTS,
 } = require("../constants/gamificationConfig");
+const {
+  TERMS_VERSION,
+  PRIVACY_POLICY_VERSION,
+  getPolicyStatus,
+} = require("../constants/policyVersions");
+const { logAdminActivity } = require("../services/adminActivityLogService");
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -188,6 +194,48 @@ const findUserByEmailOrUsername = (email, username) =>
       ]
     }
   });
+
+const requiredPolicyAgreementProvided = (body = {}) =>
+  body.acceptTerms === true && body.acknowledgePrivacy === true;
+
+const policyAcceptanceValues = (researchConsent = false, acceptedAt = new Date()) => ({
+  termsVersionAccepted: TERMS_VERSION,
+  termsAcceptedAt: acceptedAt,
+  privacyVersionAcknowledged: PRIVACY_POLICY_VERSION,
+  privacyAcknowledgedAt: acceptedAt,
+  researchConsent: researchConsent === true,
+  researchConsentAt: researchConsent === true ? acceptedAt : null,
+});
+
+const serializeAuthenticatedUser = (user) => ({
+  id: user.id,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  username: user.username,
+  email: user.email,
+  role: user.role ?? "student",
+  status: user.status ?? "active",
+  researchConsent: user.researchConsent === true,
+  researchConsentAt: user.researchConsentAt ?? null,
+  policyStatus: getPolicyStatus(user),
+});
+
+const logPolicyAcceptance = async (user, { includeResearch = false } = {}) => {
+  const common = {
+    actorUserId: user.id,
+    actorUsername: user.username,
+    role: user.role ?? "student",
+    targetUserId: user.id,
+    targetUsername: user.username,
+  };
+  await Promise.all([
+    logAdminActivity({ ...common, activity: "TERMS_ACCEPTED", details: `Terms version ${TERMS_VERSION}` }),
+    logAdminActivity({ ...common, activity: "PRIVACY_POLICY_ACKNOWLEDGED", details: `Privacy Policy version ${PRIVACY_POLICY_VERSION}` }),
+    ...(includeResearch && user.researchConsent
+      ? [logAdminActivity({ ...common, activity: "RESEARCH_CONSENT_GRANTED", details: "Optional research participation enabled" })]
+      : []),
+  ]);
+};
 
 const completeEmailVerification = async (result, res) => {
   const user = await User.findByPk(result.tokenRecord.userId);
@@ -392,15 +440,7 @@ router.post("/login", loginRateLimit, async (req, res) => {
 
     res.json({
       token,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        email: user.email,
-        role: user.role ?? "student",
-        status: user.status ?? "active",
-      }
+      user: serializeAuthenticatedUser(user),
     });
 
   } catch (err) {
@@ -417,10 +457,18 @@ router.post("/register", registerRateLimit, async (req, res) => {
     const email = normalizeEmail(req.body.email);
     const password = normalizeString(req.body.password);
     const requestedRole = normalizeString(req.body.role).toLowerCase();
+    const researchConsent = req.body.researchConsent === true;
 
     if (requestedRole && requestedRole !== "student") {
       return res.status(403).json({
         message: "Teacher and admin accounts can only be created by an admin",
+      });
+    }
+
+    if (!requiredPolicyAgreementProvided(req.body)) {
+      return res.status(400).json({
+        code: "POLICY_ACCEPTANCE_REQUIRED",
+        message: "You must agree to the Terms & Conditions and acknowledge the Privacy Policy.",
       });
     }
 
@@ -476,7 +524,8 @@ router.post("/register", registerRateLimit, async (req, res) => {
       status: "pending",
       emailVerifiedAt: null,
       authProvider: "password",
-      password: hashedPassword
+      password: hashedPassword,
+      ...policyAcceptanceValues(researchConsent),
     });
 
     try {
@@ -485,6 +534,8 @@ router.post("/register", registerRateLimit, async (req, res) => {
       await user.destroy();
       throw error;
     }
+
+    await logPolicyAcceptance(user, { includeResearch: true });
 
     res.status(201).json({
       message: "Account created. Check your email for the six-digit verification code.",
@@ -598,6 +649,14 @@ router.post("/register-admin-invite", registerRateLimit, async (req, res) => {
     const email = normalizeEmail(req.body.email);
     const password = normalizeString(req.body.password);
     const inviteCode = normalizeInviteCode(req.body.inviteCode);
+    const researchConsent = req.body.researchConsent === true;
+
+    if (!requiredPolicyAgreementProvided(req.body)) {
+      return res.status(400).json({
+        code: "POLICY_ACCEPTANCE_REQUIRED",
+        message: "You must agree to the Terms & Conditions and acknowledge the Privacy Policy.",
+      });
+    }
 
     if (!firstName || !lastName || !username || !email || !password || !inviteCode) {
       return res.status(400).json({
@@ -676,6 +735,7 @@ router.post("/register-admin-invite", registerRateLimit, async (req, res) => {
       emailVerifiedAt: null,
       authProvider: "password",
       password: hashedPassword,
+      ...policyAcceptanceValues(researchConsent),
     });
 
     try {
@@ -693,6 +753,8 @@ router.post("/register-admin-invite", registerRateLimit, async (req, res) => {
       await user.destroy();
       throw error;
     }
+
+    await logPolicyAcceptance(user, { includeResearch: true });
 
     return res.status(201).json({
       message: "Admin account created. Check your email for the verification code.",
@@ -768,6 +830,13 @@ router.post("/bootstrap-admin", bootstrapRateLimit, async (req, res) => {
     const email = normalizeEmail(req.body.email);
     const password = normalizeString(req.body.password);
 
+    if (!requiredPolicyAgreementProvided(req.body)) {
+      return res.status(400).json({
+        code: "POLICY_ACCEPTANCE_REQUIRED",
+        message: "You must agree to the Terms & Conditions and acknowledge the Privacy Policy.",
+      });
+    }
+
     if (!firstName || !lastName || !username || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
@@ -796,22 +865,16 @@ router.post("/bootstrap-admin", bootstrapRateLimit, async (req, res) => {
       emailVerifiedAt: new Date(),
       authProvider: "password",
       password: hashedPassword,
+      ...policyAcceptanceValues(req.body.researchConsent === true),
     });
 
+    await logPolicyAcceptance(user, { includeResearch: true });
     const token = createAuthToken(user.id, user.role ?? "admin", user.tokenVersion ?? 0);
 
     return res.status(201).json({
       message: "Admin account created successfully",
       token,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-        email: user.email,
-        role: user.role ?? "admin",
-        status: user.status ?? "active",
-      },
+      user: serializeAuthenticatedUser(user),
     });
   } catch (err) {
     console.error(err);
@@ -822,13 +885,111 @@ router.post("/bootstrap-admin", bootstrapRateLimit, async (req, res) => {
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await User.findByPk(req.userId, {
-      attributes: ["id", "firstName", "lastName", "username", "email", "role", "status", "xpTotal", "gamificationPreference", "learningGameInterest"],
+      attributes: ["id", "firstName", "lastName", "username", "email", "role", "status", "xpTotal", "gamificationPreference", "learningGameInterest", "termsVersionAccepted", "termsAcceptedAt", "privacyVersionAcknowledged", "privacyAcknowledgedAt", "researchConsent", "researchConsentAt"],
     });
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json({ user });
+    const userData = typeof user.toJSON === "function" ? user.toJSON() : { ...user };
+    res.json({
+      user: {
+        ...userData,
+        researchConsent: user.researchConsent === true,
+        policyStatus: getPolicyStatus(user),
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/me/policy-acceptance", authMiddleware, async (req, res) => {
+  try {
+    if (!requiredPolicyAgreementProvided(req.body)) {
+      return res.status(400).json({
+        code: "POLICY_ACCEPTANCE_REQUIRED",
+        message: "Confirm the current Terms and Privacy notice before continuing.",
+      });
+    }
+
+    const user = await User.findByPk(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const wasResearchEnabled = user.researchConsent === true;
+    const acceptedAt = new Date();
+    user.termsVersionAccepted = TERMS_VERSION;
+    user.termsAcceptedAt = acceptedAt;
+    user.privacyVersionAcknowledged = PRIVACY_POLICY_VERSION;
+    user.privacyAcknowledgedAt = acceptedAt;
+    if (typeof req.body.researchConsent === "boolean") {
+      user.researchConsent = req.body.researchConsent;
+      user.researchConsentAt = req.body.researchConsent
+        ? (user.researchConsentAt || acceptedAt)
+        : null;
+    }
+    await user.save();
+    await logPolicyAcceptance(user);
+    if (typeof req.body.researchConsent === "boolean" && wasResearchEnabled !== user.researchConsent) {
+      await logAdminActivity({
+        actorUserId: user.id,
+        actorUsername: user.username,
+        role: user.role ?? "student",
+        targetUserId: user.id,
+        targetUsername: user.username,
+        activity: user.researchConsent ? "RESEARCH_CONSENT_GRANTED" : "RESEARCH_CONSENT_WITHDRAWN",
+        details: user.researchConsent
+          ? "Optional research participation enabled"
+          : "Optional research participation disabled",
+      });
+    }
+
+    return res.json({
+      message: "Terms accepted and Privacy Policy acknowledged.",
+      policyStatus: getPolicyStatus(user),
+      researchConsent: user.researchConsent === true,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/me/research-consent", authMiddleware, async (req, res) => {
+  try {
+    if (typeof req.body?.researchConsent !== "boolean") {
+      return res.status(400).json({ message: "researchConsent must be true or false" });
+    }
+
+    const user = await User.findByPk(req.userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    const wasEnabled = user.researchConsent === true;
+    const isEnabled = req.body.researchConsent;
+    user.researchConsent = isEnabled;
+    user.researchConsentAt = isEnabled ? (user.researchConsentAt || new Date()) : null;
+    await user.save();
+
+    if (wasEnabled !== isEnabled) {
+      await logAdminActivity({
+        actorUserId: user.id,
+        actorUsername: user.username,
+        role: user.role ?? "student",
+        targetUserId: user.id,
+        targetUsername: user.username,
+        activity: isEnabled ? "RESEARCH_CONSENT_GRANTED" : "RESEARCH_CONSENT_WITHDRAWN",
+        details: isEnabled
+          ? "Optional research participation enabled"
+          : "Optional research participation disabled",
+      });
+    }
+
+    return res.json({
+      message: isEnabled
+        ? "Optional research participation enabled."
+        : "Optional research participation withdrawn.",
+      researchConsent: user.researchConsent,
+      researchConsentAt: user.researchConsentAt,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
   }
 });
 

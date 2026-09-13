@@ -92,6 +92,31 @@ const User = sequelize.define("Users", {
     allowNull: true,
     unique: true,
   },
+  termsVersionAccepted: {
+    type: DataTypes.STRING(32),
+    allowNull: true,
+  },
+  termsAcceptedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  privacyVersionAcknowledged: {
+    type: DataTypes.STRING(32),
+    allowNull: true,
+  },
+  privacyAcknowledgedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  researchConsent: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  researchConsentAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 });
 
 module.exports = User;

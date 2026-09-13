@@ -19,11 +19,13 @@ function Footer() {
           </p>
         </div>
         <nav className={styles.footerNav} aria-label="Footer navigation">
-          <a href="#heroSection">Home</a>
-          <a href="#featureSection">Features</a>
-          <a href="#product-demo">Platform</a>
-          <a href="#howItWorks">How It Works</a>
+          <a href="/#heroSection">Home</a>
+          <a href="/#featureSection">Features</a>
+          <a href="/#product-demo">Platform</a>
+          <a href="/#howItWorks">How It Works</a>
           <Link to="/login">Log in</Link>
+          <Link to="/privacy-policy">Privacy Policy</Link>
+          <Link to="/terms">Terms &amp; Conditions</Link>
           <a
             className={styles.githubLink}
             href={GITHUB_REPOSITORY_URL}
@@ -37,7 +39,7 @@ function Footer() {
         </nav>
       </div>
       <div className={styles.footerBottom}>
-        <p>&copy; {new Date().getFullYear()} SharpRunner. Capstone project.</p>
+        <p>&copy; {new Date().getFullYear()} SharpRunner. All rights reserved.</p>
         <p>Learn C# through play.</p>
       </div>
     </footer>

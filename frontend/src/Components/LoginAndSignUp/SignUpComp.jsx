@@ -135,6 +135,41 @@ function SignUpComp({
             </button>
           </div>
 
+          <div className={styles.agreementGroup}>
+            <div className={styles.checkboxRow}>
+              <input
+                id="requiredAgreement"
+                type="checkbox"
+                name="requiredAgreement"
+                checked={formData.requiredAgreement}
+                onChange={handleChange}
+                required
+              />
+              <div>
+                <label htmlFor="requiredAgreement">I have read and agree to the </label>
+                <Link to="/terms" target="_blank" rel="noreferrer">Terms &amp; Conditions<span className={styles.srOnly}> (opens in a new tab)</span></Link>
+                <span> and acknowledge the </span>
+                <Link to="/privacy-policy" target="_blank" rel="noreferrer">Privacy Policy<span className={styles.srOnly}> (opens in a new tab)</span></Link>
+                <span>.</span>
+              </div>
+            </div>
+          </div>
+
+          <fieldset className={styles.researchGroup}>
+            <legend>Optional research participation</legend>
+            <div className={styles.checkboxRow}>
+              <input
+                id="researchConsent"
+                type="checkbox"
+                name="researchConsent"
+                checked={formData.researchConsent}
+                onChange={handleChange}
+              />
+              <label htmlFor="researchConsent">I voluntarily consent to the use of my de-identified learning activity and learning-preference data for academic research and evaluation of SharpRunner.</label>
+            </div>
+            <p>This is optional. Declining does not affect account creation or normal SharpRunner features.</p>
+          </fieldset>
+
           <button
             type="submit"
             className={styles.loginBtn}
@@ -163,6 +198,7 @@ function SignUpComp({
             <FaGoogle />
           </button>
         </div>
+        <p className={styles.googlePolicyNotice}>New Google users review the same required Terms and Privacy notice before entering SharpRunner.</p>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
 import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import PolicyOutlinedIcon from "@mui/icons-material/PolicyOutlined";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { clearToken, getUser } from "../../utils/auth";
 
@@ -51,7 +52,10 @@ function Sidebar() {
 
   const role = user?.role ?? "student";
   const isTeacher = role === "teacher" || role === "admin";
-  const navItems = isTeacher ? TEACHER_NAV : STUDENT_NAV;
+  const navItems = [
+    ...(isTeacher ? TEACHER_NAV : STUDENT_NAV),
+    { to: "/legal", Icon: PolicyOutlinedIcon, label: "Legal" },
+  ];
 
   const displayName = user?.firstName
     ? `${user.firstName} ${user.lastName ?? ""}`.trim()

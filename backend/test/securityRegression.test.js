@@ -15,6 +15,7 @@ const {
   isDangerousFilename,
 } = require("../src/services/fileSecurityService");
 const { PLAYABLE_LEVEL_KEYS } = require("../src/constants/progressDefaults");
+const { TERMS_VERSION, PRIVACY_POLICY_VERSION } = require("../src/constants/policyVersions");
 const {
   getDefaultValidatorConfig,
   validateLevelCode,
@@ -80,7 +81,13 @@ test("authentication uses the current database role and rejects inactive users",
   };
 
   try {
-    User.findByPk = async () => ({ id: 42, role: "student", status: "active" });
+    User.findByPk = async () => ({
+      id: 42,
+      role: "student",
+      status: "active",
+      termsVersionAccepted: TERMS_VERSION,
+      privacyVersionAcknowledged: PRIVACY_POLICY_VERSION,
+    });
     let calledNext = false;
     await authMiddleware(request, response, () => { calledNext = true; });
     assert.equal(calledNext, true);

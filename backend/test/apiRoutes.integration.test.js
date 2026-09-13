@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const crypto = require("node:crypto");
+const dns = require("node:dns").promises;
 
 process.env.JWT_SECRET = "integration-test-secret-with-sufficient-length";
 process.env.DEVELOPER_SETUP_KEY = "developer-integration-key";
@@ -20,7 +21,12 @@ const AdminActivityLog = require("../src/models/AdminActivityLog");
 const AdminInvite = require("../src/models/AdminInvite");
 const XpTransaction = require("../src/models/XpTransaction");
 const PasswordResetToken = require("../src/models/PasswordResetToken");
+const EmailVerificationToken = require("../src/models/EmailVerificationToken");
 const sequelize = require("../src/config/database");
+const {
+  TERMS_VERSION,
+  PRIVACY_POLICY_VERSION,
+} = require("../src/constants/policyVersions");
 
 let server;
 let baseUrl;
@@ -74,6 +80,12 @@ const activeUser = (overrides = {}) => ({
   emailVerifiedAt: new Date(),
   password: null,
   xpTotal: 0,
+  termsVersionAccepted: TERMS_VERSION,
+  termsAcceptedAt: new Date(),
+  privacyVersionAcknowledged: PRIVACY_POLICY_VERSION,
+  privacyAcknowledgedAt: new Date(),
+  researchConsent: false,
+  researchConsentAt: null,
   save: async () => undefined,
   ...overrides,
 });
@@ -96,7 +108,135 @@ test("POST /api/auth/login authenticates a verified account and issues a JWT", a
 
     assert.equal(response.status, 200);
     assert.equal(payload.user.id, 11);
+    assert.equal(payload.user.policyStatus.requiresAcceptance, false);
     assert.equal(jwt.verify(payload.token, process.env.JWT_SECRET).id, 11);
+  });
+});
+
+test("registration requires Terms agreement and Privacy acknowledgement before account creation", async () => {
+  let createCalled = false;
+  await withStubs([[User, "create", async () => { createCalled = true; }]], async () => {
+    const { response, payload } = await apiRequest("/api/auth/register", {
+      method: "POST",
+      body: {
+        firstName: "New", lastName: "Student", username: "new-student",
+        email: "new-student@example.com", password: "password123",
+        acceptTerms: false, acknowledgePrivacy: true,
+      },
+    });
+    assert.equal(response.status, 400);
+    assert.equal(payload.code, "POLICY_ACCEPTANCE_REQUIRED");
+    assert.equal(createCalled, false);
+  });
+});
+
+test("registration stores server-controlled policy versions and keeps research consent optional", async () => {
+  const created = [];
+  process.env.SMTP_HOST = "smtp.test.local";
+  process.env.SMTP_USER = "mailer@test.local";
+  process.env.SMTP_PASS = "test-password";
+  process.env.EMAIL_FROM = "SharpRunner <mailer@test.local>";
+
+  await withStubs([
+    [dns, "resolveMx", async () => [{ exchange: "mail.example.com", priority: 10 }]],
+    [User, "findOne", async () => null],
+    [User, "create", async (values) => {
+      const user = { id: 100 + created.length, ...values, destroy: async () => undefined };
+      created.push(user);
+      return user;
+    }],
+    [EmailVerificationToken, "create", async (values) => ({ id: 50 + created.length, ...values, destroy: async () => undefined })],
+    [EmailVerificationToken, "update", async () => [0]],
+    [AdminActivityLog, "create", async (values) => values],
+    [nodemailer, "createTransport", () => ({ sendMail: async () => undefined })],
+  ], async () => {
+    for (const [suffix, researchConsent] of [["optional-off", false], ["optional-on", true]]) {
+      const result = await apiRequest("/api/auth/register", {
+        method: "POST",
+        body: {
+          firstName: "Policy", lastName: "Student", username: suffix,
+          email: `${suffix}@example.com`, password: "password123",
+          acceptTerms: true, acknowledgePrivacy: true, researchConsent,
+        },
+      });
+      assert.equal(result.response.status, 201);
+    }
+  });
+
+  assert.equal(created.length, 2);
+  for (const user of created) {
+    assert.equal(user.termsVersionAccepted, TERMS_VERSION);
+    assert.equal(user.privacyVersionAcknowledged, PRIVACY_POLICY_VERSION);
+    assert.ok(user.termsAcceptedAt instanceof Date);
+    assert.ok(user.privacyAcknowledgedAt instanceof Date);
+  }
+  assert.equal(created[0].researchConsent, false);
+  assert.equal(created[0].researchConsentAt, null);
+  assert.equal(created[1].researchConsent, true);
+  assert.ok(created[1].researchConsentAt instanceof Date);
+});
+
+test("outdated users are gated, current users are not, and acceptance only updates the caller", async () => {
+  const oldUser = activeUser({
+    id: 41,
+    termsVersionAccepted: null,
+    privacyVersionAcknowledged: null,
+  });
+  await withStubs([
+    [User, "findByPk", async () => oldUser],
+    [AdminActivityLog, "create", async (values) => values],
+  ], async () => {
+    const blocked = await apiRequest("/api/practice/health", { token: authToken(41, "student") });
+    assert.equal(blocked.response.status, 428);
+    assert.equal(blocked.payload.code, "POLICY_ACCEPTANCE_REQUIRED");
+
+    oldUser.termsVersionAccepted = "0.9";
+    oldUser.privacyVersionAcknowledged = PRIVACY_POLICY_VERSION;
+    const oldTermsBlocked = await apiRequest("/api/practice/health", { token: authToken(41, "student") });
+    assert.equal(oldTermsBlocked.response.status, 428);
+    assert.equal(oldTermsBlocked.payload.policyStatus.privacyAcknowledged, true);
+    assert.equal(oldTermsBlocked.payload.policyStatus.termsAccepted, false);
+
+    const me = await apiRequest("/api/auth/me", { token: authToken(41, "student") });
+    assert.equal(me.response.status, 200);
+    assert.equal(me.payload.user.policyStatus.requiresAcceptance, true);
+
+    const accepted = await apiRequest("/api/auth/me/policy-acceptance", {
+      method: "PUT",
+      token: authToken(41, "student"),
+      body: { userId: 999, acceptTerms: true, acknowledgePrivacy: true },
+    });
+    assert.equal(accepted.response.status, 200);
+    assert.equal(oldUser.id, 41);
+    assert.equal(oldUser.termsVersionAccepted, TERMS_VERSION);
+    assert.equal(oldUser.privacyVersionAcknowledged, PRIVACY_POLICY_VERSION);
+    assert.equal(accepted.payload.policyStatus.requiresAcceptance, false);
+  });
+});
+
+test("research consent can be declined or withdrawn only for the authenticated user", async () => {
+  const user = activeUser({ id: 51, researchConsent: false, researchConsentAt: null });
+  const auditRows = [];
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [AdminActivityLog, "create", async (values) => { auditRows.push(values); return values; }],
+  ], async () => {
+    const enabled = await apiRequest("/api/auth/me/research-consent", {
+      method: "PUT", token: authToken(51, "student"),
+      body: { userId: 999, researchConsent: true },
+    });
+    assert.equal(enabled.response.status, 200);
+    assert.equal(user.id, 51);
+    assert.equal(user.researchConsent, true);
+    assert.ok(user.researchConsentAt instanceof Date);
+
+    const withdrawn = await apiRequest("/api/auth/me/research-consent", {
+      method: "PUT", token: authToken(51, "student"), body: { researchConsent: false },
+    });
+    assert.equal(withdrawn.response.status, 200);
+    assert.equal(user.researchConsent, false);
+    assert.equal(user.researchConsentAt, null);
+    assert.deepEqual(auditRows.map((row) => row.activity), ["RESEARCH_CONSENT_GRANTED", "RESEARCH_CONSENT_WITHDRAWN"]);
   });
 });
 

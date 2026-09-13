@@ -3,11 +3,15 @@ import axios from "axios";
 import { Navigate, useLocation } from "react-router-dom";
 import {
   buildApiUrl,
+  clearToken,
   getAuthHeaders,
   getHomeRouteForCurrentUser,
+  getUser,
   getUserRole,
   isAuthenticated,
+  setUser,
 } from "../../utils/auth";
+import PolicyAcceptanceModal from "../PolicyAcceptanceModal/PolicyAcceptanceModal.jsx";
 
 const MEMBERSHIP_STATUS = {
   IDLE: "idle",
@@ -23,11 +27,35 @@ function ProtectedRoute({
 }) {
   const location = useLocation();
   const userRole = getUserRole();
+  const [policyCheck, setPolicyCheck] = useState({ loading: true, error: false, status: null, researchConsent: false });
   const shouldCheckClassMembership =
-    requireClassMembership && userRole === "student";
+    requireClassMembership && userRole === "student" && policyCheck.status?.requiresAcceptance === false;
   const [membershipStatus, setMembershipStatus] = useState(
     shouldCheckClassMembership ? MEMBERSHIP_STATUS.IDLE : MEMBERSHIP_STATUS.READY,
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!isAuthenticated()) {
+      setPolicyCheck({ loading: false, error: false, status: null, researchConsent: false });
+      return () => { isMounted = false; };
+    }
+
+    axios.get(buildApiUrl("/api/auth/me"), { headers: getAuthHeaders() })
+      .then(({ data }) => {
+        if (!isMounted) return;
+        const nextUser = { ...(getUser() ?? {}), ...(data.user ?? {}) };
+        setUser(nextUser);
+        setPolicyCheck({ loading: false, error: false, status: nextUser.policyStatus, researchConsent: nextUser.researchConsent === true });
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        if (error.response?.status === 401 || error.response?.status === 403) clearToken();
+        setPolicyCheck({ loading: false, error: true, status: null, researchConsent: false });
+      });
+
+    return () => { isMounted = false; };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -85,6 +113,26 @@ function ProtectedRoute({
 
   if (!isAuthenticated()) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (policyCheck.loading) {
+    return <div role="status" aria-live="polite" style={{ padding: "2rem", textAlign: "center" }}>Checking account requirements...</div>;
+  }
+
+  if (policyCheck.error) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  }
+
+  if (policyCheck.status?.requiresAcceptance) {
+    return (
+      <PolicyAcceptanceModal
+        initialResearchConsent={policyCheck.researchConsent}
+        onAccepted={(status, researchConsent) => {
+          setUser({ ...(getUser() ?? {}), policyStatus: status, researchConsent });
+          setPolicyCheck({ loading: false, error: false, status, researchConsent });
+        }}
+      />
+    );
   }
 
   if (allowedRoles.length > 0) {

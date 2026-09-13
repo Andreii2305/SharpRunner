@@ -1,5 +1,11 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const { getPolicyStatus } = require("../constants/policyVersions");
+
+const POLICY_EXEMPT_ROUTES = new Set([
+  "GET /api/auth/me",
+  "PUT /api/auth/me/policy-acceptance",
+]);
 
 const extractBearerToken = (authorizationHeader) => {
   if (!authorizationHeader || typeof authorizationHeader !== "string") {
@@ -32,7 +38,14 @@ const authMiddleware = async (req, res, next) => {
     }
 
     const user = await User.findByPk(userId, {
-      attributes: ["id", "role", "status", "tokenVersion"],
+      attributes: [
+        "id",
+        "role",
+        "status",
+        "tokenVersion",
+        "termsVersionAccepted",
+        "privacyVersionAcknowledged",
+      ],
     });
     if (!user) {
       return res.status(401).json({ message: "Account no longer exists" });
@@ -49,6 +62,19 @@ const authMiddleware = async (req, res, next) => {
     req.userId = user.id;
     req.userRole =
       typeof user.role === "string" ? user.role.toLowerCase() : null;
+
+    const policyStatus = getPolicyStatus(user);
+    req.policyStatus = policyStatus;
+    const requestPath = String(req.originalUrl || req.url || "").split("?")[0];
+    const routeKey = `${req.method || "GET"} ${requestPath}`;
+    if (policyStatus.requiresAcceptance && !POLICY_EXEMPT_ROUTES.has(routeKey)) {
+      return res.status(428).json({
+        code: "POLICY_ACCEPTANCE_REQUIRED",
+        message: "Current Terms and Privacy acknowledgement are required.",
+        policyStatus,
+      });
+    }
+
     return next();
   } catch (error) {
     return res.status(401).json({ message: "Invalid or expired token" });

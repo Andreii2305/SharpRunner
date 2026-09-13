@@ -15,16 +15,18 @@ function AdminInviteRegisterPage() {
     email: "",
     password: "",
     confirmPassword: "",
+    requiredAgreement: false,
+    researchConsent: false,
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   const onFieldChange = (event) => {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
     setFormData((current) => ({
       ...current,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
     }));
   };
 
@@ -51,6 +53,11 @@ function AdminInviteRegisterPage() {
       return;
     }
 
+    if (!formData.requiredAgreement) {
+      setErrorMessage("Please agree to the Terms & Conditions and acknowledge the Privacy Policy.");
+      return;
+    }
+
     submittingRef.current = true;
     setIsSubmitting(true);
 
@@ -62,6 +69,9 @@ function AdminInviteRegisterPage() {
         username: formData.username.trim(),
         email: formData.email.trim(),
         password: formData.password,
+        acceptTerms: formData.requiredAgreement,
+        acknowledgePrivacy: formData.requiredAgreement,
+        researchConsent: formData.researchConsent,
       });
 
       setSuccessMessage(response.data.message);
@@ -166,6 +176,17 @@ function AdminInviteRegisterPage() {
             onChange={onFieldChange}
             placeholder="Confirm password"
           />
+
+          <div className={styles.agreementBox}>
+            <input id="adminRequiredAgreement" name="requiredAgreement" type="checkbox" checked={formData.requiredAgreement} onChange={onFieldChange} required />
+            <div><label htmlFor="adminRequiredAgreement">I have read and agree to the </label><Link to="/terms" target="_blank" rel="noreferrer">Terms &amp; Conditions</Link><span> and acknowledge the </span><Link to="/privacy-policy" target="_blank" rel="noreferrer">Privacy Policy</Link><span>.</span></div>
+          </div>
+
+          <fieldset className={styles.researchBox}>
+            <legend>Optional research participation</legend>
+            <div><input id="adminResearchConsent" name="researchConsent" type="checkbox" checked={formData.researchConsent} onChange={onFieldChange} /><label htmlFor="adminResearchConsent">I voluntarily consent to the use of my de-identified learning activity and learning-preference data for academic research and evaluation of SharpRunner.</label></div>
+            <p>Declining does not affect account creation or normal platform access.</p>
+          </fieldset>
 
           <button type="submit" disabled={isSubmitting}>
             {isSubmitting ? "Creating account..." : "Create Admin Account"}

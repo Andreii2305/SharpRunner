@@ -7,6 +7,7 @@ assert.equal(validatePracticeCode('Console.WriteLine("Hello");').allowed, true);
 assert.equal(validatePracticeCode('int x = "abc";').allowed, true, "Compiler errors should reach the compiler");
 assert.equal(validatePracticeCode('int[] x = { 1 }; Console.WriteLine(x[5]);').allowed, true, "Runtime errors should reach the sandbox");
 assert.equal(validatePracticeCode("while (true) { }").allowed, true, "Infinite loops are handled by the timeout");
+assert.equal(validatePracticeCode("x".repeat(16 * 1024 + 1)).allowed, false, "Oversized source is rejected before compilation");
 assert.equal(validatePracticeCode("System.IO.File.ReadAllText(\"secret\")").allowed, false);
 assert.equal(validatePracticeCode("new FileInfo(\"secret\").OpenRead()").allowed, false);
 assert.equal(validatePracticeCode("Path.GetTempPath()").allowed, false);
@@ -59,7 +60,8 @@ test("runner liveness is cheap but readiness requires authentication", async () 
     assert.equal(readyResponse.status, 200);
     const readyPayload = await readyResponse.json();
     assert.equal(readyPayload.compilerAvailable, true);
-    assert.match(readyPayload.sdkVersion, /^\d+\.\d+\.\d+$/);
+    if (readyPayload.compilerMode === "roslyn") assert.match(readyPayload.targetFramework, /^net\d+\.0$/);
+    else assert.match(readyPayload.sdkVersion, /^\d+\.\d+\.\d+$/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     if (previousMode === undefined) delete process.env.PRACTICE_RUNNER_MODE; else process.env.PRACTICE_RUNNER_MODE = previousMode;

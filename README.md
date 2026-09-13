@@ -397,9 +397,11 @@ protected by the generated bearer token. Docker-capable local installations can 
 adapter. Production student processes are unprivileged, receive a scrubbed
 non-secret environment, run in unique temporary directories, and have a
 five-second timeout, 32 KB output cap, concurrency guard, and restricted API
-policy. Compilation requires the SDK (the runtime alone is insufficient), and
-the image restores a reusable project once before deployment so per-run builds
-use isolated directories with `--no-restore`. Sleeping runners return a quick,
+  policy. A persistent .NET 8 Roslyn host preloads trusted framework references
+  and emits an isolated assembly for each job without request-time MSBuild or
+  NuGet work. The host never loads or executes student assemblies: the Node
+  practice runner launches each result in a separate restricted `dotnet` child
+  process. Sleeping runners return a quick,
 retryable `PRACTICE_RUNNER_STARTING` response instead of holding a request for
 minutes. There is no expected-output fallback. See `docs/PRACTICE_COMPILER.md`.
 

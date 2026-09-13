@@ -4,6 +4,7 @@ const { constants: fsConstants } = require("fs");
 const fs = require("fs/promises");
 const os = require("os");
 const path = require("path");
+const { compileWithRoslyn, getCompilerHostHealth } = require("./roslynCompilerHostClient");
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 const DEFAULT_OUTPUT_LIMIT = 32 * 1024;
@@ -351,7 +352,7 @@ const prepareDirectTemplate = (dotnetBinary, targetFramework) => {
   return directTemplatePromises.get(cacheKey);
 };
 
-const runDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
+const runLegacyDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
   const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
   const targetFramework = process.env.PRACTICE_DOTNET_TARGET || "net8.0";
   const buildTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || Number(process.env.PRACTICE_RUNNER_BUILD_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
@@ -434,6 +435,107 @@ const runDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
   }
 };
 
+const formatRoslynDiagnostics = (diagnostics = []) => diagnostics
+  .filter((diagnostic) => diagnostic.severity === "error")
+  .map((diagnostic) => {
+    const location = diagnostic.line > 0 ? `Line ${diagnostic.line}, column ${diagnostic.column}: ` : "";
+    return `${location}error ${diagnostic.id}: ${diagnostic.message}`;
+  })
+  .join("\n");
+
+const runRoslynDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
+  const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
+  const compileTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
+  const jobId = randomUUID();
+  const assemblyName = `Student_${jobId.replaceAll("-", "")}`;
+  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "sharprunner-practice-"));
+  const outputDirectory = path.join(tempDirectory, "build");
+  const environment = directDotnetEnvironment(tempDirectory, process.env.PRACTICE_NUGET_PACKAGES || path.join(tempDirectory, ".nuget"));
+  const runAsUnprivilegedUser = process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0;
+  const spawnOptions = runAsUnprivilegedUser ? { uid: 65534, gid: 65534 } : {};
+  const totalStartedAt = Date.now();
+  let exitCode = null;
+  let timedOut = false;
+  let outputLimited = false;
+
+  console.info(`Practice job started (jobId=${jobId}, compiler=roslyn)`);
+  try {
+    await fs.mkdir(outputDirectory, { recursive: true, mode: 0o700 });
+    if (runAsUnprivilegedUser) {
+      await chownTree(tempDirectory, 65534, 65534);
+      await fs.chown(tempDirectory, 65534, 65534);
+    }
+
+    const compileStartedAt = Date.now();
+    console.info(`Practice Roslyn compile started (jobId=${jobId})`);
+    let compilation;
+    try {
+      compilation = await compileWithRoslyn({ source: code, outputDirectory, assemblyName, timeoutMs: compileTimeoutMs });
+    } catch (error) {
+      const compileDurationMs = Date.now() - compileStartedAt;
+      if (error.code === "COMPILER_TIMEOUT") {
+        timedOut = true;
+        console.info(`Practice Roslyn compile finished (jobId=${jobId}, durationMs=${compileDurationMs}, success=false, timedOut=true)`);
+        return { success: false, stdout: "", stderr: "Compilation exceeded the allowed time.", timedOut: true, errorType: "compiler_timeout" };
+      }
+      console.error(`Practice Roslyn compile failed (jobId=${jobId}, durationMs=${compileDurationMs}, reason=${error.code || "unknown"})`);
+      throw unavailableError("Roslyn compiler host is unavailable", "runtime_unavailable");
+    }
+    const compileDurationMs = Date.now() - compileStartedAt;
+    timedOut = Boolean(compilation.timedOut);
+    console.info(`Practice Roslyn compile finished (jobId=${jobId}, durationMs=${compileDurationMs}, success=${Boolean(compilation.success)}, timedOut=${timedOut})`);
+    if (compilation.infrastructureError) throw unavailableError("Roslyn compiler host rejected the compile job", "runtime_unavailable");
+    if (compilation.timedOut) return { success: false, stdout: "", stderr: "Compilation exceeded the allowed time.", timedOut: true, errorType: "compiler_timeout" };
+    if (!compilation.success) {
+      const compilerText = formatRoslynDiagnostics(compilation.diagnostics);
+      if (Buffer.byteLength(compilerText, "utf8") > outputLimit) {
+        outputLimited = true;
+        return { success: false, stdout: "", stderr: "Compiler output limit exceeded.", outputLimited: true, errorType: "output_limit" };
+      }
+      return { success: false, stdout: "", stderr: compilerText || "Compilation failed.", errorType: "compiler" };
+    }
+
+    const expectedAssemblyPath = path.join(outputDirectory, `${assemblyName}.dll`);
+    if (path.resolve(compilation.assemblyPath) !== path.resolve(expectedAssemblyPath)) {
+      throw unavailableError("Roslyn compiler host returned an invalid artifact", "runtime_unavailable");
+    }
+    const executionStartedAt = Date.now();
+    console.info(`Practice execution started (jobId=${jobId})`);
+    const executionMemoryMb = Math.max(32, Number(process.env.PRACTICE_EXEC_MEMORY_LIMIT_MB) || 128);
+    const execution = await collectProcess(dotnetBinary, [expectedAssemblyPath], {
+      cwd: tempDirectory,
+      env: { ...environment, DOTNET_GCHeapHardLimit: (executionMemoryMb * 1024 * 1024).toString(16) },
+      timeoutMs,
+      outputLimit,
+      timeoutMessage: `Program terminated after execution timeout (${timeoutMs / 1000} seconds).`,
+      spawnOptions,
+    });
+    exitCode = execution.exitCode;
+    timedOut = Boolean(execution.timedOut);
+    outputLimited = Boolean(execution.outputLimited);
+    console.info(`Practice execution finished (jobId=${jobId}, durationMs=${Date.now() - executionStartedAt}, exitCode=${exitCode ?? "none"}, timedOut=${timedOut}, outputLimited=${outputLimited})`);
+    if (execution.outputLimited) {
+      return { success: false, stdout: sanitizeRunnerText(execution.stdout, tempDirectory), stderr: "Output limit exceeded. Reduce the amount your program prints.", outputLimited: true, errorType: "output_limit" };
+    }
+    if (execution.timedOut) return { success: false, stdout: sanitizeRunnerText(execution.stdout, tempDirectory), stderr: execution.stderr, timedOut: true, errorType: "timeout" };
+    return {
+      success: execution.exitCode === 0,
+      stdout: sanitizeRunnerText(execution.stdout, tempDirectory),
+      stderr: sanitizeRunnerText(execution.stderr, tempDirectory),
+      ...(execution.exitCode === 0 ? {} : { errorType: "runtime" }),
+    };
+  } finally {
+    const cleanupStartedAt = Date.now();
+    await fs.rm(tempDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+    console.info(`Practice job cleanup finished (jobId=${jobId}, durationMs=${Date.now() - cleanupStartedAt})`);
+    console.info(`Practice job finished (jobId=${jobId}, totalDurationMs=${Date.now() - totalStartedAt}, exitCode=${exitCode ?? "none"}, timedOut=${timedOut}, outputLimited=${outputLimited})`);
+  }
+};
+
+const runDirectPracticeCode = (code, options) => String(process.env.PRACTICE_COMPILER_MODE || "legacy").toLowerCase() === "roslyn"
+  ? runRoslynDirectPracticeCode(code, options)
+  : runLegacyDirectPracticeCode(code, options);
+
 const getPracticeRunnerDiagnostic = async () => {
   if (String(process.env.PRACTICE_RUNNER_ENABLED || "true").toLowerCase() === "false") {
     return { available: false, mode: "disabled", reason: "execution is disabled by PRACTICE_RUNNER_ENABLED" };
@@ -460,6 +562,14 @@ const getPracticeRunnerDiagnostic = async () => {
     return { available: false, mode: "remote", reason: "PRACTICE_RUNNER_URL is missing", reasonCode: "runner_url_missing" };
   }
   if (String(process.env.PRACTICE_RUNNER_MODE || "docker").toLowerCase() === "direct") {
+    if (String(process.env.PRACTICE_COMPILER_MODE || "legacy").toLowerCase() === "roslyn") {
+      try {
+        const health = await getCompilerHostHealth();
+        return { available: true, mode: "direct", compilerMode: "roslyn", reason: "Roslyn compiler host is ready", targetFramework: health.targetFramework };
+      } catch (error) {
+        return { available: false, mode: "direct", compilerMode: "roslyn", reason: `Roslyn compiler host check failed: ${error.code || error.message}` };
+      }
+    }
     const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
     const cacheKey = `${dotnetBinary}:${process.env.PRACTICE_DOTNET_TARGET || "net8.0"}`;
     if (!directDiagnosticPromises.has(cacheKey)) directDiagnosticPromises.set(cacheKey, (async () => {
@@ -612,4 +722,4 @@ const runPracticeCode = async (code, options = {}) => {
   }
 };
 
-module.exports = { configuredRemoteBaseUrl, getPracticeRunnerDiagnostic, getPracticeRunnerHealth, normalizeRunnerResult, runDirectPracticeCode, runPracticeCode, sanitizeRunnerText, validatePracticeCode };
+module.exports = { configuredRemoteBaseUrl, getPracticeRunnerDiagnostic, getPracticeRunnerHealth, normalizeRunnerResult, runDirectPracticeCode, runLegacyDirectPracticeCode, runPracticeCode, runRoslynDirectPracticeCode, sanitizeRunnerText, validatePracticeCode };

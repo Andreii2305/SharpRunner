@@ -19,36 +19,56 @@ matching expected output is only a local formative check.
 
 ## Execution architecture
 
+The high-level boundary remains:
+
+`Frontend -> Main API -> Dedicated Practice Runner -> persistent Roslyn host`
+
 The authenticated SharpRunner API validates source and dispatches it to one of
-two interchangeable execution backends:
+two execution backends:
 
 - **Production:** `render.yaml` creates a dedicated Docker service containing
-  Node 22 and the .NET 8 SDK. Render injects its public HTTPS URL and a generated
-  shared token into the API service; no manual compiler host is required.
+  Node 22, .NET 8, and a small persistent Roslyn compiler host. Render injects
+  the runner's public HTTPS URL and a generated shared token into the API
+  service; the Roslyn host is internal to the runner container and has no port.
 - **Local/self-hosted:** when the URL is absent, the API invokes a local Docker
   daemon and starts one disposable container per run.
 
 The remote service contract is intentionally small:
 
-- Public `GET /health` returns readiness, `compilerAvailable`, and the detected
-  SDK version only when its C# SDK and runtime are ready. It is public because
-  Render health checks cannot send a bearer token and it exposes no host, path,
-  or secret. The legacy `dotnet` boolean remains during rolling deployments.
-- `GET /health/auth` performs the same check behind runner authentication. The
-  main API uses it to detect a mismatched shared token.
+- Public `GET /health` is constant-time liveness for Render and returns only
+  `{ "status": "ok" }`.
+- Authenticated `GET /ready` and legacy `GET /health/auth` issue only a small
+  compiler-host health command. They never perform a sample compilation. The
+  main API uses the legacy route during rolling deployments and to detect a
+  mismatched shared token.
 - `POST /run` accepts `{ "code", "timeoutMs", "outputLimit" }` and returns
   `{ "success", "stdout", "stderr" }`, with optional `timedOut`,
   `outputLimited`, and `errorType` fields.
 
 The service authenticates `PRACTICE_RUNNER_TOKEN` and is isolated from the API,
-database, and user data at the service-container boundary. The image restores a
-stable top-level-statement project once during its build. Each request copies
-that project's immutable metadata and restore assets into a unique job directory,
-writes only that student's source, and builds with `--no-restore`. The shared
-NuGet cache is prepared in the image and is only read by jobs. The resulting
-assembly still executes in a separate unprivileged process with a scrubbed
-environment. Source is never
-placed in a shell command and expected output is never used as actual output.
+database, and user data at the service-container boundary. At container startup,
+Node starts one compiler process and communicates through newline-delimited JSON
+over stdin/stdout. Request IDs prevent response mix-ups; the protocol opens no
+network listener. The compiler discovers the trusted .NET reference pack once
+and safely reuses immutable Roslyn `MetadataReference` objects.
+
+For every request, Node creates a server-generated job directory and sends the
+source and that output path to Roslyn. Roslyn produces an executable-compatible
+DLL and runtimeconfig directly; it does not invoke MSBuild, restore packages,
+access the network, accept user assembly references, load the emitted DLL, or
+execute student code. Node then launches `dotnet <job DLL>` as a separate
+unprivileged process with a scrubbed environment, timeout, managed-heap cap, and
+combined output cap. Source and paths are passed as structured data/arguments,
+never through a shell. Cleanup runs after compilation or execution success,
+errors, limits, timeouts, and infrastructure failures.
+
+The compiler protocol is deliberately serialized under the production runner's
+conservative one-run concurrency gate. If the host exits or misses its compile
+deadline, Node rejects that job, kills the host if necessary, and starts a fresh
+host for later submissions. A malformed student program never triggers the
+legacy compiler automatically. `PRACTICE_COMPILER_MODE=legacy` remains an
+explicit operational rollback switch; production defaults to `roslyn` in the
+Blueprint and Docker image.
 
 The receiver is `backend/src/practiceRunnerServer.js`; its reproducible image is
 `backend/Dockerfile.practice-runner`. The receiver ignores client-supplied
@@ -117,9 +137,9 @@ random temporary directory that is removed after success, failure, or timeout.
 Local Docker mode additionally uses no networking, a read-only root filesystem,
 dropped capabilities, `no-new-privileges`, and CPU/memory/PID limits.
 
-Compilation requires the **.NET 8 SDK**, not only the runtime. The production
-Dockerfile derives from `mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim` and the
-local Docker adapter uses `mcr.microsoft.com/dotnet/sdk:8.0`.
+The production Dockerfile uses `mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim`.
+The SDK supplies the Roslyn assemblies at image-build time and the trusted .NET
+8 reference pack at runtime. There is no per-request NuGet or package input.
 
 `GET /api/practice/health` is authenticated for students and exposes only
 `{ "available": true }` or `{ "available": false, "reason": "..." }`. Sanitized
@@ -157,11 +177,18 @@ Runner logs include readiness, compilation, execution, cleanup, and total-run
 durations without logging source or credentials. For an awake-service benchmark,
 open Chrome DevTools **Network**, run `Console.WriteLine("Hello");` three times,
 and record each `/api/practice/run` duration. Compare those totals with the
-`Practice compile finished`, `Practice execution finished`, and `Practice run
-finished` log fields in Render. The first request after a new image may initialize
-process-local SDK state; later requests should reuse the image's restore assets.
+`Practice Roslyn compile finished`, `Practice execution finished`, and `Practice
+job finished` log fields in Render. The first request after a new image may
+initialize the compiler process and JIT; later requests reuse the process and
+trusted framework metadata.
 
-`UseSharedCompilation=false` and `MSBUILDDISABLENODEREUSE=1` remain intentional:
-compiler/server reuse would retain more state across mutually untrusted jobs.
-The optimized path instead reuses immutable restore inputs while preserving
-process and directory isolation.
+For a three-run local smoke benchmark, run
+`npm --prefix backend run benchmark:practice-runner`. This measures the full
+direct Roslyn path, including separate-process execution; local workstation
+numbers are not predictions of Render performance.
+
+The expected speedup comes from removing per-request CLI/MSBuild startup and
+project evaluation. Only trusted framework metadata and the compiler process are
+persistent; syntax trees, compilations, diagnostics, and output directories are
+new per job. Student execution remains out-of-process, so an infinite loop can
+be killed without freezing the compiler host.

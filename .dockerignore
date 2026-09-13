@@ -1,0 +1,6 @@
+backend/compiler-host/bin/
+backend/compiler-host/obj/
+backend/node_modules/
+frontend/node_modules/
+frontend/dist/
+.git/

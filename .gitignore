@@ -1,6 +1,8 @@
 # Node modules
 backend/node_modules/
 backend/uploads/
+backend/compiler-host/bin/
+backend/compiler-host/obj/
 frontend/node_modules/
 frontend/.vite/
 

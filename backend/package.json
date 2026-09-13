@@ -9,8 +9,9 @@
     "db:migrate": "node src/migrate.js",
     "start": "node src/server.js",
     "start:practice-runner": "node src/practiceRunnerServer.js",
-    "test": "node test/runTests.js",
-    "test:practice-runner": "node test/practiceRunner.execution.test.js"
+    "benchmark:practice-runner": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node scripts/benchmarkPracticeRunner.js",
+    "test": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node test/runTests.js",
+    "test:practice-runner": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node test/practiceRunner.execution.test.js"
   },
   "keywords": [],
   "author": "",

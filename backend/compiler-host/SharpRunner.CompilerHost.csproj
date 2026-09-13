@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <PracticeCompilerHostTargetFramework Condition="'$(PracticeCompilerHostTargetFramework)' == ''">net$([System.Text.RegularExpressions.Regex]::Match('$(NETCoreSdkVersion)', '^\d+').Value).0</PracticeCompilerHostTargetFramework>
+    <TargetFramework>$(PracticeCompilerHostTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NuGetAudit>false</NuGetAudit>
+    <RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
+  </PropertyGroup>
+
+  <!-- Roslyn ships with the .NET SDK image. Referencing those assemblies keeps
+       the runner build deterministic and avoids a NuGet dependency/restore. -->
+  <ItemGroup>
+    <Reference Include="Microsoft.CodeAnalysis" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.dll" Private="true" />
+    <Reference Include="Microsoft.CodeAnalysis.CSharp" HintPath="$(MSBuildSDKsPath)/../Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll" Private="true" />
+  </ItemGroup>
+</Project>

@@ -30,11 +30,14 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
       // was named explicitly.
       dotnet: diagnostic.available,
       ...(diagnostic.sdkVersion ? { sdkVersion: diagnostic.sdkVersion } : {}),
+      ...(diagnostic.compilerMode ? { compilerMode: diagnostic.compilerMode } : {}),
+      ...(diagnostic.targetFramework ? { targetFramework: diagnostic.targetFramework } : {}),
     });
   };
 
-  // Render liveness must be constant-time and must never spawn dotnet. The
-  // authenticated readiness endpoints below use the cached startup diagnostic.
+  // Render liveness must be constant-time and must never contact the compiler.
+  // Authenticated readiness uses the compiler host's lightweight health command;
+  // it does not perform a sample compilation.
   app.get("/health", (_req, res) => res.json({ status: "ok" }));
   app.use((req, res, next) => {
     if (!tokenMatches(req.get("authorization"))) return res.status(401).json({ message: "Unauthorized" });

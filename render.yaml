@@ -79,6 +79,8 @@ services:
         generateValue: true
       - key: PRACTICE_RUNNER_MODE
         value: direct
+      - key: PRACTICE_COMPILER_MODE
+        value: roslyn
       - key: PRACTICE_DOTNET_TARGET
         value: net8.0
       - key: PRACTICE_EXEC_TIMEOUT_MS

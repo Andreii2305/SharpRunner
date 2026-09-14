@@ -771,6 +771,36 @@
   color: #e2e8f0;
   font-size: 0.95rem;
   line-height: 1.6;
+  white-space: pre-line;
+}
+
+.hintFeedback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+  font-size: 0.82rem;
+}
+
+.hintFeedbackActions {
+  display: flex;
+  gap: 8px;
+}
+
+.hintFeedbackActions button {
+  border: 1px solid #64748b;
+  border-radius: 6px;
+  background: #334155;
+  color: #f8fafc;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.hintFeedbackActions button:hover {
+  border-color: #f59e0b;
 }
 
 .hintDismiss {

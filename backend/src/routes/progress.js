@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const UserProgress = require("../models/UserProgress");
 const User = require("../models/User");
+const HintFeedback = require("../models/HintFeedback");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireActiveClassMembership = require("../middleware/requireActiveClassMembership");
 const {
@@ -32,6 +33,10 @@ const {
 } = require("../constants/gamificationConfig");
 const { getLevelHints } = require("../constants/levelHintCatalog");
 const {
+  getProgressiveHintStage,
+  resolvePersonalizedHint,
+} = require("../services/hintResolverService");
+const {
   evaluateStudentLevelAccess,
   getStudentLevelAccess,
   restrictionPayload,
@@ -55,6 +60,25 @@ const buildHintState = (levelRow, setting = {}, currentXp = null) => {
   const hintUnlocked = hintsEnabled && attemptCount >= threshold;
   const detailedHintUnlocked = Boolean(levelRow?.detailedHintUnlocked);
   const hintDefinition = getLevelHints(levelRow?.levelKey);
+  const purchaseAttemptCount = Number.isFinite(Number(levelRow?.detailedHintAttemptCount))
+    ? Number(levelRow.detailedHintAttemptCount)
+    : Number.isFinite(Number(levelRow?.attemptCountAtHintUnlock))
+      ? Number(levelRow.attemptCountAtHintUnlock)
+      : attemptCount;
+  const resolvedStage = getProgressiveHintStage({
+    unlocked: detailedHintUnlocked,
+    attemptCount,
+    purchaseAttemptCount,
+  });
+  const strongerGuidanceAvailable = resolvedStage === "stronger";
+  const resolvedHint = detailedHintUnlocked
+    ? resolvePersonalizedHint({
+        levelKey: levelRow?.levelKey,
+        failureCode: levelRow?.latestFailureCode ?? "UNKNOWN",
+        category: levelRow?.latestFailureCategory ?? "unknown",
+        stage: resolvedStage,
+      })
+    : null;
   return {
     hintsEnabled,
     hintUnlockThreshold: threshold,
@@ -70,10 +94,13 @@ const buildHintState = (levelRow, setting = {}, currentXp = null) => {
       ? Math.max(0, Number(currentXp))
       : null,
     basicHint: hintUnlocked ? hintDefinition?.basicHint ?? null : null,
-    detailedHint:
-      hintsEnabled && detailedHintUnlocked
-        ? hintDefinition?.detailedHint ?? null
-        : null,
+    detailedHint: hintsEnabled ? resolvedHint?.text ?? null : null,
+    personalizedHint: hintsEnabled ? resolvedHint?.text ?? null : null,
+    hintStage: resolvedHint?.stage ?? null,
+    failureCode: resolvedHint?.failureCode ?? levelRow?.latestFailureCode ?? null,
+    failureCategory: resolvedHint?.category ?? levelRow?.latestFailureCategory ?? null,
+    fallbackHintUsed: Boolean(resolvedHint?.fallbackUsed),
+    strongerGuidanceAvailable,
   };
 };
 
@@ -338,35 +365,97 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
       return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
-    const levelRow = await UserProgress.findOne({
-      where: { userId: req.userId, levelKey },
-    });
-    if (!levelRow) {
-      return res.status(404).json({ message: "Progress row not found" });
-    }
-
     const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
     const currentUser = await User.findByPk(req.userId, {
       attributes: ["xpTotal"],
     });
-
-    if (levelRow.isCompleted) {
-      return res.json({
-        attemptCount: levelRow.attemptCount ?? 0,
-        replay: true,
-        ...buildHintState(levelRow, setting, currentUser?.xpTotal),
+    const validation = await validateLevelCode({
+      levelKey,
+      sourceCode: req.body?.sourceCode,
+      validatorConfig: setting?.validatorConfig ?? null,
+    });
+    const attemptResult = await UserProgress.sequelize.transaction(async (transaction) => {
+      const levelRow = await UserProgress.findOne({
+        where: { userId: req.userId, levelKey },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
       });
-    }
+      if (!levelRow) return null;
+      if (levelRow.isCompleted || validation?.isCorrect) {
+        return { levelRow, recorded: false, replay: Boolean(levelRow.isCompleted) };
+      }
 
-    levelRow.attemptCount = (levelRow.attemptCount || 0) + 1;
-    await levelRow.save();
+      levelRow.attemptCount = (levelRow.attemptCount || 0) + 1;
+      levelRow.latestFailureCode = validation?.failureCode ?? "UNKNOWN";
+      levelRow.latestFailureCategory = validation?.category ?? "unknown";
+      levelRow.latestFailureMetadata = validation?.metadata ?? {};
+      levelRow.latestFailureAt = new Date();
+      levelRow.latestFailureAttemptCount = levelRow.attemptCount;
+      await levelRow.save({ transaction });
+      return { levelRow, recorded: true, replay: false };
+    });
+    if (!attemptResult) {
+      return res.status(404).json({ message: "Progress row not found" });
+    }
+    const { levelRow, recorded, replay } = attemptResult;
 
     return res.json({
       attemptCount: levelRow.attemptCount,
-      replay: false,
+      replay,
+      attemptRecorded: recorded,
+      validationPassed: Boolean(validation?.isCorrect),
+      failureCode: validation?.failureCode ?? null,
+      failureCategory: validation?.category ?? null,
       ...buildHintState(levelRow, setting, currentUser?.xpTotal),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.post("/level/:levelKey/hint-feedback", async (req, res) => {
+  try {
+    const levelKey = normalizeLevelKey(req.params.levelKey);
+    if (!LEVEL_KEYS.has(levelKey) || typeof req.body?.helpful !== "boolean") {
+      return res.status(400).json({ message: "A valid level and helpful response are required." });
+    }
+    const levelRow = await UserProgress.findOne({
+      where: { userId: req.userId, levelKey },
+    });
+    if (!levelRow?.detailedHintUnlocked) {
+      return res.status(403).json({ code: "HINT_NOT_OWNED", message: "Unlock the personalized hint before rating it." });
+    }
+    const stage = getProgressiveHintStage({
+      unlocked: true,
+      attemptCount: levelRow.attemptCount,
+      purchaseAttemptCount: levelRow.detailedHintAttemptCount
+        ?? levelRow.attemptCountAtHintUnlock
+        ?? levelRow.attemptCount,
+    });
+    const failureCode = levelRow.latestFailureCode ?? "UNKNOWN";
+    const resolvedHint = resolvePersonalizedHint({
+      levelKey,
+      failureCode,
+      category: levelRow.latestFailureCategory ?? "unknown",
+      stage,
+    });
+    const [feedback] = await HintFeedback.upsert({
+      userId: req.userId,
+      levelKey,
+      failureCode,
+      hintStage: stage,
+      helpful: req.body.helpful,
+      fallbackUsed: Boolean(resolvedHint?.fallbackUsed),
+    }, { returning: true });
+    return res.json({
+      message: "Thanks for rating this hint.",
+      helpful: Boolean(feedback?.helpful ?? req.body.helpful),
+      failureCode,
+      hintStage: stage,
+      fallbackUsed: Boolean(resolvedHint?.fallbackUsed),
     });
   } catch (error) {
     console.error(error);
@@ -541,6 +630,8 @@ router.put("/level/:levelKey", async (req, res) => {
         return res.status(422).json({
           code: "LEVEL_VALIDATION_FAILED",
           message: validation?.message ?? "The submitted code did not pass server validation.",
+          failureCode: validation?.failureCode ?? "UNKNOWN",
+          failureCategory: validation?.category ?? "unknown",
         });
       }
       completionAccess = await getStudentLevelAccess({

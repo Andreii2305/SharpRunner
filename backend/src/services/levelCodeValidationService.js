@@ -3,6 +3,9 @@ const path = require("path");
 const vm = require("vm");
 const { pathToFileURL } = require("url");
 const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
+const {
+  classifyValidationFailure,
+} = require("./failureClassificationService");
 
 const frontendLevelsDirectory = path.resolve(
   __dirname,
@@ -110,7 +113,16 @@ const validateLevelCode = async ({ levelKey, sourceCode, validatorConfig }) => {
   if (typeof factory !== "function") {
     throw new Error(`Missing validator factory: ${factoryName}`);
   }
-  return factory(config)(sourceCode);
+  const validation = factory(config)(sourceCode);
+  if (validation?.isCorrect) return validation;
+  return {
+    ...validation,
+    ...classifyValidationFailure({
+      sourceCode,
+      validation,
+      validatorConfig: config,
+    }),
+  };
 };
 
 module.exports = {

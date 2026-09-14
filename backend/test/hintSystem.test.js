@@ -8,6 +8,21 @@ const { PLAYABLE_LEVEL_KEYS } = require("../src/constants/progressDefaults");
 const { DETAILED_HINT_XP_COST } = require("../src/constants/gamificationConfig");
 const { LEVEL_HINTS } = require("../src/constants/levelHintCatalog");
 const {
+  FAILURE_GUIDANCE,
+  GLOBAL_FAILURE_GUIDANCE,
+  LEVEL_HINT_PROFILES,
+} = require("../src/constants/levelSituationalHintCatalog");
+const {
+  classifyCompilerDiagnostic,
+  classifySyntax,
+} = require("../src/services/failureClassificationService");
+const {
+  getProgressiveHintStage,
+  resolvePersonalizedHint,
+} = require("../src/services/hintResolverService");
+const { validateLevelCode } = require("../src/services/levelCodeValidationService");
+const HintFeedback = require("../src/models/HintFeedback");
+const {
   GamificationError,
   purchaseDetailedHint,
 } = require("../src/services/gamificationService");
@@ -22,22 +37,120 @@ const withStubs = async (stubs, callback) => {
   }
 };
 
-test("every playable challenge has unique level-specific basic and detailed hints", () => {
+test("every playable challenge has basic guidance and a situational hint profile", () => {
   assert.deepEqual(Object.keys(LEVEL_HINTS).sort(), [...PLAYABLE_LEVEL_KEYS].sort());
+  assert.deepEqual(Object.keys(LEVEL_HINT_PROFILES).sort(), [...PLAYABLE_LEVEL_KEYS].sort());
 
   const basicHints = new Set();
-  const detailedHints = new Set();
   for (const levelKey of PLAYABLE_LEVEL_KEYS) {
     const hint = LEVEL_HINTS[levelKey];
+    const profile = LEVEL_HINT_PROFILES[levelKey];
     assert.ok(hint.learningObjective.length >= 20, `${levelKey} objective is too short`);
     assert.ok(hint.basicHint.length >= 45, `${levelKey} basic hint is too generic`);
-    assert.ok(hint.detailedHint.length >= 100, `${levelKey} detailed hint lacks depth`);
-    assert.ok(!/[{}]|```/.test(hint.detailedHint), `${levelKey} detailed hint contains copy-ready code`);
+    assert.ok(profile.location.length >= 20, `${levelKey} needs a specific place to inspect`);
+    assert.ok(profile.supportedFailureCodes.length >= 3, `${levelKey} needs multiple failure cases`);
+    for (const failureCode of profile.supportedFailureCodes) {
+      assert.ok(
+        FAILURE_GUIDANCE[failureCode] || GLOBAL_FAILURE_GUIDANCE[failureCode],
+        `${levelKey} has no guidance for ${failureCode}`,
+      );
+    }
     basicHints.add(hint.basicHint);
-    detailedHints.add(hint.detailedHint);
   }
   assert.equal(basicHints.size, PLAYABLE_LEVEL_KEYS.length);
-  assert.equal(detailedHints.size, PLAYABLE_LEVEL_KEYS.length);
+});
+
+test("compiler failures are classified before challenge logic", () => {
+  assert.equal(
+    classifySyntax("class Program {\nstatic void Main() {\nint value = 1\n}\n}")?.failureCode,
+    "COMPILER_MISSING_SEMICOLON",
+  );
+  assert.equal(
+    classifySyntax("class Program { static void Main() {")?.failureCode,
+    "COMPILER_UNMATCHED_DELIMITER",
+  );
+  assert.equal(
+    classifyCompilerDiagnostic({ errorType: "compiler", stderr: "error CS0103: The name 'total' does not exist in the current context" })?.failureCode,
+    "COMPILER_UNKNOWN_NAME",
+  );
+});
+
+test("different mistakes on the same level resolve to different personalized hints", async () => {
+  const source = (assignment) => `
+    using System;
+    class Program {
+      static void Main(string[] args) {
+        string[] flames = { "normal", "normal", "boss", "normal" };
+        ${assignment}
+      }
+    }
+  `;
+  const wrongIndex = await validateLevelCode({
+    levelKey: "arrays-level-3",
+    sourceCode: source("string attack = flames[3];"),
+  });
+  const hardcoded = await validateLevelCode({
+    levelKey: "arrays-level-3",
+    sourceCode: source('string attack = "boss";'),
+  });
+  const correct = await validateLevelCode({
+    levelKey: "arrays-level-3",
+    sourceCode: source("string attack = flames[2];"),
+  });
+
+  assert.equal(wrongIndex.failureCode, "WRONG_ARRAY_INDEX");
+  assert.equal(hardcoded.failureCode, "HARDCODED_RESULT");
+  assert.equal(correct.isCorrect, true);
+  assert.equal(correct.failureCode, undefined);
+
+  const indexHint = resolvePersonalizedHint({
+    levelKey: "arrays-level-3",
+    failureCode: wrongIndex.failureCode,
+    category: wrongIndex.category,
+  });
+  const hardcodedHint = resolvePersonalizedHint({
+    levelKey: "arrays-level-3",
+    failureCode: hardcoded.failureCode,
+    category: hardcoded.category,
+  });
+  assert.notEqual(indexHint.text, hardcodedHint.text);
+  assert.match(indexHint.text, /index/i);
+  assert.match(hardcodedHint.text, /bypasses|literal/i);
+});
+
+test("unknown failures use a level-specific fallback and continued failure strengthens guidance", () => {
+  const fallback = resolvePersonalizedHint({
+    levelKey: "functions-level-10",
+    failureCode: "UNRECOGNIZED_CASE",
+    category: "unknown",
+  });
+  const initial = resolvePersonalizedHint({
+    levelKey: "arrays-level-7",
+    failureCode: "WRONG_LOOP_BOUNDS",
+    category: "wrong_logic",
+    stage: "personalized",
+  });
+  const stronger = resolvePersonalizedHint({
+    levelKey: "arrays-level-7",
+    failureCode: "WRONG_LOOP_BOUNDS",
+    category: "wrong_logic",
+    stage: "stronger",
+  });
+  assert.equal(fallback.fallbackUsed, true);
+  assert.match(fallback.text, /Heal|healing|operator/i);
+  assert.notEqual(initial.text, stronger.text);
+  assert.equal(stronger.stage, "stronger");
+  assert.equal(getProgressiveHintStage({ unlocked: true, attemptCount: 3, purchaseAttemptCount: 3 }), "personalized");
+  assert.equal(getProgressiveHintStage({ unlocked: true, attemptCount: 4, purchaseAttemptCount: 3 }), "stronger");
+});
+
+test("hint feedback stores no source code and is isolated by user and hint context", () => {
+  const attributes = HintFeedback.rawAttributes;
+  assert.ok(attributes.userId && attributes.levelKey && attributes.failureCode);
+  assert.ok(attributes.hintStage && attributes.helpful && attributes.fallbackUsed && attributes.createdAt);
+  assert.equal(attributes.sourceCode, undefined);
+  const uniqueIndex = HintFeedback.options.indexes.find((index) => index.unique);
+  assert.deepEqual(uniqueIndex.fields, ["userId", "levelKey", "failureCode", "hintStage"]);
 });
 
 test("detailed hint purchase deducts the centralized cost and is idempotent", async () => {

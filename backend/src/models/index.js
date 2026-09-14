@@ -20,6 +20,7 @@ const ClassroomLessonVersion = require("./ClassroomLessonVersion");
 const ClassroomLessonAudit = require("./ClassroomLessonAudit");
 const XpTransaction = require("./XpTransaction");
 const StudentLevelExtension = require("./StudentLevelExtension");
+const HintFeedback = require("./HintFeedback");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -61,6 +62,13 @@ User.hasMany(XpTransaction, {
 });
 
 XpTransaction.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+User.hasMany(HintFeedback, {
+  foreignKey: "userId",
+  as: "hintFeedback",
+  onDelete: "CASCADE",
+});
+HintFeedback.belongsTo(User, { foreignKey: "userId", as: "user" });
 
 User.hasMany(AdminActivityLog, {
   foreignKey: "actorUserId",
@@ -299,4 +307,5 @@ module.exports = {
   ClassroomLessonAudit,
   XpTransaction,
   StudentLevelExtension,
+  HintFeedback,
 };

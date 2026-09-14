@@ -16,7 +16,7 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Teachers can manage classrooms, view student progress, post announcements, manage classwork, and configure the currently supported per-classroom level settings.
 - Teachers can organize secure classroom modules, lessons, assignments, external links, and multimedia resources. They cannot edit Phaser levels or validators.
 - Failed attempts unlock a free basic hint at the teacher-configured threshold (three by default).
-- After that threshold, students may optionally spend 15 XP once per level for protected, level-specific detailed guidance.
+- After that threshold, students may optionally spend 15 XP once per level for protected, situational guidance based on their latest server-classified failure.
 - First completions award server-owned XP and bonuses separately from academic scores.
 - Admins govern account retention and sessions, oversee classrooms/content, monitor system health, export reports, and review audit activity.
 - Developer tools can generate one-time admin invite codes.
@@ -37,7 +37,7 @@ SharpRunner supports responsive web access. The dashboard, curriculum map, lesso
 - Complete coding challenges through a Monaco-based C# editor.
 - Receive a saved final score and grade after level completion.
 - Earn one-time XP for first completion, first-attempt success, and no-hint success.
-- Use XP to unlock a detailed hint without directly changing the academic grade; purchases survive refresh and cannot double-charge.
+- Use XP to unlock a personalized hint without directly changing the academic grade; purchases survive refresh, cannot double-charge, and become stronger after another failed attempt at no extra cost.
 - Select optional motivation and learning-game preferences from the dashboard.
 - Revisit available teacher content and replay completed levels without overwriting the original score or farming XP.
 
@@ -344,7 +344,9 @@ Teacher-facing `Total Students` metrics count unique active student accounts wit
   - `POST /api/auth/forgot-password` - generic response; 5 requests per 15 minutes per IP and a 60-second per-account email cooldown
   - `POST /api/auth/reset-password` - consume a reset token and revoke prior sessions; 10 attempts per 15 minutes per IP
 - `/api/progress`
-  - `POST /api/progress/level/:levelKey/detailed-hint-purchase` - authenticated, access-controlled, transactional detailed-hint purchase
+  - `POST /api/progress/level/:levelKey/attempt` - revalidates a failed submission server-side and persists only its normalized diagnosis
+  - `POST /api/progress/level/:levelKey/detailed-hint-purchase` - authenticated, access-controlled, transactional personalized-hint purchase
+  - `POST /api/progress/level/:levelKey/hint-feedback` - stores optional helpful/not-helpful feedback for an owned personalized hint
 - `/api/lesson-content`
 - `/api/admin`
 - `/api/teacher`

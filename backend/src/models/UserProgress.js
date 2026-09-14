@@ -88,6 +88,16 @@ const UserProgress = sequelize.define(
       allowNull: true,
       validate: { min: 0 },
     },
+    detailedHintAttemptCount: { type: DataTypes.INTEGER, allowNull: true },
+    latestFailureCode: { type: DataTypes.STRING(64), allowNull: true },
+    latestFailureCategory: { type: DataTypes.STRING(40), allowNull: true },
+    latestFailureMetadata: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: {},
+    },
+    latestFailureAt: { type: DataTypes.DATE, allowNull: true },
+    latestFailureAttemptCount: { type: DataTypes.INTEGER, allowNull: true },
     xpAwarded: {
       type: DataTypes.INTEGER,
       allowNull: false,

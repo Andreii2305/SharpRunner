@@ -22,6 +22,7 @@ const AdminInvite = require("../src/models/AdminInvite");
 const XpTransaction = require("../src/models/XpTransaction");
 const PasswordResetToken = require("../src/models/PasswordResetToken");
 const EmailVerificationToken = require("../src/models/EmailVerificationToken");
+const HintFeedback = require("../src/models/HintFeedback");
 const sequelize = require("../src/config/database");
 const {
   TERMS_VERSION,
@@ -632,11 +633,20 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
     }]],
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
     [XpTransaction, "create", async (values) => values],
+    [HintFeedback, "upsert", async (values) => [{ ...values }, true]],
   ], async () => {
+    const wrongSource = `using System;
+class Program {
+  static void WalkToPortal(int distanceInSteps) {}
+  static void Main(string[] args) {
+    int steps = 0;
+    WalkToPortal(steps);
+  }
+}`;
     for (let expected = 1; expected <= 3; expected += 1) {
       const { response, payload } = await apiRequest(
         "/api/progress/level/tutorial-level-1/attempt",
-        { method: "POST", token: authToken(1, "student"), body: {} },
+        { method: "POST", token: authToken(1, "student"), body: { sourceCode: wrongSource } },
       );
       assert.equal(response.status, 200);
       assert.equal(payload.attemptCount, expected);
@@ -662,7 +672,8 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
     assert.equal(purchaseResponse.response.status, 200);
     assert.equal(purchaseResponse.payload.purchased, true);
     assert.equal(purchaseResponse.payload.currentXp, 25);
-    assert.ok(purchaseResponse.payload.detailedHint.includes("WalkToPortal"));
+    assert.ok(purchaseResponse.payload.personalizedHint.includes("steps"));
+    assert.equal(purchaseResponse.payload.hintStage, "personalized");
 
     const retryResponse = await apiRequest(
       "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
@@ -671,6 +682,22 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
     assert.equal(retryResponse.response.status, 200);
     assert.equal(retryResponse.payload.purchased, false);
     assert.equal(retryResponse.payload.currentXp, 25);
+
+    const continuedFailure = await apiRequest(
+      "/api/progress/level/tutorial-level-1/attempt",
+      { method: "POST", token: authToken(1, "student"), body: { sourceCode: wrongSource } },
+    );
+    assert.equal(continuedFailure.payload.hintStage, "stronger");
+    assert.equal(continuedFailure.payload.currentXp, 25);
+    assert.notEqual(continuedFailure.payload.personalizedHint, purchaseResponse.payload.personalizedHint);
+
+    const feedbackResponse = await apiRequest(
+      "/api/progress/level/tutorial-level-1/hint-feedback",
+      { method: "POST", token: authToken(1, "student"), body: { helpful: true } },
+    );
+    assert.equal(feedbackResponse.response.status, 200);
+    assert.equal(feedbackResponse.payload.hintStage, "stronger");
+    assert.equal(feedbackResponse.payload.helpful, true);
   });
 });
 
@@ -702,6 +729,7 @@ test("hint state persists across refresh for teacher thresholds 1 and 5", async 
     [UserProgress, "bulkCreate", async () => []],
     [UserProgress, "findOne", async () => progressRow],
     [LevelContentOverride, "findAll", async () => [setting]],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
   ], async () => {
     for (const threshold of [1, 5]) {
       setting.hintUnlockThreshold = threshold;

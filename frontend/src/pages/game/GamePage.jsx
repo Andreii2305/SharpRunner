@@ -158,6 +158,7 @@ function GamePage({ levelConfig }) {
   const levelSessionActiveRef = useRef(false);
   const failedAttemptsRef = useRef(0);
   const hintsEnabledRef = useRef(true);
+  const hintContextRef = useRef({ stage: null, failureCode: null });
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [effectiveDueAt, setEffectiveDueAt] = useState(null);
   const [hasDeadlineExtension, setHasDeadlineExtension] = useState(false);
@@ -168,6 +169,8 @@ function GamePage({ levelConfig }) {
   const [hintUsed, setHintUsed] = useState(false);
   const [basicHint, setBasicHint] = useState(null);
   const [detailedHint, setDetailedHint] = useState(null);
+  const [hintStage, setHintStage] = useState(null);
+  const [hintFeedback, setHintFeedback] = useState(null);
   const [detailedHintUnlocked, setDetailedHintUnlocked] = useState(false);
   const [detailedHintXpCost, setDetailedHintXpCost] = useState(null);
   const [currentXp, setCurrentXp] = useState(null);
@@ -205,6 +208,16 @@ function GamePage({ levelConfig }) {
     if (payload.hintUsed != null) setHintUsed(Boolean(payload.hintUsed));
     if (Object.hasOwn(payload, "basicHint")) setBasicHint(payload.basicHint);
     if (Object.hasOwn(payload, "detailedHint")) setDetailedHint(payload.detailedHint);
+    if (Object.hasOwn(payload, "personalizedHint")) setDetailedHint(payload.personalizedHint);
+    if (Object.hasOwn(payload, "hintStage")) {
+      if (hintContextRef.current.stage !== payload.hintStage) setHintFeedback(null);
+      hintContextRef.current.stage = payload.hintStage;
+      setHintStage(payload.hintStage);
+    }
+    if (Object.hasOwn(payload, "failureCode")) {
+      if (hintContextRef.current.failureCode !== payload.failureCode) setHintFeedback(null);
+      hintContextRef.current.failureCode = payload.failureCode;
+    }
     if (payload.detailedHintUnlocked != null) {
       setDetailedHintUnlocked(Boolean(payload.detailedHintUnlocked));
     }
@@ -256,6 +269,9 @@ function GamePage({ levelConfig }) {
     setHintUsed(false);
     setBasicHint(null);
     setDetailedHint(null);
+    setHintStage(null);
+    hintContextRef.current = { stage: null, failureCode: null };
+    setHintFeedback(null);
     setDetailedHintUnlocked(false);
     setDetailedHintXpCost(null);
     setCurrentXp(null);
@@ -642,7 +658,7 @@ function GamePage({ levelConfig }) {
         axios
           .post(
             buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`),
-            {},
+            { sourceCode: code ?? "" },
             { headers: getAuthHeaders() },
           )
           .then((res) => {
@@ -665,7 +681,7 @@ function GamePage({ levelConfig }) {
       gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
       clearNextLevelTimer();
     };
-  }, [clearNextLevelTimer, currentXp, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
+  }, [clearNextLevelTimer, code, currentXp, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -755,13 +771,17 @@ function GamePage({ levelConfig }) {
 
   const openDetailedHint = () => {
     if (detailedHintUnlocked && detailedHint) {
-      setActiveHint({ title: "Detailed Hint · Unlocked", text: detailedHint });
+      setActiveHint({
+        title: hintStage === "stronger" ? "Stronger Guidance · Unlocked" : "Personalized Hint · Unlocked",
+        text: detailedHint,
+        personalized: true,
+      });
       return;
     }
     if (currentXp < detailedHintXpCost) {
       setResult({
         type: "error",
-        message: `You need ${detailedHintXpCost} XP to unlock the detailed hint. Current XP: ${currentXp ?? 0}.`,
+        message: `You need ${detailedHintXpCost} XP to unlock the personalized hint. Current XP: ${currentXp ?? 0}.`,
       });
       return;
     }
@@ -781,20 +801,21 @@ function GamePage({ levelConfig }) {
       );
       syncHintState(response.data);
       setShowHintPurchase(false);
-      if (response.data?.detailedHint) {
+      if (response.data?.personalizedHint ?? response.data?.detailedHint) {
         setActiveHint({
-          title: "Detailed Hint · Unlocked",
-          text: response.data.detailedHint,
+          title: "Personalized Hint · Unlocked",
+          text: response.data.personalizedHint ?? response.data.detailedHint,
+          personalized: true,
         });
       }
       toast.success(
         response.data?.purchased
-          ? `Detailed hint unlocked for ${response.data.detailedHintXpCost} XP.`
-          : "Detailed hint was already unlocked.",
+          ? `Personalized hint unlocked for ${response.data.detailedHintXpCost} XP.`
+          : "Personalized hint was already unlocked. No XP was charged.",
       );
     } catch (error) {
       const message =
-        error.response?.data?.message ?? "The detailed hint could not be unlocked.";
+        error.response?.data?.message ?? "The personalized hint could not be unlocked.";
       if (error.response?.data?.currentXp != null) {
         setCurrentXp(Number(error.response.data.currentXp));
       }
@@ -803,6 +824,23 @@ function GamePage({ levelConfig }) {
       toast.error(message);
     } finally {
       setIsPurchasingHint(false);
+    }
+  };
+
+  const submitHintFeedback = async (helpful) => {
+    if (!activeHint?.personalized || hintFeedback != null) return;
+    try {
+      await axios.post(
+        buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/hint-feedback`),
+        { helpful },
+        { headers: getAuthHeaders() },
+      );
+      setHintFeedback(helpful);
+    } catch (error) {
+      setResult({
+        type: "error",
+        message: error.response?.data?.message ?? "Your hint feedback could not be saved.",
+      });
     }
   };
 
@@ -1129,6 +1167,17 @@ function GamePage({ levelConfig }) {
                     <button ref={hintButtonRef} type="button" className={styles.hintClose} onClick={() => setActiveHint(null)} aria-label="Close hint">✕</button>
                   </div>
                   <p className={styles.hintText}>{activeHint.text}</p>
+                  {activeHint.personalized && (
+                    <div className={styles.hintFeedback}>
+                      <span>{hintFeedback == null ? "Was this hint helpful?" : "Thanks for your feedback."}</span>
+                      {hintFeedback == null && (
+                        <div className={styles.hintFeedbackActions}>
+                          <button type="button" onClick={() => submitHintFeedback(true)}>Yes</button>
+                          <button type="button" onClick={() => submitHintFeedback(false)}>No</button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <button type="button" className={styles.hintDismiss} onClick={() => setActiveHint(null)}>Got it</button>
                 </div>
               </div>
@@ -1350,8 +1399,8 @@ function GamePage({ levelConfig }) {
                         }
                       >
                         <span className={styles.hintButtonCopy}>
-                          <strong>Detailed Hint</strong>
-                          <small>{detailedHintUnlocked ? "View guidance" : "Unlock guidance"}</small>
+                          <strong>{hintStage === "stronger" ? "Stronger Guidance" : "Personalized Hint"}</strong>
+                          <small>{detailedHintUnlocked ? "View guidance · no extra charge" : "Diagnoses your latest attempt"}</small>
                         </span>
                         <span className={styles.hintTierBadge}>
                           {detailedHintUnlocked
@@ -1361,9 +1410,9 @@ function GamePage({ levelConfig }) {
                       </button>
                       <small className={styles.hintBalance}>
                         {detailedHintUnlocked
-                          ? `${currentXp ?? 0} XP available · Detailed guidance stays unlocked for this level`
+                          ? `${currentXp ?? 0} XP available · Hint unlocked for this level · no further charge`
                           : currentXp != null && detailedHintXpCost != null && currentXp < detailedHintXpCost
-                            ? `You need ${detailedHintXpCost} XP to unlock the detailed hint. Current XP: ${currentXp}.`
+                            ? `You need ${detailedHintXpCost} XP to unlock the personalized hint. Current XP: ${currentXp}.`
                             : `${currentXp ?? "Loading..."} XP available`}
                       </small>
                     </div>
@@ -1434,8 +1483,8 @@ function GamePage({ levelConfig }) {
 
       <ConfirmModal
         open={showHintPurchase}
-        title={`Unlock Detailed Hint for ${detailedHintXpCost ?? "—"} XP?`}
-        message={`This unlocks level-specific guidance permanently for this level. Your academic grade is not directly reduced. Current XP: ${currentXp ?? 0}.`}
+        title={`Unlock Personalized Hint for ${detailedHintXpCost ?? "—"} XP?`}
+        message={`We'll identify the part of your latest solution that may be causing the problem and guide you without revealing the full answer. It stays unlocked for this level, and stronger guidance never costs extra. Current XP: ${currentXp ?? 0}.`}
         confirmLabel={isPurchasingHint ? "Unlocking..." : "Unlock"}
         cancelLabel="Cancel"
         confirmDisabled={isPurchasingHint}

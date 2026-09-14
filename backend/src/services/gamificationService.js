@@ -162,6 +162,7 @@ const purchaseDetailedHint = async ({
   progress.detailedHintPurchasedAt = purchasedAt;
   progress.detailedHintUsedAt = purchasedAt;
   progress.detailedHintXpCost = DETAILED_HINT_XP_COST;
+  progress.detailedHintAttemptCount = attemptCount;
   progress.hintUsed = true;
   progress.hintUsedAt = progress.hintUsedAt ?? purchasedAt;
   progress.hintType = "detailed";

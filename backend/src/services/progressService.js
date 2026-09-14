@@ -68,6 +68,12 @@ const normalizeLevelRows = (rows) =>
         detailedHintPurchasedAt: row.detailedHintPurchasedAt ?? null,
         detailedHintUsedAt: row.detailedHintUsedAt ?? null,
         detailedHintXpCost: row.detailedHintXpCost ?? null,
+        detailedHintAttemptCount: row.detailedHintAttemptCount ?? null,
+        latestFailureCode: row.latestFailureCode ?? null,
+        latestFailureCategory: row.latestFailureCategory ?? null,
+        latestFailureMetadata: row.latestFailureMetadata ?? {},
+        latestFailureAt: row.latestFailureAt ?? null,
+        latestFailureAttemptCount: row.latestFailureAttemptCount ?? null,
         xpAwarded: Math.max(0, Number(row.xpAwarded) || 0),
         xpAwardedAt: row.xpAwardedAt ?? null,
       };

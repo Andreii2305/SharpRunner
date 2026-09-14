@@ -14,6 +14,33 @@ const result = (failureCode, category, metadata = {}) => ({
   metadata,
 });
 
+const sanitizeFailureMetadata = (metadata) => {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return {};
+  return Object.fromEntries(
+    Object.entries(metadata)
+      .slice(0, 16)
+      .flatMap(([key, value]) => {
+        if (!/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(key)) return [];
+        if (/^(?:source|sourceCode|code|submission)$/i.test(key)) return [];
+        if (typeof value === "string") return [[key, value.slice(0, 160)]];
+        if (typeof value === "number" && Number.isFinite(value)) return [[key, value]];
+        if (typeof value === "boolean" || value === null) return [[key, value]];
+        return [];
+      }),
+  );
+};
+
+const normalizeStructuredFailure = (failure) => {
+  if (!failure || typeof failure !== "object") return null;
+  const failureCode = typeof failure.code === "string" ? failure.code.trim().toUpperCase() : "";
+  if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(failureCode)) return null;
+  const category = typeof failure.category === "string" && failure.category.trim()
+    ? failure.category.trim().slice(0, 40)
+    : FAILURE_CATEGORIES.UNKNOWN;
+  const metadata = sanitizeFailureMetadata(failure.metadata);
+  return result(failureCode, category, metadata);
+};
+
 const stripCommentsAndStrings = (sourceCode) => String(sourceCode ?? "")
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/\/\/.*$/gm, "")
@@ -47,29 +74,46 @@ const findLikelyMissingSemicolon = (sourceCode) => {
 };
 
 const classifyCompilerDiagnostic = (compilerResult) => {
-  const diagnostic = String(
-    compilerResult?.stderr ?? compilerResult?.message ?? compilerResult?.diagnostic ?? "",
-  );
-  if (!diagnostic || (compilerResult?.errorType !== "compiler" && !/\bCS\d{4}\b/.test(diagnostic))) {
+  const diagnostics = Array.isArray(compilerResult?.diagnostics)
+    ? compilerResult.diagnostics.filter((item) => item?.severity !== "warning")
+    : [];
+  const primary = diagnostics[0] ?? null;
+  const diagnostic = `${primary?.id ?? ""} ${String(
+    compilerResult?.stderr
+      ?? primary?.message
+      ?? compilerResult?.message
+      ?? compilerResult?.diagnostic
+      ?? "",
+  )}`.trim();
+  if (
+    compilerResult?.success === true
+    || (!diagnostic && !primary?.id)
+    || (!String(compilerResult?.errorType ?? "").startsWith("compiler") && !primary?.id && !/\bCS\d{4}\b/.test(diagnostic))
+  ) {
     return null;
   }
-  const compilerCode = diagnostic.match(/\bCS\d{4}\b/)?.[0] ?? null;
+  const compilerCode = primary?.id ?? diagnostic.match(/\bCS\d{4}\b/)?.[0] ?? null;
+  const metadata = {
+    compilerCode,
+    ...(Number.isInteger(primary?.line) && primary.line > 0 ? { line: primary.line } : {}),
+    ...(Number.isInteger(primary?.column) && primary.column > 0 ? { column: primary.column } : {}),
+  };
   if (/CS1002|; expected/i.test(diagnostic)) {
-    return result("COMPILER_MISSING_SEMICOLON", FAILURE_CATEGORIES.SYNTAX, { compilerCode });
+    return result("COMPILER_MISSING_SEMICOLON", FAILURE_CATEGORIES.SYNTAX, metadata);
   }
   if (/CS0103|does not exist in the current context/i.test(diagnostic)) {
-    return result("COMPILER_UNKNOWN_NAME", FAILURE_CATEGORIES.COMPILATION, { compilerCode });
+    return result("COMPILER_UNKNOWN_NAME", FAILURE_CATEGORIES.COMPILATION, metadata);
   }
-  if (/CS0029|cannot implicitly convert/i.test(diagnostic)) {
-    return result("COMPILER_TYPE_MISMATCH", FAILURE_CATEGORIES.COMPILATION, { compilerCode });
+  if (/CS0029|CS0266|cannot implicitly convert|cannot convert type/i.test(diagnostic)) {
+    return result("COMPILER_TYPE_MISMATCH", FAILURE_CATEGORIES.COMPILATION, metadata);
   }
-  if (/CS1026|CS1513|\)|} expected/i.test(diagnostic)) {
-    return result("COMPILER_UNMATCHED_DELIMITER", FAILURE_CATEGORIES.SYNTAX, { compilerCode });
+  if (/CS1026|CS1513|CS1514|CS1519|CS1525|\)|}|\] expected|invalid token/i.test(diagnostic)) {
+    return result("COMPILER_UNMATCHED_DELIMITER", FAILURE_CATEGORIES.SYNTAX, metadata);
   }
   if (/CS1501|CS1503|argument/i.test(diagnostic)) {
-    return result("COMPILER_INVALID_METHOD_USAGE", FAILURE_CATEGORIES.COMPILATION, { compilerCode });
+    return result("COMPILER_INVALID_METHOD_USAGE", FAILURE_CATEGORIES.COMPILATION, metadata);
   }
-  return result("COMPILER_ERROR", FAILURE_CATEGORIES.COMPILATION, { compilerCode });
+  return result("COMPILER_ERROR", FAILURE_CATEGORIES.COMPILATION, metadata);
 };
 
 const classifySyntax = (sourceCode) => {
@@ -151,8 +195,14 @@ const classifyValidationFailure = ({
   compilerResult = null,
 }) => {
   if (validation?.isCorrect) return null;
-  const compilerFailure = classifyCompilerDiagnostic(compilerResult) ?? classifySyntax(sourceCode);
+  const compilerFailure = classifyCompilerDiagnostic(compilerResult);
   if (compilerFailure) return compilerFailure;
+
+  const structuredFailure = normalizeStructuredFailure(validation?.failure);
+  if (structuredFailure) return structuredFailure;
+
+  const syntaxFailure = classifySyntax(sourceCode);
+  if (syntaxFailure) return syntaxFailure;
 
   const values = validation?.payload?.values ?? {};
   const recursionError = validation?.payload?.recursionError;
@@ -185,4 +235,6 @@ module.exports = {
   classifyCompilerDiagnostic,
   classifySyntax,
   classifyValidationFailure,
+  normalizeStructuredFailure,
+  sanitizeFailureMetadata,
 };

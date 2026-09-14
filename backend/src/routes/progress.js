@@ -76,6 +76,7 @@ const buildHintState = (levelRow, setting = {}, currentXp = null) => {
         levelKey: levelRow?.levelKey,
         failureCode: levelRow?.latestFailureCode ?? "UNKNOWN",
         category: levelRow?.latestFailureCategory ?? "unknown",
+        metadata: levelRow?.latestFailureMetadata ?? {},
         stage: resolvedStage,
       })
     : null;
@@ -99,6 +100,7 @@ const buildHintState = (levelRow, setting = {}, currentXp = null) => {
     hintStage: resolvedHint?.stage ?? null,
     failureCode: resolvedHint?.failureCode ?? levelRow?.latestFailureCode ?? null,
     failureCategory: resolvedHint?.category ?? levelRow?.latestFailureCategory ?? null,
+    failureMetadata: levelRow?.latestFailureMetadata ?? {},
     fallbackHintUsed: Boolean(resolvedHint?.fallbackUsed),
     strongerGuidanceAvailable,
   };
@@ -440,6 +442,7 @@ router.post("/level/:levelKey/hint-feedback", async (req, res) => {
       levelKey,
       failureCode,
       category: levelRow.latestFailureCategory ?? "unknown",
+      metadata: levelRow.latestFailureMetadata ?? {},
       stage,
     });
     const [feedback] = await HintFeedback.upsert({
@@ -632,6 +635,7 @@ router.put("/level/:levelKey", async (req, res) => {
           message: validation?.message ?? "The submitted code did not pass server validation.",
           failureCode: validation?.failureCode ?? "UNKNOWN",
           failureCategory: validation?.category ?? "unknown",
+          failureMetadata: validation?.metadata ?? {},
         });
       }
       completionAccess = await getStudentLevelAccess({

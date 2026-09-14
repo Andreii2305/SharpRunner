@@ -15,6 +15,8 @@ const {
 const {
   classifyCompilerDiagnostic,
   classifySyntax,
+  classifyValidationFailure,
+  sanitizeFailureMetadata,
 } = require("../src/services/failureClassificationService");
 const {
   getProgressiveHintStage,
@@ -37,6 +39,21 @@ const withStubs = async (stubs, callback) => {
   }
 };
 
+const kapreSource = (mainBody) => `
+  using System;
+  namespace SharpRunner {
+    class Program {
+      static void CheckName(string name) { }
+      static void Main(string[] args) {
+        ${mainBody}
+      }
+    }
+  }
+`;
+
+const kapreNames = 'string[] names = { "Lina", "Tomas", "Mira", "Niko" };';
+const compiled = { success: true, diagnostics: [] };
+
 test("every playable challenge has basic guidance and a situational hint profile", () => {
   assert.deepEqual(Object.keys(LEVEL_HINTS).sort(), [...PLAYABLE_LEVEL_KEYS].sort());
   assert.deepEqual(Object.keys(LEVEL_HINT_PROFILES).sort(), [...PLAYABLE_LEVEL_KEYS].sort());
@@ -47,6 +64,7 @@ test("every playable challenge has basic guidance and a situational hint profile
     const profile = LEVEL_HINT_PROFILES[levelKey];
     assert.ok(hint.learningObjective.length >= 20, `${levelKey} objective is too short`);
     assert.ok(hint.basicHint.length >= 45, `${levelKey} basic hint is too generic`);
+    assert.equal(hint.detailedHint, undefined, `${levelKey} paid hints must live in the situational catalog`);
     assert.ok(profile.location.length >= 20, `${levelKey} needs a specific place to inspect`);
     assert.ok(profile.supportedFailureCodes.length >= 3, `${levelKey} needs multiple failure cases`);
     for (const failureCode of profile.supportedFailureCodes) {
@@ -73,6 +91,151 @@ test("compiler failures are classified before challenge logic", () => {
     classifyCompilerDiagnostic({ errorType: "compiler", stderr: "error CS0103: The name 'total' does not exist in the current context" })?.failureCode,
     "COMPILER_UNKNOWN_NAME",
   );
+});
+
+test("structured validator failures win over misleading legacy message text", () => {
+  const diagnosis = classifyValidationFailure({
+    sourceCode: "valid enough for challenge classification",
+    validation: {
+      isCorrect: false,
+      message: "Use the required construct and add a for loop.",
+      failure: {
+        code: "WRONG_ARRAY_INDEX",
+        category: "wrong_logic",
+        metadata: { loopVariable: "i", actualIndexExpression: "1" },
+      },
+    },
+    validatorConfig: { type: "stringArrayTraversal" },
+    compilerResult: { success: true, diagnostics: [] },
+  });
+  assert.equal(diagnosis.failureCode, "WRONG_ARRAY_INDEX");
+  assert.equal(diagnosis.metadata.actualIndexExpression, "1");
+});
+
+test("failure metadata is bounded and cannot persist nested source payloads", () => {
+  const metadata = sanitizeFailureMetadata({
+    loopVariable: "i",
+    sourceCode: "x".repeat(500),
+    nested: { sourceCode: "hidden" },
+  });
+  assert.equal(metadata.loopVariable, "i");
+  assert.equal(metadata.sourceCode, undefined);
+  assert.equal(metadata.nested, undefined);
+});
+
+test("Kapre traversal returns precise structured diagnoses", async () => {
+  const cases = [
+    ["fixed index", `${kapreNames} for (int i = 0; i < names.Length; i++) { CheckName(names[1]); }`, "WRONG_ARRAY_INDEX"],
+    ["wrong bound", `${kapreNames} for (int i = 0; i <= names.Length; i++) { CheckName(names[i]); }`, "WRONG_LOOP_BOUNDS"],
+    ["wrong start", `${kapreNames} for (int i = 1; i < names.Length; i++) { CheckName(names[i]); }`, "WRONG_LOOP_START"],
+    ["wrong update", `${kapreNames} for (int i = 0; i < names.Length; i--) { CheckName(names[i]); }`, "WRONG_LOOP_UPDATE"],
+    ["missing call", `${kapreNames} for (int i = 0; i < names.Length; i++) { }`, "MISSING_METHOD_CALL"],
+    ["call outside loop", `${kapreNames} CheckName(names[0]); for (int i = 0; i < names.Length; i++) { }`, "METHOD_CALL_OUTSIDE_LOOP"],
+  ];
+
+  for (const [label, body, expectedCode] of cases) {
+    const validation = await validateLevelCode({
+      levelKey: "arrays-level-7",
+      sourceCode: kapreSource(body),
+      compilerResult: compiled,
+    });
+    assert.equal(validation.failureCode, expectedCode, label);
+    assert.equal(validation.failure.code, expectedCode, `${label} structured contract`);
+    assert.equal(validation.failure.category, validation.category);
+  }
+
+  const fixed = await validateLevelCode({
+    levelKey: "arrays-level-7",
+    sourceCode: kapreSource(`${kapreNames} for (int i = 0; i < names.Length; i++) { CheckName(names[1]); }`),
+    compilerResult: compiled,
+  });
+  assert.deepEqual(fixed.metadata, {
+    arrayName: "names",
+    methodName: "CheckName",
+    loopVariable: "i",
+    actualIndexExpression: "1",
+    expectedIndexExpression: "i",
+  });
+
+  const correct = await validateLevelCode({
+    levelKey: "arrays-level-7",
+    sourceCode: kapreSource(`${kapreNames} for (int i = 0; i < names.Length; i++) { CheckName(names[i]); }`),
+    compilerResult: compiled,
+  });
+  assert.equal(correct.isCorrect, true);
+  assert.equal(correct.failure, null);
+
+  const empty = await validateLevelCode({ levelKey: "arrays-level-7", sourceCode: "" });
+  assert.equal(empty.failureCode, "INCOMPLETE_SOLUTION");
+
+  const malformed = await validateLevelCode({
+    levelKey: "arrays-level-7",
+    sourceCode: kapreSource(`${kapreNames} for (int i = 0; i < names.Length; i++) [ CheckName(names[i]); ]`),
+    compilerResult: {
+      success: false,
+      errorType: "compiler",
+      diagnostics: [{ id: "CS1519", severity: "error", message: "Invalid token '['", line: 8, column: 66 }],
+    },
+  });
+  assert.equal(malformed.failureCode, "COMPILER_UNMATCHED_DELIMITER");
+});
+
+test("every playable validator exposes the structured failure contract", async () => {
+  const incompleteProgram = "using System; class Program { static void Main(string[] args) { } }";
+  for (const levelKey of PLAYABLE_LEVEL_KEYS) {
+    const validation = await validateLevelCode({
+      levelKey,
+      sourceCode: incompleteProgram,
+      compilerResult: compiled,
+    });
+    assert.equal(validation.isCorrect, false, levelKey);
+    assert.match(validation.failure?.code ?? "", /^[A-Z][A-Z0-9_]+$/, levelKey);
+    assert.equal(typeof validation.failure?.category, "string", levelKey);
+    assert.equal(typeof validation.failure?.metadata, "object", levelKey);
+    assert.ok(
+      LEVEL_HINT_PROFILES[levelKey].supportedFailureCodes.includes(validation.failure.code)
+        || GLOBAL_FAILURE_GUIDANCE[validation.failure.code],
+      `${levelKey} must support its structured failure ${validation.failure.code}`,
+    );
+  }
+});
+
+test("Kapre hints use metadata and remain level-specific", () => {
+  const metadata = {
+    arrayName: "names",
+    methodName: "CheckName",
+    loopVariable: "i",
+    actualIndexExpression: "1",
+    expectedIndexExpression: "i",
+  };
+  const personalized = resolvePersonalizedHint({
+    levelKey: "arrays-level-7",
+    failureCode: "WRONG_ARRAY_INDEX",
+    category: "wrong_logic",
+    metadata,
+    stage: "personalized",
+  });
+  const stronger = resolvePersonalizedHint({
+    levelKey: "arrays-level-7",
+    failureCode: "WRONG_ARRAY_INDEX",
+    category: "wrong_logic",
+    metadata,
+    stage: "stronger",
+  });
+  const jars = resolvePersonalizedHint({
+    levelKey: "arrays-level-8",
+    failureCode: "WRONG_ARRAY_INDEX",
+    category: "wrong_logic",
+    metadata: { loopVariable: "jarIndex", actualIndexExpression: "2" },
+  });
+
+  assert.match(personalized.text, /for-loop is already/i);
+  assert.match(personalized.text, /fixed index `1`/i);
+  assert.doesNotMatch(personalized.text, /add a for-loop|required construct is missing/i);
+  assert.match(stronger.text, /loop variable `i`/i);
+  assert.notEqual(personalized.text, stronger.text);
+  assert.match(jars.text, /ScanJar|jar/i);
+  assert.notEqual(personalized.text, jars.text);
 });
 
 test("different mistakes on the same level resolve to different personalized hints", async () => {

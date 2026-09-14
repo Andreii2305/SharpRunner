@@ -6,6 +6,7 @@ const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const {
   classifyValidationFailure,
 } = require("./failureClassificationService");
+const { compilePracticeCode } = require("./practiceRunnerService");
 
 const frontendLevelsDirectory = path.resolve(
   __dirname,
@@ -95,12 +96,72 @@ const FACTORIES = {
   bakunawaFinale: "createBakunawaFinaleValidator",
 };
 
-const validateLevelCode = async ({ levelKey, sourceCode, validatorConfig }) => {
+const toFailureContract = ({ failureCode, category, metadata }) => ({
+  code: failureCode,
+  category,
+  metadata: metadata ?? {},
+});
+
+const validateLevelCode = async ({
+  levelKey,
+  sourceCode,
+  validatorConfig,
+  compilerResult: suppliedCompilerResult,
+}) => {
   if (typeof sourceCode !== "string" || !sourceCode.trim()) {
-    return { isCorrect: false, message: "Source code is required to complete a level." };
+    const diagnosis = {
+      failureCode: "INCOMPLETE_SOLUTION",
+      category: "incomplete_solution",
+      metadata: {},
+    };
+    return {
+      isCorrect: false,
+      failure: toFailureContract(diagnosis),
+      ...diagnosis,
+      message: "Source code is required to complete a level.",
+    };
   }
   if (sourceCode.length > MAX_SOURCE_LENGTH) {
-    return { isCorrect: false, message: "Source code is too large." };
+    const diagnosis = {
+      failureCode: "INCOMPLETE_SOLUTION",
+      category: "incomplete_solution",
+      metadata: {},
+    };
+    return {
+      isCorrect: false,
+      failure: toFailureContract(diagnosis),
+      ...diagnosis,
+      message: "Source code is too large.",
+    };
+  }
+
+  let compilerResult = suppliedCompilerResult;
+  if (compilerResult === undefined) {
+    try {
+      compilerResult = await compilePracticeCode(sourceCode);
+    } catch (error) {
+      // The deterministic syntax fallback remains available while the isolated
+      // compiler is starting or unavailable. Challenge correctness is never
+      // decided by a client-provided compiler result.
+      console.warn(`Challenge compiler unavailable (${error.reason || error.code || "unknown"}); using validator fallback.`);
+      compilerResult = null;
+    }
+  }
+
+  if (compilerResult?.success === false && compilerResult?.errorType !== "runner_busy") {
+    const diagnosis = classifyValidationFailure({
+      sourceCode,
+      validation: { isCorrect: false },
+      compilerResult,
+    });
+    if (diagnosis?.failureCode?.startsWith("COMPILER_")) {
+      return {
+        isCorrect: false,
+        failure: toFailureContract(diagnosis),
+        ...diagnosis,
+        message: compilerResult.stderr || "The program must compile before its challenge logic can be checked.",
+      };
+    }
   }
 
   const config = validatorConfig ?? defaultConfigs.get(levelKey);
@@ -114,14 +175,17 @@ const validateLevelCode = async ({ levelKey, sourceCode, validatorConfig }) => {
     throw new Error(`Missing validator factory: ${factoryName}`);
   }
   const validation = factory(config)(sourceCode);
-  if (validation?.isCorrect) return validation;
+  if (validation?.isCorrect) return { ...validation, failure: null };
+  const diagnosis = classifyValidationFailure({
+    sourceCode,
+    validation,
+    validatorConfig: config,
+    compilerResult,
+  });
   return {
     ...validation,
-    ...classifyValidationFailure({
-      sourceCode,
-      validation,
-      validatorConfig: config,
-    }),
+    failure: toFailureContract(diagnosis),
+    ...diagnosis,
   };
 };
 

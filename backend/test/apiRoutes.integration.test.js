@@ -683,12 +683,21 @@ class Program {
     assert.equal(retryResponse.payload.purchased, false);
     assert.equal(retryResponse.payload.currentXp, 25);
 
+    const changedMistakeSource = `using System;
+class Program {
+  static void WalkToPortal(int distanceInSteps) {}
+  static void Main(string[] args) {
+    string steps = "three";
+    WalkToPortal(steps);
+  }
+}`;
     const continuedFailure = await apiRequest(
       "/api/progress/level/tutorial-level-1/attempt",
-      { method: "POST", token: authToken(1, "student"), body: { sourceCode: wrongSource } },
+      { method: "POST", token: authToken(1, "student"), body: { sourceCode: changedMistakeSource } },
     );
     assert.equal(continuedFailure.payload.hintStage, "stronger");
     assert.equal(continuedFailure.payload.currentXp, 25);
+    assert.notEqual(continuedFailure.payload.failureCode, purchaseResponse.payload.failureCode);
     assert.notEqual(continuedFailure.payload.personalizedHint, purchaseResponse.payload.personalizedHint);
 
     const feedbackResponse = await apiRequest(

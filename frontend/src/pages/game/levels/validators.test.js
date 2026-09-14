@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createBakunawaFinaleValidator } from "./validators.js";
+import {
+  createBakunawaFinaleValidator,
+  createStringArrayTraversalValidator,
+} from "./validators.js";
 
 const validator = createBakunawaFinaleValidator();
 
@@ -88,4 +91,40 @@ test("comments cannot satisfy finale requirements", () => {
   const result = validator(program("// int[] symbols = { 1, 1, 0, 1 };"));
   assert.equal(result.isCorrect, false);
   assert.equal(result.payload.values.failurePhase, 1);
+});
+
+test("array traversal validator separates header and body mistakes", () => {
+  const traversal = createStringArrayTraversalValidator({
+    arrayName: "names",
+    expectedValues: ["Lina", "Tomas", "Mira", "Niko"],
+    methodName: "CheckName",
+  });
+  const names = 'string[] names = { "Lina", "Tomas", "Mira", "Niko" };';
+  const traversalProgram = (body) => program(
+    "static void CheckName(string name) { }",
+    `${names}\n${body}`,
+  );
+  const cases = [
+    ["for (int i = 0; i < names.Length; i++) { CheckName(names[1]); }", "WRONG_ARRAY_INDEX"],
+    ["for (int i = 0; i <= names.Length; i++) { CheckName(names[i]); }", "WRONG_LOOP_BOUNDS"],
+    ["for (int i = 1; i < names.Length; i++) { CheckName(names[i]); }", "WRONG_LOOP_START"],
+    ["for (int i = 0; i < names.Length; i--) { CheckName(names[i]); }", "WRONG_LOOP_UPDATE"],
+    ["for (int i = 0; i < names.Length; i++) { }", "MISSING_METHOD_CALL"],
+  ];
+  for (const [body, expectedCode] of cases) {
+    assert.equal(traversal(traversalProgram(body)).failure.code, expectedCode);
+  }
+
+  const fixedIndex = traversal(traversalProgram(
+    "for (int i = 0; i < names.Length; i++) { CheckName(names[1]); }",
+  ));
+  assert.equal(fixedIndex.failure.metadata.loopVariable, "i");
+  assert.equal(fixedIndex.failure.metadata.actualIndexExpression, "1");
+  assert.equal(fixedIndex.failure.metadata.expectedIndexExpression, "i");
+
+  const correct = traversal(traversalProgram(
+    "for (int i = 0; i < names.Length; i++) { CheckName(names[i]); }",
+  ));
+  assert.equal(correct.isCorrect, true);
+  assert.equal(correct.failure, null);
 });

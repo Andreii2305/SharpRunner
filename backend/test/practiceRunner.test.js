@@ -62,6 +62,17 @@ test("runner liveness is cheap but readiness requires authentication", async () 
     assert.equal(readyPayload.compilerAvailable, true);
     if (readyPayload.compilerMode === "roslyn") assert.match(readyPayload.targetFramework, /^net\d+\.0$/);
     else assert.match(readyPayload.sdkVersion, /^\d+\.\d+\.\d+$/);
+
+    const compileResponse = await fetch(`${url}/compile`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ code: "using System; class Program { static void Main() [ Console.WriteLine(1); ] }" }),
+    });
+    assert.equal(compileResponse.status, 200);
+    const compilePayload = await compileResponse.json();
+    assert.equal(compilePayload.success, false);
+    assert.equal(compilePayload.errorType, "compiler");
+    assert.ok(compilePayload.diagnostics.some((diagnostic) => /^CS\d{4}$/.test(diagnostic.id)));
   } finally {
     await new Promise((resolve) => server.close(resolve));
     if (previousMode === undefined) delete process.env.PRACTICE_RUNNER_MODE; else process.env.PRACTICE_RUNNER_MODE = previousMode;

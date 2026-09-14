@@ -443,6 +443,114 @@ const formatRoslynDiagnostics = (diagnostics = []) => diagnostics
   })
   .join("\n");
 
+const compileRoslynDirectPracticeCode = async (code, { outputLimit = DEFAULT_OUTPUT_LIMIT } = {}) => {
+  const compileTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
+  const jobId = randomUUID();
+  const assemblyName = `Challenge_${jobId.replaceAll("-", "")}`;
+  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "sharprunner-compile-"));
+  const outputDirectory = path.join(tempDirectory, "build");
+  try {
+    await fs.mkdir(outputDirectory, { recursive: true, mode: 0o700 });
+    let compilation;
+    try {
+      compilation = await compileWithRoslyn({
+        source: code,
+        outputDirectory,
+        assemblyName,
+        timeoutMs: compileTimeoutMs,
+      });
+    } catch (error) {
+      if (error.code === "COMPILER_TIMEOUT") {
+        return {
+          success: false,
+          stderr: "Compilation exceeded the allowed time.",
+          diagnostics: [],
+          timedOut: true,
+          errorType: "compiler_timeout",
+        };
+      }
+      throw unavailableError("Roslyn compiler host is unavailable", "runtime_unavailable");
+    }
+    if (compilation.infrastructureError) {
+      throw unavailableError("Roslyn compiler host rejected the compile job", "runtime_unavailable");
+    }
+    const diagnostics = Array.isArray(compilation.diagnostics) ? compilation.diagnostics : [];
+    if (!compilation.success) {
+      const stderr = formatRoslynDiagnostics(diagnostics) || "Compilation failed.";
+      return {
+        success: false,
+        stderr: stderr.slice(0, outputLimit),
+        diagnostics,
+        errorType: "compiler",
+      };
+    }
+    return { success: true, stderr: "", diagnostics };
+  } finally {
+    await fs.rm(tempDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 200 });
+  }
+};
+
+const compileRemotePracticeCode = async (code, { outputLimit = DEFAULT_OUTPUT_LIMIT } = {}) => {
+  if (!String(process.env.PRACTICE_RUNNER_TOKEN || "").trim()) {
+    throw unavailableError("Remote practice runner authentication is not configured", "runner_token_missing");
+  }
+  const baseUrl = configuredRemoteBaseUrl();
+  if (!baseUrl) throw unavailableError("Remote practice runner URL is invalid", "runner_url_invalid");
+  const compileTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), compileTimeoutMs + 2_000);
+  try {
+    const response = await fetch(remoteUrl("/compile"), {
+      method: "POST",
+      headers: remoteHeaders(),
+      body: JSON.stringify({ code, outputLimit }),
+      signal: controller.signal,
+      redirect: "error",
+    });
+    if (response.status === 429) {
+      return { success: false, stderr: "The compiler is busy. Please try again.", diagnostics: [], errorType: "runner_busy" };
+    }
+    if (response.status === 401 || response.status === 403) {
+      throw unavailableError("Practice runner authentication failed", "runner_auth_failed");
+    }
+    if (response.status === 404 || response.status >= 500) {
+      throw unavailableError(`Practice runner request failed with status ${response.status}`, "runner_http_error");
+    }
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > outputLimit * 4) {
+      throw unavailableError("Practice runner response was too large");
+    }
+    let payload;
+    try { payload = JSON.parse(text); } catch { throw unavailableError("Practice runner returned non-JSON data"); }
+    if (!payload || typeof payload.success !== "boolean") {
+      throw unavailableError("Practice runner returned an invalid compilation response");
+    }
+    return {
+      success: payload.success,
+      stderr: sanitizeRunnerText(payload.stderr),
+      diagnostics: Array.isArray(payload.diagnostics) ? payload.diagnostics : [],
+      ...(typeof payload.errorType === "string" ? { errorType: payload.errorType } : {}),
+      ...(payload.timedOut ? { timedOut: true } : {}),
+    };
+  } catch (error) {
+    if (error.code === "RUNNER_UNAVAILABLE") throw error;
+    throw unavailableError(
+      error.name === "AbortError" ? "Practice runner did not respond in time" : "Practice runner could not be reached",
+      error.name === "AbortError" ? "runner_timeout" : "runner_unreachable",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const compilePracticeCode = async (code, options = {}) => {
+  if (typeof code !== "string" || !code.trim()) {
+    return { success: false, stderr: "Source code is required.", diagnostics: [], errorType: "empty" };
+  }
+  if (process.env.PRACTICE_RUNNER_URL) return compileRemotePracticeCode(code, options);
+  return compileRoslynDirectPracticeCode(code, options);
+};
+
 const runRoslynDirectPracticeCode = async (code, { timeoutMs, outputLimit }) => {
   const dotnetBinary = process.env.PRACTICE_DOTNET_BIN || "dotnet";
   const compileTimeoutMs = Number(process.env.PRACTICE_COMPILE_TIMEOUT_MS) || DEFAULT_BUILD_TIMEOUT_MS;
@@ -722,4 +830,4 @@ const runPracticeCode = async (code, options = {}) => {
   }
 };
 
-module.exports = { configuredRemoteBaseUrl, getPracticeRunnerDiagnostic, getPracticeRunnerHealth, normalizeRunnerResult, runDirectPracticeCode, runLegacyDirectPracticeCode, runPracticeCode, runRoslynDirectPracticeCode, sanitizeRunnerText, validatePracticeCode };
+module.exports = { compilePracticeCode, compileRoslynDirectPracticeCode, configuredRemoteBaseUrl, getPracticeRunnerDiagnostic, getPracticeRunnerHealth, normalizeRunnerResult, runDirectPracticeCode, runLegacyDirectPracticeCode, runPracticeCode, runRoslynDirectPracticeCode, sanitizeRunnerText, validatePracticeCode };

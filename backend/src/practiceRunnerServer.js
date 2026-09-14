@@ -1,6 +1,10 @@
 const crypto = require("crypto");
 const express = require("express");
-const { getPracticeRunnerDiagnostic, runPracticeCode } = require("./services/practiceRunnerService");
+const {
+  compilePracticeCode,
+  getPracticeRunnerDiagnostic,
+  runPracticeCode,
+} = require("./services/practiceRunnerService");
 
 // This process is the remote sandbox receiver, never a client of itself.
 delete process.env.PRACTICE_RUNNER_URL;
@@ -19,7 +23,7 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
   const maxConcurrentRuns = Math.max(1, Number(process.env.PRACTICE_RUNNER_MAX_CONCURRENT) || 1);
   let activeRuns = 0;
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "20kb" }));
+  app.use(express.json({ limit: "110kb" }));
 
   const sendReadiness = async (_req, res) => {
     const diagnostic = await getPracticeRunnerDiagnostic();
@@ -45,6 +49,27 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
   });
   app.get("/ready", sendReadiness);
   app.get("/health/auth", sendReadiness);
+
+  app.post("/compile", async (req, res) => {
+    if (activeRuns >= maxConcurrentRuns) {
+      res.set("Retry-After", "5");
+      return res.status(429).json({ success: false, code: "PRACTICE_RUNNER_BUSY", message: "The compiler is busy. Please try again in a moment." });
+    }
+    activeRuns += 1;
+    try {
+      const result = await compilePracticeCode(req.body?.code, {
+        outputLimit: Number(req.body?.outputLimit) || undefined,
+      });
+      const status = result.timedOut ? 408 : 200;
+      return res.status(status).json(result);
+    } catch (error) {
+      if (error.code === "RUNNER_UNAVAILABLE") return res.status(503).json({ message: "Runner unavailable" });
+      console.error("Isolated compilation failed", error);
+      return res.status(500).json({ message: "Compiler error" });
+    } finally {
+      activeRuns -= 1;
+    }
+  });
 
   app.post("/run", async (req, res) => {
     if (activeRuns >= maxConcurrentRuns) {

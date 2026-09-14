@@ -19,16 +19,52 @@ const getProgressiveHintStage = ({ unlocked, attemptCount, purchaseAttemptCount 
     : "personalized";
 };
 
-const resolvePersonalizedHint = ({ levelKey, failureCode, category, stage }) => {
+const renderLevelFailureHint = (definition, stage, metadata) => {
+  const value = definition?.[stage];
+  return typeof value === "function" ? value(metadata ?? {}) : value;
+};
+
+const resolvePersonalizedHint = ({ levelKey, failureCode, category, metadata = {}, stage }) => {
   const profile = getLevelHintProfile(levelKey);
   if (!profile) return null;
   const normalizedStage = normalizeStage(stage);
-  const guidance = GLOBAL_FAILURE_GUIDANCE[failureCode] ?? FAILURE_GUIDANCE[failureCode];
+  const globalGuidance = GLOBAL_FAILURE_GUIDANCE[failureCode];
+  const supported = Boolean(globalGuidance)
+    || profile.supportedFailureCodes.includes(failureCode);
+  if (!supported) {
+    if (process.env.NODE_ENV !== "test") {
+      console.debug(`Unsupported hint failure code ${failureCode || "UNKNOWN"} for ${levelKey}; using level fallback.`);
+    }
+    return {
+      text: getFallbackHint(levelKey, normalizedStage),
+      stage: normalizedStage,
+      failureCode: failureCode || "UNKNOWN",
+      category: category || "unknown",
+      fallbackUsed: true,
+    };
+  }
+
+  const levelSpecificText = renderLevelFailureHint(
+    profile.failures?.[failureCode],
+    normalizedStage,
+    metadata,
+  );
+  if (levelSpecificText) {
+    return {
+      text: levelSpecificText,
+      stage: normalizedStage,
+      failureCode: failureCode || "UNKNOWN",
+      category: category || "unknown",
+      fallbackUsed: false,
+    };
+  }
+
+  const guidance = globalGuidance ?? FAILURE_GUIDANCE[failureCode];
   const fallbackUsed = !guidance;
 
   if (fallbackUsed) {
     return {
-      text: getFallbackHint(levelKey),
+      text: getFallbackHint(levelKey, normalizedStage),
       stage: normalizedStage,
       failureCode: failureCode || "UNKNOWN",
       category: category || "unknown",

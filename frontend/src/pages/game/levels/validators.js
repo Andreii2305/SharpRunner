@@ -13,6 +13,305 @@ const STRING_ARRAY_ACCESS_REGEX =
 const INT_2D_ARRAY_DECLARATION_REGEX =
   /\bint\s*\[\s*,\s*\]\s+([A-Za-z_]\w*)\s*=\s*\{([\s\S]*?)\}\s*;/g;
 
+const FAILURE_CATEGORIES = Object.freeze({
+  compilation: "compilation",
+  incomplete: "incomplete_solution",
+  logic: "wrong_logic",
+  structure: "structure_requirement",
+});
+
+const structuredFailure = (code, category, metadata = {}) => ({
+  code,
+  category,
+  metadata,
+});
+
+const defaultFailureForType = Object.freeze({
+  singleInteger: ["WRONG_VARIABLE_VALUE", FAILURE_CATEGORIES.logic],
+  exactGoal: ["WRONG_VARIABLE_VALUE", FAILURE_CATEGORIES.logic],
+  multiString: ["INCOMPLETE_SOLUTION", FAILURE_CATEGORIES.incomplete],
+  exactIntegerArray: ["WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic],
+  exactStringArray: ["WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic],
+  exactInteger2DArray: ["WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic],
+  stringArrayAccess: ["WRONG_ARRAY_INDEX", FAILURE_CATEGORIES.logic],
+  stringArrayTraversal: ["MISSING_LOOP", FAILURE_CATEGORIES.structure],
+  predefinedVoidMethodCall: ["MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure],
+  predefinedVoidMethodArgument: ["WRONG_ARGUMENT", FAILURE_CATEGORIES.logic],
+  voidMethodDefinitionCall: ["MISSING_METHOD", FAILURE_CATEGORIES.structure],
+  voidMethodBodyCall: ["MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure],
+  voidMethodParameterCall: ["WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure],
+  intReturnMethod: ["WRONG_RETURN_VALUE", FAILURE_CATEGORIES.logic],
+  intParameterReturnMethod: ["WRONG_RETURN_VALUE", FAILURE_CATEGORIES.logic],
+  stringReturnMethod: ["WRONG_RETURN_VALUE", FAILURE_CATEGORIES.logic],
+  integerArrayCount: ["WRONG_CONDITION", FAILURE_CATEGORIES.logic],
+  cursedCharmCountMethod: ["WRONG_CONDITION", FAILURE_CATEGORIES.logic],
+  recursiveStairMethod: ["WRONG_RECURSIVE_STEP", FAILURE_CATEGORIES.logic],
+  voidMethodIntegerArrayParameter: ["WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure],
+  voidMethodInteger2DArrayParameter: ["WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure],
+  blessedGraveCount2DMethod: ["WRONG_LOOP_BOUNDS", FAILURE_CATEGORIES.logic],
+  bakunawaFinale: ["INCOMPLETE_SOLUTION", FAILURE_CATEGORIES.incomplete],
+});
+
+const PAYLOAD_FAILURES = Object.freeze({
+  missing_counter: ["MISSING_COUNTER", FAILURE_CATEGORIES.structure],
+  missing_outer_loop: ["WRONG_LOOP_BOUNDS", FAILURE_CATEGORIES.logic],
+  missing_inner_loop: ["WRONG_LOOP_BOUNDS", FAILURE_CATEGORIES.logic],
+  counting_corrupted: ["WRONG_CONDITION", FAILURE_CATEGORIES.logic],
+  wrong_access: ["WRONG_ARRAY_INDEX", FAILURE_CATEGORIES.logic],
+  missing_increment: ["MISSING_INCREMENT", FAILURE_CATEGORIES.logic],
+  missing_return: ["WRONG_RETURN_VALUE", FAILURE_CATEGORIES.logic],
+  wrong_dimensions: ["WRONG_ARRAY_DIMENSIONS", FAILURE_CATEGORIES.logic],
+});
+
+const inferStructuredFailure = (type, config, sourceCode, validation) => {
+  if (validation?.failure?.code) return validation.failure;
+  const source = stripComments(String(sourceCode ?? ""));
+  if (!source.trim()) {
+    return structuredFailure("INCOMPLETE_SOLUTION", FAILURE_CATEGORIES.incomplete);
+  }
+
+  const values = validation?.payload?.values ?? {};
+  const payloadFailure = PAYLOAD_FAILURES[values.failureType];
+  if (payloadFailure) return structuredFailure(payloadFailure[0], payloadFailure[1]);
+  if (Number.isInteger(values.failurePhase)) {
+    return structuredFailure(`FINAL_PHASE_${values.failurePhase}`, FAILURE_CATEGORIES.incomplete, {
+      phase: values.failurePhase,
+    });
+  }
+  if (validation?.payload?.recursionError === "missingBaseCase") {
+    return structuredFailure("WRONG_RECURSIVE_BASE_CASE", FAILURE_CATEGORIES.logic);
+  }
+  if (validation?.payload?.recursionError === "missingMethod") {
+    return structuredFailure("MISSING_METHOD", FAILURE_CATEGORIES.structure);
+  }
+  if (validation?.payload?.recursionError === "missingMainCall") {
+    return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure);
+  }
+  if (validation?.payload?.recursionError) {
+    return structuredFailure("WRONG_RECURSIVE_STEP", FAILURE_CATEGORIES.logic);
+  }
+
+  if (type === "singleInteger") {
+    const declarations = [...source.matchAll(DECLARATION_REGEX)];
+    const expected = declarations.find((match) => match[2] === config.variableName);
+    if (!expected) return structuredFailure(declarations.length ? "WRONG_VARIABLE" : "MISSING_VARIABLE", FAILURE_CATEGORIES.structure, { variableName: config.variableName });
+    if (expected[1] !== "int") return structuredFailure("WRONG_TYPE", FAILURE_CATEGORIES.structure, { variableName: config.variableName, actualType: expected[1], expectedType: "int" });
+    return structuredFailure("WRONG_VARIABLE_VALUE", FAILURE_CATEGORIES.logic, { variableName: config.variableName });
+  }
+
+  if (type === "exactGoal" || type === "multiString") {
+    const declarations = [...source.matchAll(DECLARATION_REGEX)];
+    const goals = type === "exactGoal"
+      ? config.goals
+      : (config.variableNames ?? []).map((name) => ({ name, allowedTypes: ["string"] }));
+    const expectedNames = new Set(goals.map((goal) => goal.name));
+    const unexpected = declarations.find((match) => !expectedNames.has(match[2]));
+    if (unexpected) return structuredFailure("WRONG_VARIABLE", FAILURE_CATEGORIES.structure, { actualVariableName: unexpected[2] });
+    const missing = goals.find((goal) => !declarations.some((match) => match[2] === goal.name));
+    if (missing) return structuredFailure("MISSING_VARIABLE", FAILURE_CATEGORIES.structure, { variableName: missing.name });
+    const wrongType = goals.find((goal) => {
+      const declaration = declarations.find((match) => match[2] === goal.name);
+      return declaration && !(goal.allowedTypes ?? ["string"]).includes(declaration[1]);
+    });
+    if (wrongType) return structuredFailure("WRONG_TYPE", FAILURE_CATEGORIES.structure, { variableName: wrongType.name });
+    return structuredFailure("WRONG_VARIABLE_VALUE", FAILURE_CATEGORIES.logic);
+  }
+
+  if (["exactIntegerArray", "exactStringArray", "exactInteger2DArray"].includes(type)) {
+    const expectedName = config.variableName;
+    const expectedPattern = type === "exactIntegerArray"
+      ? new RegExp(`\\bint\\s*\\[\\s*\\]\\s+${escapeRegex(expectedName)}\\b`)
+      : type === "exactStringArray"
+        ? new RegExp(`\\b(?:string|String)\\s*\\[\\s*\\]\\s+${escapeRegex(expectedName)}\\b`)
+        : new RegExp(`\\bint\\s*\\[\\s*,\\s*\\]\\s+${escapeRegex(expectedName)}\\b`);
+    if (!expectedPattern.test(source)) {
+      const hasExpectedName = new RegExp(`\\b${escapeRegex(expectedName)}\\b`).test(source);
+      return structuredFailure(hasExpectedName ? "WRONG_ARRAY_TYPE" : "MISSING_ARRAY", FAILURE_CATEGORIES.structure, { arrayName: expectedName });
+    }
+    return structuredFailure(type === "exactInteger2DArray" ? "WRONG_ARRAY_DIMENSIONS" : "WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic, { arrayName: expectedName });
+  }
+
+  if (type === "stringArrayAccess") {
+    const arrayDeclarations = [...source.matchAll(STRING_ARRAY_DECLARATION_REGEX)];
+    const arrayDeclaration = arrayDeclarations.find((match) => match[1] === config.arrayName);
+    if (!arrayDeclaration) {
+      return structuredFailure("MISSING_ARRAY", FAILURE_CATEGORIES.structure, { arrayName: config.arrayName });
+    }
+    const actualValues = arrayDeclaration[2]
+      .split(",")
+      .map((item) => item.trim().match(QUOTED_STRING_REGEX)?.[1] ?? null);
+    if (
+      actualValues.length !== config.arrayValues.length
+      || actualValues.some((value, index) => value !== config.arrayValues[index])
+    ) {
+      return structuredFailure("WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic, { arrayName: config.arrayName });
+    }
+    const escapedTarget = escapeRegex(config.targetVariableName);
+    const assignment = source.match(new RegExp(`\\bstring\\s+${escapedTarget}\\s*=\\s*([^;]+)`));
+    if (!assignment) return structuredFailure("MISSING_VARIABLE", FAILURE_CATEGORIES.structure, { variableName: config.targetVariableName });
+    if (/^\s*"/.test(assignment[1])) return structuredFailure("HARDCODED_RESULT", FAILURE_CATEGORIES.structure, { variableName: config.targetVariableName });
+    const access = assignment[1].match(/^\s*([A-Za-z_]\w*)\s*\[\s*([^\]]+)\s*\]/);
+    return structuredFailure("WRONG_ARRAY_INDEX", FAILURE_CATEGORIES.logic, {
+      arrayName: config.arrayName,
+      actualIndexExpression: access?.[2]?.trim() ?? null,
+      expectedIndexExpression: String(config.expectedIndex),
+    });
+  }
+
+  const methodName = config.methodName;
+  if (methodName) {
+    const escapedMethod = escapeRegex(methodName);
+    const methodHeader = source.match(
+      new RegExp(`\\bstatic\\s+([A-Za-z_]\\w*(?:\\s*\\[\\s*,?\\s*\\])?)\\s+${escapedMethod}\\s*\\(([^)]*)\\)`),
+    );
+    const mainBody = extractBalancedBody(
+      source,
+      /\bstatic\s+void\s+Main\s*\(\s*string\s*\[\s*\]\s+[A-Za-z_]\w*\s*\)/,
+    ) ?? "";
+    const callsInMain = [
+      ...mainBody.matchAll(new RegExp(`\\b${escapedMethod}\\s*\\(([^)]*)\\)`, "g")),
+    ];
+    const methodMetadata = { methodName };
+
+    if (type === "predefinedVoidMethodCall") {
+      if (!callsInMain.length) return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, methodMetadata);
+      return structuredFailure("WRONG_ARGUMENT", FAILURE_CATEGORIES.logic, methodMetadata);
+    }
+
+    if (type === "predefinedVoidMethodArgument") {
+      if (!callsInMain.length) return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, methodMetadata);
+      return structuredFailure("WRONG_ARGUMENT", FAILURE_CATEGORIES.logic, {
+        ...methodMetadata,
+        actualArgument: callsInMain[0][1].trim(),
+        expectedArgument: String(config.expectedArgument),
+      });
+    }
+
+    if (!methodHeader) {
+      return structuredFailure("MISSING_METHOD", FAILURE_CATEGORIES.structure, methodMetadata);
+    }
+
+    const actualReturnType = methodHeader[1].replace(/\s+/g, "");
+    const actualParameters = methodHeader[2].trim();
+    const methodBody = extractBalancedBody(
+      source,
+      new RegExp(`\\bstatic\\s+[A-Za-z_]\\w*(?:\\s*\\[\\s*,?\\s*\\])?\\s+${escapedMethod}\\s*\\([^)]*\\)`),
+    ) ?? "";
+
+    if (["voidMethodDefinitionCall", "voidMethodBodyCall"].includes(type)) {
+      if (actualReturnType !== "void" || actualParameters) {
+        return structuredFailure("WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure, {
+          ...methodMetadata,
+          actualReturnType,
+          actualParameters,
+        });
+      }
+      if (!callsInMain.length) return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, methodMetadata);
+    }
+
+    if (type === "voidMethodParameterCall") {
+      const expectedParameter = `${config.parameterType} ${config.parameterName}`;
+      if (actualReturnType !== "void" || actualParameters.replace(/\s+/g, " ") !== expectedParameter) {
+        return structuredFailure("WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure, {
+          ...methodMetadata,
+          actualParameters,
+          expectedParameters: expectedParameter,
+        });
+      }
+      if (!callsInMain.length) return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, methodMetadata);
+      return structuredFailure("WRONG_ARGUMENT", FAILURE_CATEGORIES.logic, {
+        ...methodMetadata,
+        actualArgument: callsInMain[0][1].trim(),
+        expectedArgument: String(config.expectedArgument),
+      });
+    }
+
+    if (["intReturnMethod", "stringReturnMethod", "intParameterReturnMethod"].includes(type)) {
+      const expectedReturnType = type === "stringReturnMethod" ? "string" : "int";
+      if (actualReturnType !== expectedReturnType) {
+        return structuredFailure("WRONG_RETURN_TYPE", FAILURE_CATEGORIES.structure, {
+          ...methodMetadata,
+          actualReturnType,
+          expectedReturnType,
+        });
+      }
+      if (type === "intParameterReturnMethod") {
+        const expectedParameters = (config.parameters ?? [])
+          .map((parameter) => `${parameter.type} ${parameter.name}`)
+          .join(", ");
+        if (actualParameters.replace(/\s*,\s*/g, ", ").replace(/\s+/g, " ") !== expectedParameters) {
+          return structuredFailure("WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure, {
+            ...methodMetadata,
+            actualParameters,
+            expectedParameters,
+          });
+        }
+      }
+      if (!/\breturn\s+[^;]+;/.test(methodBody)) {
+        return structuredFailure("WRONG_RETURN_VALUE", FAILURE_CATEGORIES.logic, methodMetadata);
+      }
+      const resultName = config.variableName;
+      const resultAssignment = resultName
+        ? mainBody.match(new RegExp(`\\b(?:int|string)\\s+${escapeRegex(resultName)}\\s*=\\s*([^;]+)`))
+        : null;
+      if (!resultAssignment || !new RegExp(`^\\s*${escapedMethod}\\s*\\(`).test(resultAssignment[1])) {
+        const hardcoded = Boolean(resultAssignment && /^(?:\s*-?\d+|\s*"[^"]*")\s*$/.test(resultAssignment[1]));
+        return structuredFailure(hardcoded ? "HARDCODED_RESULT" : "MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, {
+          ...methodMetadata,
+          ...(resultName ? { variableName: resultName } : {}),
+        });
+      }
+      return structuredFailure("WRONG_RETURN_VALUE", FAILURE_CATEGORIES.logic, methodMetadata);
+    }
+
+    if (["voidMethodIntegerArrayParameter", "voidMethodInteger2DArrayParameter"].includes(type)) {
+      const expectedArrayType = type === "voidMethodInteger2DArrayParameter" ? "int[,]" : "int[]";
+      const expectedParameter = `${expectedArrayType}${config.parameterName}`.replace(/\s+/g, "");
+      if (actualReturnType !== "void" || actualParameters.replace(/\s+/g, "") !== expectedParameter) {
+        return structuredFailure("WRONG_METHOD_SIGNATURE", FAILURE_CATEGORIES.structure, {
+          ...methodMetadata,
+          actualParameters,
+          expectedParameters: `${expectedArrayType} ${config.parameterName}`,
+        });
+      }
+      if (!callsInMain.length) return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, methodMetadata);
+      return structuredFailure(
+        type === "voidMethodInteger2DArrayParameter" ? "WRONG_ARRAY_VALUES" : "WRONG_ARRAY_VALUES",
+        FAILURE_CATEGORIES.logic,
+        { ...methodMetadata, arrayName: config.arrayName },
+      );
+    }
+
+    if (["cursedCharmCountMethod", "blessedGraveCount2DMethod", "integerArrayCount"].includes(type)) {
+      if (actualReturnType !== "int") {
+        return structuredFailure("WRONG_RETURN_TYPE", FAILURE_CATEGORIES.structure, {
+          ...methodMetadata,
+          actualReturnType,
+          expectedReturnType: "int",
+        });
+      }
+      if (!callsInMain.length) return structuredFailure("MISSING_METHOD_CALL", FAILURE_CATEGORIES.structure, methodMetadata);
+    }
+  }
+
+  const fallback = defaultFailureForType[type] ?? ["UNKNOWN", "unknown"];
+  return structuredFailure(fallback[0], fallback[1]);
+};
+
+const withFailureContract = (type, factory) => (config) => {
+  const validator = factory(config);
+  return (sourceCode) => {
+    const validation = validator(sourceCode);
+    if (validation?.isCorrect) {
+      return { ...validation, failure: null };
+    }
+    return {
+      ...validation,
+      failure: inferStructuredFailure(type, config, sourceCode, validation),
+    };
+  };
+};
+
 const stripComments = (sourceCode) => sourceCode.replace(COMMENT_REGEX, "");
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -61,7 +360,7 @@ const formatDeclaration = (goal, fallbackType = "string") => {
   return `${firstAllowedType} ${goal.name} = ${goal.requiredValue};`;
 };
 
-export const createExactGoalDeclarationValidator =
+const legacyCreateExactGoalDeclarationValidator =
   ({
     goals,
     unexpectedVariableMessage,
@@ -147,7 +446,7 @@ export const createExactGoalDeclarationValidator =
     };
   };
 
-export const createMultiStringDeclarationValidator =
+const legacyCreateMultiStringDeclarationValidator =
   ({
     variableNames,
     unexpectedVariableMessage,
@@ -236,7 +535,7 @@ export const createMultiStringDeclarationValidator =
     };
   };
 
-export const createSingleIntegerDeclarationValidator =
+const legacyCreateSingleIntegerDeclarationValidator =
   ({
     variableName,
     allowedTypes = ["int"],
@@ -310,7 +609,7 @@ export const createSingleIntegerDeclarationValidator =
     };
   };
 
-export const createExactIntegerArrayDeclarationValidator =
+const legacyCreateExactIntegerArrayDeclarationValidator =
   ({
     variableName,
     expectedValues,
@@ -389,7 +688,7 @@ export const createExactIntegerArrayDeclarationValidator =
     };
   };
 
-export const createExactStringArrayDeclarationValidator =
+const legacyCreateExactStringArrayDeclarationValidator =
   ({
     variableName,
     expectedValues,
@@ -469,7 +768,7 @@ export const createExactStringArrayDeclarationValidator =
     };
   };
 
-export const createStringArrayAccessValidator =
+const legacyCreateStringArrayAccessValidator =
   ({
     arrayName,
     arrayValues,
@@ -599,7 +898,7 @@ export const createStringArrayAccessValidator =
     };
   };
 
-export const createStringArrayTraversalValidator =
+const legacyCreateStringArrayTraversalValidator =
   ({
     arrayName,
     expectedValues,
@@ -617,6 +916,7 @@ export const createStringArrayTraversalValidator =
       return {
         isCorrect: false,
         message: `Declare exactly one string[] array named ${arrayName}.`,
+        failure: structuredFailure("MISSING_ARRAY", FAILURE_CATEGORIES.structure, { arrayName }),
       };
     }
 
@@ -627,6 +927,10 @@ export const createStringArrayTraversalValidator =
         message:
           unexpectedVariableMessage ??
           `Unexpected array "${declaredArrayName}". Use only "${arrayName}" in this level.`,
+        failure: structuredFailure("MISSING_ARRAY", FAILURE_CATEGORIES.structure, {
+          arrayName,
+          actualArrayName: declaredArrayName,
+        }),
       };
     }
 
@@ -646,6 +950,7 @@ export const createStringArrayTraversalValidator =
       return {
         isCorrect: false,
         message: `"${arrayName}" must contain ${expectedValues.length} quoted string values.`,
+        failure: structuredFailure("WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic, { arrayName }),
         payload: {
           values: { [arrayName]: parsedValues },
         },
@@ -659,6 +964,7 @@ export const createStringArrayTraversalValidator =
       return {
         isCorrect: false,
         message: `"${arrayName}" must list the names in the correct order.`,
+        failure: structuredFailure("WRONG_ARRAY_VALUES", FAILURE_CATEGORIES.logic, { arrayName }),
         payload: {
           values: { [arrayName]: parsedValues },
         },
@@ -666,44 +972,130 @@ export const createStringArrayTraversalValidator =
     }
 
     const loopMatch = codeWithoutComments.match(
-      /for\s*\(\s*int\s+([A-Za-z_]\w*)\s*=\s*0\s*;\s*\1\s*<\s*([A-Za-z_]\w*)\s*\.\s*Length\s*;\s*\1\s*\+\+\s*\)\s*\{([\s\S]*?)\}/,
+      /for\s*\(\s*([^;]+)\s*;\s*([^;]+)\s*;\s*([^)]+)\)\s*\{([\s\S]*?)\}/,
     );
     if (!loopMatch) {
       return {
         isCorrect: false,
-        message: `Use a for loop that starts at 0, checks ${arrayName}.Length, and increments with i++.`,
+        message: `Add a for loop that traverses ${arrayName} from its first index to the index before Length.`,
+        failure: structuredFailure("MISSING_LOOP", FAILURE_CATEGORIES.structure, { arrayName }),
         payload: {
           values: { [arrayName]: parsedValues, visitedIndexes: [] },
         },
       };
     }
 
-    const [, indexName, loopArrayName, loopBody] = loopMatch;
-    if (loopArrayName !== arrayName) {
+    const [, initializer, condition, update, loopBody] = loopMatch;
+    const initializerMatch = initializer.trim().match(/^int\s+([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    if (!initializerMatch) {
       return {
         isCorrect: false,
-        message: `The loop condition must use ${arrayName}.Length.`,
+        message: "The traversal loop needs one integer index variable.",
+        failure: structuredFailure("WRONG_LOOP_START", FAILURE_CATEGORIES.logic, {
+          arrayName,
+          actualInitializer: initializer.trim(),
+          expectedStartExpression: "0",
+        }),
         payload: {
           values: { [arrayName]: parsedValues, visitedIndexes: [] },
         },
       };
     }
 
-    const methodCallRegex = new RegExp(
-      `\\b${methodName}\\s*\\(\\s*${arrayName}\\s*\\[\\s*${indexName}\\s*\\]\\s*\\)\\s*;`,
+    const [, indexName, startExpression] = initializerMatch;
+    if (startExpression.trim() !== "0") {
+      return {
+        isCorrect: false,
+        message: "The traversal starts after the first array element.",
+        failure: structuredFailure("WRONG_LOOP_START", FAILURE_CATEGORIES.logic, {
+          arrayName,
+          loopVariable: indexName,
+          actualStartExpression: startExpression.trim(),
+          expectedStartExpression: "0",
+        }),
+        payload: { values: { [arrayName]: parsedValues, visitedIndexes: [] } },
+      };
+    }
+
+    const expectedCondition = new RegExp(
+      `^${escapeRegex(indexName)}\\s*<\\s*${escapeRegex(arrayName)}\\s*\\.\\s*Length$`,
     );
-    if (!methodCallRegex.test(loopBody)) {
+    if (!expectedCondition.test(condition.trim())) {
       return {
         isCorrect: false,
-        message: `Inside the loop, call ${methodName}(${arrayName}[${indexName}]);`,
+        message: `The loop must stop before ${arrayName}.Length so it visits every valid index without going past the array.`,
+        failure: structuredFailure("WRONG_LOOP_BOUNDS", FAILURE_CATEGORIES.logic, {
+          arrayName,
+          loopVariable: indexName,
+          actualCondition: condition.trim(),
+          expectedCondition: `${indexName} < ${arrayName}.Length`,
+        }),
+        payload: { values: { [arrayName]: parsedValues, visitedIndexes: [] } },
+      };
+    }
+
+    const expectedUpdate = new RegExp(
+      `^(?:${escapeRegex(indexName)}\\s*\\+\\+|\\+\\+\\s*${escapeRegex(indexName)})$`,
+    );
+    if (!expectedUpdate.test(update.trim())) {
+      return {
+        isCorrect: false,
+        message: "The loop index must move forward by one after each checked item.",
+        failure: structuredFailure("WRONG_LOOP_UPDATE", FAILURE_CATEGORIES.logic, {
+          arrayName,
+          loopVariable: indexName,
+          actualUpdateExpression: update.trim(),
+          expectedUpdateExpression: `${indexName}++`,
+        }),
+        payload: { values: { [arrayName]: parsedValues, visitedIndexes: [] } },
+      };
+    }
+
+    const methodCallRegex = new RegExp(`\\b${escapeRegex(methodName)}\\s*\\(\\s*([^)]*?)\\s*\\)\\s*;`);
+    const methodCall = loopBody.match(methodCallRegex);
+    if (!methodCall) {
+      const callAnywhere = codeWithoutComments.match(methodCallRegex);
+      return {
+        isCorrect: false,
+        message: callAnywhere
+          ? `${methodName} must be called inside the traversal loop.`
+          : `Call ${methodName} once for the current array element inside the loop.`,
+        failure: structuredFailure(
+          callAnywhere ? "METHOD_CALL_OUTSIDE_LOOP" : "MISSING_METHOD_CALL",
+          FAILURE_CATEGORIES.structure,
+          { arrayName, methodName, loopVariable: indexName },
+        ),
         payload: {
           values: { [arrayName]: parsedValues, visitedIndexes: [0] },
         },
       };
     }
 
+    const actualArgument = methodCall[1].trim();
+    const expectedArgumentRegex = new RegExp(
+      `^${escapeRegex(arrayName)}\\s*\\[\\s*${escapeRegex(indexName)}\\s*\\]$`,
+    );
+    if (!expectedArgumentRegex.test(actualArgument)) {
+      const indexMatch = actualArgument.match(
+        new RegExp(`^${escapeRegex(arrayName)}\\s*\\[\\s*([^\\]]+)\\s*\\]$`),
+      );
+      return {
+        isCorrect: false,
+        message: `The loop is present, but ${methodName} receives the same or wrong array position instead of the current one.`,
+        failure: structuredFailure("WRONG_ARRAY_INDEX", FAILURE_CATEGORIES.logic, {
+          arrayName,
+          methodName,
+          loopVariable: indexName,
+          actualIndexExpression: indexMatch?.[1]?.trim() ?? actualArgument,
+          expectedIndexExpression: indexName,
+        }),
+        payload: { values: { [arrayName]: parsedValues, visitedIndexes: [] } },
+      };
+    }
+
     return {
       isCorrect: true,
+      failure: null,
       message: successMessage,
       payload: {
         values: {
@@ -714,7 +1106,7 @@ export const createStringArrayTraversalValidator =
     };
   };
 
-export const createVoidMethodDefinitionCallValidator =
+const legacyCreateVoidMethodDefinitionCallValidator =
   ({
     methodName,
     successMessage = "Method definition and call accepted.",
@@ -761,7 +1153,7 @@ export const createVoidMethodDefinitionCallValidator =
     };
   };
 
-export const createRecursiveStairMethodValidator =
+const legacyCreateRecursiveStairMethodValidator =
   ({
     methodName = "BuildStairs",
     parameterName = "step",
@@ -884,7 +1276,7 @@ export const createRecursiveStairMethodValidator =
     };
   };
 
-export const createPredefinedVoidMethodCallValidator =
+const legacyCreatePredefinedVoidMethodCallValidator =
   ({
     methodName,
     successMessage = "Method call accepted.",
@@ -922,7 +1314,7 @@ export const createPredefinedVoidMethodCallValidator =
     };
   };
 
-export const createPredefinedVoidMethodArgumentValidator =
+const legacyCreatePredefinedVoidMethodArgumentValidator =
   ({
     methodName,
     expectedArgument,
@@ -972,7 +1364,7 @@ export const createPredefinedVoidMethodArgumentValidator =
     };
   };
 
-export const createVoidMethodBodyCallValidator =
+const legacyCreateVoidMethodBodyCallValidator =
   ({
     methodName,
     requiredBodyPattern,
@@ -1042,7 +1434,7 @@ export const createVoidMethodBodyCallValidator =
     };
   };
 
-export const createVoidMethodParameterCallValidator =
+const legacyCreateVoidMethodParameterCallValidator =
   ({
     methodName,
     parameterType = "int",
@@ -1140,7 +1532,7 @@ export const createVoidMethodParameterCallValidator =
     };
   };
 
-export const createIntReturnMethodValidator =
+const legacyCreateIntReturnMethodValidator =
   ({
     methodName,
     returnValue,
@@ -1224,7 +1616,7 @@ export const createIntReturnMethodValidator =
     };
   };
 
-export const createIntParameterReturnMethodValidator =
+const legacyCreateIntParameterReturnMethodValidator =
   ({
     methodName,
     parameters = [],
@@ -1319,7 +1711,7 @@ export const createIntParameterReturnMethodValidator =
     };
   };
 
-export const createStringReturnMethodValidator =
+const legacyCreateStringReturnMethodValidator =
   ({
     methodName,
     returnValue,
@@ -1404,7 +1796,7 @@ export const createStringReturnMethodValidator =
     };
   };
 
-export const createIntegerArrayCountValidator =
+const legacyCreateIntegerArrayCountValidator =
   ({
     arrayName,
     expectedValues,
@@ -1529,7 +1921,7 @@ export const createIntegerArrayCountValidator =
     };
   };
 
-export const createCursedCharmCountMethodValidator =
+const legacyCreateCursedCharmCountMethodValidator =
   ({
     methodName = "CountCursed",
     parameterName = "charms",
@@ -1721,7 +2113,7 @@ export const createCursedCharmCountMethodValidator =
     };
   };
 
-export const createExactInteger2DArrayDeclarationValidator =
+const legacyCreateExactInteger2DArrayDeclarationValidator =
   ({
     variableName,
     expectedRows,
@@ -1821,7 +2213,7 @@ export const createExactInteger2DArrayDeclarationValidator =
     };
   };
 
-export const createVoidMethodIntegerArrayParameterValidator =
+const legacyCreateVoidMethodIntegerArrayParameterValidator =
   ({
     methodName,
     parameterName,
@@ -1918,7 +2310,7 @@ export const createVoidMethodIntegerArrayParameterValidator =
     };
   };
 
-export const createVoidMethodInteger2DArrayParameterValidator =
+const legacyCreateVoidMethodInteger2DArrayParameterValidator =
   ({
     methodName,
     parameterName,
@@ -2044,7 +2436,7 @@ export const createVoidMethodInteger2DArrayParameterValidator =
     };
   };
 
-export const createBlessedGraveCount2DMethodValidator =
+const legacyCreateBlessedGraveCount2DMethodValidator =
   ({
     methodName = "CountBlessedGraves",
     parameterName = "graves",
@@ -2241,7 +2633,7 @@ export const createBlessedGraveCount2DMethodValidator =
     };
   };
 
-export const createBakunawaFinaleValidator =
+const legacyCreateBakunawaFinaleValidator =
   ({ successMessage = "The last compile succeeded. Breaking the eclipse..." } = {}) =>
   (sourceCode) => {
     const code = stripComments(sourceCode ?? "");
@@ -2350,3 +2742,30 @@ export const createBakunawaFinaleValidator =
       },
     };
   };
+
+// Every public validator now returns the same machine-readable failure
+// contract. The legacy implementations remain isolated behind this adapter so
+// their proven success checks do not need to be rewritten all at once.
+export const createExactGoalDeclarationValidator = withFailureContract("exactGoal", legacyCreateExactGoalDeclarationValidator);
+export const createMultiStringDeclarationValidator = withFailureContract("multiString", legacyCreateMultiStringDeclarationValidator);
+export const createSingleIntegerDeclarationValidator = withFailureContract("singleInteger", legacyCreateSingleIntegerDeclarationValidator);
+export const createExactIntegerArrayDeclarationValidator = withFailureContract("exactIntegerArray", legacyCreateExactIntegerArrayDeclarationValidator);
+export const createExactStringArrayDeclarationValidator = withFailureContract("exactStringArray", legacyCreateExactStringArrayDeclarationValidator);
+export const createStringArrayAccessValidator = withFailureContract("stringArrayAccess", legacyCreateStringArrayAccessValidator);
+export const createStringArrayTraversalValidator = withFailureContract("stringArrayTraversal", legacyCreateStringArrayTraversalValidator);
+export const createVoidMethodDefinitionCallValidator = withFailureContract("voidMethodDefinitionCall", legacyCreateVoidMethodDefinitionCallValidator);
+export const createRecursiveStairMethodValidator = withFailureContract("recursiveStairMethod", legacyCreateRecursiveStairMethodValidator);
+export const createPredefinedVoidMethodCallValidator = withFailureContract("predefinedVoidMethodCall", legacyCreatePredefinedVoidMethodCallValidator);
+export const createPredefinedVoidMethodArgumentValidator = withFailureContract("predefinedVoidMethodArgument", legacyCreatePredefinedVoidMethodArgumentValidator);
+export const createVoidMethodBodyCallValidator = withFailureContract("voidMethodBodyCall", legacyCreateVoidMethodBodyCallValidator);
+export const createVoidMethodParameterCallValidator = withFailureContract("voidMethodParameterCall", legacyCreateVoidMethodParameterCallValidator);
+export const createIntReturnMethodValidator = withFailureContract("intReturnMethod", legacyCreateIntReturnMethodValidator);
+export const createIntParameterReturnMethodValidator = withFailureContract("intParameterReturnMethod", legacyCreateIntParameterReturnMethodValidator);
+export const createStringReturnMethodValidator = withFailureContract("stringReturnMethod", legacyCreateStringReturnMethodValidator);
+export const createIntegerArrayCountValidator = withFailureContract("integerArrayCount", legacyCreateIntegerArrayCountValidator);
+export const createCursedCharmCountMethodValidator = withFailureContract("cursedCharmCountMethod", legacyCreateCursedCharmCountMethodValidator);
+export const createExactInteger2DArrayDeclarationValidator = withFailureContract("exactInteger2DArray", legacyCreateExactInteger2DArrayDeclarationValidator);
+export const createVoidMethodIntegerArrayParameterValidator = withFailureContract("voidMethodIntegerArrayParameter", legacyCreateVoidMethodIntegerArrayParameterValidator);
+export const createVoidMethodInteger2DArrayParameterValidator = withFailureContract("voidMethodInteger2DArrayParameter", legacyCreateVoidMethodInteger2DArrayParameterValidator);
+export const createBlessedGraveCount2DMethodValidator = withFailureContract("blessedGraveCount2DMethod", legacyCreateBlessedGraveCount2DMethodValidator);
+export const createBakunawaFinaleValidator = withFailureContract("bakunawaFinale", legacyCreateBakunawaFinaleValidator);

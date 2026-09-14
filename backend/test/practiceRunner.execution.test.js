@@ -4,8 +4,9 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { runDirectPracticeCode } = require("../src/services/practiceRunnerService");
+const { compilePracticeCode, runDirectPracticeCode } = require("../src/services/practiceRunnerService");
 const { compileWithRoslyn, crashCompilerHostForTest, getCompilerHostHealth, stopCompilerHost } = require("../src/services/roslynCompilerHostClient");
+const { validateLevelCode } = require("../src/services/levelCodeValidationService");
 
 const sdkLines = execFileSync("dotnet", ["--list-sdks"], { encoding: "utf8", windowsHide: true }).trim().split(/\r?\n/);
 const sdkMajor = Number(sdkLines.at(-1).match(/^(\d+)/)?.[1]);
@@ -20,6 +21,38 @@ process.env.PRACTICE_COMPILER_MODE = "roslyn";
 process.env.PRACTICE_ROSLYN_HOST_DLL = path.resolve(__dirname, `../compiler-host/bin/Release/net${sdkMajor}.0/SharpRunner.CompilerHost.dll`);
 
 const execute = (code, timeoutMs = 2_000) => runDirectPracticeCode(code, { timeoutMs, outputLimit: 32 * 1024 });
+
+test("the compile-only path returns real Roslyn diagnostics without executing code", async () => {
+  const result = await compilePracticeCode("using System; class Program { static void Main() [ Console.WriteLine(1); ] }");
+  assert.equal(result.success, false);
+  assert.equal(result.errorType, "compiler");
+  assert.ok(result.diagnostics.some((diagnostic) => /^CS\d{4}$/.test(diagnostic.id)));
+  assert.match(result.stderr, /error CS\d{4}/);
+});
+
+test("level validation uses Roslyn before Kapre challenge diagnosis", async () => {
+  const source = (loop) => `
+using System;
+class Program {
+  static void CheckName(string name) { }
+  static void Main(string[] args) {
+    string[] names = { "Lina", "Tomas", "Mira", "Niko" };
+    ${loop}
+  }
+}`;
+  const malformed = await validateLevelCode({
+    levelKey: "arrays-level-7",
+    sourceCode: source("for (int i = 0; i < names.Length; i++) [ CheckName(names[i]); ]"),
+  });
+  assert.match(malformed.failureCode, /^COMPILER_/);
+
+  const fixedIndex = await validateLevelCode({
+    levelKey: "arrays-level-7",
+    sourceCode: source("for (int i = 0; i < names.Length; i++) { CheckName(names[1]); }"),
+  });
+  assert.equal(fixedIndex.failureCode, "WRONG_ARRAY_INDEX");
+  assert.equal(fixedIndex.metadata.actualIndexExpression, "1");
+});
 
 test("the direct C# runner returns real output and classifies failures", async () => {
   const cases = [

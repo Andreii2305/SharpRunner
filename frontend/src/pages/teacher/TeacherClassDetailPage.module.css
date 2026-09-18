@@ -29,32 +29,38 @@
 .contentFilters button { display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 0; border-radius: 6px; background: transparent; color: #64748b; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); font-weight: 700; }
 .contentFilters button span { min-width: 17px; padding: 1px 5px; border-radius: 99px; background: #dce5ef; font-size: var(--teacher-text-xs); text-align: center; }
 .contentFilters .contentFilterActive { color: #1e3a5f; background: #fff; box-shadow: 0 1px 3px rgba(30,58,95,.12); }
-.lessonGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.lessonGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: stretch; }
 .skeletonGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }.skeletonGrid span { height: 250px; border-radius: 12px; background: linear-gradient(90deg,#eef2f7,#f8fafc,#eef2f7); background-size: 200% 100%; animation: skeleton 1.2s infinite; }
-.lessonCardWrap { min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dce6f1; border-radius: 12px; background: #fbfdff; }
-.placementContext { min-height: 32px; display: flex; align-items: center; gap: 6px; padding: 7px 13px; border-bottom: 1px solid #e4ebf2; background: #f3f7fb; color: #526c84; font-size: 13px; font-weight: 750; }
-.placementContext span { margin-left: auto; padding: 3px 7px; border-radius: 999px; background: #fff3d6; color: #81591a; }
-.lessonCard { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 16px; border: 1px solid #dce6f1; border-radius: 12px; background: #fbfdff; cursor: pointer; }
-.lessonCard:hover { background: #f7fbff; }
-.lessonCard > div:last-child { min-width: 0; }
+.lessonCardWrap { min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #d7e3ee; border-radius: 14px; background: #fff; box-shadow: 0 3px 12px rgba(30,58,95,.06); transition: border-color .16s, box-shadow .16s, transform .16s; }
+.lessonCardWrap:hover { border-color: #b8ccde; box-shadow: 0 9px 24px rgba(30,58,95,.1); transform: translateY(-1px); }
+.lessonCard { min-width: 0; display: grid; grid-template-columns: 42px minmax(0, 1fr); align-content: start; gap: 13px; padding: 18px; border: 1px solid #dce6f1; border-radius: 12px; background: #fff; cursor: pointer; }
+.lessonCard:hover { background: #fbfdff; }
+.lessonCard > div:last-child, .lessonCardContent { min-width: 0; }
 .lessonCardWrap .lessonCard { flex: 1; border: 0; border-radius: 0; }
-.lessonActions { display: flex; justify-content: flex-end; gap: 6px; padding: 9px 12px; border-top: 1px solid #e7edf4; background: #f7fafe; }
+.lessonActions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 12px; border-top: 1px solid #e7edf4; background: #f7fafe; }
 .lessonActions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #47627e; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); font-weight: 700; }
 .lessonActions button:hover { border-color: #91a9c2; color: #1e3a5f; }
-.placementSelect { min-width: 145px; display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 13px; font-weight: 750; }
-.placementSelect select { min-width: 0; max-width: 165px; height: 34px; padding: 4px 7px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #3f5870; font: inherit; font-size: 13px; }
+.modulePlacement { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin: 0 12px 10px; padding: 9px 10px; border: 1px solid #e0e8f0; border-radius: 9px; background: #f8fbfe; color: #536b82; font-size: 13px; font-weight: 750; }
+.modulePlacement > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.modulePlacement select { min-width: 0; width: 100%; height: 34px; padding: 4px 8px; border: 1px solid #cbd8e4; border-radius: 7px; background: #fff; color: #334e68; font: inherit; font-size: 13px; }
 .lessonActions .deleteLessonButton { color: #b42318; border-color: #f1c7c3; }
 .lessonActions .deleteLessonButton:hover { color: #8f1710; border-color: #df8f87; background: #fff7f6; }
-.lessonIcon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: #eaf2ff; color: #2563eb; }
-.lessonTop { display: flex; justify-content: space-between; gap: 8px; }
-.lessonTop h3 { margin: 1px 0 6px; color: #1e3a5f; font-size: var(--teacher-text-lg); line-height: 1.35; }
-.contentKind { margin-bottom: 4px; display: flex; align-items: center; gap: 5px; color: #2563eb; font-size: var(--teacher-text-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.lessonTop span { height: fit-content; padding: 2px 7px; border-radius: 99px; background: #dcfce7; color: #16803a; font-size: var(--teacher-text-xs); font-weight: 700; }
-.lessonTop .draftBadge { background: #e2e8f0; color: #475569; }
+.lessonIcon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 11px; background: linear-gradient(145deg, #edf5ff, #e4effe); color: #2563eb; font-size: 18px; }
+.lessonCardContent > h3 { margin: 4px 0 7px; color: #183b5b; font-size: 17px; line-height: 1.35; }
+.lessonMetaRow { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.contentKind { display: flex; align-items: center; gap: 5px; color: #2563eb; font-size: var(--teacher-text-xs); font-weight: 800; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.lessonBadges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.lessonBadges > span { max-width: 145px; display: inline-flex; align-items: center; gap: 3px; overflow: hidden; padding: 3px 7px; border-radius: 99px; font-size: var(--teacher-text-xs); font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.publishedBadge { background: #dcfce7; color: #16803a; }
+.draftBadge { background: #e2e8f0; color: #475569; }
+.scheduledBadge { background: #fef3c7; color: #8a5b10; }
+.moduleBadge { background: #eaf2ff; color: #315f96; }
+.usageBadge { background: #fff3d6; color: #81591a; }
 .lessonStats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .lessonStats span { padding: 3px 6px; border-radius: 99px; background: #eef4fb; color: #47627e; font-size: var(--teacher-text-xs); }
-.lessonCard p { margin: 0 0 10px; color: #64748b; line-height: 1.5; font-size: var(--teacher-text-md); }
+.lessonCard p { min-height: 4.5em; display: -webkit-box; overflow: hidden; margin: 0 0 10px; color: #64748b; line-height: 1.5; font-size: var(--teacher-text-md); -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .lessonCard small { display: flex; align-items: center; gap: 5px; color: #9a6700; font-size: var(--teacher-text-xs); }
+.lessonDates { display: grid; gap: 3px; }
 .attachmentList { min-width: 0; display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .attachmentList button { display: grid; grid-template-columns: 16px minmax(0, 1fr) 16px; align-items: center; gap: 7px; width: 100%; padding: 8px 9px; border: 1px solid #dce6f1; border-radius: 8px; background: #fff; color: #475569; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); text-align: left; }
 .attachmentList button:hover { border-color: #93b4dc; color: #1e3a5f; }
@@ -66,17 +72,19 @@
 .attachmentManageRow > button small { color: #94a3b8; font-size: var(--teacher-text-xs); }
 .fileType { display: grid !important; place-items: center; width: 27px; height: 27px; border-radius: 6px; background: #eef4fb; color: #2563eb; font-size: var(--teacher-text-xs); font-weight: 800; }
 .attachmentManageRow > button:disabled { opacity: .35; cursor: default; }
-.fileMenu, .cardMenu { position: relative; }
-.fileMenu summary, .cardMenu summary { list-style: none; display: grid; place-items: center; height: 100%; min-height: 30px; border: 1px solid #dce6f1; border-radius: 8px; background: #fff; color: #64748b; cursor: pointer; }
-.fileMenu summary::-webkit-details-marker, .cardMenu summary::-webkit-details-marker { display: none; }
-.fileMenu > div, .cardMenu > div { position: absolute; z-index: 20; right: 0; top: calc(100% + 5px); min-width: 170px; padding: 5px; border: 1px solid #dce6f1; border-radius: 9px; background: #fff; box-shadow: 0 12px 28px rgba(15,23,42,.16); }
-.fileMenu button, .fileMenu label, .fileMenu span, .cardMenu button { position: relative; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px; border: 0; border-radius: 6px; background: transparent; color: #475569; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); text-align: left; }
-.fileMenu button:hover, .fileMenu label:hover, .cardMenu button:hover { background: #f1f5f9; }
+.fileMenu { position: relative; }
+.fileMenu summary { list-style: none; display: grid; place-items: center; height: 100%; min-height: 30px; border: 1px solid #dce6f1; border-radius: 8px; background: #fff; color: #64748b; cursor: pointer; }
+.fileMenu summary::-webkit-details-marker { display: none; }
+.fileMenu > div { position: absolute; z-index: 20; right: 0; top: calc(100% + 5px); min-width: 170px; padding: 5px; border: 1px solid #dce6f1; border-radius: 9px; background: #fff; box-shadow: 0 12px 28px rgba(15,23,42,.16); }
+.fileMenu button, .fileMenu label, .fileMenu span { position: relative; width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px; border: 0; border-radius: 6px; background: transparent; color: #475569; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); text-align: left; }
+.fileMenu button:hover, .fileMenu label:hover { background: #f1f5f9; }
 .fileMenu label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .fileMenu > div > span { color: #94a3b8; cursor: grab; }
-.fileMenu .menuDanger, .cardMenu .menuDanger { color: #b42318; }
-.cardMenu { width: 30px; }
-.cardMenu summary { height: 30px; }
+.fileMenu .menuDanger, .floatingCardMenu .menuDanger { color: #b42318; }
+.lessonActions .cardMenuButton { width: 34px; min-width: 34px; height: 34px; justify-content: center; margin-left: auto; padding: 0; }
+.floatingCardMenu { position: fixed; z-index: 1000; display: grid; gap: 3px; box-sizing: border-box; padding: 6px; border: 1px solid #d5e0ea; border-radius: 10px; background: #fff; box-shadow: 0 14px 32px rgba(15,23,42,.2); }
+.floatingCardMenu button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: #405b74; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); text-align: left; }
+.floatingCardMenu button:hover, .floatingCardMenu button:focus-visible { background: #eef4f9; }
 .addFilesButton { position: relative; width: fit-content; margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px dashed #9fb7d1; border-radius: 8px; color: #47627e; background: #f8fbff; cursor: pointer; font-size: var(--teacher-text-md); font-weight: 700; }
 .addFilesButton:hover { border-color: #5782ad; background: #eef5fc; }
 .addFilesButton input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }

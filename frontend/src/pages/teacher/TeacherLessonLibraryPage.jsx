@@ -114,7 +114,7 @@ function AssignmentDialog({ lesson, classrooms, initialClassroomId, initialModul
     <DialogShell eyebrow="Add existing lesson" title={lesson.title} onClose={saving ? undefined : onClose}>
       <form onSubmit={submit}>
         <label>Classroom<select required value={classroomId} onChange={(event) => setClassroomId(event.target.value)}><option value="">Choose a classroom</option>{classrooms.filter((room) => room.isActive !== false).map((room) => <option key={room.id} value={room.id}>{room.className} · {room.section}</option>)}</select></label>
-        <label>Module (optional)<select value={moduleId} onChange={(event) => setModuleId(event.target.value)}><option value="">Standalone lesson</option>{modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</select></label>
+        <label>Module (optional)<select value={moduleId} onChange={(event) => setModuleId(event.target.value)}><option value="">No module</option>{modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</select></label>
         <fieldset>
           <legend>How should this lesson be added?</legend>
           <label className={mode === "copy" ? styles.optionActive : ""}><input type="radio" name="mode" checked={mode === "copy"} onChange={() => setMode("copy")} /><span><strong>Make a Copy</strong><small>Create an independent lesson. Future edits will not affect the original.</small></span></label>
@@ -277,7 +277,7 @@ export default function TeacherLessonLibraryPage() {
                   <h2>{lesson.title}</h2>
                   <p>{lesson.description || "No description yet. Open the builder to add lesson details and topics."}</p>
                   <div className={styles.meta}><span>Updated {new Date(lesson.updatedAt).toLocaleDateString()}</span><span>Used in {lesson.usageCount || 0} classroom{lesson.usageCount === 1 ? "" : "s"}</span></div>
-                  {lesson.placements?.length > 0 && <details className={styles.placements}><summary>View classroom placements</summary><div>{lesson.placements.map((placement) => <span key={`${placement.classroomId}-${placement.moduleId || "root"}`}><span><strong>{placement.classroom?.className || "Classroom"}</strong>{placement.module?.title ? ` · ${placement.module.title}` : " · Standalone"}</span><button type="button" onClick={() => setConfirmAction({ kind: "placement", lesson, placement })}>Remove</button></span>)}</div></details>}
+                  {lesson.placements?.length > 0 && <details className={styles.placements}><summary>View classroom placements</summary><div>{lesson.placements.map((placement) => <span key={`${placement.classroomId}-${placement.moduleId || "root"}`}><span><strong>{placement.classroom?.className || "Classroom"}</strong>{placement.module?.title ? ` · ${placement.module.title}` : " · No module"}</span><button type="button" onClick={() => setConfirmAction({ kind: "placement", lesson, placement })}>Remove</button></span>)}</div></details>}
                 </div>
                 <div className={styles.actions}>
                   {contextClassroomId && !lesson.archivedAt && <button type="button" className={styles.primary} onClick={() => setAssigning(lesson)}><FiPlus /> Add to Class</button>}

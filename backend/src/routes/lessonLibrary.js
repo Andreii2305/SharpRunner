@@ -490,7 +490,7 @@ router.post("/:lessonId/placements", async (req, res) => {
       await placement.save();
     }
     return res.status(created ? 201 : 200).json({
-      message: created ? "Shared lesson added to classroom" : moduleId ? "Lesson moved to the selected module" : "Lesson moved to standalone class content",
+      message: created ? "Shared lesson added to classroom" : moduleId ? "Lesson moved to the selected module" : "Lesson moved out of its module",
       lessonId: lesson.id,
       placement,
     });

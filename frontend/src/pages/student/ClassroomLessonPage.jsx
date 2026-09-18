@@ -197,7 +197,7 @@ function ClassroomLessonPage() {
       <main className={styles.main}>
         <header className={styles.header}>
           <button type="button" className={styles.backButton} onClick={() => navigate(isTeacherPreview && lesson ? `/teacher/lessons/${lesson.id}/edit` : "/lesson")}><FiArrowLeft /> {isTeacherPreview ? "Back to editor" : "Back to classwork"}</button>
-          <div className={styles.headerTrail}><span className={styles.headerType}><FiBookOpen /> {isTeacherPreview ? "Preview as Student" : lesson?.contentType === "assignment" ? "Assignment / activity" : lesson?.moduleId ? "Module lesson" : "Classroom lesson"}</span>{!isTeacherPreview && lessonContext.classroom && <span className={styles.contextPath}>{lessonContext.classroom.className}{lessonContext.classroom.section ? ` · ${lessonContext.classroom.section}` : ""}{lessonContext.module ? ` / ${lessonContext.module.title}` : " / Standalone lesson"}</span>}</div>
+          <div className={styles.headerTrail}><span className={styles.headerType}><FiBookOpen /> {isTeacherPreview ? "Preview as Student" : lesson?.contentType === "assignment" ? "Assignment / activity" : lesson?.moduleId ? "Module lesson" : "Classroom lesson"}</span>{!isTeacherPreview && lessonContext.classroom && <span className={styles.contextPath}>{lessonContext.classroom.className}{lessonContext.classroom.section ? ` · ${lessonContext.classroom.section}` : ""}{lessonContext.module ? ` / ${lessonContext.module.title}` : ""}</span>}</div>
         </header>
 
         {loading ? <div className={styles.lessonSkeleton} aria-label="Loading lesson"><span /><i /><i /><i /></div> : error || !lesson ? (

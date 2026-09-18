@@ -32,12 +32,13 @@ test("lesson builder normalizes multiple mixed ordered blocks without grouping b
     { id: "code-2", type: "code", title: "Output", code: "Console.WriteLine(age);" },
     { id: "image-1", type: "image", imageId: "42" },
     { id: "text-3", type: "content", body: "Third explanation" },
-    { id: "practice-1", type: "practice", title: "Try it", prompt: "Create a variable" },
+    { id: "practice-1", type: "practice", title: "Try it", prompt: "Create a variable", expectedOutput: "Sum: 25\nDifference: 15" },
     { id: "text-4", type: "content", body: "Wrap up" },
   ] });
   assert.deepEqual(content.blocks.map((block) => block.type), ["content", "code", "content", "code", "image", "content", "practice", "content"]);
   assert.deepEqual(content.blocks.map((block) => block.displayOrder), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.equal(content.blocks[4].imageId, 42);
+  assert.equal(content.blocks[6].expectedOutput, "Sum: 25\nDifference: 15");
   assert.equal(content.body, undefined);
 });
 

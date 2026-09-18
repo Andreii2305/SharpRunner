@@ -73,6 +73,7 @@
 .testRun pre { width: 100%; max-height: 230px; box-sizing: border-box; overflow: auto; margin: 0; padding: 13px; border-radius: 8px; background: #102330; color: #e8f3f8; white-space: pre-wrap; font: 14px/1.55 Consolas, monospace; }
 .testRun .testError { border-left: 4px solid #d96868; }.testRun .testSuccess { border-left: 4px solid #4cb28b; }
 .codeInput { min-height: 0; overflow-x: auto; overflow-y: hidden; resize: none; background: #102330 !important; color: #ecf4f8 !important; font: 15px/1.6 Consolas, monospace !important; tab-size: 4; }
+.expectedOutputInput { min-height: 92px; resize: vertical; white-space: pre-wrap; font-family: Consolas, "SFMono-Regular", monospace !important; }
 .addBlocks, .topicFooter { display: flex; flex-wrap: wrap; gap: 9px; }
 .topicFooter { justify-content: space-between; padding-top: 18px; border-top: 1px solid #e4ebf1; }
 .orderedBlocks { display: grid; gap: 0; }

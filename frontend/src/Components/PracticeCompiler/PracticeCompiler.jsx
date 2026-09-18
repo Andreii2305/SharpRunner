@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
 import axios from "axios";
 import { FiCheckCircle, FiPlay, FiRefreshCw } from "react-icons/fi";
@@ -58,9 +58,12 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   const [runStatus, setRunStatus] = useState("");
   const [showSolution, setShowSolution] = useState(false);
   const [retryUntil, setRetryUntil] = useState(0);
+  const [editableEditorHeight, setEditableEditorHeight] = useState(() => Math.max(230, String(code || "").split(/\r?\n/).length * 22 + 24));
+  const editorSizeSubscriptionRef = useRef(null);
   const retryBlocked = retryUntil > Date.now();
 
   useEffect(() => { void warmPracticeCompiler(); }, []);
+  useEffect(() => () => editorSizeSubscriptionRef.current?.dispose(), []);
 
   useEffect(() => {
     if (!retryUntil) return undefined;
@@ -101,12 +104,22 @@ export default function PracticeCompiler({ code, editable = false, expectedOutpu
   const matched = result?.success && expectedOutput != null && normalizeOutput(result.stdout) === normalizeOutput(expectedOutput);
   const noOutput = result?.success && !normalizeOutput(result.stdout);
   const runtimeHint = friendlyRuntimeHint(result?.stderr);
+  const mountEditor = (editor) => {
+    if (!editable) return;
+    editorSizeSubscriptionRef.current?.dispose();
+    const syncHeight = () => {
+      const nextHeight = Math.max(230, Math.ceil(editor.getContentHeight()));
+      setEditableEditorHeight((current) => current === nextHeight ? current : nextHeight);
+    };
+    editorSizeSubscriptionRef.current = editor.onDidContentSizeChange(syncHeight);
+    requestAnimationFrame(syncHeight);
+  };
 
   return <div className={`${styles.runner} ${editable ? styles.editable : styles.example}`}>
     {showEditor && <div className={styles.editorFrame}>
-      <Editor height={editable ? "270px" : `${Math.min(320, Math.max(150, value.split("\n").length * 22 + 42))}px`} language="csharp" theme="vs-dark" value={value}
+      <Editor height={editable ? `${editableEditorHeight}px` : `${Math.min(320, Math.max(150, value.split("\n").length * 22 + 42))}px`} language="csharp" theme="vs-dark" value={value} onMount={mountEditor}
         onChange={(next) => editable && setValue(next ?? "")}
-        options={{ readOnly: !editable, minimap: { enabled: false }, fontSize: 14, lineHeight: 22, automaticLayout: true, scrollBeyondLastLine: false, wordWrap: "on", padding: { top: 12, bottom: 12 }, overviewRulerLanes: 0, renderLineHighlight: editable ? "line" : "none" }} />
+        options={{ readOnly: !editable, minimap: { enabled: false }, fontSize: 14, lineHeight: 22, automaticLayout: true, scrollBeyondLastLine: false, wordWrap: "on", padding: { top: 12, bottom: 12 }, overviewRulerLanes: 0, renderLineHighlight: editable ? "line" : "none", scrollbar: { alwaysConsumeMouseWheel: false } }} />
     </div>}
     <div className={styles.actions}>
       <div>{editable && <button type="button" className={styles.reset} onClick={reset} disabled={running}><FiRefreshCw /> Reset code</button>}</div>

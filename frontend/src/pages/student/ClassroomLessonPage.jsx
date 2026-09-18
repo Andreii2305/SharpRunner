@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiBookOpen, FiCalendar, FiDownload, FiFile,
@@ -42,6 +42,8 @@ function AssignmentSubmissionPanel({ lesson, submission, comment, setComment, fi
 
 function ClassroomLessonPage() {
   const { lessonId } = useParams();
+  const [searchParams] = useSearchParams();
+  const classroomId = searchParams.get("classroomId");
   const navigate = useNavigate();
   const toast = useToast();
   const isTeacherPreview = ["teacher", "admin"].includes(getUserRole());
@@ -91,7 +93,7 @@ function ClassroomLessonPage() {
     const loadLesson = async () => {
       try {
         const response = await axios.get(
-          buildApiUrl(`/api/lesson-content/classroom-lessons/${lessonId}`),
+          buildApiUrl(`/api/lesson-content/classroom-lessons/${lessonId}${classroomId ? `?classroomId=${encodeURIComponent(classroomId)}` : ""}`),
           { headers: getAuthHeaders() },
         );
         if (!mounted) return;
@@ -118,7 +120,7 @@ function ClassroomLessonPage() {
       mounted = false;
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
     };
-  }, [lessonId, loadPreview]);
+  }, [lessonId, classroomId, loadPreview]);
 
   const downloadAttachment = async (attachment) => {
     try {
@@ -143,7 +145,7 @@ function ClassroomLessonPage() {
     if (completionBusy) return;
     setCompletionBusy(true);
     try {
-      const response = await axios.put(buildApiUrl(`/api/lesson-content/classroom-lessons/${lessonId}/completion`), { completed: !progress?.completedAt }, { headers: getAuthHeaders() });
+      const response = await axios.put(buildApiUrl(`/api/lesson-content/classroom-lessons/${lessonId}/completion`), { completed: !progress?.completedAt, classroomId }, { headers: getAuthHeaders() });
       setProgress(response.data.progress); toast.success(response.data.message);
     } catch (requestError) { toast.error(requestError.response?.data?.message ?? "Unable to update lesson."); }
     finally { setCompletionBusy(false); }

@@ -282,7 +282,8 @@ function LessonCard({ lesson, onPlay }) {
 function ClassroomContentCard({ lesson, navigate, moduleTitle = null }) {
   const isAssignment = lesson.contentType === "assignment";
   const isModule = lesson.contentType === "module";
-  const contentRoute = `${isAssignment ? "/assignment" : "/lesson"}/classroom/${lesson.id}`;
+  const classroomQuery = lesson.classroomId ? `?classroomId=${lesson.classroomId}` : "";
+  const contentRoute = `${isAssignment ? "/assignment" : "/lesson"}/classroom/${lesson.id}${classroomQuery}`;
   return (
     <div className={`${styles.lessonCard} ${styles.cardActive} ${styles.classLessonCard}`} role="link" tabIndex={0} onClick={() => navigate(contentRoute)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") navigate(contentRoute); }}>
       <div className={`${styles.cardIcon} ${styles.iconWrapActive}`}><LessonIcon status="active" /></div>

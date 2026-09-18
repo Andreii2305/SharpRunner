@@ -39,7 +39,7 @@ const sanitizeSubmission = (submission, { releaseFeedback = true } = {}) => subm
 } : null;
 const isAssignedToStudent = isStudentAssigned;
 
-const findStudentPlacement = async (lesson, studentId) => {
+const findStudentPlacement = async (lesson, studentId, requestedClassroomId = null) => {
   if (!lesson) return null;
   const memberships = await ClassroomMembership.findAll({
     where: { studentId, status: "active" },
@@ -47,12 +47,19 @@ const findStudentPlacement = async (lesson, studentId) => {
   });
   const classroomIds = memberships.map((membership) => membership.classroomId);
   if (!classroomIds.length) return null;
+  const preferredClassroomId = Number.parseInt(requestedClassroomId, 10);
+  if (requestedClassroomId != null && (!Number.isInteger(preferredClassroomId) || !classroomIds.includes(preferredClassroomId))) {
+    return null;
+  }
+  const eligibleClassroomIds = Number.isInteger(preferredClassroomId)
+    ? [preferredClassroomId]
+    : classroomIds;
   const placement = await ClassroomLessonPlacement.findOne({
-    where: { lessonId: lesson.id, classroomId: { [Op.in]: classroomIds } },
+    where: { lessonId: lesson.id, classroomId: { [Op.in]: eligibleClassroomIds } },
     order: [["createdAt", "ASC"]],
   });
   if (placement) return placement;
-  return classroomIds.includes(lesson.classroomId)
+  return eligibleClassroomIds.includes(lesson.classroomId)
     ? { lessonId: lesson.id, classroomId: lesson.classroomId, moduleId: lesson.moduleId }
     : null;
 };
@@ -150,7 +157,7 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     if (req.userRole === "teacher") {
       allowed = lesson.teacherId === req.userId || Boolean(lesson.classroomId && await Classroom.findOne({ where: { id: lesson.classroomId, teacherId: req.userId }, attributes: ["id"] }));
     } else if (req.userRole === "student") {
-      placement = await findStudentPlacement(lesson, req.userId);
+      placement = await findStudentPlacement(lesson, req.userId, req.query.classroomId);
       allowed = Boolean(placement);
     }
     if (!allowed) return res.status(403).json({ message: "Access denied" });
@@ -159,7 +166,7 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     let submission = null;
     if (req.userRole === "student") {
       [progress] = await ClassroomLessonProgress.findOrCreate({
-        where: { lessonId, studentId: req.userId },
+        where: { classroomId: placement.classroomId, lessonId, studentId: req.userId },
         defaults: { classroomId: placement.classroomId, viewedAt: new Date(), completedAt: null },
       });
       if (!progress.viewedAt) { progress.viewedAt = new Date(); await progress.save(); }
@@ -269,9 +276,9 @@ router.put("/classroom-lessons/:lessonId/completion", authMiddleware, async (req
     if (req.userRole !== "student") return res.status(403).json({ message: "Student access required" });
     const lessonId = Number.parseInt(req.params.lessonId, 10);
     const lesson = await ClassroomLesson.findByPk(lessonId);
-    const placement = lesson && await findStudentPlacement(lesson, req.userId);
+    const placement = lesson && await findStudentPlacement(lesson, req.userId, req.body?.classroomId ?? req.query.classroomId);
     if (!lesson || lesson.archivedAt || !placement || !isAssignedToStudent(lesson, req.userId) || !["module", "lesson"].includes(lesson.contentType) || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
-    const [progress] = await ClassroomLessonProgress.findOrCreate({ where: { lessonId, studentId: req.userId }, defaults: { classroomId: placement.classroomId, viewedAt: new Date() } });
+    const [progress] = await ClassroomLessonProgress.findOrCreate({ where: { classroomId: placement.classroomId, lessonId, studentId: req.userId }, defaults: { classroomId: placement.classroomId, viewedAt: new Date() } });
     progress.viewedAt ||= new Date();
     progress.completedAt = req.body?.completed === false ? null : new Date();
     await progress.save();

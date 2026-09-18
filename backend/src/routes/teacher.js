@@ -12,7 +12,6 @@ const {
   DEFAULT_LEVEL_PROGRESS,
   PLAYABLE_LEVEL_KEYS,
 } = require("../constants/progressDefaults");
-const { ensureProgressRowsForUser } = require("../services/progressService");
 const { getTeacherStudentScope } = require("../services/teacherStudentScopeService");
 const LevelContentOverride = require("../models/LevelContentOverride");
 const StudentLevelExtension = require("../models/StudentLevelExtension");
@@ -36,6 +35,7 @@ const {
 } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
 const { getEffectiveDueAt } = require("../services/levelAccessService");
+const { calculateDifficulty, formatDuration, getTeacherAnalytics } = require("../services/teacherAnalyticsService");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -45,7 +45,6 @@ const ACTIVE_GAME_HEARTBEAT_WINDOW_MS = 2 * 60 * 1000;
 const MAX_ANNOUNCEMENT_LENGTH = 1000;
 const MAX_LESSON_TITLE_LENGTH = 160;
 const MAX_LESSON_DESCRIPTION_LENGTH = 4000;
-const EXPECTED_PROGRESS_ROWS_PER_STUDENT = DEFAULT_LEVEL_PROGRESS.length;
 const DEFAULT_LEVEL_KEYS = DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey);
 const LEVEL_KEY_SET = new Set(DEFAULT_LEVEL_KEYS);
 const PLAYABLE_LEVEL_KEY_SET = new Set(PLAYABLE_LEVEL_KEYS);
@@ -252,7 +251,7 @@ const buildDefaultLessonStats = () =>
     lessonKey: lesson.lessonKey,
     lessonTitle: lesson.lessonTitle,
     completionPercent: 0,
-    difficultyScore: 100,
+    difficultyScore: null,
   }));
 
 const buildDashboardPayload = async (req) => {
@@ -309,48 +308,13 @@ const buildDashboardPayload = async (req) => {
     new Set(validMemberships.map((membership) => membership.studentId))
   );
 
-  if (validStudentIds.length > 0) {
-    const progressRowCounts = await UserProgress.findAll({
-      where: {
-        userId: { [Op.in]: validStudentIds },
-        levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS },
-      },
-      attributes: [
-        "userId",
-        [
-          UserProgress.sequelize.fn("COUNT", UserProgress.sequelize.col("id")),
-          "rowCount",
-        ],
-      ],
-      group: ["userId"],
-      raw: true,
-    });
-
-    const progressRowCountByUserId = new Map(
-      progressRowCounts.map((row) => [
-        Number(row.userId),
-        Number(row.rowCount) || 0,
-      ])
-    );
-
-    const studentsMissingProgressRows = validStudentIds.filter(
-      (studentId) =>
-        (progressRowCountByUserId.get(studentId) ?? 0) <
-        EXPECTED_PROGRESS_ROWS_PER_STUDENT
-    );
-
-    for (const studentId of studentsMissingProgressRows) {
-      await ensureProgressRowsForUser(studentId);
-    }
-  }
-
   const progressRows = validStudentIds.length
     ? await UserProgress.findAll({
         where: {
           userId: { [Op.in]: validStudentIds },
           levelKey: { [Op.in]: DEFAULT_LEVEL_KEYS },
         },
-        attributes: ["userId", "levelKey", "progressPercent", "isCompleted", "finalScore", "updatedAt"],
+        attributes: ["userId", "levelKey", "progressPercent", "isCompleted", "finalScore", "attemptCount", "timeSpentSeconds", "hintUsed", "startedAt", "updatedAt"],
       })
     : [];
 
@@ -381,6 +345,15 @@ const buildDashboardPayload = async (req) => {
         lessonTitle: lesson.lessonTitle,
         totalProgress: 0,
         progressCount: 0,
+        startedCount: 0,
+        completedCount: 0,
+        failedAttempts: 0,
+        totalAttempts: 0,
+        scoreTotal: 0,
+        scoreCount: 0,
+        hintUsers: 0,
+        timeTotal: 0,
+        timeCount: 0,
       },
     ])
   );
@@ -420,6 +393,24 @@ const buildDashboardPayload = async (req) => {
     const lessonStats = lessonStatsByKey.get(lessonKey);
     lessonStats.totalProgress += row.progressPercent;
     lessonStats.progressCount += 1;
+    const hasEvidence = Boolean(row.startedAt || row.isCompleted || row.progressPercent > 0 || row.attemptCount > 0 || row.timeSpentSeconds > 0 || row.hintUsed);
+    if (hasEvidence) {
+      lessonStats.startedCount += 1;
+      lessonStats.failedAttempts += Math.max(0, Number(row.attemptCount) || 0);
+      lessonStats.totalAttempts += Math.max(0, Number(row.attemptCount) || 0) + (row.isCompleted ? 1 : 0);
+      if (row.hintUsed) lessonStats.hintUsers += 1;
+    }
+    if (row.isCompleted) {
+      lessonStats.completedCount += 1;
+      if (row.finalScore != null && Number.isFinite(Number(row.finalScore))) {
+        lessonStats.scoreTotal += Number(row.finalScore);
+        lessonStats.scoreCount += 1;
+      }
+      if (Number(row.timeSpentSeconds) > 0) {
+        lessonStats.timeTotal += Number(row.timeSpentSeconds);
+        lessonStats.timeCount += 1;
+      }
+    }
   }
 
   const todayStart = new Date();
@@ -564,11 +555,22 @@ const buildDashboardPayload = async (req) => {
         ? 0
         : Math.round(lessonStats.totalProgress / lessonStats.progressCount);
 
+    const difficulty = calculateDifficulty({
+      studentsStarted: lessonStats.startedCount,
+      studentsCompleted: lessonStats.completedCount,
+      failedAttempts: lessonStats.failedAttempts,
+      totalSolutionAttempts: lessonStats.totalAttempts,
+      averageScore: lessonStats.scoreCount ? lessonStats.scoreTotal / lessonStats.scoreCount : null,
+      studentsUsingHints: lessonStats.hintUsers,
+    });
     return {
       lessonKey: lessonStats.lessonKey,
       lessonTitle: lessonStats.lessonTitle,
       completionPercent,
-      difficultyScore: Math.max(0, 100 - completionPercent),
+      difficultyScore: difficulty.score,
+      difficultyLabel: difficulty.label,
+      sufficientDifficultyData: difficulty.sufficientData,
+      averageTimeSeconds: lessonStats.timeCount ? Math.round(lessonStats.timeTotal / lessonStats.timeCount) : null,
     };
   });
 
@@ -578,9 +580,13 @@ const buildDashboardPayload = async (req) => {
   const sortedByCompletion = [...completionByLesson].sort(
     (a, b) => b.completionPercent - a.completionPercent
   );
-  const sortedByDifficulty = [...completionByLesson].sort(
+  const sortedByDifficulty = completionByLesson.filter((lesson) => lesson.sufficientDifficultyData).sort(
     (a, b) => b.difficultyScore - a.difficultyScore
   );
+  const timedLessons = completionByLesson.filter((lesson) => lesson.averageTimeSeconds != null);
+  const averageTimeSeconds = timedLessons.length
+    ? Math.round(timedLessons.reduce((sum, lesson) => sum + lesson.averageTimeSeconds, 0) / timedLessons.length)
+    : null;
 
   return {
     overview: {
@@ -594,8 +600,8 @@ const buildDashboardPayload = async (req) => {
     gamificationPreferenceCounts,
     lessonInsights: {
       mostCompletedLesson: hasAnyLessonProgress ? sortedByCompletion[0] : null,
-      mostDifficultLesson: hasAnyLessonProgress ? sortedByDifficulty[0] : null,
-      averageTimePerLessonLabel: "Not enough data",
+      mostDifficultLesson: sortedByDifficulty[0] ?? null,
+      averageTimePerLessonLabel: formatDuration(averageTimeSeconds) ?? "Not enough data",
       completionByLesson,
       difficultyByLesson: completionByLesson.map((lesson) => ({
         lessonKey: lesson.lessonKey,
@@ -607,6 +613,45 @@ const buildDashboardPayload = async (req) => {
 };
 
 router.use(authMiddleware, requireRole("teacher", "admin"));
+
+router.get("/analytics", async (req, res) => {
+  try {
+    const payload = await getTeacherAnalytics({ req, query: req.query });
+    return res.json(payload);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to load analytics" });
+  }
+});
+
+router.get("/analytics/students/:studentId", async (req, res) => {
+  try {
+    const studentId = parseInteger(req.params.studentId);
+    if (!studentId) return res.status(400).json({ message: "Invalid student ID" });
+    const payload = await getTeacherAnalytics({
+      req,
+      query: { ...req.query, studentId: String(studentId) },
+    });
+    const student = payload.studentPerformance[0] ?? null;
+    if (!student) return res.status(404).json({ message: "Student analytics not found" });
+    return res.json({
+      meta: payload.meta,
+      student,
+      lessons: payload.heatmap.lessons.map((lesson) => ({
+        ...lesson,
+        state: payload.heatmap.students[0]?.cells.find((cell) => cell.lessonId === lesson.id) ?? null,
+        performance: payload.lessonPerformance.find((item) => item.id === lesson.id) ?? null,
+      })),
+      recentActivity: payload.activity.recent,
+      hints: payload.hints,
+    });
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to load student analytics" });
+  }
+});
 
 router.get("/dashboard", async (req, res) => {
   try {

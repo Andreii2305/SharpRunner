@@ -109,7 +109,7 @@ const ensureClassroomLessonsTable = async () => {
       viewedAt: { type: DataTypes.DATE, allowNull: true }, completedAt: { type: DataTypes.DATE, allowNull: true },
       createdAt: { type: DataTypes.DATE, allowNull: false }, updatedAt: { type: DataTypes.DATE, allowNull: false },
     });
-    await queryInterface.addIndex(PROGRESS_TABLE, ["lessonId", "studentId"], { unique: true, name: "classroom_lesson_progress_unique" });
+    await queryInterface.addIndex(PROGRESS_TABLE, ["classroomId", "lessonId", "studentId"], { unique: true, name: "classroom_lesson_progress_class_scope" });
   }
 
   try {

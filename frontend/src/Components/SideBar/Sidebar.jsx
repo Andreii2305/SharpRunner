@@ -25,6 +25,7 @@ const STUDENT_NAV = [
 const TEACHER_NAV = [
   { to: "/teacher", Icon: DashboardOutlinedIcon, label: "Overview" },
   { to: "/teacher/classes", Icon: ClassOutlinedIcon, label: "Classes" },
+  { to: "/teacher/lessons", Icon: LibraryBooksOutlinedIcon, label: "Lessons" },
   { to: "/teacher/students", Icon: PeopleOutlinedIcon, label: "Students" },
   { to: "/teacher/analytics", Icon: BarChartOutlinedIcon, label: "Analytics" },
   {

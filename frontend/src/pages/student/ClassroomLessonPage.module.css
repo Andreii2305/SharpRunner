@@ -1,28 +1,31 @@
 .root { display: flex; width: 100%; height: 100vh; overflow: hidden; background: #f0f4f8; font-family: "Segoe UI", system-ui, sans-serif; color: #334155; }
 .main { flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px 32px; }
 .header { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
-.backButton { display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #47627e; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.backButton { min-height: 40px; display: inline-flex; align-items: center; gap: 7px; border: 0; background: transparent; color: #47627e; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .backButton:hover { color: #1e3a5f; }
-.headerType { display: inline-flex; align-items: center; gap: 6px; color: #64748b; font-size: 11px; }
+.headerType { display: inline-flex; align-items: center; gap: 6px; color: #64748b; font-size: 13px; font-weight: 650; }
+.headerTrail { min-width: 0; display: flex; align-items: flex-end; flex-direction: column; gap: 2px; text-align: right; }
+.contextPath { max-width: min(520px, 55vw); overflow: hidden; color: #8796a7; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .hero { display: flex; align-items: center; gap: 17px; padding: 24px 26px; border-radius: 16px; color: #fff; background: linear-gradient(120deg, #18385f, #285f96); box-shadow: 0 12px 28px rgba(30,58,95,.16); }
 .heroIcon { width: 58px; height: 58px; display: grid; place-items: center; flex-shrink: 0; border: 1px solid rgba(255,255,255,.2); border-radius: 14px; background: rgba(255,255,255,.12); font-size: 23px; }
-.heroCopy > span { color: #bdd4eb; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-.heroCopy h1 { margin: 4px 0 8px; font-size: 24px; line-height: 1.2; }
-.completeButton { margin-left: auto; display: inline-flex; align-items: center; gap: 7px; padding: 9px 12px; border: 1px solid rgba(255,255,255,.35); border-radius: 9px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+.heroCopy > span { color: #bdd4eb; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.heroCopy h1 { margin: 4px 0 8px; font-size: 30px; line-height: 1.2; }
+.completeButton { margin-left: auto; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 14px; border: 1px solid rgba(255,255,255,.35); border-radius: 9px; background: rgba(255,255,255,.12); color: #fff; cursor: pointer; font: inherit; font-size: 14px; font-weight: 750; }
+.completeButton:disabled { opacity: .65; cursor: wait; }
 .heroMeta { display: flex; flex-wrap: wrap; gap: 15px; }
-.heroMeta span { display: inline-flex; align-items: center; gap: 6px; color: #d7e5f3; font-size: 11px; }
+.heroMeta span { display: inline-flex; align-items: center; gap: 6px; color: #d7e5f3; font-size: 13px; }
 .contentGrid { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; margin-top: 16px; align-items: start; }
 .lessonContent, .attachmentsPanel { padding: 21px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.04); }
-.sectionLabel { margin-bottom: 12px; color: #94a3b8; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.instructions { min-height: 80px; color: #334155; font-size: 13px; line-height: 1.75; white-space: pre-wrap; }
+.sectionLabel { margin-bottom: 12px; color: #718297; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.instructions { min-height: 80px; color: #334155; font-size: 16px; line-height: 1.7; white-space: pre-wrap; }
 .previewSection { margin-top: 24px; padding-top: 20px; border-top: 1px solid #edf1f5; }
 .previewHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .previewHeader > div { display: flex; flex-direction: column; min-width: 0; }
-.previewHeader span { color: #94a3b8; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-.previewHeader strong { margin-top: 2px; color: #1e3a5f; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.previewHeader button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #d7e3ef; border-radius: 8px; background: #fff; color: #47627e; font: inherit; font-size: 10px; cursor: pointer; }
+.previewHeader span { color: #718297; font-size: 13px; font-weight: 700; text-transform: uppercase; }
+.previewHeader strong { margin-top: 2px; color: #1e3a5f; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.previewHeader button { min-height: 38px; display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #d7e3ef; border-radius: 8px; background: #fff; color: #47627e; font: inherit; font-size: 14px; cursor: pointer; }
 .previewCanvas { min-height: 390px; display: grid; place-items: center; overflow: hidden; border: 1px solid #dce5ef; border-radius: 11px; background: #f4f7fa; }
-.previewMessage { display: flex; flex-direction: column; align-items: center; gap: 8px; color: #94a3b8; font-size: 12px; }
+.previewMessage { display: flex; flex-direction: column; align-items: center; gap: 8px; color: #718297; font-size: 14px; }
 .previewMessage svg { font-size: 27px; }
 .imagePreview { max-width: 100%; max-height: 650px; object-fit: contain; }
 .mediaPreview { width: 100%; max-height: 650px; background: #0f172a; }
@@ -34,29 +37,42 @@
 .fileMain { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 3px; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .fileIcon { width: 31px; height: 31px; display: grid; place-items: center; flex-shrink: 0; border-radius: 8px; background: #e8f0fb; color: #26547c; }
 .fileInfo { min-width: 0; display: flex; flex-direction: column; }
-.fileInfo strong { color: #334155; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fileInfo small { margin-top: 2px; color: #94a3b8; font-size: 8px; }
+.fileInfo strong { color: #334155; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileInfo small { margin-top: 2px; color: #718297; font-size: 13px; }
 .downloadButton { width: 31px; height: 31px; display: grid; place-items: center; border: 0; border-radius: 7px; color: #64748b; background: transparent; cursor: pointer; }
 .downloadButton:hover { color: #1e3a5f; background: #e5edf6; }
-.noFiles { padding: 24px 8px; color: #94a3b8; font-size: 11px; text-align: center; }
+.noFiles { padding: 24px 8px; color: #718297; font-size: 14px; text-align: center; }
 .submissionForm { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; padding-top: 18px; border-top: 1px solid #e2e8f0; }
-.submissionForm textarea { min-height: 90px; resize: vertical; padding: 9px; border: 1px solid #d7e3ef; border-radius: 8px; font: inherit; font-size: 11px; }
-.submissionPicker { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 8px; border: 1px dashed #9fb7d1; border-radius: 8px; color: #47627e; cursor: pointer; font-size: 10px; font-weight: 700; }
+.submissionForm textarea { min-height: 90px; resize: vertical; padding: 9px; border: 1px solid #d7e3ef; border-radius: 8px; font: inherit; font-size: 15px; }
+.submissionPicker { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px; border: 1px dashed #9fb7d1; border-radius: 8px; color: #47627e; cursor: pointer; font-size: 14px; font-weight: 700; }
 .submissionPicker input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.submissionForm > button { padding: 9px; border: 0; border-radius: 8px; background: #1e4f7a; color: #fff; cursor: pointer; font: inherit; font-size: 11px; font-weight: 700; }
+.submissionForm > button { min-height: 42px; padding: 9px; border: 0; border-radius: 8px; background: #1e4f7a; color: #fff; cursor: pointer; font: inherit; font-size: 14px; font-weight: 700; }
 .submissionForm > button:disabled { opacity: .6; }
 .submissionForm small { overflow: hidden; color: #64748b; text-overflow: ellipsis; white-space: nowrap; }
 .policySummary { display: flex; flex-wrap: wrap; gap: 5px; }
-.policySummary span { padding: 4px 6px; border-radius: 99px; background: #eef4fb; color: #47627e; font-size: 8px; }
-.lateNotice { padding: 7px; border-radius: 7px; background: #fff7ed; color: #9a3412; font-size: 10px; }
-.feedbackBox { padding: 10px; border-radius: 9px; background: #eef5fc; color: #334155; font-size: 11px; }
+.policySummary span { padding: 5px 8px; border-radius: 99px; background: #eef4fb; color: #47627e; font-size: 13px; }
+.lateNotice { padding: 9px; border-radius: 7px; background: #fff7ed; color: #9a3412; font-size: 14px; }
+.feedbackBox { padding: 11px; border-radius: 9px; background: #eef5fc; color: #334155; font-size: 14px; }
 .feedbackBox p { margin: 5px 0; white-space: pre-wrap; }
-.feedbackBox button { display: flex; gap: 5px; padding: 4px 0; border: 0; background: transparent; color: #2563eb; cursor: pointer; font-size: 10px; }
+.feedbackBox button { display: flex; gap: 5px; padding: 4px 0; border: 0; background: transparent; color: #2563eb; cursor: pointer; font-size: 14px; }
 .rubricResult { display: grid; gap: 3px; margin: 7px 0; padding: 7px; border-radius: 7px; background: rgba(255,255,255,.7); }
-.rubricResult span { color: #475569; font-size: 9px; }
+.rubricResult span { color: #475569; font-size: 13px; }
 .status { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #64748b; }
-.status h1 { margin: 0; color: #1e3a5f; }
+.status > svg { margin-bottom: 12px; color: #5c7e98; font-size: 38px; }
+.status h1 { max-width: 680px; margin: 0; color: #1e3a5f; font-size: 28px; text-align: center; }
 .status p { margin: 7px 0 16px; }
-.status button { padding: 8px 14px; border: 0; border-radius: 8px; background: #1e3a5f; color: #fff; cursor: pointer; }
+.status button { min-height: 42px; padding: 8px 14px; border: 0; border-radius: 8px; background: #1e3a5f; color: #fff; font: inherit; font-size: 14px; cursor: pointer; }
+.previewBanner { max-width: 1160px; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 18px; margin: 12px auto 0; padding: 14px 17px; border: 1px solid #b9d4e4; border-radius: 11px; background: #edf7fc; color: #285875; }
+.previewBanner div { display: flex; flex-direction: column; gap: 3px; }.previewBanner strong { font-size: 15px; }.previewBanner span { font-size: 14px; line-height: 1.45; }
+.previewBanner button { flex: none; min-height: 40px; padding: 8px 13px; border: 1px solid #7ca5bf; border-radius: 8px; background: #fff; color: #285875; font: inherit; font-size: 14px; font-weight: 750; cursor: pointer; }
+.completionPanel { width: min(820px, calc(100% - 26px)); box-sizing: border-box; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 15px; margin: -40px auto 70px; padding: 21px 23px; border: 1px solid #b9d8cc; border-radius: 14px; background: #f2faf7; color: #245846; box-shadow: 0 5px 20px rgba(30,58,95,.05); }
+.completionPanel > svg { font-size: 30px; }.completionPanel div { min-width: 0; }.completionPanel span { color: #174c3b; font-size: 18px; font-weight: 800; }.completionPanel p { margin: 4px 0 0; color: #557067; font-size: 14px; line-height: 1.5; }
+.completionPanel .completeButton { border-color: #16785e; background: #16785e; color: #fff; }
+.legacyCompletion { margin: 24px auto 70px; }
+.lessonSkeleton { width: min(1060px, calc(100% - 26px)); min-height: 460px; display: grid; align-content: start; gap: 18px; box-sizing: border-box; margin: 24px auto; padding: 42px; border: 1px solid #dce6ef; border-radius: 18px; background: #fff; }
+.lessonSkeleton span, .lessonSkeleton i { display: block; border-radius: 8px; background: linear-gradient(90deg, #e7edf2 25%, #f5f8fa 50%, #e7edf2 75%); background-size: 200% 100%; animation: lessonShimmer 1.4s infinite; }.lessonSkeleton span { width: 25%; height: 15px; }.lessonSkeleton i { width: 65%; height: 36px; }.lessonSkeleton i:nth-child(3) { width: 90%; height: 15px; }.lessonSkeleton i:nth-child(4) { width: 100%; height: 230px; margin-top: 20px; }
+@keyframes lessonShimmer { to { background-position: -200% 0; } }
+.backButton:focus-visible, .previewBanner button:focus-visible, .completionPanel button:focus-visible, .status button:focus-visible { outline: 3px solid rgba(75,145,195,.4); outline-offset: 2px; }
 @media (max-width: 980px) { .contentGrid { grid-template-columns: 1fr; } .attachmentsPanel { position: static; } }
-@media (max-width: 700px) { .main { padding: 14px 16px 80px; } .hero { align-items: flex-start; padding: 20px; } .heroCopy h1 { font-size: 20px; } .previewCanvas { min-height: 260px; } .documentPreview { height: 480px; } }
+@media (max-width: 700px) { .main { padding: 14px 12px 80px; } .header { align-items: flex-start; flex-direction: column; gap: 4px; } .headerTrail { align-items: flex-start; text-align: left; }.contextPath { max-width: 85vw; }.hero { align-items: flex-start; padding: 20px; } .heroCopy h1 { font-size: 27px; } .previewCanvas { min-height: 260px; } .documentPreview { height: 480px; } .previewBanner { align-items: stretch; flex-direction: column; margin-left: 13px; margin-right: 13px; }.previewBanner button { width: 100%; }.completionPanel { grid-template-columns: 34px 1fr; margin-top: -35px; padding: 18px 16px; }.completionPanel .completeButton { grid-column: 1 / -1; width: 100%; margin: 4px 0 0; }.lessonSkeleton { padding: 28px 20px; } }
+@media (prefers-reduced-motion: reduce) { .lessonSkeleton span, .lessonSkeleton i { animation: none; } }

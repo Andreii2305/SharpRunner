@@ -5,3 +5,4 @@ require("./levelTimingAndDeadline.test");
 require("./apiRoutes.integration.test");
 require("./practiceRunner.test");
 require("./practiceRunner.execution.test");
+require("./lessonBuilderService.test");

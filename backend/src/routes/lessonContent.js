@@ -12,6 +12,8 @@ const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission")
 const ClassroomLessonSubmissionAttachment = require("../models/ClassroomLessonSubmissionAttachment");
 const Classroom = require("../models/Classroom");
 const ClassroomMembership = require("../models/ClassroomMembership");
+const ClassroomLessonPlacement = require("../models/ClassroomLessonPlacement");
+const LessonTopic = require("../models/LessonTopic");
 const path = require("path");
 const { uploadDirectory, uploadLessonFiles, removeUploadedFiles, lessonUploadPolicy } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
@@ -22,6 +24,7 @@ const { findPrimaryActiveMembership } = require("../services/studentClassService
 
 const visibleLessonWhere = (classroomId) => ({
   classroomId,
+  archivedAt: null,
   isPublished: true,
   [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
 });
@@ -36,25 +39,90 @@ const sanitizeSubmission = (submission, { releaseFeedback = true } = {}) => subm
 } : null;
 const isAssignedToStudent = isStudentAssigned;
 
+const findStudentPlacement = async (lesson, studentId) => {
+  if (!lesson) return null;
+  const memberships = await ClassroomMembership.findAll({
+    where: { studentId, status: "active" },
+    attributes: ["classroomId"],
+  });
+  const classroomIds = memberships.map((membership) => membership.classroomId);
+  if (!classroomIds.length) return null;
+  const placement = await ClassroomLessonPlacement.findOne({
+    where: { lessonId: lesson.id, classroomId: { [Op.in]: classroomIds } },
+    order: [["createdAt", "ASC"]],
+  });
+  if (placement) return placement;
+  return classroomIds.includes(lesson.classroomId)
+    ? { lessonId: lesson.id, classroomId: lesson.classroomId, moduleId: lesson.moduleId }
+    : null;
+};
+
+const structuredLessonIncludes = [
+  {
+    model: LessonTopic,
+    as: "topics",
+    separate: true,
+    order: [["displayOrder", "ASC"], ["id", "ASC"]],
+    include: [{
+      model: ClassroomLessonAttachment,
+      as: "images",
+      attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder", "placement", "altText", "caption"],
+      separate: true,
+      order: [["displayOrder", "ASC"], ["id", "ASC"]],
+    }],
+  },
+  {
+    model: ClassroomLessonAttachment,
+    as: "attachments",
+    where: { topicId: null },
+    required: false,
+    attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder"],
+  },
+];
+
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const payload = getLessonContentSeed();
     if (req.userRole !== "student") return res.json({ ...payload, classroomLessons: [] });
 
     const membership = await findPrimaryActiveMembership(req.userId);
-    const classroomLessons = membership
+    const directLessons = membership
       ? await ClassroomLesson.findAll({
           where: visibleLessonWhere(membership.classroomId),
           attributes: ["id", "title", "description", "contentType", "moduleId", "externalUrl", "dueAt", "allowSubmissions", "assignedStudentIds", "createdAt"],
           include: [{
             model: ClassroomLessonAttachment,
             as: "attachments",
+            where: { topicId: null },
+            required: false,
             attributes: ["id", "originalName", "mimeType", "sizeBytes"],
           }],
           order: [["createdAt", "DESC"]],
         })
       : [];
-    return res.json({ ...payload, classroomLessons: classroomLessons.filter((lesson) => isAssignedToStudent(lesson, req.userId)) });
+    const placements = membership ? await ClassroomLessonPlacement.findAll({
+      where: { classroomId: membership.classroomId },
+      include: [{
+        model: ClassroomLesson,
+        as: "lesson",
+        required: true,
+        where: {
+          contentType: "lesson",
+          archivedAt: null,
+          isPublished: true,
+          [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
+        },
+        include: [{ model: ClassroomLessonAttachment, as: "attachments", where: { topicId: null }, required: false, attributes: ["id", "originalName", "mimeType", "sizeBytes"] }],
+      }],
+      order: [["displayOrder", "ASC"], ["id", "ASC"]],
+    }) : [];
+    const byId = new Map();
+    for (const row of directLessons) if (isAssignedToStudent(row, req.userId)) byId.set(row.id, row.toJSON ? row.toJSON() : row);
+    for (const placement of placements) {
+      const item = placement.lesson?.toJSON ? placement.lesson.toJSON() : placement.lesson;
+      if (item && isAssignedToStudent(item, req.userId)) byId.set(item.id, { ...item, classroomId: placement.classroomId, moduleId: placement.moduleId });
+    }
+    return res.json({ ...payload, classroomLessons: [...byId.values()] });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -69,29 +137,21 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     }
 
     const lesson = await ClassroomLesson.findByPk(lessonId, {
-      attributes: ["id", "classroomId", "title", "description", "contentType", "moduleId", "externalUrl", "dueAt", "isPublished", "publishAt", "allowSubmissions", "maxScore", "rubric", "feedbackReleaseAt", "allowLateSubmissions", "maxAttempts", "allowedFileTypes", "maxFileSizeMb", "assignedStudentIds", "createdAt", "updatedAt"],
-      include: [{
-        model: ClassroomLessonAttachment,
-        as: "attachments",
-        attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder"],
-      }],
+      attributes: ["id", "classroomId", "teacherId", "lessonNumber", "title", "description", "contentType", "moduleId", "externalUrl", "dueAt", "isPublished", "publishAt", "archivedAt", "allowSubmissions", "maxScore", "rubric", "feedbackReleaseAt", "allowLateSubmissions", "maxAttempts", "allowedFileTypes", "maxFileSizeMb", "assignedStudentIds", "createdAt", "updatedAt"],
+      include: structuredLessonIncludes,
     });
-    const currentlyVisible = lesson?.isPublished && (!lesson.publishAt || new Date(lesson.publishAt) <= new Date());
+    const currentlyVisible = !lesson?.archivedAt && lesson?.isPublished && (!lesson.publishAt || new Date(lesson.publishAt) <= new Date());
     if (!lesson || (req.userRole === "student" && (!currentlyVisible || !isAssignedToStudent(lesson, req.userId)))) {
       return res.status(404).json({ message: "Lesson not found" });
     }
 
+    let placement = null;
     let allowed = req.userRole === "admin";
     if (req.userRole === "teacher") {
-      allowed = Boolean(await Classroom.findOne({
-        where: { id: lesson.classroomId, teacherId: req.userId },
-        attributes: ["id"],
-      }));
+      allowed = lesson.teacherId === req.userId || Boolean(lesson.classroomId && await Classroom.findOne({ where: { id: lesson.classroomId, teacherId: req.userId }, attributes: ["id"] }));
     } else if (req.userRole === "student") {
-      allowed = Boolean(await ClassroomMembership.findOne({
-        where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" },
-        attributes: ["id"],
-      }));
+      placement = await findStudentPlacement(lesson, req.userId);
+      allowed = Boolean(placement);
     }
     if (!allowed) return res.status(403).json({ message: "Access denied" });
 
@@ -100,7 +160,7 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     if (req.userRole === "student") {
       [progress] = await ClassroomLessonProgress.findOrCreate({
         where: { lessonId, studentId: req.userId },
-        defaults: { classroomId: lesson.classroomId, viewedAt: new Date(), completedAt: null },
+        defaults: { classroomId: placement.classroomId, viewedAt: new Date(), completedAt: null },
       });
       if (!progress.viewedAt) { progress.viewedAt = new Date(); await progress.save(); }
       submission = await ClassroomLessonSubmission.findOne({
@@ -111,8 +171,27 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
     lesson.attachments?.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || a.id - b.id);
     const releaseFeedback = !lesson.feedbackReleaseAt || new Date(lesson.feedbackReleaseAt) <= new Date();
     const lessonPayload = lesson.toJSON ? lesson.toJSON() : lesson;
+    if (placement) {
+      lessonPayload.classroomId = placement.classroomId;
+      lessonPayload.moduleId = placement.moduleId;
+    }
+    const contextClassroomId = placement?.classroomId ?? lessonPayload.classroomId;
+    const contextModuleId = placement?.moduleId ?? lessonPayload.moduleId;
+    const [contextClassroom, contextModule] = await Promise.all([
+      contextClassroomId ? Classroom.findByPk(contextClassroomId, { attributes: ["id", "className", "section"] }) : null,
+      contextModuleId ? ClassroomLesson.findOne({ where: { id: contextModuleId, classroomId: contextClassroomId, contentType: "module" }, attributes: ["id", "title"] }) : null,
+    ]);
     lessonPayload.maxFileSizeMb = Math.min(lessonPayload.maxFileSizeMb || lessonUploadPolicy.maxFileSizeMb, lessonUploadPolicy.maxFileSizeMb);
-    return res.json({ lesson: lessonPayload, progress, submission: sanitizeSubmission(submission, { releaseFeedback }), uploadPolicy: lessonUploadPolicy });
+    return res.json({
+      lesson: lessonPayload,
+      context: {
+        classroom: contextClassroom ? { id: contextClassroom.id, className: contextClassroom.className, section: contextClassroom.section } : null,
+        module: contextModule ? { id: contextModule.id, title: contextModule.title } : null,
+      },
+      progress,
+      submission: sanitizeSubmission(submission, { releaseFeedback }),
+      uploadPolicy: lessonUploadPolicy,
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -128,7 +207,7 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
 
     const attachment = await ClassroomLessonAttachment.findByPk(fileId, {
       attributes: ["id", "classroomId", "originalName", "storedName", "mimeType", "sizeBytes", "data", "storageProvider", "storageKey"],
-      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished", "publishAt", "assignedStudentIds"] }],
+      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "teacherId", "isPublished", "publishAt", "archivedAt", "assignedStudentIds"] }],
     });
     if (!attachment) {
       return res.status(404).json({ message: "Attachment not found" });
@@ -136,12 +215,12 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
 
     let allowed = req.userRole === "admin";
     if (req.userRole === "teacher") {
-      allowed = Boolean(await Classroom.findOne({ where: { id: attachment.classroomId, teacherId: req.userId }, attributes: ["id"] }));
+      allowed = attachment.lesson?.teacherId === req.userId || Boolean(attachment.classroomId && await Classroom.findOne({ where: { id: attachment.classroomId, teacherId: req.userId }, attributes: ["id"] }));
     } else if (req.userRole === "student") {
-      allowed = Boolean(await ClassroomMembership.findOne({
-        where: { classroomId: attachment.classroomId, studentId: req.userId, status: "active" },
-        attributes: ["id"],
-      }));
+      const visible = !attachment.lesson?.archivedAt
+        && attachment.lesson?.isPublished
+        && (!attachment.lesson.publishAt || new Date(attachment.lesson.publishAt) <= new Date());
+      allowed = visible && Boolean(await findStudentPlacement(attachment.lesson, req.userId));
     }
     if (!allowed) return res.status(403).json({ message: "Access denied" });
 
@@ -169,12 +248,12 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
 router.get("/classroom-files/:fileId/preview", authMiddleware, async (req, res) => {
   try {
     const attachment = await ClassroomLessonAttachment.findByPk(Number.parseInt(req.params.fileId, 10), {
-      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "isPublished", "publishAt", "assignedStudentIds"] }],
+      include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "teacherId", "isPublished", "publishAt", "archivedAt", "assignedStudentIds"] }],
     });
     if (!attachment || !isOfficeDocument(attachment.originalName)) return res.status(404).json({ message: "Preview not found" });
     let allowed = req.userRole === "admin";
-    if (req.userRole === "teacher") allowed = Boolean(await Classroom.findOne({ where: { id: attachment.classroomId, teacherId: req.userId } }));
-    if (req.userRole === "student") allowed = attachment.lesson.isPublished && isAssignedToStudent(attachment.lesson, req.userId) && (!attachment.lesson.publishAt || new Date(attachment.lesson.publishAt) <= new Date()) && Boolean(await ClassroomMembership.findOne({ where: { classroomId: attachment.classroomId, studentId: req.userId, status: "active" } }));
+    if (req.userRole === "teacher") allowed = attachment.lesson.teacherId === req.userId || Boolean(attachment.classroomId && await Classroom.findOne({ where: { id: attachment.classroomId, teacherId: req.userId } }));
+    if (req.userRole === "student") allowed = !attachment.lesson.archivedAt && attachment.lesson.isPublished && isAssignedToStudent(attachment.lesson, req.userId) && (!attachment.lesson.publishAt || new Date(attachment.lesson.publishAt) <= new Date()) && Boolean(await findStudentPlacement(attachment.lesson, req.userId));
     if (!allowed) return res.status(403).json({ message: "Access denied" });
     const data = await lessonStorage.readFile(attachment);
     const pdf = data && await convertOfficeToPdf(data, attachment.originalName);
@@ -190,9 +269,9 @@ router.put("/classroom-lessons/:lessonId/completion", authMiddleware, async (req
     if (req.userRole !== "student") return res.status(403).json({ message: "Student access required" });
     const lessonId = Number.parseInt(req.params.lessonId, 10);
     const lesson = await ClassroomLesson.findByPk(lessonId);
-    const membership = lesson && await ClassroomMembership.findOne({ where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" } });
-    if (!lesson || !membership || !isAssignedToStudent(lesson, req.userId) || !["module", "lesson"].includes(lesson.contentType) || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
-    const [progress] = await ClassroomLessonProgress.findOrCreate({ where: { lessonId, studentId: req.userId }, defaults: { classroomId: lesson.classroomId, viewedAt: new Date() } });
+    const placement = lesson && await findStudentPlacement(lesson, req.userId);
+    if (!lesson || lesson.archivedAt || !placement || !isAssignedToStudent(lesson, req.userId) || !["module", "lesson"].includes(lesson.contentType) || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) return res.status(404).json({ message: "Lesson not found" });
+    const [progress] = await ClassroomLessonProgress.findOrCreate({ where: { lessonId, studentId: req.userId }, defaults: { classroomId: placement.classroomId, viewedAt: new Date() } });
     progress.viewedAt ||= new Date();
     progress.completedAt = req.body?.completed === false ? null : new Date();
     await progress.save();
@@ -206,7 +285,7 @@ router.post("/classroom-lessons/:lessonId/submission", authMiddleware, uploadLes
     const lessonId = Number.parseInt(req.params.lessonId, 10);
     const lesson = await ClassroomLesson.findByPk(lessonId);
     const membership = lesson && await ClassroomMembership.findOne({ where: { classroomId: lesson.classroomId, studentId: req.userId, status: "active" } });
-    if (!lesson || !membership || !isAssignedToStudent(lesson, req.userId) || lesson.contentType !== "assignment" || !lesson.allowSubmissions || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) { await removeUploadedFiles(req.files); return res.status(404).json({ message: "Submissions are not available" }); }
+    if (!lesson || lesson.archivedAt || !membership || !isAssignedToStudent(lesson, req.userId) || lesson.contentType !== "assignment" || !lesson.allowSubmissions || !lesson.isPublished || (lesson.publishAt && new Date(lesson.publishAt) > new Date())) { await removeUploadedFiles(req.files); return res.status(404).json({ message: "Submissions are not available" }); }
     const existingSubmission = await ClassroomLessonSubmission.findOne({ where: { lessonId, studentId: req.userId } });
     const policyError = submissionPolicyError(lesson, existingSubmission);
     if (policyError) { await removeUploadedFiles(req.files); return res.status(400).json({ message: policyError }); }

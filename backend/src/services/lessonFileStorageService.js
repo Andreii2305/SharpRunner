@@ -9,20 +9,29 @@ const supabaseConfig = () => {
   return process.env.LESSON_FILE_STORAGE === "supabase" && url && key ? { url, key, bucket } : null;
 };
 
-const uploadFile = async (file, scope = "lessons") => {
-  const data = await fs.promises.readFile(file.path);
-  const sha256 = crypto.createHash("sha256").update(data).digest("hex");
+const uploadBuffer = async (data, { originalName = "file", mimeType = "application/octet-stream", scanStatus = "not_configured" } = {}, scope = "lessons") => {
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  const sha256 = crypto.createHash("sha256").update(buffer).digest("hex");
   const config = supabaseConfig();
-  if (!config) return { data, storageProvider: "database", storageKey: null, sha256, scanStatus: file.securityScanStatus || "not_configured" };
-  const extension = path.extname(file.originalname).slice(0, 20).toLowerCase();
+  if (!config) return { data: buffer, storageProvider: "database", storageKey: null, sha256, scanStatus };
+  const extension = path.extname(originalName).slice(0, 20).toLowerCase();
   const storageKey = `${scope}/${crypto.randomUUID()}${extension}`;
   const response = await fetch(`${config.url}/storage/v1/object/${config.bucket}/${storageKey}`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${config.key}`, apikey: config.key, "Content-Type": file.mimetype || "application/octet-stream", "x-upsert": "false" },
-    body: data,
+    headers: { Authorization: `Bearer ${config.key}`, apikey: config.key, "Content-Type": mimeType, "x-upsert": "false" },
+    body: buffer,
   });
   if (!response.ok) throw new Error(`Supabase upload failed (${response.status})`);
-  return { data: null, storageProvider: "supabase", storageKey, sha256, scanStatus: file.securityScanStatus || "not_configured" };
+  return { data: null, storageProvider: "supabase", storageKey, sha256, scanStatus };
+};
+
+const uploadFile = async (file, scope = "lessons") => {
+  const data = await fs.promises.readFile(file.path);
+  return uploadBuffer(data, {
+    originalName: file.originalname,
+    mimeType: file.mimetype,
+    scanStatus: file.securityScanStatus || "not_configured",
+  }, scope);
 };
 
 const readFile = async (record) => {
@@ -44,4 +53,14 @@ const deleteFile = async (record) => {
   });
 };
 
-module.exports = { uploadFile, readFile, deleteFile, storageMode: () => supabaseConfig() ? "supabase" : "database" };
+const cloneFile = async (record, scope) => {
+  const data = await readFile(record);
+  if (!data) throw new Error(`Unable to read ${record.originalName || "stored file"} for copying`);
+  return uploadBuffer(data, {
+    originalName: record.originalName,
+    mimeType: record.mimeType,
+    scanStatus: record.scanStatus || "not_configured",
+  }, scope);
+};
+
+module.exports = { uploadFile, uploadBuffer, cloneFile, readFile, deleteFile, storageMode: () => supabaseConfig() ? "supabase" : "database" };

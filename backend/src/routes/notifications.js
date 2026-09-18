@@ -5,6 +5,7 @@ const requireRole = require("../middleware/requireRole");
 const UserNotificationView = require("../models/UserNotificationView");
 const ClassroomLesson = require("../models/ClassroomLesson");
 const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission");
+const ClassroomLessonPlacement = require("../models/ClassroomLessonPlacement");
 const {
   ensureProgressRowsForUser,
   buildProgressSummary,
@@ -93,11 +94,20 @@ router.get("/me", async (req, res) => {
     }
 
     if (primaryMembership) {
+      const placementRows = await ClassroomLessonPlacement.findAll({
+        where: { classroomId: primaryMembership.classroomId },
+        attributes: ["lessonId"],
+      });
+      const placedLessonIds = placementRows.map((row) => row.lessonId);
       const lessons = await ClassroomLesson.findAll({
         where: {
-          classroomId: primaryMembership.classroomId,
+          [Op.or]: [
+            { classroomId: primaryMembership.classroomId },
+            ...(placedLessonIds.length ? [{ id: { [Op.in]: placedLessonIds } }] : []),
+          ],
+          archivedAt: null,
           isPublished: true,
-          [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
+          publishAt: { [Op.or]: [{ [Op.is]: null }, { [Op.lte]: new Date() }] },
         },
         attributes: ["id", "title", "contentType", "dueAt", "assignedStudentIds", "updatedAt"],
         order: [["updatedAt", "DESC"]], limit: 10,

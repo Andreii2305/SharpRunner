@@ -3,7 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiAward, FiBarChart2, FiBookOpen, FiCalendar,
-  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiList, FiMoreVertical, FiMove, FiPaperclip, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
+  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMoreVertical, FiMove, FiPaperclip, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -90,6 +90,7 @@ function TeacherClassDetailPage() {
   const [studentRemoveTarget, setStudentRemoveTarget] = useState(null);
   const [classActionTarget, setClassActionTarget] = useState(null);
   const [classActionPending, setClassActionPending] = useState(false);
+  const [sharedEditTarget, setSharedEditTarget] = useState(null);
 
   const loadClass = useCallback(async () => {
     setLoading(true);
@@ -137,7 +138,10 @@ function TeacherClassDetailPage() {
     };
   }, [students]);
 
+  const modules = useMemo(() => lessons.filter((lesson) => lesson.contentType === "module"), [lessons]);
+  const moduleTitleById = useMemo(() => new Map(modules.map((module) => [Number(module.id), module.title])), [modules]);
   const filteredLessons = useMemo(() => lessons.filter((lesson) => contentFilter === "all" || lesson.contentType === contentFilter), [lessons, contentFilter]);
+  const lessonLibraryUrl = (moduleId = null) => `/teacher/lessons?classroomId=${classroomId}${moduleId ? `&moduleId=${moduleId}` : ""}`;
 
   const performAddLesson = async () => {
     if (!lessonForm.title.trim()) { setFormError("Lesson title is required."); return; }
@@ -234,15 +238,18 @@ function TeacherClassDetailPage() {
     if (!files.length) return;
     setAttachingLessonId(lessonId);
     try {
+      const libraryLesson = lessons.find((item) => item.id === lessonId)?.isLibraryLesson;
       const payload = new FormData();
       files.forEach((file) => payload.append("files", file));
       const response = await axios.post(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lessonId}/attachments`),
+        buildApiUrl(libraryLesson
+          ? `/api/teacher/lesson-library/${lessonId}/attachments`
+          : `/api/teacher/classrooms/${classroomId}/lessons/${lessonId}/attachments`),
         payload,
         { headers: getAuthHeaders() },
       );
       setLessons((current) => current.map((lesson) =>
-        lesson.id === lessonId ? { ...lesson, attachments: response.data?.attachments ?? lesson.attachments } : lesson
+        lesson.id === lessonId ? { ...lesson, attachments: response.data?.lesson?.attachments ?? response.data?.attachments ?? lesson.attachments } : lesson
       ));
       toast.success(response.data?.removedUnavailableCount
         ? "Files re-uploaded and the unavailable copy was removed."
@@ -255,6 +262,14 @@ function TeacherClassDetailPage() {
   };
 
   const openEditLesson = (lesson) => {
+    if (lesson.isLibraryLesson) {
+      if (lesson.usageCount > 0) {
+        setSharedEditTarget(lesson);
+        return;
+      }
+      navigate(`/teacher/lessons/${lesson.id}/edit`);
+      return;
+    }
     setEditingLesson(lesson);
     setEditForm({
       contentType: lesson.contentType ?? (lesson.allowSubmissions ? "assignment" : "lesson"),
@@ -312,6 +327,7 @@ function TeacherClassDetailPage() {
   };
 
   const updateAttachment = async (lesson, attachment, changes) => {
+    if (lesson.isLibraryLesson) { toast.info("Open the Lesson Builder to manage this reusable resource."); return; }
     try {
       const response = await axios.patch(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), changes, { headers: getAuthHeaders() });
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.map((file) => file.id === attachment.id ? response.data.attachment : file).sort((a, b) => a.displayOrder - b.displayOrder) } : item));
@@ -326,14 +342,18 @@ function TeacherClassDetailPage() {
   const deleteAttachment = async (lesson, attachment) => {
     if (!window.confirm(`Remove ${attachment.originalName}?`)) return;
     try {
-      await axios.delete(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), { headers: getAuthHeaders() });
+      const response = await axios.delete(buildApiUrl(lesson.isLibraryLesson
+        ? `/api/teacher/lesson-library/${lesson.id}/attachments/${attachment.id}`
+        : `/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), { headers: getAuthHeaders() });
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.filter((file) => file.id !== attachment.id) } : item));
+      if (response.data?.version) setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, version: response.data.version } : item));
       toast.success("Attachment removed.");
     } catch (error) { toast.error(error.response?.data?.message ?? "Unable to remove attachment."); }
   };
 
   const replaceAttachment = async (lesson, attachment, file) => {
     if (!file) return;
+    if (lesson.isLibraryLesson) { toast.info("Open the Lesson Builder to replace this reusable resource."); return; }
     const validation = validateUploadFiles([file], uploadPolicy);
     if (validation.error) { toast.error(validation.error); return; }
     const payload = new FormData(); payload.append("files", file);
@@ -345,6 +365,7 @@ function TeacherClassDetailPage() {
   };
 
   const reorderAttachments = async (lesson, sourceId, targetId) => {
+    if (lesson.isLibraryLesson) { toast.info("Open the Lesson Builder to manage this reusable resource."); return; }
     if (!sourceId || sourceId === targetId) return;
     const items = [...(lesson.attachments || [])];
     const sourceIndex = items.findIndex((item) => item.id === sourceId); const targetIndex = items.findIndex((item) => item.id === targetId);
@@ -373,6 +394,13 @@ function TeacherClassDetailPage() {
 
   const duplicateLesson = async (lesson) => {
     try {
+      if (lesson.isLibraryLesson) {
+        const copyResponse = await axios.post(buildApiUrl(`/api/teacher/lesson-library/${lesson.id}/duplicate`), {}, { headers: getAuthHeaders() });
+        await axios.post(buildApiUrl(`/api/teacher/lesson-library/${copyResponse.data.lesson.id}/placements`), { classroomId: Number(classroomId), moduleId: lesson.moduleId || null, mode: "reuse" }, { headers: getAuthHeaders() });
+        await loadClass();
+        toast.success("An independent draft copy was added to this class.");
+        return;
+      }
       const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/duplicate`), {}, { headers: getAuthHeaders() });
       setLessons((current) => [...current, response.data.lesson]); toast.success("A draft copy was created.");
     } catch (error) { toast.error(error.response?.data?.message ?? "Unable to duplicate classwork."); }
@@ -445,12 +473,14 @@ function TeacherClassDetailPage() {
     setIsDeleting(true);
     try {
       await axios.delete(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${deleteTarget.id}`),
+        buildApiUrl(deleteTarget.isLibraryLesson
+          ? `/api/teacher/lesson-library/${deleteTarget.id}/placements/${classroomId}`
+          : `/api/teacher/classrooms/${classroomId}/lessons/${deleteTarget.id}`),
         { headers: getAuthHeaders() },
       );
       setLessons((current) => current.filter((lesson) => lesson.id !== deleteTarget.id));
       setDeleteTarget(null);
-      toast.success("Lesson deleted.");
+      toast.success(deleteTarget.isLibraryLesson ? "Lesson removed from this class." : "Lesson deleted.");
     } catch (error) {
       toast.error(error.response?.data?.message ?? "Unable to delete lesson.");
     } finally {
@@ -465,6 +495,37 @@ function TeacherClassDetailPage() {
     const restoredMax = Math.min(Number(restored?.maxFileSizeMb) || uploadPolicy.maxFileSizeMb, uploadPolicy.maxFileSizeMb);
     setLessonForm(restored ? { ...baseForm, ...restored, contentType, maxFileSizeMb: restoredMax } : baseForm);
     setLessonFiles([]); setFormError(""); setShowAddLesson(true);
+  };
+
+  const buildNewLesson = async (moduleId = null) => {
+    try {
+      const { data } = await axios.post(buildApiUrl("/api/teacher/lesson-library"), {
+        title: "Untitled lesson",
+        description: "",
+        status: "draft",
+        topics: [{ title: "Topic 1", displayOrder: 0, content: { format: "markdown", body: "", codeBlocks: [], practiceBlocks: [] } }],
+      }, { headers: getAuthHeaders() });
+      await axios.post(buildApiUrl(`/api/teacher/lesson-library/${data.lesson.id}/placements`), {
+        classroomId: Number(classroomId), moduleId: moduleId ? Number(moduleId) : null, mode: "reuse",
+      }, { headers: getAuthHeaders() });
+      navigate(`/teacher/lessons/${data.lesson.id}/edit`);
+    } catch (error) {
+      toast.error(error.response?.data?.message ?? "Unable to start a new lesson.");
+    }
+  };
+
+  const moveLibraryLesson = async (lesson, moduleId) => {
+    try {
+      const { data } = await axios.post(buildApiUrl(`/api/teacher/lesson-library/${lesson.id}/placements`), {
+        classroomId: Number(classroomId),
+        moduleId: moduleId ? Number(moduleId) : null,
+        mode: "reuse",
+      }, { headers: getAuthHeaders() });
+      setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, moduleId: moduleId ? Number(moduleId) : null } : item));
+      toast.success(data.message);
+    } catch (error) {
+      toast.error(error.response?.data?.message ?? "Unable to move this lesson.");
+    }
   };
 
   const confirmPublication = async () => {
@@ -572,19 +633,22 @@ function TeacherClassDetailPage() {
               </div><div className={detailStyles.managementGrid}><section><h3>Students needing attention</h3>{management.insights?.attention?.slice(0, 8).map((entry) => { const student = students.find((item) => item.userId === entry.studentId); return <div key={entry.studentId}><span>{student?.studentName ?? `Student ${entry.studentId}`}</span><small>{entry.missing} missing · {entry.submitted} submitted{entry.averageGrade != null ? ` · ${entry.averageGrade} avg` : ""}</small></div>; })}</section><section><h3>Recent classwork activity</h3>{management.audits?.slice(0, 8).map((audit) => <div key={audit.id}><span>{String(audit.action || "updated").replaceAll("_", " ")}</span><small>{new Date(audit.createdAt).toLocaleString()} · {audit.actor?.firstName || audit.actor?.username || "Teacher"}</small></div>)}</section></div></div>
             ) : (
               <div>
-                <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Modules organize lessons and resources. Assignments collect and grade student work.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("module")}><FiPlus /> Add module</button><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("lesson")}><FiPlus /> Add lesson</button><button className={styles.btnPrimary} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button></div></div>
+                <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Add a new reusable lesson or choose an existing lesson, then organize it as standalone content or inside a module.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("module")}><FiPlus /> Add module</button><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>
                 <div className={detailStyles.contentFilters}>{[["all", "All", lessons.length], ["module", "Modules", lessons.filter((item) => item.contentType === "module").length], ["lesson", "Lessons", lessons.filter((item) => item.contentType === "lesson").length], ["assignment", "Assignments", lessons.filter((item) => item.contentType === "assignment").length]].map(([key, label, count]) => <button type="button" key={key} className={contentFilter === key ? detailStyles.contentFilterActive : ""} onClick={() => setContentFilter(key)}>{label}<span>{count}</span></button>)}</div>
                 {filteredLessons.length ? <div className={detailStyles.lessonGrid}>{filteredLessons.map((lesson) => (
-                  <div className={detailStyles.lessonCardWrap} key={lesson.id} draggable onDragStart={() => setDraggedLessonId(lesson.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { reorderLessons(draggedLessonId, lesson.id); setDraggedLessonId(null); }}>
+                  <div className={detailStyles.lessonCardWrap} key={lesson.id} draggable={!lesson.isLibraryLesson} onDragStart={() => !lesson.isLibraryLesson && setDraggedLessonId(lesson.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => { if (!lesson.isLibraryLesson) reorderLessons(draggedLessonId, lesson.id); setDraggedLessonId(null); }}>
+                    <div className={detailStyles.placementContext}><FiLayers /> {lesson.contentType === "module" ? "Module" : moduleTitleById.get(Number(lesson.moduleId)) ? `In module: ${moduleTitleById.get(Number(lesson.moduleId))}` : "Standalone class content"}{lesson.isLibraryLesson && <span>Used in {lesson.usageCount || 1} classroom{lesson.usageCount === 1 ? "" : "s"}</span>}</div>
                   <article className={detailStyles.lessonCard} role="button" tabIndex={0} onClick={() => previewLesson(lesson)} onKeyDown={(event) => event.key === "Enter" && previewLesson(lesson)}><div className={detailStyles.lessonIcon}><FiBookOpen /></div><div><div className={detailStyles.contentKind}><FiMove /> {lesson.contentType === "assignment" ? "Assignment / activity" : "Lesson / material"}</div><div className={detailStyles.lessonTop}><h3>{lesson.title}</h3><span className={!lesson.isPublished ? detailStyles.draftBadge : ""}>{!lesson.isPublished ? "Draft" : lesson.publishAt && new Date(lesson.publishAt) > new Date() ? "Scheduled" : "Published"}</span></div><p>{lesson.description || "No additional instructions."}</p>{lesson.publishAt && <small><FiCalendar /> Publish {new Date(lesson.publishAt).toLocaleString()}</small>}{lesson.contentType === "assignment" && lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}<div className={detailStyles.lessonStats}><span>{lesson.stats?.viewed ?? 0} viewed</span>{lesson.contentType === "lesson" && <span>{lesson.stats?.completed ?? 0} completed</span>}{lesson.contentType === "assignment" && <><span>{lesson.stats?.submitted ?? 0}/{students.length} submitted</span><span>{lesson.stats?.graded ?? 0} graded</span><span>{lesson.stats?.late ?? 0} late</span><span>{Math.max(0, students.length - (lesson.stats?.submitted ?? 0))} missing</span></>}</div>{lesson.attachments?.length > 0 && <div className={detailStyles.attachmentList}>{lesson.attachments.map((attachment) => <div className={detailStyles.attachmentManageRow} draggable key={attachment.id} onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData("text/attachment-id", String(attachment.id)); }} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); reorderAttachments(lesson, Number(event.dataTransfer.getData("text/attachment-id")), attachment.id); }}><button type="button" title={attachment.originalName} onClick={(event) => { event.stopPropagation(); openAttachment(attachment); }}><span className={detailStyles.fileType}>{getFileExtension(attachment.originalName)}</span><span><b>{attachment.originalName}</b><small>{formatFileSize(attachment.sizeBytes)}</small></span><FiDownload /></button><details className={detailStyles.fileMenu} onClick={(event) => event.stopPropagation()}><summary aria-label={`Actions for ${attachment.originalName}`}><FiMoreVertical /></summary><div><button type="button" onClick={() => openAttachment(attachment)}><FiEye /> Preview</button><button type="button" onClick={() => renameAttachment(lesson, attachment)}><FiEdit2 /> Rename</button><label><FiUpload /> Replace<input type="file" onChange={(event) => { replaceAttachment(lesson, attachment, event.target.files?.[0]); event.target.value = ""; }} /></label><span><FiMove /> Drag row to reorder</span><button type="button" className={detailStyles.menuDanger} onClick={() => deleteAttachment(lesson, attachment)}><FiTrash2 /> Delete</button></div></details></div>)}</div>}<label className={detailStyles.addFilesButton} onClick={(event) => event.stopPropagation()}><FiUpload /> {attachingLessonId === lesson.id ? "Uploading…" : "Add files"}<input type="file" multiple disabled={attachingLessonId != null} onChange={(event) => { addLessonAttachments(lesson.id, event.target.files); event.target.value = ""; }} /></label></div></article>
                     <div className={detailStyles.lessonActions}>
                       {lesson.contentType === "assignment" && <button type="button" onClick={() => openSubmissions(lesson)}><FiCheckCircle /> Review ({lesson.stats?.submitted ?? 0})</button>}
+                      {lesson.contentType === "module" && <><button type="button" onClick={() => navigate(lessonLibraryUrl(lesson.id))}><FiBookOpen /> Add Existing Lesson</button><button type="button" onClick={() => buildNewLesson(lesson.id)}><FiPlus /> Create New Lesson</button></>}
                       <button type="button" onClick={() => previewLesson(lesson)}><FiEye /> Preview</button>
                       <button type="button" onClick={() => openEditLesson(lesson)}><FiEdit2 /> Edit</button>
-                      <details className={detailStyles.cardMenu}><summary aria-label={`More actions for ${lesson.title}`}><FiMoreVertical /></summary><div><button type="button" onClick={() => moveLesson(lesson.id, -1)}><FiMove /> Move earlier</button><button type="button" onClick={() => moveLesson(lesson.id, 1)}><FiMove /> Move later</button><button type="button" onClick={() => openVersionHistory(lesson)}><FiList /> Version history</button><button type="button" onClick={() => duplicateLesson(lesson)}><FiCopy /> Duplicate</button>{lesson.contentType === "assignment" && lesson.feedbackReleaseAt && new Date(lesson.feedbackReleaseAt) > new Date() && <button type="button" onClick={() => releaseFeedback(lesson)}><FiCheckCircle /> Release feedback now</button>}<button type="button" onClick={() => lesson.isPublished ? setPublication(lesson, false) : setPublishTarget({ kind: "publish", lesson, title: lesson.title, contentType: lesson.contentType })}>{lesson.isPublished ? <><FiEyeOff /> Unpublish</> : <><FiEye /> Publish</>}</button><button type="button" className={detailStyles.menuDanger} onClick={() => setDeleteTarget(lesson)}><FiTrash2 /> Delete</button></div></details>
+                      {lesson.isLibraryLesson && <label className={detailStyles.placementSelect}><span>Placement</span><select aria-label={`Move ${lesson.title} to a module`} value={lesson.moduleId || ""} onChange={(event) => moveLibraryLesson(lesson, event.target.value)}><option value="">Standalone</option>{modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</select></label>}
+                      <details className={detailStyles.cardMenu}><summary aria-label={`More actions for ${lesson.title}`}><FiMoreVertical /></summary><div>{!lesson.isLibraryLesson && <><button type="button" onClick={() => moveLesson(lesson.id, -1)}><FiMove /> Move earlier</button><button type="button" onClick={() => moveLesson(lesson.id, 1)}><FiMove /> Move later</button><button type="button" onClick={() => openVersionHistory(lesson)}><FiList /> Version history</button></>}<button type="button" onClick={() => duplicateLesson(lesson)}><FiCopy /> Duplicate</button>{lesson.contentType === "assignment" && lesson.feedbackReleaseAt && new Date(lesson.feedbackReleaseAt) > new Date() && <button type="button" onClick={() => releaseFeedback(lesson)}><FiCheckCircle /> Release feedback now</button>}{!lesson.isLibraryLesson && <button type="button" onClick={() => lesson.isPublished ? setPublication(lesson, false) : setPublishTarget({ kind: "publish", lesson, title: lesson.title, contentType: lesson.contentType })}>{lesson.isPublished ? <><FiEyeOff /> Unpublish</> : <><FiEye /> Publish</>}</button>}<button type="button" className={detailStyles.menuDanger} onClick={() => setDeleteTarget(lesson)}><FiTrash2 /> {lesson.isLibraryLesson ? "Remove from class" : "Delete"}</button></div></details>
                     </div>
                   </div>
-                ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>{lessons.length ? "Nothing in this filter" : "No class content yet"}</h2><p>{lessons.length ? "Choose another filter or create new classwork." : "Add a lesson material or publish an assignment for this class."}</p><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("lesson")}><FiPlus /> Add lesson</button><button className={styles.btnPrimary} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button></div></div>}
+                ))}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>{lessons.length ? "Nothing in this filter" : "No class content yet"}</h2><p>{lessons.length ? "Choose another filter or create new classwork." : "Create a reusable lesson or add one from your lesson library."}</p><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>}
               </div>
             )}
           </section>
@@ -638,11 +702,13 @@ function TeacherClassDetailPage() {
 
       <ConfirmModal open={Boolean(publishTarget)} title={`Publish this ${publishTarget?.contentType ?? "item"}?`} message={`“${publishTarget?.title ?? ""}” will be visible to ${students.length} enrolled student${students.length === 1 ? "" : "s"}, and a dashboard notification will be available.`} confirmLabel="Publish now" onConfirm={confirmPublication} onCancel={() => setPublishTarget(null)} />
 
+      <ConfirmModal open={Boolean(sharedEditTarget)} title="Edit this shared lesson?" message={sharedEditTarget ? `Changes to “${sharedEditTarget.title}” will appear in ${sharedEditTarget.usageCount === 1 ? "this classroom" : `all ${sharedEditTarget.usageCount} classrooms`} using it. Duplicate it first if this class needs different content.` : ""} confirmLabel="Edit Shared Lesson" onConfirm={() => { const target = sharedEditTarget; setSharedEditTarget(null); if (target) navigate(`/teacher/lessons/${target.id}/edit`); }} onCancel={() => setSharedEditTarget(null)} />
+
       <ConfirmModal
         open={Boolean(deleteTarget)}
-        title="Delete this lesson?"
-        message={deleteTarget ? `“${deleteTarget.title}” and all of its attachments will be permanently removed from this class.` : ""}
-        confirmLabel={isDeleting ? "Deletingâ€¦" : "Delete lesson"}
+        title={deleteTarget?.isLibraryLesson ? "Remove this lesson from class?" : "Delete this lesson?"}
+        message={deleteTarget ? deleteTarget.isLibraryLesson ? `“${deleteTarget.title}” will be removed from this class. The reusable lesson stays in your library.` : `“${deleteTarget.title}” and all of its attachments will be permanently removed from this class.` : ""}
+        confirmLabel={isDeleting ? "Savingâ€¦" : deleteTarget?.isLibraryLesson ? "Remove from class" : "Delete lesson"}
         danger
         confirmDisabled={isDeleting}
         onConfirm={deleteLesson}

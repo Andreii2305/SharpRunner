@@ -2,7 +2,7 @@ const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
 const ClassroomLessonVersion = sequelize.define("ClassroomLessonVersions", {
-  classroomId: { type: DataTypes.INTEGER, allowNull: false },
+  classroomId: { type: DataTypes.INTEGER, allowNull: true },
   lessonId: { type: DataTypes.INTEGER, allowNull: false },
   editorId: { type: DataTypes.INTEGER, allowNull: true },
   versionNumber: { type: DataTypes.INTEGER, allowNull: false },

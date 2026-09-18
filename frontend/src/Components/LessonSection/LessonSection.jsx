@@ -292,6 +292,20 @@ function ClassroomContentCard({ lesson, navigate, moduleTitle = null }) {
   );
 }
 
+function ClassroomModuleGroup({ module, lessons, navigate }) {
+  return (
+    <section className={styles.moduleGroup} aria-labelledby={`classroom-module-${module.id}`}>
+      <header>
+        <div><span>Module</span><h3 id={`classroom-module-${module.id}`}>{module.title}</h3><p>{module.description || "Lessons grouped by your teacher."}</p></div>
+        <strong>{lessons.length} lesson{lessons.length === 1 ? "" : "s"}</strong>
+      </header>
+      {lessons.length > 0
+        ? <div className={styles.lessonsGrid}>{lessons.map((lesson) => <ClassroomContentCard key={`module-${module.id}-lesson-${lesson.id}`} lesson={lesson} moduleTitle={module.title} navigate={navigate} />)}</div>
+        : <p className={styles.moduleEmpty}>No published lessons are available in this module yet.</p>}
+    </section>
+  );
+}
+
 function LessonSection() {
   const navigate = useNavigate();
   const [progressLessons, setProgressLessons] = useState([]);
@@ -356,11 +370,17 @@ function LessonSection() {
   };
 
   const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;
-  const teacherMaterials = classroomLessons.filter((lesson) => lesson.contentType !== "assignment");
+  const teacherModules = classroomLessons.filter((lesson) => lesson.contentType === "module");
+  const teacherLessons = classroomLessons.filter((lesson) => lesson.contentType === "lesson");
   const teacherAssignments = classroomLessons.filter((lesson) => lesson.contentType === "assignment");
   const moduleTitleById = new Map(
-    classroomLessons.filter((lesson) => lesson.contentType === "module").map((module) => [module.id, module.title]),
+    teacherModules.map((module) => [Number(module.id), module.title]),
   );
+  const moduleGroups = teacherModules.map((module) => ({
+    module,
+    lessons: teacherLessons.filter((lesson) => Number(lesson.moduleId) === Number(module.id)),
+  }));
+  const standaloneLessons = teacherLessons.filter((lesson) => !lesson.moduleId || !moduleTitleById.has(Number(lesson.moduleId)));
 
   return (
     <div className={styles.lessonContainer}>
@@ -396,9 +416,11 @@ function LessonSection() {
           ))}
         </div>
 
-        {teacherMaterials.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Modules and lessons from your teacher</div><div className={styles.sectionCount}>{teacherMaterials.length} item{teacherMaterials.length === 1 ? "" : "s"}</div></div><div className={styles.lessonsGrid}>{teacherMaterials.map((lesson) => <ClassroomContentCard key={`material-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(lesson.moduleId)} navigate={navigate} />)}</div></>}
+        {moduleGroups.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Modules from your teacher</div><div className={styles.sectionCount}>{moduleGroups.length} module{moduleGroups.length === 1 ? "" : "s"}</div></div><div className={styles.moduleList}>{moduleGroups.map(({ module, lessons: moduleLessons }) => <ClassroomModuleGroup key={`module-${module.id}`} module={module} lessons={moduleLessons} navigate={navigate} />)}</div></>}
 
-        {teacherAssignments.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Assignments and activities</div><div className={styles.sectionCount}>{teacherAssignments.length} assigned</div></div><div className={styles.lessonsGrid}>{teacherAssignments.map((lesson) => <ClassroomContentCard key={`assignment-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(lesson.moduleId)} navigate={navigate} />)}</div></>}
+        {standaloneLessons.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Classroom lessons</div><div className={styles.sectionCount}>{standaloneLessons.length} lesson{standaloneLessons.length === 1 ? "" : "s"}</div></div><div className={styles.lessonsGrid}>{standaloneLessons.map((lesson) => <ClassroomContentCard key={`material-${lesson.id}`} lesson={lesson} navigate={navigate} />)}</div></>}
+
+        {teacherAssignments.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Assignments and activities</div><div className={styles.sectionCount}>{teacherAssignments.length} assigned</div></div><div className={styles.lessonsGrid}>{teacherAssignments.map((lesson) => <ClassroomContentCard key={`assignment-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(Number(lesson.moduleId))} navigate={navigate} />)}</div></>}
       </div>
     </div>
   );

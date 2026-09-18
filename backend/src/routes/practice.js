@@ -69,7 +69,7 @@ const practiceRateLimit = createRateLimit({
   message: "You have run code many times in a short period. Wait a moment and try again.",
 });
 
-router.get("/health", authMiddleware, requireRole("student"), async (_req, res) => {
+router.get("/health", authMiddleware, requireRole("student", "teacher", "admin"), async (_req, res) => {
   const health = await getPracticeRunnerHealth();
   if (!health.available && health.reason === "runner_starting") {
     res.set("Retry-After", String(RETRY_AFTER_MS / 1000));
@@ -78,7 +78,7 @@ router.get("/health", authMiddleware, requireRole("student"), async (_req, res) 
   return res.status(health.available ? 200 : 503).json(health);
 });
 
-router.post("/run", authMiddleware, requireRole("student"), practiceRateLimit, async (req, res) => {
+router.post("/run", authMiddleware, requireRole("student", "teacher", "admin"), practiceRateLimit, async (req, res) => {
   const startedAt = Date.now();
   try {
     const result = await runPracticeCode(req.body?.code);

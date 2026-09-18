@@ -5,7 +5,20 @@ const lessonUploadPolicy = require("../config/lessonUploadPolicy");
 const ClassroomLesson = sequelize.define("ClassroomLessons", {
   classroomId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
+  },
+  teacherId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
+  lessonNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: { min: 1 },
+  },
+  archivedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
   },
   title: {
     type: DataTypes.STRING(160),

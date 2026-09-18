@@ -32,6 +32,8 @@
 .lessonGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
 .skeletonGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }.skeletonGrid span { height: 250px; border-radius: 12px; background: linear-gradient(90deg,#eef2f7,#f8fafc,#eef2f7); background-size: 200% 100%; animation: skeleton 1.2s infinite; }
 .lessonCardWrap { min-width: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dce6f1; border-radius: 12px; background: #fbfdff; }
+.placementContext { min-height: 32px; display: flex; align-items: center; gap: 6px; padding: 7px 13px; border-bottom: 1px solid #e4ebf2; background: #f3f7fb; color: #526c84; font-size: 13px; font-weight: 750; }
+.placementContext span { margin-left: auto; padding: 3px 7px; border-radius: 999px; background: #fff3d6; color: #81591a; }
 .lessonCard { min-width: 0; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 16px; border: 1px solid #dce6f1; border-radius: 12px; background: #fbfdff; cursor: pointer; }
 .lessonCard:hover { background: #f7fbff; }
 .lessonCard > div:last-child { min-width: 0; }
@@ -39,6 +41,8 @@
 .lessonActions { display: flex; justify-content: flex-end; gap: 6px; padding: 9px 12px; border-top: 1px solid #e7edf4; background: #f7fafe; }
 .lessonActions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #47627e; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); font-weight: 700; }
 .lessonActions button:hover { border-color: #91a9c2; color: #1e3a5f; }
+.placementSelect { min-width: 145px; display: flex; align-items: center; gap: 6px; color: #64748b; font-size: 13px; font-weight: 750; }
+.placementSelect select { min-width: 0; max-width: 165px; height: 34px; padding: 4px 7px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #3f5870; font: inherit; font-size: 13px; }
 .lessonActions .deleteLessonButton { color: #b42318; border-color: #f1c7c3; }
 .lessonActions .deleteLessonButton:hover { color: #8f1710; border-color: #df8f87; background: #fff7f6; }
 .lessonIcon { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 10px; background: #eaf2ff; color: #2563eb; }

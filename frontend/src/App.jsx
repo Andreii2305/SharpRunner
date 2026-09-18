@@ -29,6 +29,8 @@ const ResetPasswordPage = lazy(() => import("./pages/auth/ResetPasswordPage.jsx"
 const LevelRoutePage = lazy(() => import("./pages/game/LevelRoutePage.jsx"));
 const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEditorPage.jsx"));
 const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPage.jsx"));
+const TeacherLessonLibraryPage = lazy(() => import("./pages/teacher/TeacherLessonLibraryPage.jsx"));
+const TeacherLessonBuilderPage = lazy(() => import("./pages/teacher/TeacherLessonBuilderPage.jsx"));
 const BuiltInModulePage = lazy(() => import("./pages/student/BuiltInModulePage.jsx"));
 const LegalCenterPage = lazy(() => import("./pages/legal/LegalCenterPage.jsx"));
 const PrivacyPolicyPage = lazy(() => import("./pages/legal/LegalDocumentPage.jsx").then((module) => ({ default: module.PrivacyPolicyPage })));
@@ -185,6 +187,14 @@ function App() {
               </Suspense>
             </TeacherRoute>
           }
+        />
+        <Route
+          path="/teacher/lessons"
+          element={<TeacherRoute><TeacherLessonLibraryPage /></TeacherRoute>}
+        />
+        <Route
+          path="/teacher/lessons/:lessonId/edit"
+          element={<TeacherRoute><TeacherLessonBuilderPage /></TeacherRoute>}
         />
         <Route
           path="/teacher/settings"

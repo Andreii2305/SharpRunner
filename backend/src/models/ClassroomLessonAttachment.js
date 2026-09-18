@@ -2,8 +2,13 @@ const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
 
 const ClassroomLessonAttachment = sequelize.define("ClassroomLessonAttachments", {
-  classroomId: { type: DataTypes.INTEGER, allowNull: false },
+  classroomId: { type: DataTypes.INTEGER, allowNull: true },
   lessonId: { type: DataTypes.INTEGER, allowNull: false },
+  topicId: { type: DataTypes.INTEGER, allowNull: true },
+  purpose: { type: DataTypes.STRING(20), allowNull: false, defaultValue: "attachment" },
+  placement: { type: DataTypes.STRING(20), allowNull: true },
+  altText: { type: DataTypes.STRING(300), allowNull: true },
+  caption: { type: DataTypes.STRING(500), allowNull: true },
   originalName: { type: DataTypes.STRING(255), allowNull: false },
   storedName: { type: DataTypes.STRING(255), allowNull: false, unique: true },
   mimeType: { type: DataTypes.STRING(255), allowNull: false },

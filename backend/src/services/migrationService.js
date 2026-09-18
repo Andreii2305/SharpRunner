@@ -46,6 +46,7 @@ const migrations = [
   ["20260905000000_level_timing_and_deadlines", sqlMigration("20260905000000_level_timing_and_deadlines.sql")],
   ["20260913000000_policy_acceptance", sqlMigration("20260913000000_policy_acceptance.sql")],
   ["20260914000000_situational_hints", sqlMigration("20260914000000_situational_hints.sql")],
+  ["20260917000000_lesson_builder", sqlMigration("20260917000000_lesson_builder.sql")],
 ];
 
 const runMigrations = async () => {

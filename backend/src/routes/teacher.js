@@ -23,6 +23,7 @@ const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission")
 const ClassroomLessonSubmissionAttachment = require("../models/ClassroomLessonSubmissionAttachment");
 const ClassroomLessonVersion = require("../models/ClassroomLessonVersion");
 const ClassroomLessonAudit = require("../models/ClassroomLessonAudit");
+const ClassroomLessonPlacement = require("../models/ClassroomLessonPlacement");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -157,6 +158,8 @@ const sanitizeAttachment = (attachment) => ({
 const sanitizeClassroomLesson = (lesson) => ({
   id: lesson.id,
   classroomId: lesson.classroomId,
+  teacherId: lesson.teacherId ?? null,
+  lessonNumber: lesson.lessonNumber ?? null,
   title: lesson.title,
   contentType: lesson.contentType,
   moduleId: lesson.moduleId ?? null,
@@ -180,6 +183,8 @@ const sanitizeClassroomLesson = (lesson) => ({
   createdAt: lesson.createdAt,
   updatedAt: lesson.updatedAt,
   attachments: (lesson.attachments ?? []).map(sanitizeAttachment),
+  isLibraryLesson: Boolean(lesson.isLibraryLesson),
+  usageCount: Number(lesson.usageCount ?? 0),
 });
 
 const parseLessonOptions = (body) => {
@@ -1214,11 +1219,38 @@ router.get("/classrooms/:classroomId/lessons", async (req, res) => {
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const lessons = await ClassroomLesson.findAll({
-      where: { classroomId },
-      include: [{ model: ClassroomLessonAttachment, as: "attachments", attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder"] }],
-      order: [["createdAt", "DESC"]],
-    });
+    const [legacyLessons, placements] = await Promise.all([
+      ClassroomLesson.findAll({
+        where: { classroomId },
+        include: [{ model: ClassroomLessonAttachment, as: "attachments", where: { topicId: null }, required: false, attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder"] }],
+        order: [["createdAt", "DESC"]],
+      }),
+      ClassroomLessonPlacement.findAll({
+        where: { classroomId },
+        include: [{
+          model: ClassroomLesson,
+          as: "lesson",
+          where: { archivedAt: null },
+          include: [
+            { model: ClassroomLessonAttachment, as: "attachments", where: { topicId: null }, required: false, attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder"] },
+            { model: ClassroomLessonPlacement, as: "placements", required: false, attributes: ["id"] },
+          ],
+        }],
+        order: [["displayOrder", "ASC"], ["id", "ASC"]],
+      }),
+    ]);
+    const legacyIds = new Set(legacyLessons.map((lesson) => lesson.id));
+    const placedLessons = placements
+      .filter((placement) => placement.lesson && !legacyIds.has(placement.lesson.id))
+      .map((placement) => {
+        const lesson = placement.lesson;
+        lesson.moduleId = placement.moduleId;
+        lesson.displayOrder = placement.displayOrder;
+        lesson.isLibraryLesson = true;
+        lesson.usageCount = Math.max(1, lesson.placements?.length ?? 0);
+        return lesson;
+      });
+    const lessons = [...legacyLessons, ...placedLessons];
     const [progressRows, submissionRows] = await Promise.all([
       ClassroomLessonProgress.findAll({ where: { classroomId }, attributes: ["lessonId", "viewedAt", "completedAt"] }),
       ClassroomLessonSubmission.findAll({ where: { classroomId }, attributes: ["lessonId", "status", "submittedAt"] }),
@@ -1358,6 +1390,7 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
     }
     const lesson = await ClassroomLesson.create({
       classroomId,
+      teacherId: classroom.teacherId,
       title,
       description: description || null,
       dueAt,
@@ -1419,7 +1452,7 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, 
     const source = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId }, include: [{ model: ClassroomLessonAttachment, as: "attachments" }] });
     if (!source) return res.status(404).json({ message: "Classwork not found" });
     const copy = await ClassroomLesson.create({
-      classroomId, title: `Copy of ${source.title}`.slice(0, MAX_LESSON_TITLE_LENGTH), description: source.description,
+      classroomId, teacherId: source.teacherId || classroom.teacherId, title: `Copy of ${source.title}`.slice(0, MAX_LESSON_TITLE_LENGTH), description: source.description,
       contentType: source.contentType, dueAt: source.dueAt, publishAt: null, isPublished: false,
       allowSubmissions: source.allowSubmissions, maxScore: source.maxScore,
       rubric: source.rubric, feedbackReleaseAt: source.feedbackReleaseAt, allowLateSubmissions: source.allowLateSubmissions,

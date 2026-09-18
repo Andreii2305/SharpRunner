@@ -10,6 +10,7 @@ import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { buildApiUrl, getAuthHeaders, getUserRole } from "../../utils/auth.js";
 import { DEFAULT_UPLOAD_POLICY, normalizeUploadPolicy, validateUploadFiles } from "../../utils/uploadPolicy.js";
 import styles from "./ClassroomLessonPage.module.css";
+import LessonRenderer from "../../Components/LessonRenderer/LessonRenderer.jsx";
 
 const isOfficeFile = (name = "") => /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(name);
 const isPreviewable = (mimeType = "", name = "") => /^(video\/|audio\/|image\/|application\/pdf$|text\/)/i.test(mimeType) || isOfficeFile(name);
@@ -46,6 +47,7 @@ function ClassroomLessonPage() {
   const isTeacherPreview = ["teacher", "admin"].includes(getUserRole());
   const previewUrlRef = useRef(null);
   const [lesson, setLesson] = useState(null);
+  const [lessonContext, setLessonContext] = useState({ classroom: null, module: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState({ attachment: null, url: "", loading: false, error: "" });
@@ -55,6 +57,7 @@ function ClassroomLessonPage() {
   const [submissionFiles, setSubmissionFiles] = useState([]);
   const [uploadPolicy, setUploadPolicy] = useState(DEFAULT_UPLOAD_POLICY);
   const [submitting, setSubmitting] = useState(false);
+  const [completionBusy, setCompletionBusy] = useState(false);
 
   const loadPreview = useCallback(async (attachment) => {
     if (!attachment || !isPreviewable(attachment.mimeType, attachment.originalName)) return;
@@ -94,6 +97,7 @@ function ClassroomLessonPage() {
         if (!mounted) return;
         const loadedLesson = response.data?.lesson ?? null;
         setLesson(loadedLesson);
+        setLessonContext(response.data?.context ?? { classroom: null, module: null });
         setProgress(response.data?.progress ?? null);
         setSubmission(response.data?.submission ?? null);
         setUploadPolicy(normalizeUploadPolicy(response.data?.uploadPolicy));
@@ -101,7 +105,10 @@ function ClassroomLessonPage() {
         const firstPreviewable = loadedLesson?.attachments?.find((attachment) => isPreviewable(attachment.mimeType, attachment.originalName));
         if (firstPreviewable) loadPreview(firstPreviewable);
       } catch (requestError) {
-        if (mounted) setError(requestError.response?.data?.message ?? "Unable to load this lesson.");
+        if (mounted) {
+          const status = requestError.response?.status;
+          setError(status === 404 ? "This lesson is not available yet or is no longer assigned to you." : status === 403 ? "You do not have access to this lesson." : "The lesson could not be loaded. Please try again.");
+        }
       } finally {
         if (mounted) setLoading(false);
       }
@@ -133,10 +140,13 @@ function ClassroomLessonPage() {
   };
 
   const toggleCompletion = async () => {
+    if (completionBusy) return;
+    setCompletionBusy(true);
     try {
       const response = await axios.put(buildApiUrl(`/api/lesson-content/classroom-lessons/${lessonId}/completion`), { completed: !progress?.completedAt }, { headers: getAuthHeaders() });
       setProgress(response.data.progress); toast.success(response.data.message);
     } catch (requestError) { toast.error(requestError.response?.data?.message ?? "Unable to update lesson."); }
+    finally { setCompletionBusy(false); }
   };
 
   const submitWork = async (event) => {
@@ -179,19 +189,30 @@ function ClassroomLessonPage() {
     return <iframe className={styles.documentPreview} src={preview.url} title={originalName} />;
   };
 
+  const isEmptyLesson = lesson && lesson.contentType !== "assignment" && !lesson.topics?.length && !lesson.description && !lesson.externalUrl && !lesson.attachments?.length;
+
   return (
     <div className={styles.root}>
       <Sidebar />
       <main className={styles.main}>
         <header className={styles.header}>
-          <button type="button" className={styles.backButton} onClick={() => navigate(isTeacherPreview && lesson?.classroomId ? `/teacher/classrooms/${lesson.classroomId}` : "/lesson")}><FiArrowLeft /> {isTeacherPreview ? "Back to classroom" : "Back to classwork"}</button>
-          <span className={styles.headerType}><FiBookOpen /> {isTeacherPreview ? "Teacher preview" : lesson?.contentType === "assignment" ? "Assignment / activity" : "Lesson / material"}</span>
+          <button type="button" className={styles.backButton} onClick={() => navigate(isTeacherPreview && lesson ? `/teacher/lessons/${lesson.id}/edit` : "/lesson")}><FiArrowLeft /> {isTeacherPreview ? "Back to editor" : "Back to classwork"}</button>
+          <div className={styles.headerTrail}><span className={styles.headerType}><FiBookOpen /> {isTeacherPreview ? "Preview as Student" : lesson?.contentType === "assignment" ? "Assignment / activity" : lesson?.moduleId ? "Module lesson" : "Classroom lesson"}</span>{!isTeacherPreview && lessonContext.classroom && <span className={styles.contextPath}>{lessonContext.classroom.className}{lessonContext.classroom.section ? ` · ${lessonContext.classroom.section}` : ""}{lessonContext.module ? ` / ${lessonContext.module.title}` : " / Standalone lesson"}</span>}</div>
         </header>
 
-        {loading ? <div className={styles.status}>Loading lesson…</div> : error || !lesson ? (
+        {loading ? <div className={styles.lessonSkeleton} aria-label="Loading lesson"><span /><i /><i /><i /></div> : error || !lesson ? (
           <div className={styles.status}><h1>Class content unavailable</h1><p>{error || "This item could not be found."}</p><button type="button" onClick={() => navigate("/lesson")}>Return to classwork</button></div>
+        ) : isEmptyLesson ? (
+          <div className={styles.status}><FiBookOpen /><h1>{isTeacherPreview ? "This lesson doesn’t contain any topics yet." : "This lesson doesn’t have content yet."}</h1><p>{isTeacherPreview ? "Return to the editor to add the first topic." : "Your teacher is still preparing this lesson."}</p>{isTeacherPreview && <button type="button" onClick={() => navigate(`/teacher/lessons/${lesson.id}/edit`)}>Back to editor</button>}</div>
+        ) : lesson.topics?.length ? (
+          <>
+            {isTeacherPreview && <aside className={styles.previewBanner}><div><strong>Preview as Student</strong><span>This read-only view matches the lesson presentation students receive.</span></div><button type="button" onClick={() => navigate(`/teacher/lessons/${lesson.id}/edit`)}>Back to Editor</button></aside>}
+            <LessonRenderer lesson={lesson} preview={isTeacherPreview} onOpenAttachment={downloadAttachment} />
+            {!isTeacherPreview && <section className={styles.completionPanel}><FiCheckCircle /><div><span>{progress?.completedAt ? "Lesson complete" : "You’ve reached the end of this lesson."}</span><p>{progress?.completedAt ? "You can keep reviewing the topics and practice activities anytime." : "Mark it complete when you’re satisfied with your review."}</p></div><button type="button" className={styles.completeButton} onClick={toggleCompletion} disabled={completionBusy}><FiCheckCircle /> {completionBusy ? "Saving…" : progress?.completedAt ? "Mark as incomplete" : "Mark Lesson Complete"}</button></section>}
+          </>
         ) : (
           <>
+            {isTeacherPreview && <aside className={styles.previewBanner}><div><strong>Preview as Student</strong><span>This read-only view matches the lesson presentation students receive.</span></div><button type="button" onClick={() => navigate(`/teacher/lessons/${lesson.id}/edit`)}>Back to Editor</button></aside>}
             <section className={styles.hero}>
               <div className={styles.heroIcon}><FiBookOpen /></div>
               <div className={styles.heroCopy}>
@@ -202,7 +223,6 @@ function ClassroomLessonPage() {
                   <span><FiPaperclip /> {lesson.attachments?.length ?? 0} attachment{lesson.attachments?.length === 1 ? "" : "s"}</span>
                 </div>
               </div>
-              {!isTeacherPreview && lesson.contentType !== "assignment" && <button type="button" className={styles.completeButton} onClick={toggleCompletion}><FiCheckCircle /> {progress?.completedAt ? "Completed" : "Mark complete"}</button>}
             </section>
 
             <div className={styles.contentGrid}>
@@ -239,6 +259,7 @@ function ClassroomLessonPage() {
                 {!isTeacherPreview && lesson.contentType === "assignment" && <AssignmentSubmissionPanel lesson={lesson} submission={submission} comment={submissionComment} setComment={setSubmissionComment} files={submissionFiles} uploadPolicy={uploadPolicy} submitting={submitting} onSubmit={submitWork} onDownload={downloadSubmissionFile} onFilesSelected={selectSubmissionFiles} />}
               </aside>
             </div>
+            {!isTeacherPreview && lesson.contentType !== "assignment" && <section className={`${styles.completionPanel} ${styles.legacyCompletion}`}><FiCheckCircle /><div><span>{progress?.completedAt ? "Lesson complete" : "You’ve reached the end of this lesson."}</span><p>{progress?.completedAt ? "You can keep reviewing this material anytime." : "Mark it complete when you’re satisfied with your review."}</p></div><button type="button" className={styles.completeButton} onClick={toggleCompletion} disabled={completionBusy}><FiCheckCircle /> {completionBusy ? "Saving…" : progress?.completedAt ? "Mark as incomplete" : "Mark Lesson Complete"}</button></section>}
           </>
         )}
       </main>

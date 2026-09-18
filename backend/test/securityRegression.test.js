@@ -12,6 +12,7 @@ const { getClassroomLevelSettings } = require("../src/services/classroomLevelSet
 
 const {
   hasDangerousSignature,
+  isAllowedLearningResource,
   isDangerousFilename,
 } = require("../src/services/fileSecurityService");
 const { PLAYABLE_LEVEL_KEYS } = require("../src/constants/progressDefaults");
@@ -36,6 +37,13 @@ test("dangerous upload extensions and executable signatures are rejected", async
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }
+});
+
+test("learning resource uploads require a matching extension and MIME type", () => {
+  assert.equal(isAllowedLearningResource({ originalname: "diagram.jpg", mimetype: "image/jpeg" }), true);
+  assert.equal(isAllowedLearningResource({ originalname: "lesson.docx", mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), true);
+  assert.equal(isAllowedLearningResource({ originalname: "diagram.jpg", mimetype: "image/svg+xml" }), false);
+  assert.equal(isAllowedLearningResource({ originalname: "notes.txt", mimetype: "application/octet-stream" }), false);
 });
 
 test("the latest RLS migration covers every Sequelize model table", async () => {

@@ -66,6 +66,7 @@ app.use("/api/progress", require("./routes/progress"));
 app.use("/api/lesson-content", require("./routes/lessonContent"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/teacher", require("./routes/teacher"));
+app.use("/api/teacher/lesson-library", require("./routes/lessonLibrary"));
 app.use("/api/classrooms", require("./routes/classrooms"));
 app.use("/api/notifications", require("./routes/notifications"));
 app.use("/api/practice", require("./routes/practice"));

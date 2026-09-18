@@ -18,6 +18,8 @@ const ClassroomLessonSubmission = require("./ClassroomLessonSubmission");
 const ClassroomLessonSubmissionAttachment = require("./ClassroomLessonSubmissionAttachment");
 const ClassroomLessonVersion = require("./ClassroomLessonVersion");
 const ClassroomLessonAudit = require("./ClassroomLessonAudit");
+const ClassroomLessonPlacement = require("./ClassroomLessonPlacement");
+const LessonTopic = require("./LessonTopic");
 const XpTransaction = require("./XpTransaction");
 const StudentLevelExtension = require("./StudentLevelExtension");
 const HintFeedback = require("./HintFeedback");
@@ -136,6 +138,18 @@ ClassroomLesson.belongsTo(ClassroomLesson, {
   as: "module",
 });
 
+User.hasMany(ClassroomLesson, { foreignKey: "teacherId", as: "ownedLessons", onDelete: "CASCADE" });
+ClassroomLesson.belongsTo(User, { foreignKey: "teacherId", as: "owner" });
+
+ClassroomLesson.hasMany(ClassroomLessonPlacement, { foreignKey: "lessonId", as: "placements", onDelete: "CASCADE" });
+ClassroomLessonPlacement.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
+Classroom.hasMany(ClassroomLessonPlacement, { foreignKey: "classroomId", as: "lessonPlacements", onDelete: "CASCADE" });
+ClassroomLessonPlacement.belongsTo(Classroom, { foreignKey: "classroomId", as: "classroom" });
+ClassroomLessonPlacement.belongsTo(ClassroomLesson, { foreignKey: "moduleId", as: "module" });
+
+ClassroomLesson.hasMany(LessonTopic, { foreignKey: "lessonId", as: "topics", onDelete: "CASCADE" });
+LessonTopic.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
+
 ClassroomLesson.hasMany(ClassroomLessonAttachment, {
   foreignKey: "lessonId",
   as: "attachments",
@@ -146,6 +160,8 @@ ClassroomLessonAttachment.belongsTo(ClassroomLesson, {
   foreignKey: "lessonId",
   as: "lesson",
 });
+LessonTopic.hasMany(ClassroomLessonAttachment, { foreignKey: "topicId", as: "images", onDelete: "CASCADE" });
+ClassroomLessonAttachment.belongsTo(LessonTopic, { foreignKey: "topicId", as: "topic" });
 
 ClassroomLesson.hasMany(ClassroomLessonProgress, { foreignKey: "lessonId", as: "progress", onDelete: "CASCADE" });
 ClassroomLessonProgress.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
@@ -305,6 +321,8 @@ module.exports = {
   ClassroomLessonSubmissionAttachment,
   ClassroomLessonVersion,
   ClassroomLessonAudit,
+  ClassroomLessonPlacement,
+  LessonTopic,
   XpTransaction,
   StudentLevelExtension,
   HintFeedback,

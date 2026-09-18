@@ -10,24 +10,37 @@ const LEARNING_RESOURCE_EXTENSIONS = new Set([
   ".txt", ".rtf", ".csv", ".xls", ".xlsx", ".ods",
   ".mp4", ".webm", ".mp3", ".wav", ".ogg",
 ]);
-const LEARNING_RESOURCE_MIME_TYPES = new Set([
-  "application/pdf", "application/msword", "application/rtf",
-  "application/vnd.ms-powerpoint", "application/vnd.ms-excel",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.oasis.opendocument.text",
-  "application/vnd.oasis.opendocument.presentation",
-  "application/vnd.oasis.opendocument.spreadsheet",
-  "text/plain", "text/csv",
+const LEARNING_RESOURCE_MIME_TYPES_BY_EXTENSION = new Map([
+  [".pdf", new Set(["application/pdf"])],
+  [".png", new Set(["image/png"])],
+  [".jpg", new Set(["image/jpeg"])],
+  [".jpeg", new Set(["image/jpeg"])],
+  [".gif", new Set(["image/gif"])],
+  [".webp", new Set(["image/webp"])],
+  [".ppt", new Set(["application/vnd.ms-powerpoint"])],
+  [".pptx", new Set(["application/vnd.openxmlformats-officedocument.presentationml.presentation"])],
+  [".doc", new Set(["application/msword"])],
+  [".docx", new Set(["application/vnd.openxmlformats-officedocument.wordprocessingml.document"])],
+  [".odt", new Set(["application/vnd.oasis.opendocument.text"])],
+  [".odp", new Set(["application/vnd.oasis.opendocument.presentation"])],
+  [".txt", new Set(["text/plain"])],
+  [".rtf", new Set(["application/rtf", "text/rtf"])],
+  [".csv", new Set(["text/csv", "application/csv"])],
+  [".xls", new Set(["application/vnd.ms-excel"])],
+  [".xlsx", new Set(["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"])],
+  [".ods", new Set(["application/vnd.oasis.opendocument.spreadsheet"])],
+  [".mp4", new Set(["video/mp4"])],
+  [".webm", new Set(["video/webm"])],
+  [".mp3", new Set(["audio/mpeg", "audio/mp3"])],
+  [".wav", new Set(["audio/wav", "audio/x-wav"])],
+  [".ogg", new Set(["audio/ogg", "video/ogg"])],
 ]);
 const isDangerousFilename = (name = "") => BLOCKED_EXTENSIONS.has(path.extname(name).toLowerCase());
 const isAllowedLearningResource = (file = {}) => {
   const extension = path.extname(file.originalname || "").toLowerCase();
   const mimeType = String(file.mimetype || "").toLowerCase();
-  const allowedMime = LEARNING_RESOURCE_MIME_TYPES.has(mimeType) ||
-    /^(image|audio|video)\//.test(mimeType);
-  return LEARNING_RESOURCE_EXTENSIONS.has(extension) && allowedMime;
+  const allowedMimeTypes = LEARNING_RESOURCE_MIME_TYPES_BY_EXTENSION.get(extension);
+  return LEARNING_RESOURCE_EXTENSIONS.has(extension) && Boolean(allowedMimeTypes?.has(mimeType));
 };
 
 const hasDangerousSignature = async (filePath) => {

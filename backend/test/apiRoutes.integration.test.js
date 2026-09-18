@@ -14,6 +14,11 @@ const app = require("../src/app");
 const User = require("../src/models/User");
 const UserProgress = require("../src/models/UserProgress");
 const Classroom = require("../src/models/Classroom");
+const ClassroomLesson = require("../src/models/ClassroomLesson");
+const ClassroomLessonAttachment = require("../src/models/ClassroomLessonAttachment");
+const ClassroomLessonPlacement = require("../src/models/ClassroomLessonPlacement");
+const ClassroomLessonVersion = require("../src/models/ClassroomLessonVersion");
+const LessonTopic = require("../src/models/LessonTopic");
 const ClassroomMembership = require("../src/models/ClassroomMembership");
 const LevelContentOverride = require("../src/models/LevelContentOverride");
 const LevelDeadline = require("../src/models/LevelDeadline");
@@ -241,21 +246,12 @@ test("research consent can be declined or withdrawn only for the authenticated u
   });
 });
 
-test("POST /api/practice/run requires a student and rejects unsafe APIs before execution", async () => {
+test("POST /api/practice/run requires an authenticated learner or educator and rejects unsafe APIs before execution", async () => {
   const unauthenticated = await apiRequest("/api/practice/run", {
     method: "POST",
     body: { code: 'Console.WriteLine("Hello");' },
   });
   assert.equal(unauthenticated.response.status, 401);
-
-  await withStubs([[User, "findByPk", async () => activeUser({ id: 81, role: "teacher" })]], async () => {
-    const teacher = await apiRequest("/api/practice/run", {
-      method: "POST",
-      token: authToken(81, "teacher"),
-      body: { code: 'Console.WriteLine("Hello");' },
-    });
-    assert.equal(teacher.response.status, 403);
-  });
 
   await withStubs([[User, "findByPk", async () => activeUser({ id: 82, role: "student" })]], async () => {
     const unsafe = await apiRequest("/api/practice/run", {
@@ -857,6 +853,237 @@ test("teacher routes reject students and allow teachers to create their own clas
     assert.equal(response.status, 201);
     assert.equal(payload.classroom.teacherId, 4);
     assert.equal(createdClassroom.teacherId, 4);
+  });
+});
+
+test("teacher lesson library is role-protected and returns reusable lesson metadata", async () => {
+  const teacher = activeUser({ id: 71, role: "teacher" });
+  const student = activeUser({ id: 72, role: "student" });
+  await withStubs([
+    [User, "findByPk", async (id) => Number(id) === teacher.id ? teacher : student],
+    [ClassroomLesson, "findAll", async () => [{
+      id: 91,
+      teacherId: teacher.id,
+      classroomId: null,
+      title: "Loops in C#",
+      description: "Iteration fundamentals",
+      contentType: "lesson",
+      isPublished: false,
+      publishAt: null,
+      archivedAt: null,
+      placements: [{ id: 1, classroomId: 4 }],
+      toJSON() { return { ...this, toJSON: undefined }; },
+    }]],
+    [Classroom, "findAll", async () => [{ id: 4, className: "C# 101", section: "A", isActive: true }]],
+  ], async () => {
+    const teacherResult = await apiRequest("/api/teacher/lesson-library", { token: authToken(teacher.id, "teacher") });
+    assert.equal(teacherResult.response.status, 200);
+    assert.equal(teacherResult.payload.lessons[0].title, "Loops in C#");
+    assert.equal(teacherResult.payload.lessons[0].status, "draft");
+    assert.equal(teacherResult.payload.lessons[0].usageCount, 1);
+
+    const studentResult = await apiRequest("/api/teacher/lesson-library", { token: authToken(student.id, "student") });
+    assert.equal(studentResult.response.status, 403);
+  });
+});
+
+test("teacher lesson endpoints reject foreign lessons and mismatched nested topics", async () => {
+  const teacher = activeUser({ id: 73, role: "teacher" });
+  const ownedLesson = { id: 101, teacherId: teacher.id, contentType: "lesson", version: 2 };
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findOne", async ({ where }) => Number(where.id) === ownedLesson.id && Number(where.teacherId) === teacher.id ? ownedLesson : null],
+    [LessonTopic, "findOne", async ({ where }) => Number(where.id) === 999 && Number(where.lessonId) === ownedLesson.id ? null : assert.fail("nested topic lookup was not scoped to its lesson")],
+  ], async () => {
+    const foreign = await apiRequest("/api/teacher/lesson-library/202", { token: authToken(teacher.id, "teacher") });
+    assert.equal(foreign.response.status, 404);
+
+    const mismatchedTopic = await apiRequest(`/api/teacher/lesson-library/${ownedLesson.id}/topics/999/duplicate`, {
+      method: "POST",
+      token: authToken(teacher.id, "teacher"),
+      body: {},
+    });
+    assert.equal(mismatchedTopic.response.status, 404);
+  });
+});
+
+test("lesson updates report version conflicts instead of overwriting newer content", async () => {
+  const teacher = activeUser({ id: 74, role: "teacher" });
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findOne", async () => ({ id: 102, teacherId: teacher.id, contentType: "lesson", version: 4 })],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/lesson-library/102", {
+      method: "PUT",
+      token: authToken(teacher.id, "teacher"),
+      body: { title: "Stale title", version: 3, status: "draft", topics: [] },
+    });
+    assert.equal(response.status, 409);
+    assert.equal(payload.currentVersion, 4);
+  });
+});
+
+test("lesson updates recheck the version under a row lock before saving", async () => {
+  const teacher = activeUser({ id: 741, role: "teacher" });
+  let lookupCount = 0;
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findOne", async () => {
+      lookupCount += 1;
+      return { id: 103, teacherId: teacher.id, contentType: "lesson", version: lookupCount === 1 ? 3 : 4 };
+    }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [LessonTopic, "findAll", async () => assert.fail("topics must not be changed after the locked version check fails")],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/lesson-library/103", {
+      method: "PUT",
+      token: authToken(teacher.id, "teacher"),
+      body: { title: "Concurrent title", version: 3, status: "draft", topics: [] },
+    });
+    assert.equal(response.status, 409);
+    assert.equal(payload.currentVersion, 4);
+    assert.equal(lookupCount, 2);
+  });
+});
+
+test("student lesson routes block drafts, future schedules, archives, and arbitrary classroom ids", async () => {
+  const student = activeUser({ id: 75, role: "student" });
+  const lessons = new Map([
+    [201, { id: 201, contentType: "lesson", isPublished: false, publishAt: null, archivedAt: null, assignedStudentIds: [] }],
+    [202, { id: 202, contentType: "lesson", isPublished: true, publishAt: new Date(Date.now() + 60_000), archivedAt: null, assignedStudentIds: [] }],
+    [203, { id: 203, contentType: "lesson", isPublished: true, publishAt: null, archivedAt: new Date(), assignedStudentIds: [] }],
+    [204, { id: 204, contentType: "lesson", isPublished: true, publishAt: null, archivedAt: null, assignedStudentIds: [] }],
+  ]);
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLesson, "findByPk", async (id) => lessons.get(Number(id)) || null],
+    [ClassroomMembership, "findAll", async () => []],
+  ], async () => {
+    for (const lessonId of [201, 202, 203]) {
+      const result = await apiRequest(`/api/lesson-content/classroom-lessons/${lessonId}`, { token: authToken(student.id, "student") });
+      assert.equal(result.response.status, 404);
+    }
+    const arbitrary = await apiRequest("/api/lesson-content/classroom-lessons/204", { token: authToken(student.id, "student") });
+    assert.equal(arbitrary.response.status, 403);
+
+    const archivedCompletion = await apiRequest("/api/lesson-content/classroom-lessons/203/completion", {
+      method: "PUT",
+      token: authToken(student.id, "student"),
+      body: { completed: true },
+    });
+    assert.equal(archivedCompletion.response.status, 404);
+  });
+});
+
+test("archived lesson files cannot be opened through the office preview route", async () => {
+  const student = activeUser({ id: 76, role: "student" });
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLessonAttachment, "findByPk", async () => ({
+      id: 301,
+      originalName: "archived-lesson.docx",
+      lesson: { id: 203, isPublished: true, publishAt: null, archivedAt: new Date(), assignedStudentIds: [] },
+    })],
+  ], async () => {
+    const result = await apiRequest("/api/lesson-content/classroom-files/301/preview", { token: authToken(student.id, "student") });
+    assert.equal(result.response.status, 403);
+  });
+});
+
+test("reusing a lesson preserves its identity and safely updates its module placement", async () => {
+  const teacher = activeUser({ id: 81, role: "teacher" });
+  const source = { id: 91, teacherId: teacher.id, title: "Shared loops", contentType: "lesson", topics: [], attachments: [] };
+  const placement = { lessonId: source.id, classroomId: 12, moduleId: null, saveCalled: false, async save() { this.saveCalled = true; } };
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findOne", async ({ where }) => Number(where.id) === source.id ? source : { id: 44, classroomId: 12, contentType: "module" }],
+    [Classroom, "findOne", async () => ({ id: 12, teacherId: teacher.id })],
+    [ClassroomLessonPlacement, "count", async () => 1],
+    [ClassroomLessonPlacement, "findOrCreate", async () => [placement, false]],
+  ], async () => {
+    const { response, payload } = await apiRequest(`/api/teacher/lesson-library/${source.id}/placements`, {
+      method: "POST",
+      token: authToken(teacher.id, "teacher"),
+      body: { classroomId: 12, moduleId: 44, mode: "reuse" },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(payload.lessonId, source.id);
+    assert.equal(placement.moduleId, 44);
+    assert.equal(placement.saveCalled, true);
+    assert.match(payload.message, /moved to the selected module/i);
+  });
+});
+
+test("copy placement creates an independent draft with copied topics", async () => {
+  const teacher = activeUser({ id: 82, role: "teacher" });
+  const source = {
+    id: 92,
+    teacherId: teacher.id,
+    lessonNumber: 3,
+    title: "Original arrays",
+    description: "Shared source",
+    contentType: "lesson",
+    externalUrl: null,
+    topics: [{ id: 7, title: "Array basics", displayOrder: 0, content: { format: "markdown", body: "Intro", codeBlocks: [], practiceBlocks: [] } }],
+    attachments: [],
+  };
+  let createdLesson;
+  let createdTopic;
+  let createdPlacement;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findOne", async () => source],
+    [Classroom, "findOne", async () => ({ id: 13, teacherId: teacher.id })],
+    [sequelize, "transaction", async (callback) => callback({ id: "test-transaction" })],
+    [ClassroomLesson, "create", async (values) => { createdLesson = { id: 501, ...values }; return createdLesson; }],
+    [LessonTopic, "create", async (values) => { createdTopic = { id: 601, ...values }; return createdTopic; }],
+    [ClassroomLessonVersion, "create", async (values) => values],
+    [ClassroomLessonPlacement, "count", async () => 2],
+    [ClassroomLessonPlacement, "create", async (values) => { createdPlacement = { id: 701, ...values }; return createdPlacement; }],
+    [ClassroomLessonPlacement, "findOne", async () => createdPlacement],
+  ], async () => {
+    const { response, payload } = await apiRequest(`/api/teacher/lesson-library/${source.id}/placements`, {
+      method: "POST",
+      token: authToken(teacher.id, "teacher"),
+      body: { classroomId: 13, mode: "copy" },
+    });
+    assert.equal(response.status, 201);
+    assert.notEqual(payload.lessonId, source.id);
+    assert.equal(payload.lessonId, createdLesson.id);
+    assert.equal(createdLesson.isPublished, false);
+    assert.equal(createdTopic.lessonId, createdLesson.id);
+    assert.deepEqual(createdTopic.content, source.topics[0].content);
+    assert.notStrictEqual(createdTopic.content, source.topics[0].content);
+    createdTopic.content.body = "Changed only in the copy";
+    assert.equal(source.topics[0].content.body, "Intro");
+    assert.equal(createdPlacement.lessonId, createdLesson.id);
+    assert.equal(createdPlacement.classroomId, 13);
+  });
+});
+
+test("lesson placement rejects a module from another classroom", async () => {
+  const teacher = activeUser({ id: 83, role: "teacher" });
+  const source = { id: 93, teacherId: teacher.id, contentType: "lesson", topics: [], attachments: [] };
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findOne", async ({ where }) => {
+      if (Number(where.id) === source.id) return source;
+      assert.equal(Number(where.id), 45);
+      assert.equal(Number(where.classroomId), 14);
+      assert.equal(where.contentType, "module");
+      return null;
+    }],
+    [Classroom, "findOne", async () => ({ id: 14, teacherId: teacher.id })],
+  ], async () => {
+    const { response, payload } = await apiRequest(`/api/teacher/lesson-library/${source.id}/placements`, {
+      method: "POST",
+      token: authToken(teacher.id, "teacher"),
+      body: { classroomId: 14, moduleId: 45, mode: "reuse" },
+    });
+    assert.equal(response.status, 400);
+    assert.match(payload.message, /does not belong to this classroom/i);
   });
 });
 

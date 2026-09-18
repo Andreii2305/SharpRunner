@@ -1138,6 +1138,27 @@ test("teacher classroom controls enforce ownership and preserve removed membersh
   });
 });
 
+test("teacher classwork API no longer creates modules or assignments", async () => {
+  const teacher = activeUser({ id: 84, role: "teacher" });
+  let createCalls = 0;
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findByPk", async () => ({ id: 26, teacherId: teacher.id })],
+    [ClassroomLesson, "create", async () => { createCalls += 1; }],
+  ], async () => {
+    for (const contentType of ["module", "assignment"]) {
+      const { response, payload } = await apiRequest("/api/teacher/classrooms/26/lessons", {
+        method: "POST",
+        token: authToken(teacher.id, "teacher"),
+        body: { title: `Blocked ${contentType}`, contentType },
+      });
+      assert.equal(response.status, 400);
+      assert.match(payload.message, /can no longer be created/i);
+    }
+  });
+  assert.equal(createCalls, 0);
+});
+
 test("teacher can archive, reactivate, and rotate the code of an owned classroom", async () => {
   const teacher = activeUser({ id: 4, role: "teacher" });
   const classroom = {

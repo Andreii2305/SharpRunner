@@ -1351,6 +1351,12 @@ router.post("/classrooms/:classroomId/lessons", uploadLessonFiles, async (req, r
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const requestedContentType = normalizeString(req.body?.contentType).toLowerCase();
+    if (["module", "assignment"].includes(requestedContentType)) {
+      await removeUploadedFiles(req.files);
+      return res.status(400).json({ message: "Modules and assignments can no longer be created" });
+    }
+
     const title = normalizeString(req.body?.title);
     const description = normalizeString(req.body?.description);
     if (!title) {
@@ -1451,6 +1457,7 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, 
     if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
     const source = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId }, include: [{ model: ClassroomLessonAttachment, as: "attachments" }] });
     if (!source) return res.status(404).json({ message: "Classwork not found" });
+    if (source.contentType !== "lesson") return res.status(400).json({ message: "Only lessons can be duplicated" });
     const copy = await ClassroomLesson.create({
       classroomId, teacherId: source.teacherId || classroom.teacherId, title: `Copy of ${source.title}`.slice(0, MAX_LESSON_TITLE_LENGTH), description: source.description,
       contentType: source.contentType, dueAt: source.dueAt, publishAt: null, isPublished: false,
@@ -1573,6 +1580,11 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
     });
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
 
+    const requestedContentType = normalizeString(req.body?.contentType).toLowerCase();
+    if (requestedContentType && requestedContentType !== lesson.contentType) {
+      return res.status(400).json({ message: "Classwork type cannot be changed" });
+    }
+
     const title = normalizeString(req.body?.title);
     const description = normalizeString(req.body?.description);
     if (!title) return res.status(400).json({ message: "Lesson title is required" });
@@ -1593,7 +1605,7 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
     lesson.title = title;
     lesson.description = description || null;
     let options;
-    try { options = parseLessonOptions(req.body); } catch (optionError) {
+    try { options = parseLessonOptions({ ...req.body, contentType: lesson.contentType }); } catch (optionError) {
       return res.status(400).json({ message: optionError.message });
     }
     if (options.assignedStudentIds.length) {

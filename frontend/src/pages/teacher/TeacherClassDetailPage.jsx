@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiAward, FiBarChart2, FiBookOpen, FiCalendar,
-  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMoreVertical, FiMove, FiPaperclip, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
+  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMoreVertical, FiMove, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -109,13 +109,7 @@ function TeacherClassDetailPage() {
   const [activeTab, setActiveTab] = useState("students");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [showAddLesson, setShowAddLesson] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [attachingLessonId, setAttachingLessonId] = useState(null);
-  const [formError, setFormError] = useState("");
-  const [lessonForm, setLessonForm] = useState(emptyContentForm());
-  const [lessonFiles, setLessonFiles] = useState([]);
   const [editingLesson, setEditingLesson] = useState(null);
   const [editForm, setEditForm] = useState(emptyContentForm());
   const [editError, setEditError] = useState("");
@@ -161,11 +155,6 @@ function TeacherClassDetailPage() {
 
   useEffect(() => { loadClass(); }, [loadClass]);
   useEffect(() => {
-    if (!showAddLesson) return undefined;
-    const timer = window.setTimeout(() => window.localStorage.setItem(`classwork-draft:${classroomId}:${lessonForm.contentType}`, JSON.stringify(lessonForm)), 500);
-    return () => window.clearTimeout(timer);
-  }, [showAddLesson, classroomId, lessonForm]);
-  useEffect(() => {
     if (!selectedSubmission || !reviewLesson) return;
     setGradeForm({
       grade: selectedSubmission.grade ?? "", feedback: selectedSubmission.feedback ?? "",
@@ -188,64 +177,6 @@ function TeacherClassDetailPage() {
   const moduleTitleById = useMemo(() => new Map(modules.map((module) => [Number(module.id), module.title])), [modules]);
   const filteredLessons = useMemo(() => lessons.filter((lesson) => contentFilter === "all" || lesson.contentType === contentFilter), [lessons, contentFilter]);
   const lessonLibraryUrl = (moduleId = null) => `/teacher/lessons?classroomId=${classroomId}${moduleId ? `&moduleId=${moduleId}` : ""}`;
-
-  const performAddLesson = async () => {
-    if (!lessonForm.title.trim()) { setFormError("Lesson title is required."); return; }
-    setSaving(true);
-    setUploadProgress(0);
-    setFormError("");
-    try {
-      const payload = new FormData();
-      payload.append("title", lessonForm.title.trim());
-      payload.append("contentType", lessonForm.contentType);
-      payload.append("moduleId", lessonForm.moduleId || "");
-      payload.append("externalUrl", lessonForm.externalUrl.trim());
-      payload.append("description", lessonForm.description.trim());
-      if (lessonForm.dueAt) payload.append("dueAt", new Date(lessonForm.dueAt).toISOString());
-      if (lessonForm.publishAt) payload.append("publishAt", new Date(lessonForm.publishAt).toISOString());
-      payload.append("isPublished", String(lessonForm.isPublished));
-      payload.append("maxScore", String(lessonForm.maxScore));
-      payload.append("rubric", JSON.stringify(lessonForm.rubric));
-      payload.append("assignedStudentIds", JSON.stringify(lessonForm.assignedStudentIds));
-      payload.append("allowedFileTypes", JSON.stringify(lessonForm.allowedFileTypes.split(",").map((item) => item.trim()).filter(Boolean)));
-      payload.append("allowLateSubmissions", String(lessonForm.allowLateSubmissions));
-      payload.append("maxAttempts", String(lessonForm.maxAttempts));
-      payload.append("maxFileSizeMb", String(lessonForm.maxFileSizeMb));
-      if (lessonForm.feedbackReleaseAt) payload.append("feedbackReleaseAt", new Date(lessonForm.feedbackReleaseAt).toISOString());
-      lessonFiles.forEach((file) => payload.append("files", file));
-      const response = await axios.post(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons`),
-        payload,
-        {
-          headers: getAuthHeaders(),
-          onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) setUploadProgress(Math.round((progressEvent.loaded / progressEvent.total) * 100));
-          },
-        },
-      );
-      setLessons((current) => [response.data.lesson, ...current]);
-      window.localStorage.removeItem(`classwork-draft:${classroomId}:${lessonForm.contentType}`);
-      setLessonForm(emptyContentForm("lesson", uploadPolicy));
-      setLessonFiles([]);
-      setShowAddLesson(false);
-      toast.success(`${lessonForm.contentType === "assignment" ? "Assignment" : "Lesson"} added to this class.`);
-    } catch (error) {
-      setFormError(error.response?.data?.message ?? "Failed to add lesson.");
-    } finally {
-      setSaving(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const addLesson = (event) => {
-    event.preventDefault();
-    if (!lessonForm.title.trim()) { setFormError("Lesson title is required."); return; }
-    if (lessonForm.isPublished) {
-      setPublishTarget({ kind: "create", title: lessonForm.title, contentType: lessonForm.contentType });
-      return;
-    }
-    performAddLesson();
-  };
 
   const openAttachment = async (attachment) => {
     const office = /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(attachment.originalName);
@@ -534,15 +465,6 @@ function TeacherClassDetailPage() {
     }
   };
 
-  const openCreateContent = (contentType) => {
-    let restored = null;
-    try { restored = JSON.parse(window.localStorage.getItem(`classwork-draft:${classroomId}:${contentType}`)); } catch { restored = null; }
-    const baseForm = emptyContentForm(contentType, uploadPolicy);
-    const restoredMax = Math.min(Number(restored?.maxFileSizeMb) || uploadPolicy.maxFileSizeMb, uploadPolicy.maxFileSizeMb);
-    setLessonForm(restored ? { ...baseForm, ...restored, contentType, maxFileSizeMb: restoredMax } : baseForm);
-    setLessonFiles([]); setFormError(""); setShowAddLesson(true);
-  };
-
   const buildNewLesson = async (moduleId = null) => {
     try {
       const { data } = await axios.post(buildApiUrl("/api/teacher/lesson-library"), {
@@ -576,7 +498,6 @@ function TeacherClassDetailPage() {
 
   const confirmPublication = async () => {
     const target = publishTarget; setPublishTarget(null);
-    if (target?.kind === "create") await performAddLesson();
     if (target?.kind === "publish" && target.lesson) await setPublication(target.lesson, true);
   };
 
@@ -679,7 +600,7 @@ function TeacherClassDetailPage() {
               </div><div className={detailStyles.managementGrid}><section><h3>Students needing attention</h3>{management.insights?.attention?.slice(0, 8).map((entry) => { const student = students.find((item) => item.userId === entry.studentId); return <div key={entry.studentId}><span>{student?.studentName ?? `Student ${entry.studentId}`}</span><small>{entry.missing} missing · {entry.submitted} submitted{entry.averageGrade != null ? ` · ${entry.averageGrade} avg` : ""}</small></div>; })}</section><section><h3>Recent classwork activity</h3>{management.audits?.slice(0, 8).map((audit) => <div key={audit.id}><span>{String(audit.action || "updated").replaceAll("_", " ")}</span><small>{new Date(audit.createdAt).toLocaleString()} · {audit.actor?.firstName || audit.actor?.username || "Teacher"}</small></div>)}</section></div></div>
             ) : (
               <div>
-                <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Add reusable lessons and assignments directly to the class or organize them inside a module.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("module")}><FiPlus /> Add module</button><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnOutline} type="button" onClick={() => openCreateContent("assignment")}><FiPlus /> Add assignment</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>
+                <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Add an existing lesson or create a new reusable lesson for this class.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>
                 <div className={detailStyles.contentFilters}>{[["all", "All", lessons.length], ["module", "Modules", lessons.filter((item) => item.contentType === "module").length], ["lesson", "Lessons", lessons.filter((item) => item.contentType === "lesson").length], ["assignment", "Assignments", lessons.filter((item) => item.contentType === "assignment").length]].map(([key, label, count]) => <button type="button" key={key} className={contentFilter === key ? detailStyles.contentFilterActive : ""} onClick={() => setContentFilter(key)}>{label}<span>{count}</span></button>)}</div>
                 {filteredLessons.length ? <div className={detailStyles.lessonGrid}>{filteredLessons.map((lesson) => {
                   const moduleTitle = moduleTitleById.get(Number(lesson.moduleId));
@@ -708,7 +629,7 @@ function TeacherClassDetailPage() {
                       <button type="button" onClick={() => openEditLesson(lesson)}><FiEdit2 /> Edit</button>
                       <FloatingActionMenu label={`More actions for ${lesson.title}`}>
                         {!lesson.isLibraryLesson && <><button type="button" role="menuitem" onClick={() => moveLesson(lesson.id, -1)}><FiMove /> Move earlier</button><button type="button" role="menuitem" onClick={() => moveLesson(lesson.id, 1)}><FiMove /> Move later</button><button type="button" role="menuitem" onClick={() => openVersionHistory(lesson)}><FiList /> Version history</button></>}
-                        <button type="button" role="menuitem" onClick={() => duplicateLesson(lesson)}><FiCopy /> Duplicate</button>
+                        {lesson.contentType === "lesson" && <button type="button" role="menuitem" onClick={() => duplicateLesson(lesson)}><FiCopy /> Duplicate</button>}
                         {lesson.contentType === "assignment" && lesson.feedbackReleaseAt && new Date(lesson.feedbackReleaseAt) > new Date() && <button type="button" role="menuitem" onClick={() => releaseFeedback(lesson)}><FiCheckCircle /> Release feedback now</button>}
                         {!lesson.isLibraryLesson && <button type="button" role="menuitem" onClick={() => lesson.isPublished ? setPublication(lesson, false) : setPublishTarget({ kind: "publish", lesson, title: lesson.title, contentType: lesson.contentType })}>{lesson.isPublished ? <><FiEyeOff /> Unpublish</> : <><FiEye /> Publish</>}</button>}
                         <button type="button" role="menuitem" className={detailStyles.menuDanger} onClick={() => setDeleteTarget(lesson)}><FiTrash2 /> {lesson.isLibraryLesson ? "Remove from class" : "Delete"}</button>
@@ -721,27 +642,6 @@ function TeacherClassDetailPage() {
           </section>
         </div>
       </main>
-
-      {showAddLesson && <div className={styles.modalBackdrop} onMouseDown={() => setShowAddLesson(false)}><div className={`${styles.modalCard} ${detailStyles.lessonModal}`} onMouseDown={(event) => event.stopPropagation()}>
-        <div className={styles.modalHeader}><h3>Add {lessonForm.contentType} to {classroom?.className}</h3><button type="button" className={styles.modalCloseBtn} onClick={() => setShowAddLesson(false)}><FiX /></button></div>
-        {formError && <div className={styles.modalError}>{formError}</div>}
-        <form className={styles.modalForm} onSubmit={addLesson}>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>{lessonForm.contentType === "assignment" ? "Assignment title" : "Lesson title"}<input autoFocus maxLength={160} value={lessonForm.title} onChange={(event) => setLessonForm((current) => ({ ...current, title: event.target.value }))} placeholder={lessonForm.contentType === "assignment" ? "e.g. Arrays practice activity" : "e.g. Arrays review material"} /></label>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Instructions<textarea className={detailStyles.textarea} maxLength={4000} value={lessonForm.description} onChange={(event) => setLessonForm((current) => ({ ...current, description: event.target.value }))} placeholder="What should students learn or complete?" /></label>
-          {lessonForm.contentType !== "module" && <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Module (optional)<select value={lessonForm.moduleId} onChange={(event) => setLessonForm((current) => ({ ...current, moduleId: event.target.value }))}><option value="">No module</option>{lessons.filter((item) => item.contentType === "module").map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>External reference or video link (optional)<input type="url" value={lessonForm.externalUrl} onChange={(event) => setLessonForm((current) => ({ ...current, externalUrl: event.target.value }))} placeholder="https://…" /></label>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Due date (optional)<input type="datetime-local" value={lessonForm.dueAt} onChange={(event) => setLessonForm((current) => ({ ...current, dueAt: event.target.value }))} /></label>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Publish schedule (optional)<input type="datetime-local" value={lessonForm.publishAt} onChange={(event) => setLessonForm((current) => ({ ...current, publishAt: event.target.value }))} /></label>
-          <div className={detailStyles.optionRow}><label><input type="checkbox" checked={lessonForm.isPublished} onChange={(event) => setLessonForm((current) => ({ ...current, isPublished: event.target.checked }))} /> Publish {lessonForm.contentType}</label>{lessonForm.contentType === "assignment" && <label>Points <input type="number" min="1" max="1000" value={lessonForm.maxScore} onChange={(event) => setLessonForm((current) => ({ ...current, maxScore: event.target.value }))} /></label>}</div>
-          <AssignmentSettings form={lessonForm} setForm={setLessonForm} students={students} uploadPolicy={uploadPolicy} />
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>Attachments (optional)
-            <span className={detailStyles.filePicker}><FiUpload /><span><strong>Choose files</strong><small>Up to {uploadPolicy.maxFiles} safe files · {uploadPolicy.maxFileSizeMb} MB each</small></span><input type="file" multiple onChange={(event) => { const result = validateUploadFiles(event.target.files, uploadPolicy); setLessonFiles(result.files); setFormError(result.error); event.target.value = ""; }} /></span>
-          </label>
-          {lessonFiles.length > 0 && <div className={detailStyles.selectedFiles}>{lessonFiles.map((file) => <span key={`${file.name}-${file.lastModified}`}><FiPaperclip /> {file.name}</span>)}</div>}
-          {saving && lessonFiles.length > 0 && <div className={detailStyles.uploadProgress}><span style={{ width: `${uploadProgress}%` }} /><small>Uploading {uploadProgress}%</small></div>}
-          <div className={styles.modalActions}><button className={styles.btnOutline} type="button" disabled={saving} onClick={() => setShowAddLesson(false)}>Cancel</button><button className={styles.btnPrimary} disabled={saving} type="submit">{saving ? "Adding…" : `Add ${lessonForm.contentType}`}</button></div>
-        </form>
-      </div></div>}
 
       {editingLesson && <div className={styles.modalBackdrop} onMouseDown={() => !isEditing && setEditingLesson(null)}><div className={`${styles.modalCard} ${detailStyles.lessonModal}`} onMouseDown={(event) => event.stopPropagation()}>
         <div className={styles.modalHeader}><h3>Edit {editForm.contentType}</h3><button type="button" className={styles.modalCloseBtn} disabled={isEditing} onClick={() => setEditingLesson(null)}><FiX /></button></div>

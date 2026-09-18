@@ -36,7 +36,7 @@
   gap: 10px;
   padding: 10px 12px;
   border-radius: 10px;
-  font-size: 13px;
+  font-size: var(--teacher-text-sm);
   font-weight: 600;
   color: #7ea8d0;
   cursor: pointer;
@@ -133,7 +133,7 @@
 .managerHeader p {
   margin: 0;
   color: #a9c7e2;
-  font-size: 12px;
+  font-size: var(--teacher-text-xs);
 }
 
 .eyebrow {
@@ -357,7 +357,7 @@
 }
 
 .bannerSub {
-  font-size: 12px;
+  font-size: var(--teacher-text-xs);
   color: #7ea8d0;
 }
 
@@ -566,7 +566,7 @@
   border: 1.5px solid #dde5ef;
   border-radius: 7px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--teacher-text-xs);
   color: #94a3b8;
   flex-shrink: 0;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
@@ -687,7 +687,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--teacher-text-xs);
   font-weight: 600;
   color: #065f46;
   background: #ecfdf5;
@@ -700,7 +700,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--teacher-text-xs);
   font-weight: 600;
   color: #991b1b;
   background: #fef2f2;
@@ -724,7 +724,7 @@
   justify-content: center;
   gap: 14px;
   color: #94a3b8;
-  font-size: 13px;
+  font-size: var(--teacher-text-sm);
 }
 
 .spinner {
@@ -746,7 +746,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: var(--teacher-text-sm);
   font-weight: 600;
   color: #64748b;
   padding: 4px 8px;

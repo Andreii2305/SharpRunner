@@ -4,12 +4,13 @@
 ───────────────────────────────────────── */
 
 .root {
-  --teacher-text-xs: 12px;
-  --teacher-text-sm: 13px;
-  --teacher-text-md: 14px;
-  --teacher-text-lg: 16px;
-  --teacher-text-xl: 20px;
-  --teacher-text-2xl: 24px;
+  /* Keep teacher-facing copy comfortably readable without flattening hierarchy. */
+  --teacher-text-xs: 14px;
+  --teacher-text-sm: 15px;
+  --teacher-text-md: 16px;
+  --teacher-text-lg: 18px;
+  --teacher-text-xl: 22px;
+  --teacher-text-2xl: 26px;
   display: flex;
   width: 100%;
   height: 100vh;
@@ -33,13 +34,14 @@
 .pageHeader {
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
-  padding: 0 24px;
-  height: 52px;
+  padding: 8px 24px;
+  min-height: 64px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
   gap: 12px;
+  box-sizing: border-box;
 }
 
 .pageTitle {
@@ -90,13 +92,13 @@
 }
 
 .sectionSub {
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: var(--teacher-text-sm);
+  color: #64748b;
 }
 
-.loadingText { font-size: 12px; color: #94a3b8; padding: 6px 0; }
-.emptyText   { font-size: 12px; color: #94a3b8; padding: 6px 0; }
-.errorText   { font-size: 12px; color: #E24B4A; padding: 6px 0; }
+.loadingText { font-size: var(--teacher-text-sm); color: #64748b; padding: 6px 0; }
+.emptyText   { font-size: var(--teacher-text-sm); color: #64748b; padding: 6px 0; }
+.errorText   { font-size: var(--teacher-text-sm); color: #B42318; padding: 6px 0; }
 
 /* ── Stat cards ───────────────────────── */
 .statRow {
@@ -284,7 +286,7 @@
   color: #64748b;
   border-radius: 6px;
   padding: 4px 9px;
-  font-size: 13px;
+  font-size: var(--teacher-text-sm);
   cursor: pointer;
 }
 .modalCloseBtn:hover { border-color: #1e3a5f; color: #1e3a5f; }
@@ -364,7 +366,7 @@
 }
 
 .successCard h3 { margin: 0; font-size: 16px; font-weight: 700; color: #1e3a5f; }
-.successCard p  { margin: 0; font-size: 12px; color: #64748b; }
+.successCard p  { margin: 0; font-size: var(--teacher-text-sm); color: #64748b; }
 
 .codeBlock {
   background: #f8fafc;

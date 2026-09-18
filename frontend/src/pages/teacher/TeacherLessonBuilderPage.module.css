@@ -1,11 +1,11 @@
-.shell { display: flex; min-height: 100vh; background: #eef3f7; color: #2e4153; font-family: "Segoe UI", system-ui, sans-serif; }
+.shell { --teacher-text-xs: 14px; --teacher-text-sm: 15px; --teacher-text-md: 16px; --teacher-text-lg: 18px; --teacher-text-xl: 22px; --teacher-text-2xl: 26px; display: flex; min-height: 100vh; background: #eef3f7; color: #2e4153; font-family: "Segoe UI", system-ui, sans-serif; font-size: var(--teacher-text-md); line-height: 1.5; }
 .page { flex: 1; min-width: 0; }
 .builderHeader { position: sticky; top: 0; z-index: 30; min-height: 72px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; padding: 10px 28px; border-bottom: 1px solid #d8e2eb; background: rgba(255,255,255,.96); backdrop-filter: blur(10px); }
 .builderHeader > button, .headerActions button, .publishActions button { min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 14px; border: 1px solid #cbd8e3; border-radius: 9px; background: #fff; color: #35566f; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
 .builderHeader > button { justify-self: start; }
 .builderHeader > div:nth-child(2) { display: flex; flex-direction: column; align-items: center; }
 .builderHeader > div:nth-child(2) span { color: #183b59; font-size: 17px; font-weight: 800; }
-.builderHeader > div:nth-child(2) strong { color: #718297; font-size: 13px; font-weight: 600; }
+.builderHeader > div:nth-child(2) strong { color: #64748b; font-size: var(--teacher-text-sm); font-weight: 600; }
 .headerActions { justify-self: end; display: flex; gap: 9px; }
 .primaryButton { border-color: #26547c !important; background: #26547c !important; color: #fff !important; }
 .primaryButton:hover { background: #1c4365 !important; }
@@ -37,10 +37,10 @@
 .topicHeader { min-height: 72px; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid #e5ebf1; background: #f8fbfd; }
 .dragHandle { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: #718297; font-size: 21px; cursor: grab; }
 .topicHeader > div:nth-child(2) { min-width: 0; display: flex; flex-direction: column; }
-.topicHeader span { color: #718297; font-size: 13px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.topicHeader span { color: #64748b; font-size: var(--teacher-text-sm); font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
 .topicHeader strong { overflow: hidden; color: #24465f; font-size: 20px; text-overflow: ellipsis; white-space: nowrap; }
 .moveButtons { display: flex; gap: 5px; }
-.moveButtons button { min-width: 38px; min-height: 38px; padding: 7px 9px; border: 1px solid #d1dde7; border-radius: 8px; background: #fff; color: #47627a; font: inherit; font-size: 13px; cursor: pointer; }
+.moveButtons button { min-width: 40px; min-height: 40px; padding: 7px 9px; border: 1px solid #d1dde7; border-radius: 8px; background: #fff; color: #47627a; font: inherit; font-size: var(--teacher-text-sm); cursor: pointer; }
 .moveButtons button:disabled { opacity: .35; }
 .topicBody { display: grid; gap: 24px; padding: 24px; }
 .richEditor { overflow: hidden; border: 1px solid #cbd8e3; border-radius: 10px; }
@@ -49,7 +49,7 @@
 .richToolbar button:hover { border-color: #c2d4e2; background: #fff; }
 .richEditor textarea { min-height: 230px; border: 0; border-radius: 0; resize: vertical; line-height: 1.65; }
 .richEditor textarea:focus { outline: 0; }
-.richEditor > small { display: block; padding: 8px 12px; border-top: 1px solid #e1e8ee; background: #fbfcfd; color: #718297; font-size: 13px; font-weight: 500; }
+.richEditor > small { display: block; padding: 8px 12px; border-top: 1px solid #e1e8ee; background: #fbfcfd; color: #64748b; font-size: var(--teacher-text-sm); font-weight: 500; }
 .blockSection, .configBlock { padding: 20px; border: 1px solid #dce5ed; border-radius: 12px; background: #fafcfd; }
 .blockHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .blockHeading > div { display: flex; align-items: center; gap: 8px; color: #264f6e; font-size: 16px; font-weight: 800; }
@@ -63,7 +63,7 @@
 .imageEditor figure img { max-height: 210px; }
 .imageEditor > div:last-child { display: flex; flex-wrap: wrap; gap: 7px; }
 .imageEditor button, .dangerText, .topicFooter button, .addBlocks button { min-height: 38px; display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border: 1px solid #cad7e2; border-radius: 8px; background: #fff; color: #3e5d75; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
-.imageEditor label small { color: #718297; font-size: 13px; font-weight: 500; line-height: 1.4; }
+.imageEditor label small { color: #64748b; font-size: var(--teacher-text-sm); font-weight: 500; line-height: 1.5; }
 .dangerText { color: #b23b3b !important; }
 .configBlock { display: grid; gap: 14px; }
 .practiceConfig { border-left: 4px solid #76559c; background: #fbf9fd; }
@@ -86,7 +86,7 @@
 .lessonBlockHeader > strong { color: #31566f; font-size: 14px; letter-spacing: .055em; text-transform: uppercase; }
 .blockDragHandle { width: 34px; height: 34px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #6d8294; font-size: 19px; cursor: grab; }
 .blockActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
-.blockActions button { min-width: 34px; min-height: 34px; display: inline-grid; place-items: center; padding: 6px 8px; border: 1px solid #d2dde6; border-radius: 7px; background: #fff; color: #47627a; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.blockActions button { min-width: 38px; min-height: 38px; display: inline-grid; place-items: center; padding: 6px 8px; border: 1px solid #d2dde6; border-radius: 7px; background: #fff; color: #47627a; font: inherit; font-size: var(--teacher-text-sm); font-weight: 700; cursor: pointer; }
 .blockActions button:disabled { opacity: .35; cursor: not-allowed; }
 .lessonBlockBody { display: grid; gap: 14px; padding: 14px; }
 .lessonBlockBody .richEditor textarea { min-height: 180px; }
@@ -97,7 +97,7 @@
 .blockMenu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: #294e68; font: inherit; text-align: left; cursor: pointer; }
 .blockMenu button:hover, .blockMenu button:focus-visible { background: #edf5fa; }
 .blockMenu span { font-size: 15px; font-weight: 750; }
-.blockMenu small { color: #718297; font-size: 13px; }
+.blockMenu small { color: #64748b; font-size: var(--teacher-text-sm); }
 .imageUpload { display: grid; justify-items: center; gap: 8px; padding: 22px; border: 1px dashed #bfcfdb; border-radius: 9px; color: #587086; text-align: center; }
 .imageUpload > svg { font-size: 28px; }
 .imageUpload p { margin: 0; font-size: 15px; }

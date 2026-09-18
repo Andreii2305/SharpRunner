@@ -202,17 +202,17 @@ function buildLessonsFromData({ lessonMeta = [], progressLessons = [] }) {
 
 function LessonIcon({ status }) {
   if (status === "completed") {
-    return <CheckIcon sx={{ fontSize: 22, color: "#0F6E56" }} />;
+    return <CheckIcon sx={{ fontSize: 26, color: "#0F6E56" }} />;
   }
 
   if (status === "locked") {
-    return <LockOutlineIcon sx={{ fontSize: 22, color: "#94a3b8" }} />;
+    return <LockOutlineIcon sx={{ fontSize: 26, color: "#8494a7" }} />;
   }
 
   return (
     <svg
-      width="22"
-      height="22"
+      width="26"
+      height="26"
       viewBox="0 0 24 24"
       fill="none"
       stroke="#26547c"

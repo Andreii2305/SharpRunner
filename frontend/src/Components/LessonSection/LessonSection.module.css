@@ -45,7 +45,7 @@
 }
 
 .topLabel {
-  font-size: 10px;
+  font-size: 12px;
   color: #94a3b8;
   font-weight: 700;
   letter-spacing: 0.07em;
@@ -53,7 +53,7 @@
 }
 
 .topTitle {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: 700;
   color: #1e3a5f;
   white-space: nowrap;
@@ -62,7 +62,7 @@
 }
 
 .topSub {
-  font-size: 12px;
+  font-size: 14px;
   color: #64748b;
 }
 
@@ -90,7 +90,7 @@
 .currentActions { display: flex; gap: 9px; align-items: center; }
 .btnGame { display:flex;align-items:center;gap:7px;background:#fff;color:#26547c;border:1px solid #9fb4c6;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap; }
 .btnGame:hover { background:#eef4f8; }
-.openModuleBtn { align-self:center;display:flex;align-items:center;gap:7px;border:1px solid #8ca9be;background:#fff;color:#26547c;border-radius:9px;padding:9px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap; }
+.openModuleBtn { align-self:center;display:flex;align-items:center;gap:8px;min-height:42px;border:1px solid #8ca9be;background:#fff;color:#26547c;border-radius:10px;padding:10px 15px;font-size:14px;font-weight:750;cursor:pointer;white-space:nowrap; }
 .openModuleBtn:hover { background:#eaf3f9; }
 .lessonCard[role="link"] { cursor:pointer; }
 .lessonCard[role="link"]:focus-visible { outline:3px solid #80b8e5;outline-offset:2px; }
@@ -107,16 +107,17 @@
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  margin-top: 4px;
 }
 
 .sectionTitle {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 750;
   color: #1e3a5f;
 }
 
 .sectionCount {
-  font-size: 12px;
+  font-size: 14px;
   color: #94a3b8;
 }
 
@@ -124,25 +125,28 @@
 .lessonsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 18px;
 }
 
 /* ── Lesson card ──────────────────────── */
 .lessonCard {
+  min-height: 156px;
+  box-sizing: border-box;
   background: #ffffff;
   border: 1px solid #e2e8f0;
   border-radius: 14px;
-  padding: 16px 18px;
+  padding: 22px;
   display: flex;
   align-items: center;
-  gap: 14px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  transition: box-shadow 0.15s, border-color 0.15s;
+  gap: 18px;
+  box-shadow: 0 3px 12px rgba(30, 58, 95, 0.06);
+  transition: box-shadow 0.15s, border-color 0.15s, transform 0.15s;
 }
 
 .lessonCard:hover:not(.cardLocked) {
-  box-shadow: 0 3px 10px rgba(30, 58, 95, 0.1);
+  box-shadow: 0 8px 20px rgba(30, 58, 95, 0.11);
   border-color: #bdd2e8;
+  transform: translateY(-1px);
   cursor: pointer;
 }
 
@@ -152,15 +156,19 @@
 }
 
 .cardLocked {
-  opacity: 0.55;
+  border-color: #dce4ec;
+  background: #f8fafc;
   cursor: not-allowed;
 }
 
+.cardLocked .cardTitle { color: #64778b; }
+.cardLocked .cardRegion, .cardLocked .cardDesc { color: #7d8d9e; }
+
 /* Left icon area */
 .cardIcon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 58px;
+  height: 58px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -175,28 +183,33 @@
 .cardBody {
   flex: 1;
   min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .cardTop {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 2px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 7px 10px;
+  margin-bottom: 4px;
 }
 
 .cardTitle {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 750;
   color: #1e3a5f;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .cardBadge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
   border-radius: 99px;
   white-space: nowrap;
   flex-shrink: 0;
@@ -207,18 +220,18 @@
 .badgeLocked  { background: #f1f5f9; color: #94a3b8; }
 
 .cardRegion {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 500;
-  margin: 0 0 3px;
+  font-size: 14px;
+  color: #728499;
+  font-weight: 600;
+  margin: 0 0 6px;
   font-style: italic;
 }
 
 .cardDesc {
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.45;
-  margin: 0 0 10px;
+  font-size: 15px;
+  color: #52677a;
+  line-height: 1.55;
+  margin: 0 0 14px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -229,13 +242,14 @@
 .progressRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  margin-top: auto;
 }
 
 .progressLabel {
-  font-size: 10px;
-  color: #94a3b8;
-  font-weight: 600;
+  font-size: 12px;
+  color: #718397;
+  font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -243,7 +257,7 @@
 
 .progressTrack {
   flex: 1;
-  height: 6px;
+  height: 8px;
   background: #e2e8f0;
   border-radius: 99px;
   overflow: hidden;
@@ -256,9 +270,9 @@
 }
 
 .progressPct {
-  font-size: 11px;
-  font-weight: 600;
-  min-width: 30px;
+  font-size: 13px;
+  font-weight: 700;
+  min-width: 36px;
   text-align: right;
   white-space: nowrap;
 }
@@ -328,10 +342,10 @@
   margin-top: 12px;
 }
 
-.classAttachments > span { display: inline-flex; align-items: center; gap: 5px; color: #64748b; font-size: 10px; font-weight: 600; }
+.classAttachments > span { display: inline-flex; align-items: center; gap: 6px; color: #5d7185; font-size: 13px; font-weight: 650; }
 .classLessonCard { cursor: pointer; }
 .classLessonCard:focus-visible { outline: 3px solid rgba(38, 84, 124, .2); outline-offset: 2px; }
-.classLessonOpen { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #1e3a5f; color: #fff; flex-shrink: 0; }
+.classLessonOpen { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #1e3a5f; color: #fff; flex-shrink: 0; font-size: 18px; }
 .moduleList { display: grid; gap: 16px; }
 .moduleGroup { padding: 18px; border: 1px solid #d6e2ec; border-radius: 14px; background: #f8fbfd; }
 .moduleGroup > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }

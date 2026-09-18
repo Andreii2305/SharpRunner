@@ -1,6 +1,7 @@
 const MAX_TOPICS = 80;
 const MAX_BODY_LENGTH = 100_000;
 const MAX_CODE_LENGTH = 16_384;
+const MAX_BLOCKS = 100;
 
 const normalizeString = (value, max = 10_000) => typeof value === "string" ? value.trim().slice(0, max) : "";
 
@@ -35,14 +36,51 @@ const normalizePracticeBlock = (block = {}, index = 0) => {
   });
 };
 
+const normalizeTopicBlock = (block = {}, index = 0) => {
+  const value = block && typeof block === "object" ? block : {};
+  const aliases = { text: "content", code_example: "code", try_it_yourself: "practice" };
+  const type = aliases[value.type] || value.type;
+  const common = {
+    id: normalizeString(value.id, 100) || `block-${index + 1}`,
+    type,
+    displayOrder: index,
+  };
+  if (type === "content") return { ...common, body: String(value.body || "").slice(0, MAX_BODY_LENGTH) };
+  if (type === "code") return { ...common, ...normalizeCodeBlock(value, index) };
+  if (type === "practice") return { ...common, ...normalizePracticeBlock(value, index) };
+  if (type === "image") {
+    const imageId = Number(value.imageId);
+    return { ...common, imageId: Number.isInteger(imageId) && imageId > 0 ? imageId : null };
+  }
+  return null;
+};
+
 const normalizeTopicContent = (content = {}) => {
   const value = content && typeof content === "object" ? content : {};
-  return ({
-  format: "markdown",
-  body: String(value.body || "").slice(0, MAX_BODY_LENGTH),
-  codeBlocks: Array.isArray(value.codeBlocks) ? value.codeBlocks.slice(0, 20).map(normalizeCodeBlock) : [],
-  practiceBlocks: Array.isArray(value.practiceBlocks) ? value.practiceBlocks.slice(0, 10).map(normalizePracticeBlock) : [],
-  });
+  if (Array.isArray(value.blocks)) {
+    const blocks = value.blocks
+      .slice(0, MAX_BLOCKS)
+      .map(normalizeTopicBlock)
+      .filter(Boolean)
+      .map((block, displayOrder) => ({ ...block, displayOrder }));
+    return { format: "markdown", blocks };
+  }
+  return {
+    format: "markdown",
+    body: String(value.body || "").slice(0, MAX_BODY_LENGTH),
+    codeBlocks: Array.isArray(value.codeBlocks) ? value.codeBlocks.slice(0, 20).map(normalizeCodeBlock) : [],
+    practiceBlocks: Array.isArray(value.practiceBlocks) ? value.practiceBlocks.slice(0, 10).map(normalizePracticeBlock) : [],
+  };
+};
+
+const remapTopicImageBlocks = (content = {}, imageIdMap = new Map()) => {
+  if (!Array.isArray(content?.blocks)) return JSON.parse(JSON.stringify(content || {}));
+  return {
+    ...JSON.parse(JSON.stringify(content)),
+    blocks: content.blocks.map((block) => block?.type === "image"
+      ? { ...block, imageId: imageIdMap.get(Number(block.imageId)) || null }
+      : { ...block }),
+  };
 };
 
 const normalizeTopics = (topics) => {
@@ -84,10 +122,13 @@ const safeImageMetadata = (body = {}) => ({
 
 module.exports = {
   MAX_TOPICS,
+  MAX_BLOCKS,
   normalizeString,
   normalizeUrl,
   normalizeTopicContent,
+  normalizeTopicBlock,
   normalizeTopics,
+  remapTopicImageBlocks,
   publicationFields,
   derivePublicationStatus,
   safeImageMetadata,

@@ -3,6 +3,7 @@ import axios from "axios";
 import { FiBookOpen, FiCheck, FiClipboard, FiDownload, FiList, FiX } from "react-icons/fi";
 import PracticeCompiler from "../PracticeCompiler/PracticeCompiler.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
+import { findTopicImage, getTopicBlocks } from "../../utils/lessonBlocks.js";
 import styles from "./LessonRenderer.module.css";
 
 const safeUrl = (value) => {
@@ -92,6 +93,17 @@ const PracticeBlock = memo(function PracticeBlock({ block, lessonId, topicKey, b
   return <section className={styles.practice}><span>Try It Yourself</span><h3>{block.title || "Try It Yourself"}</h3>{block.prompt && <p>{block.prompt}</p>}<PracticeCompiler code={block.starterCode || ""} editable expectedOutput={block.expectedOutput} label="Run code" storageId={`lesson:${lessonId}:topic:${topicKey}:${block.id || blockIndex}`} /></section>;
 });
 
+const TopicBlock = memo(function TopicBlock({ block, topic, lessonId, topicKey, blockIndex, eagerImage }) {
+  if (block.type === "content") return <MarkdownContent value={block.body} />;
+  if (block.type === "code") return <CodeExample block={block} />;
+  if (block.type === "practice") return <PracticeBlock block={block} lessonId={lessonId} topicKey={topicKey} blockIndex={blockIndex} />;
+  if (block.type === "image") {
+    const image = findTopicImage(topic, block);
+    return image ? <SecureLessonImage image={image} eager={eagerImage} /> : null;
+  }
+  return null;
+});
+
 export default function LessonRenderer({ lesson, onOpenAttachment, preview = false }) {
   const topics = useMemo(() => [...(lesson?.topics || [])]
     .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
@@ -100,6 +112,7 @@ export default function LessonRenderer({ lesson, onOpenAttachment, preview = fal
       navigationKey: String(topic.id ?? topic.clientId ?? index),
       anchorId: `lesson-topic-${String(topic.id ?? topic.clientId ?? index).replace(/[^a-zA-Z0-9_-]/g, "-")}`,
       images: [...(topic.images || [])].sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0)),
+      blocks: getTopicBlocks(topic),
     })), [lesson?.topics]);
   const [activeTopic, setActiveTopic] = useState(topics[0]?.navigationKey ?? null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -157,15 +170,10 @@ export default function LessonRenderer({ lesson, onOpenAttachment, preview = fal
       <article className={styles.lessonArticle}>
         <header className={styles.lessonHeading}><span>{lesson.lessonNumber ? `Lesson ${lesson.lessonNumber}` : preview ? "Student preview" : "Classroom lesson"}</span><h1>{lesson.title}</h1>{lesson.description && <p>{lesson.description}</p>}</header>
         {topics.map((topic, index) => {
-          const before = topic.images.filter((image) => image.placement === "before");
-          const after = topic.images.filter((image) => image.placement !== "before");
+          const firstImageIndex = topic.blocks.findIndex((block) => block.type === "image");
           return <section id={topic.anchorId} data-topic-key={topic.navigationKey} ref={(element) => { if (element) topicRefs.current.set(topic.navigationKey, element); else topicRefs.current.delete(topic.navigationKey); }} className={styles.topic} key={topic.navigationKey}>
             <div className={styles.topicKicker}>Topic {index + 1}</div><h2>{topic.title || `Topic ${index + 1}`}</h2>
-            {before.map((image, imageIndex) => <SecureLessonImage image={image} eager={index === 0 && imageIndex === 0} key={image.id} />)}
-            <MarkdownContent value={topic.content?.body} />
-            {(topic.content?.codeBlocks || []).map((block, blockIndex) => <CodeExample block={block} key={block.id || blockIndex} />)}
-            {(topic.content?.practiceBlocks || []).map((block, blockIndex) => <PracticeBlock block={block} lessonId={lesson.id} topicKey={topic.navigationKey} blockIndex={blockIndex} key={block.id || blockIndex} />)}
-            {after.map((image, imageIndex) => <SecureLessonImage image={image} eager={index === 0 && !before.length && imageIndex === 0} key={image.id} />)}
+            {topic.blocks.map((block, blockIndex) => <TopicBlock block={block} topic={topic} lessonId={lesson.id} topicKey={topic.navigationKey} blockIndex={blockIndex} eagerImage={index === 0 && blockIndex === firstImageIndex} key={block.id} />)}
           </section>;
         })}
         {lesson.attachments?.length > 0 && <section className={styles.resources}><div><FiBookOpen /><span>Additional resources</span></div><h2>Files for this lesson</h2><div>{lesson.attachments.map((file) => <button type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}><span><strong>{file.originalName}</strong><small>{Math.max(1, Math.round(Number(file.sizeBytes || 0) / 1024))} KB · Open or download</small></span><FiDownload /></button>)}</div></section>}

@@ -20,6 +20,7 @@ const {
   publicationFields,
   derivePublicationStatus,
   safeImageMetadata,
+  remapTopicImageBlocks,
 } = require("../services/lessonBuilderService");
 
 router.use(authMiddleware, requireRole("teacher", "admin"));
@@ -111,6 +112,7 @@ const deepCopyLesson = async (req, source, { title, placement: placementOptions 
       }, { transaction });
 
       const topicMap = new Map();
+      const clonedTopics = new Map();
       for (const topic of source.topics || []) {
         const cloned = await LessonTopic.create({
           lessonId: copy.id,
@@ -119,12 +121,14 @@ const deepCopyLesson = async (req, source, { title, placement: placementOptions 
           content: JSON.parse(JSON.stringify(topic.content || {})),
         }, { transaction });
         topicMap.set(topic.id, cloned.id);
+        clonedTopics.set(topic.id, cloned);
       }
 
+      const imageIdMap = new Map();
       for (const file of source.attachments || []) {
         const stored = await lessonStorage.cloneFile(file, `teachers/${copy.teacherId}/lessons/${copy.id}`);
         createdStorage.push(stored);
-        await ClassroomLessonAttachment.create({
+        const clonedFile = await ClassroomLessonAttachment.create({
           classroomId: null,
           lessonId: copy.id,
           topicId: file.topicId ? topicMap.get(file.topicId) : null,
@@ -139,6 +143,14 @@ const deepCopyLesson = async (req, source, { title, placement: placementOptions 
           displayOrder: file.displayOrder,
           ...stored,
         }, { transaction });
+        if (file.topicId) imageIdMap.set(file.id, clonedFile.id);
+      }
+
+      for (const topic of source.topics || []) {
+        if (!Array.isArray(topic.content?.blocks)) continue;
+        const cloned = clonedTopics.get(topic.id);
+        cloned.content = remapTopicImageBlocks(topic.content, imageIdMap);
+        await cloned.save({ transaction });
       }
 
       await ClassroomLessonVersion.create({
@@ -316,16 +328,20 @@ router.post("/:lessonId/topics/:topicId/duplicate", async (req, res) => {
     const duplicate = await sequelize.transaction(async (transaction) => {
       await LessonTopic.increment("displayOrder", { by: 1, where: { lessonId: lesson.id, displayOrder: { [Op.gt]: topic.displayOrder } }, transaction });
       const created = await LessonTopic.create({ lessonId: lesson.id, title: `${topic.title} — Copy`.slice(0, 180), displayOrder: topic.displayOrder + 1, content: JSON.parse(JSON.stringify(topic.content)) }, { transaction });
+      const imageIdMap = new Map();
       for (const image of topic.images || []) {
         const stored = await lessonStorage.cloneFile(image, `teachers/${lesson.teacherId}/lessons/${lesson.id}/topics/${created.id}`);
         createdStorage.push(stored);
-        await ClassroomLessonAttachment.create({
+        const clonedImage = await ClassroomLessonAttachment.create({
           classroomId: null, lessonId: lesson.id, topicId: created.id, purpose: "topic_image",
           placement: image.placement, altText: image.altText, caption: image.caption,
           originalName: image.originalName, storedName: nextStoredName(image.originalName), mimeType: image.mimeType,
           sizeBytes: image.sizeBytes, displayOrder: image.displayOrder, ...stored,
         }, { transaction });
+        imageIdMap.set(image.id, clonedImage.id);
       }
+      created.content = remapTopicImageBlocks(topic.content, imageIdMap);
+      await created.save({ transaction });
       lesson.version += 1;
       await lesson.save({ transaction });
       return created;

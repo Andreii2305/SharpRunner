@@ -8,7 +8,7 @@ const LessonTopic = sequelize.define("LessonTopics", {
   content: {
     type: DataTypes.JSONB,
     allowNull: false,
-    defaultValue: { format: "markdown", body: "", codeBlocks: [], practiceBlocks: [] },
+    defaultValue: { format: "markdown", blocks: [] },
   },
 });
 

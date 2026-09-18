@@ -173,8 +173,6 @@ function TeacherClassDetailPage() {
     };
   }, [students]);
 
-  const modules = useMemo(() => lessons.filter((lesson) => lesson.contentType === "module"), [lessons]);
-  const moduleTitleById = useMemo(() => new Map(modules.map((module) => [Number(module.id), module.title])), [modules]);
   const filteredLessons = useMemo(() => lessons.filter((lesson) => contentFilter === "all" || lesson.contentType === contentFilter), [lessons, contentFilter]);
   const lessonLibraryUrl = (moduleId = null) => `/teacher/lessons?classroomId=${classroomId}${moduleId ? `&moduleId=${moduleId}` : ""}`;
 
@@ -482,20 +480,6 @@ function TeacherClassDetailPage() {
     }
   };
 
-  const moveLibraryLesson = async (lesson, moduleId) => {
-    try {
-      const { data } = await axios.post(buildApiUrl(`/api/teacher/lesson-library/${lesson.id}/placements`), {
-        classroomId: Number(classroomId),
-        moduleId: moduleId ? Number(moduleId) : null,
-        mode: "reuse",
-      }, { headers: getAuthHeaders() });
-      setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, moduleId: moduleId ? Number(moduleId) : null } : item));
-      toast.success(data.message);
-    } catch (error) {
-      toast.error(error.response?.data?.message ?? "Unable to move this lesson.");
-    }
-  };
-
   const confirmPublication = async () => {
     const target = publishTarget; setPublishTarget(null);
     if (target?.kind === "publish" && target.lesson) await setPublication(target.lesson, true);
@@ -603,7 +587,6 @@ function TeacherClassDetailPage() {
                 <div className={detailStyles.sectionHeader}><div><h2>Class content</h2><p>Add an existing lesson or create a new reusable lesson for this class.</p></div><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>
                 <div className={detailStyles.contentFilters}>{[["all", "All", lessons.length], ["module", "Modules", lessons.filter((item) => item.contentType === "module").length], ["lesson", "Lessons", lessons.filter((item) => item.contentType === "lesson").length], ["assignment", "Assignments", lessons.filter((item) => item.contentType === "assignment").length]].map(([key, label, count]) => <button type="button" key={key} className={contentFilter === key ? detailStyles.contentFilterActive : ""} onClick={() => setContentFilter(key)}>{label}<span>{count}</span></button>)}</div>
                 {filteredLessons.length ? <div className={detailStyles.lessonGrid}>{filteredLessons.map((lesson) => {
-                  const moduleTitle = moduleTitleById.get(Number(lesson.moduleId));
                   const scheduled = lesson.isPublished && lesson.publishAt && new Date(lesson.publishAt) > new Date();
                   const statusLabel = !lesson.isPublished ? "Draft" : scheduled ? "Scheduled" : "Published";
                   const kindLabel = lesson.contentType === "module" ? "Module" : lesson.contentType === "assignment" ? "Assignment" : "Lesson";
@@ -612,7 +595,7 @@ function TeacherClassDetailPage() {
                     <article className={detailStyles.lessonCard} role="button" tabIndex={0} onClick={() => previewLesson(lesson)} onKeyDown={(event) => event.target === event.currentTarget && event.key === "Enter" && previewLesson(lesson)}>
                       <div className={detailStyles.lessonIcon}><KindIcon /></div>
                       <div className={detailStyles.lessonCardContent}>
-                        <div className={detailStyles.lessonMetaRow}><div className={detailStyles.contentKind}><KindIcon /> {kindLabel}</div><div className={detailStyles.lessonBadges}>{moduleTitle && <span className={detailStyles.moduleBadge}><FiLayers /> {moduleTitle}</span>}{lesson.isLibraryLesson && Number(lesson.usageCount) > 1 && <span className={detailStyles.usageBadge}>Used in {lesson.usageCount} classes</span>}<span className={!lesson.isPublished ? detailStyles.draftBadge : scheduled ? detailStyles.scheduledBadge : detailStyles.publishedBadge}>{statusLabel}</span></div></div>
+                        <div className={detailStyles.lessonMetaRow}><div className={detailStyles.contentKind}><KindIcon /> {kindLabel}</div><div className={detailStyles.lessonBadges}>{lesson.isLibraryLesson && Number(lesson.usageCount) > 1 && <span className={detailStyles.usageBadge}>Used in {lesson.usageCount} classes</span>}<span className={!lesson.isPublished ? detailStyles.draftBadge : scheduled ? detailStyles.scheduledBadge : detailStyles.publishedBadge}>{statusLabel}</span></div></div>
                         <h3>{lesson.title}</h3>
                         <p>{lesson.description || "No description added yet."}</p>
                         <div className={detailStyles.lessonDates}>{lesson.publishAt && <small><FiCalendar /> Publishes {new Date(lesson.publishAt).toLocaleString()}</small>}{lesson.contentType === "assignment" && lesson.dueAt && <small><FiCalendar /> Due {new Date(lesson.dueAt).toLocaleString()}</small>}</div>
@@ -621,7 +604,6 @@ function TeacherClassDetailPage() {
                         <label className={detailStyles.addFilesButton} onClick={(event) => event.stopPropagation()}><FiUpload /> {attachingLessonId === lesson.id ? "Uploading…" : "Add files"}<input type="file" multiple disabled={attachingLessonId != null} onChange={(event) => { addLessonAttachments(lesson.id, event.target.files); event.target.value = ""; }} /></label>
                       </div>
                     </article>
-                    {lesson.isLibraryLesson && <label className={detailStyles.modulePlacement}><span><FiLayers /> Module</span><select aria-label={`Choose a module for ${lesson.title}`} value={lesson.moduleId || ""} onChange={(event) => moveLibraryLesson(lesson, event.target.value)}><option value="">No module</option>{modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}</select></label>}
                     <div className={detailStyles.lessonActions}>
                       {lesson.contentType === "assignment" && <button type="button" onClick={() => openSubmissions(lesson)}><FiCheckCircle /> Review ({lesson.stats?.submitted ?? 0})</button>}
                       {lesson.contentType === "module" && <><button type="button" onClick={() => navigate(lessonLibraryUrl(lesson.id))}><FiBookOpen /> Add lesson</button><button type="button" onClick={() => buildNewLesson(lesson.id)}><FiPlus /> Create lesson</button></>}

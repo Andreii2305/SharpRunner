@@ -40,9 +40,6 @@
 .lessonActions { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 10px 12px; border-top: 1px solid #e7edf4; background: #f7fafe; }
 .lessonActions button { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #47627e; cursor: pointer; font: inherit; font-size: var(--teacher-text-md); font-weight: 700; }
 .lessonActions button:hover { border-color: #91a9c2; color: #1e3a5f; }
-.modulePlacement { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; margin: 0 12px 10px; padding: 9px 10px; border: 1px solid #e0e8f0; border-radius: 9px; background: #f8fbfe; color: #536b82; font-size: 13px; font-weight: 750; }
-.modulePlacement > span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-.modulePlacement select { min-width: 0; width: 100%; height: 34px; padding: 4px 8px; border: 1px solid #cbd8e4; border-radius: 7px; background: #fff; color: #334e68; font: inherit; font-size: 13px; }
 .lessonActions .deleteLessonButton { color: #b42318; border-color: #f1c7c3; }
 .lessonActions .deleteLessonButton:hover { color: #8f1710; border-color: #df8f87; background: #fff7f6; }
 .lessonIcon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 11px; background: linear-gradient(145deg, #edf5ff, #e4effe); color: #2563eb; font-size: 18px; }
@@ -54,7 +51,6 @@
 .publishedBadge { background: #dcfce7; color: #16803a; }
 .draftBadge { background: #e2e8f0; color: #475569; }
 .scheduledBadge { background: #fef3c7; color: #8a5b10; }
-.moduleBadge { background: #eaf2ff; color: #315f96; }
 .usageBadge { background: #fff3d6; color: #81591a; }
 .lessonStats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .lessonStats span { padding: 3px 6px; border-radius: 99px; background: #eef4fb; color: #47627e; font-size: var(--teacher-text-xs); }

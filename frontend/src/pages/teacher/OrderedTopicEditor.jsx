@@ -1,4 +1,5 @@
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { FiArrowDown, FiArrowUp, FiCopy, FiImage, FiMenu, FiPlay, FiPlus, FiTrash2, FiUpload } from "react-icons/fi";
 import { SecureLessonImage } from "../../Components/LessonRenderer/LessonRenderer.jsx";
@@ -57,22 +58,66 @@ function TeacherTestRun({ code }) {
   return <div className={styles.testRun}><button type="button" onClick={run} disabled={running || !code?.trim()}><FiPlay /> {running ? "Running…" : "Test Run"}</button>{result && <pre className={result.success ? styles.testSuccess : styles.testError} aria-live="polite">{result.stdout || result.stderr || (result.success ? "Program completed with no output." : "Run failed.")}</pre>}</div>;
 }
 
+function AutoHeightCodeEditor({ value, onChange, ariaLabel }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const input = ref.current;
+    if (!input) return;
+    input.style.height = "auto";
+    input.style.height = `${input.scrollHeight + 2}px`;
+  }, [value]);
+  return <textarea ref={ref} className={styles.codeInput} value={value} rows={3} wrap="off" aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} />;
+}
+
 function AddBlockControl({ position, onAdd }) {
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0, width: 310 });
   const buttonRef = useRef(null);
+  const menuRef = useRef(null);
+  const menuId = useId();
   const add = (type) => {
     onAdd(type, position);
     setOpen(false);
     requestAnimationFrame(() => buttonRef.current?.focus());
   };
+  useLayoutEffect(() => {
+    if (!open) return undefined;
+    const placeMenu = () => {
+      const button = buttonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const width = Math.min(310, window.innerWidth - 24);
+      const menuHeight = menuRef.current?.offsetHeight || 260;
+      const left = Math.min(Math.max(12, rect.left + rect.width / 2 - width / 2), window.innerWidth - width - 12);
+      const below = rect.bottom + 6;
+      const top = below + menuHeight <= window.innerHeight - 12 ? below : Math.max(12, rect.top - menuHeight - 6);
+      setMenuPosition({ left, top, width });
+    };
+    placeMenu();
+    window.addEventListener("resize", placeMenu);
+    window.addEventListener("scroll", placeMenu, true);
+    return () => { window.removeEventListener("resize", placeMenu); window.removeEventListener("scroll", placeMenu, true); };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOutside = (event) => {
+      if (!buttonRef.current?.contains(event.target) && !menuRef.current?.contains(event.target)) setOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") { setOpen(false); buttonRef.current?.focus(); }
+    };
+    document.addEventListener("pointerdown", closeOutside, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("pointerdown", closeOutside, true); document.removeEventListener("keydown", closeOnEscape); };
+  }, [open]);
   return <div className={styles.blockInsertion}>
-    <button ref={buttonRef} type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}><FiPlus /> Add Block</button>
-    {open && <div className={styles.blockMenu} role="menu" aria-label="Choose block type">
+    <button ref={buttonRef} type="button" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen((value) => !value)}><FiPlus /> Add Block</button>
+    {open && createPortal(<div ref={menuRef} id={menuId} className={styles.blockMenu} role="menu" aria-label="Choose block type" style={menuPosition}>
       <button type="button" role="menuitem" onClick={() => add("content")}><span>Text / Content</span><small>Explanation, headings, lists, and links</small></button>
       <button type="button" role="menuitem" onClick={() => add("code")}><span>Code Example</span><small>Display-only C# example</small></button>
       <button type="button" role="menuitem" onClick={() => add("image")}><span>Image</span><small>Educational image with alt text</small></button>
       <button type="button" role="menuitem" onClick={() => add("practice")}><span>Try It Yourself</span><small>Runnable student practice</small></button>
-    </div>}
+    </div>, document.body)}
   </div>;
 }
 
@@ -94,8 +139,8 @@ function BlockEditor({ topic, block, index, count, dirtyImage, uploadBusy, onCha
     </header>
     {open && <div className={styles.lessonBlockBody}>
       {block.type === "content" && <RichContentEditor value={block.body || ""} onChange={(body) => update({ body })} ariaLabel={`Content block ${index + 1}`} />}
-      {block.type === "code" && <><label>Label<input value={block.title || ""} maxLength={120} onChange={(event) => update({ title: event.target.value })} /></label><label>C# code<textarea className={styles.codeInput} value={block.code || ""} onChange={(event) => update({ code: event.target.value })} /></label><p className={styles.helper}>Display-only example for students. Add a Try It Yourself block when the code should be runnable.</p></>}
-      {block.type === "practice" && <><label>Title<input value={block.title || ""} maxLength={120} onChange={(event) => update({ title: event.target.value })} /></label><label>Instructions<textarea value={block.prompt || ""} onChange={(event) => update({ prompt: event.target.value })} /></label><label>Starter C# code<textarea className={styles.codeInput} value={block.starterCode || ""} onChange={(event) => update({ starterCode: event.target.value })} /></label><TeacherTestRun code={block.starterCode} /><label>Expected output<input value={block.expectedOutput || ""} onChange={(event) => update({ expectedOutput: event.target.value })} /></label></>}
+      {block.type === "code" && <><label>Label<input value={block.title || ""} maxLength={120} onChange={(event) => update({ title: event.target.value })} /></label><label>C# code<AutoHeightCodeEditor value={block.code || ""} onChange={(code) => update({ code })} ariaLabel={`C# code for ${block.title || "code example"}`} /></label><p className={styles.helper}>Display-only example for students. Add a Try It Yourself block when the code should be runnable.</p></>}
+      {block.type === "practice" && <><label>Title<input value={block.title || ""} maxLength={120} onChange={(event) => update({ title: event.target.value })} /></label><label>Instructions<textarea value={block.prompt || ""} onChange={(event) => update({ prompt: event.target.value })} /></label><label>Starter C# code<AutoHeightCodeEditor value={block.starterCode || ""} onChange={(starterCode) => update({ starterCode })} ariaLabel={`Starter C# code for ${block.title || "practice"}`} /></label><TeacherTestRun code={block.starterCode} /><label>Expected output<input value={block.expectedOutput || ""} onChange={(event) => update({ expectedOutput: event.target.value })} /></label></>}
       {block.type === "image" && (image ? <div className={styles.imageEditor}><SecureLessonImage image={image} /><label>Alt text<input value={image.altText || ""} onChange={(event) => dirtyImage(topic, image, { altText: event.target.value })} onBlur={() => onUpdateImage(topic, image, { altText: image.altText || "" })} placeholder="Describe what students should understand" /><small>Describe meaningful images for screen readers; leave blank only when decorative.</small></label><label>Caption<input value={image.caption || ""} onChange={(event) => dirtyImage(topic, image, { caption: event.target.value })} onBlur={() => onUpdateImage(topic, image, { caption: image.caption || "" })} placeholder="Optional caption" /></label></div> : <div className={styles.imageUpload}><FiImage /><p>{topic.id ? "Choose an educational image for this position." : "Save this new topic before uploading its image."}</p><label className={`${styles.secondaryButton} ${!topic.id || uploadBusy ? styles.disabledButton : ""}`}><FiUpload /> {uploadBusy ? "Uploading…" : "Upload image"}<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" disabled={!topic.id || uploadBusy} onChange={(event) => { onUploadImage(topic, block, event.target.files?.[0]); event.target.value = ""; }} /></label></div>)}
     </div>}
   </section>;

@@ -89,6 +89,20 @@ const buildCurriculumEligibility = ({
   ]));
   const enabledLevelKeysByStudent = new Map();
   const dueAtByStudentAndLevel = new Map();
+  const displayTitleByLevelKey = new Map();
+
+  for (const levelKey of PLAYABLE_LEVEL_KEYS) {
+    const titles = classroomIds
+      .map((classroomId) => overrideByClassAndLevel.get(`${classroomId}:${levelKey}`))
+      .filter((override) => override?.isEnabled !== false)
+      .map((override) => typeof override?.lessonCardTitle === "string"
+        ? override.lessonCardTitle.trim() || null
+        : null);
+    const uniqueTitles = new Set(titles.filter(Boolean));
+    if (titles.length && titles.every(Boolean) && uniqueTitles.size === 1) {
+      displayTitleByLevelKey.set(levelKey, [...uniqueTitles][0]);
+    }
+  }
 
   for (const studentId of studentIds) {
     const enabledLevelKeys = new Set();
@@ -110,7 +124,7 @@ const buildCurriculumEligibility = ({
     dueAtByStudentAndLevel.set(studentId, dueAtByLevelKey);
   }
 
-  return { enabledLevelKeysByStudent, dueAtByStudentAndLevel };
+  return { enabledLevelKeysByStudent, dueAtByStudentAndLevel, displayTitleByLevelKey };
 };
 
 const validDate = (value) => {
@@ -272,21 +286,333 @@ const calculateDifficulty = ({
   return { score, label: difficultyLabel(score), sufficientData: true };
 };
 
+const hasSolutionAttempt = (row) => Boolean(
+  row && (Number(row.attemptCount) > 0 || row.isCompleted),
+);
+
+const FAILURE_CATEGORY_LABELS = Object.freeze({
+  compilation: "Compilation",
+  syntax: "Syntax",
+  wrong_logic: "Incorrect logic",
+  incorrect_output: "Incorrect output",
+  structure_requirement: "Required code structure",
+  incomplete_solution: "Incomplete solution",
+  unknown: "Unknown",
+});
+
+const readableFailureValue = (value, fallback = "Unknown") => {
+  const normalized = String(value || "").trim();
+  if (!normalized) return fallback;
+  const words = normalized.toLowerCase().replace(/[_-]+/g, " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+};
+
+const failureCategoryLabel = (category) => (
+  FAILURE_CATEGORY_LABELS[category] || readableFailureValue(category)
+);
+
+const buildFailureSignal = ({ row, lesson, filters }) => {
+  if (!row?.latestFailureAt || (!row.latestFailureCategory && !row.latestFailureCode)) return null;
+  if (!isWithinWindow(row.latestFailureAt, filters)) return null;
+  const parsed = parseLevelKey(row.levelKey);
+  const category = row.latestFailureCategory || "unknown";
+  const code = row.latestFailureCode || "UNKNOWN";
+  return {
+    studentId: Number(row.userId),
+    lessonId: `curriculum:${lesson.lessonKey}`,
+    lessonKey: lesson.lessonKey,
+    lessonTitle: lesson.lessonTitle,
+    levelKey: row.levelKey,
+    levelNumber: parsed?.levelNumber ?? null,
+    levelTitle: parsed?.levelNumber ? `Level ${parsed.levelNumber}` : row.levelKey,
+    category,
+    categoryLabel: failureCategoryLabel(category),
+    code,
+    codeLabel: readableFailureValue(code),
+    latestOccurrence: validDate(row.latestFailureAt),
+    resolution: row.isCompleted ? "completed_after_failure" : "unresolved",
+  };
+};
+
+const aggregateFailureSignalGroup = (signals) => {
+  const categoryMap = new Map();
+  const affectedStudentIds = new Set();
+  const affectedLevelKeys = new Set();
+  const affectedLessonIds = new Set();
+  let latestOccurrence = null;
+
+  for (const signal of signals) {
+    affectedStudentIds.add(signal.studentId);
+    affectedLevelKeys.add(signal.levelKey);
+    affectedLessonIds.add(signal.lessonId);
+    latestOccurrence = maxDate(latestOccurrence, signal.latestOccurrence);
+    if (!categoryMap.has(signal.category)) {
+      categoryMap.set(signal.category, {
+        category: signal.category,
+        label: signal.categoryLabel,
+        signalCount: 0,
+        studentIds: new Set(),
+        levelKeys: new Set(),
+        lessonIds: new Set(),
+        latestOccurrence: null,
+        codeMap: new Map(),
+        levelMap: new Map(),
+      });
+    }
+    const category = categoryMap.get(signal.category);
+    category.signalCount += 1;
+    category.studentIds.add(signal.studentId);
+    category.levelKeys.add(signal.levelKey);
+    category.lessonIds.add(signal.lessonId);
+    category.latestOccurrence = maxDate(category.latestOccurrence, signal.latestOccurrence);
+
+    if (!category.codeMap.has(signal.code)) {
+      category.codeMap.set(signal.code, {
+        code: signal.code,
+        label: signal.codeLabel,
+        studentIds: new Set(),
+        levelKeys: new Set(),
+        latestOccurrence: null,
+      });
+    }
+    const code = category.codeMap.get(signal.code);
+    code.studentIds.add(signal.studentId);
+    code.levelKeys.add(signal.levelKey);
+    code.latestOccurrence = maxDate(code.latestOccurrence, signal.latestOccurrence);
+
+    if (!category.levelMap.has(signal.levelKey)) {
+      category.levelMap.set(signal.levelKey, {
+        levelKey: signal.levelKey,
+        levelNumber: signal.levelNumber,
+        title: signal.levelTitle,
+        lessonId: signal.lessonId,
+        lessonTitle: signal.lessonTitle,
+        studentIds: new Set(),
+        latestOccurrence: null,
+      });
+    }
+    const level = category.levelMap.get(signal.levelKey);
+    level.studentIds.add(signal.studentId);
+    level.latestOccurrence = maxDate(level.latestOccurrence, signal.latestOccurrence);
+  }
+
+  const categories = [...categoryMap.values()].map((category) => {
+    const codes = [...category.codeMap.values()].map((code) => ({
+      code: code.code,
+      label: code.label,
+      affectedStudents: code.studentIds.size,
+      affectedLevels: code.levelKeys.size,
+      latestOccurrence: code.latestOccurrence,
+    })).sort((left, right) => right.affectedStudents - left.affectedStudents || left.label.localeCompare(right.label));
+    const levels = [...category.levelMap.values()].map((level) => ({
+      levelKey: level.levelKey,
+      levelNumber: level.levelNumber,
+      title: level.title,
+      lessonId: level.lessonId,
+      lessonTitle: level.lessonTitle,
+      affectedStudents: level.studentIds.size,
+      latestOccurrence: level.latestOccurrence,
+    })).sort((left, right) => right.affectedStudents - left.affectedStudents
+      || left.lessonTitle.localeCompare(right.lessonTitle)
+      || (left.levelNumber ?? 0) - (right.levelNumber ?? 0));
+    return {
+      category: category.category,
+      label: category.label,
+      signalCount: category.signalCount,
+      affectedStudents: category.studentIds.size,
+      affectedLevels: category.levelKeys.size,
+      affectedLessons: category.lessonIds.size,
+      latestOccurrence: category.latestOccurrence,
+      mostAffected: levels[0] || null,
+      codes,
+      levels,
+    };
+  }).sort((left, right) => right.affectedStudents - left.affectedStudents
+    || right.signalCount - left.signalCount
+    || left.label.localeCompare(right.label));
+
+  return {
+    signalCount: signals.length,
+    affectedStudents: affectedStudentIds.size,
+    affectedLevels: affectedLevelKeys.size,
+    affectedLessons: affectedLessonIds.size,
+    latestOccurrence,
+    categories,
+  };
+};
+
+const buildFailurePatterns = (signals) => ({
+  semantics: "One latest recorded signal per applicable student-level; counts are not historical error frequency.",
+  unresolved: aggregateFailureSignalGroup(
+    signals.filter((signal) => signal.resolution === "unresolved"),
+  ),
+  completedAfterFailure: aggregateFailureSignalGroup(
+    signals.filter((signal) => signal.resolution === "completed_after_failure"),
+  ),
+});
+
+const summarizeFailureSignals = (signals) => {
+  const grouped = buildFailurePatterns(signals);
+  const categories = new Map();
+  for (const [key, group] of [["unresolved", grouped.unresolved], ["completedAfterFailure", grouped.completedAfterFailure]]) {
+    for (const category of group.categories) {
+      if (!categories.has(category.category)) {
+        categories.set(category.category, {
+          category: category.category,
+          label: category.label,
+          unresolvedAffectedStudents: 0,
+          completedAfterFailureStudents: 0,
+          latestOccurrence: null,
+        });
+      }
+      const item = categories.get(category.category);
+      if (key === "unresolved") item.unresolvedAffectedStudents = category.affectedStudents;
+      else item.completedAfterFailureStudents = category.affectedStudents;
+      item.latestOccurrence = maxDate(item.latestOccurrence, category.latestOccurrence);
+    }
+  }
+  return {
+    unresolvedAffectedStudents: grouped.unresolved.affectedStudents,
+    completedAfterFailureStudents: grouped.completedAfterFailure.affectedStudents,
+    latestOccurrence: maxDate(
+      grouped.unresolved.latestOccurrence,
+      grouped.completedAfterFailure.latestOccurrence,
+    ),
+    categories: [...categories.values()].sort((left, right) => (
+      right.unresolvedAffectedStudents - left.unresolvedAffectedStudents
+      || right.completedAfterFailureStudents - left.completedAfterFailureStudents
+      || left.label.localeCompare(right.label)
+    )),
+  };
+};
+
+const buildLearningFunnel = (studentStates) => {
+  const applicable = studentStates.filter((state) => state.applicable).length;
+  const started = studentStates.filter((state) => state.started).length;
+  const attempted = studentStates.filter((state) => state.attempted).length;
+  const completed = studentStates.filter((state) => state.completed).length;
+  return {
+    applicable,
+    started,
+    startedRate: percent(started, applicable),
+    attempted,
+    attemptedRate: percent(attempted, applicable),
+    completed,
+    completionRate: percent(completed, applicable),
+    startedFromApplicable: percent(started, applicable),
+    attemptedFromStarted: percent(attempted, started),
+    completedFromAttempted: percent(completed, attempted),
+  };
+};
+
+const buildCurriculumLevelMetric = ({
+  lesson,
+  levelKey,
+  eligibleStudentIds,
+  enabledLevelKeysByStudent,
+  rowByStudentAndLevel,
+  displayTitleByLevelKey,
+  filters,
+}) => {
+  const parsed = parseLevelKey(levelKey);
+  const title = displayTitleByLevelKey.get(levelKey) || `Level ${parsed?.levelNumber ?? ""}`.trim();
+  const states = eligibleStudentIds.map((studentId) => {
+    const applicable = (enabledLevelKeysByStudent.get(studentId) || new Set()).has(levelKey);
+    const row = applicable ? rowByStudentAndLevel.get(`${studentId}:${levelKey}`) : null;
+    const activeRow = row && progressInWindow(row, filters) ? row : null;
+    return {
+      studentId,
+      applicable,
+      row,
+      started: Boolean(activeRow && hasProgressEvidence(activeRow)),
+      attempted: Boolean(activeRow && hasSolutionAttempt(activeRow)),
+      completed: Boolean(activeRow?.isCompleted),
+    };
+  });
+  const applicableStates = states.filter((state) => state.applicable);
+  if (!applicableStates.length) return null;
+  const startedStates = applicableStates.filter((state) => state.started);
+  const attemptedStates = applicableStates.filter((state) => state.attempted);
+  const completedStates = applicableStates.filter((state) => state.completed);
+  const attemptValues = attemptedStates.map((state) => (
+    Math.max(0, Number(state.row.attemptCount) || 0) + (state.row.isCompleted ? 1 : 0)
+  ));
+  const failedAttemptValues = attemptedStates.map(
+    (state) => Math.max(0, Number(state.row.attemptCount) || 0),
+  );
+  const scoreValues = completedStates
+    .filter((state) => isNumeric(state.row.finalScore))
+    .map((state) => Number(state.row.finalScore));
+  const activeTimes = startedStates
+    .map((state) => Number(state.row.timeSpentSeconds) || 0)
+    .filter((seconds) => seconds > 0);
+  const hintStates = startedStates.filter((state) => state.row.hintUsed);
+  const totalFailedAttempts = failedAttemptValues.reduce((sum, value) => sum + value, 0);
+  const totalSolutionAttempts = attemptValues.reduce((sum, value) => sum + value, 0);
+  const averageScore = average(scoreValues);
+  const failureSignals = applicableStates
+    .map((state) => state.row ? buildFailureSignal({ row: state.row, lesson, filters }) : null)
+    .filter(Boolean);
+
+  return {
+    levelKey,
+    levelNumber: parsed?.levelNumber ?? null,
+    order: PLAYABLE_LEVEL_KEYS.indexOf(levelKey) + 1,
+    title,
+    displayTitle: displayTitleByLevelKey.get(levelKey) || null,
+    applicableStudents: applicableStates.length,
+    studentsStarted: startedStates.length,
+    studentsAttempted: attemptedStates.length,
+    studentsCompleted: completedStates.length,
+    startRate: percent(startedStates.length, applicableStates.length),
+    attemptRate: percent(attemptedStates.length, applicableStates.length),
+    completionRate: percent(completedStates.length, startedStates.length),
+    averageScore,
+    averageAttempts: average(attemptValues),
+    averageFailedAttempts: average(failedAttemptValues),
+    totalFailedAttempts,
+    averageActiveSeconds: average(activeTimes, 0),
+    averageActiveTimeLabel: formatDuration(average(activeTimes, 0)),
+    hintUsageRate: percent(hintStates.length, startedStates.length),
+    basicHintUsers: hintStates.filter((state) => state.row.hintType === "basic").length,
+    purchasedHintUsers: startedStates.filter(
+      (state) => state.row.detailedHintUnlocked || state.row.hintType === "detailed",
+    ).length,
+    firstAttemptSuccessRate: percent(
+      completedStates.filter((state) => (Number(state.row.attemptCount) || 0) === 0).length,
+      completedStates.length,
+    ),
+    difficulty: calculateDifficulty({
+      studentsStarted: startedStates.length,
+      studentsCompleted: completedStates.length,
+      failedAttempts: totalFailedAttempts,
+      totalSolutionAttempts,
+      averageScore,
+      studentsUsingHints: hintStates.length,
+    }),
+    failurePatterns: summarizeFailureSignals(failureSignals),
+    failureSignals,
+  };
+};
+
 const buildCurriculumLessonMetric = ({
   lesson,
   rows,
   eligibleStudentIds,
   enabledLevelKeysByStudent,
+  displayTitleByLevelKey,
   filters,
 }) => {
   const lessonLevelKeys = LEVEL_KEYS_BY_LESSON.get(lesson.lessonKey) || [];
   const lessonLevelKeySet = new Set(lessonLevelKeys);
   const lessonRows = rows.filter((row) => lessonLevelKeySet.has(row.levelKey));
   const byStudent = new Map();
+  const rowByStudentAndLevel = new Map();
   for (const row of lessonRows) {
     const studentId = Number(row.userId);
     if (!byStudent.has(studentId)) byStudent.set(studentId, []);
     byStudent.get(studentId).push(row);
+    rowByStudentAndLevel.set(`${studentId}:${row.levelKey}`, row);
   }
 
   const studentStates = eligibleStudentIds.map((studentId) => {
@@ -300,6 +626,7 @@ const buildCurriculumLessonMetric = ({
     const expectedLevels = applicableLevelKeys.length;
     const applicable = expectedLevels > 0;
     const started = applicable && activeRows.some(hasProgressEvidence);
+    const attempted = applicable && activeRows.some(hasSolutionAttempt);
     const completedLevels = activeRows.filter((row) => row.isCompleted).length;
     const totalProgress = activeRows.reduce((sum, row) => sum + (Number(row.progressPercent) || 0), 0);
     const failedAttempts = activeRows.reduce((sum, row) => sum + Math.max(0, Number(row.attemptCount) || 0), 0);
@@ -308,6 +635,7 @@ const buildCurriculumLessonMetric = ({
       studentId,
       applicable,
       started,
+      attempted,
       completed: applicable && started && completedLevels >= expectedLevels,
       completedLevels,
       expectedLevels,
@@ -332,6 +660,18 @@ const buildCurriculumLessonMetric = ({
       rows: activeRows,
     };
   });
+
+  const internalLevelMetrics = lessonLevelKeys.map((levelKey) => buildCurriculumLevelMetric({
+    lesson,
+    levelKey,
+    eligibleStudentIds,
+    enabledLevelKeysByStudent,
+    rowByStudentAndLevel,
+    displayTitleByLevelKey,
+    filters,
+  })).filter(Boolean);
+  const failureSignals = internalLevelMetrics.flatMap((level) => level.failureSignals);
+  const levels = internalLevelMetrics.map(({ failureSignals: _failureSignals, ...level }) => level);
 
   const applicableStates = studentStates.filter((state) => state.applicable);
   const startedStates = studentStates.filter((state) => state.started);
@@ -381,6 +721,10 @@ const buildCurriculumLessonMetric = ({
     totalSolutionAttempts: totalAttempts,
     firstAttemptCompletions: completedStates.filter((state) => state.failedAttempts === 0).length,
     difficulty,
+    funnel: buildLearningFunnel(studentStates),
+    levels,
+    failurePatterns: summarizeFailureSignals(failureSignals),
+    failureSignals,
     studentStates,
     activityRows: studentStates.flatMap((state) => state.rows),
     tracking: {
@@ -657,12 +1001,13 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
         "userId", "levelKey", "progressPercent", "isCompleted", "completedAt", "attemptCount",
         "timeSpentSeconds", "finalScore", "startedAt", "hintUsed", "hintUsedAt", "hintType",
         "attemptCountAtHintUnlock", "detailedHintUnlocked", "detailedHintPurchasedAt",
-        "latestFailureAt", "updatedAt",
+        "latestFailureCode", "latestFailureCategory", "latestFailureAt",
+        "latestFailureAttemptCount", "updatedAt",
       ],
     }) : [],
     LevelContentOverride.findAll({
       where: { classroomId: { [Op.in]: classroomIds } },
-      attributes: ["classroomId", "levelKey", "isEnabled", "dueAt"],
+      attributes: ["classroomId", "levelKey", "lessonCardTitle", "isEnabled", "dueAt"],
     }),
     ClassroomLessonPlacement.findAll({
       where: { classroomId: { [Op.in]: classroomIds } },
@@ -729,7 +1074,11 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     membershipsByStudent.get(studentId).add(classroomId);
     studentIdsByClassroom.get(classroomId)?.add(studentId);
   }
-  const { enabledLevelKeysByStudent, dueAtByStudentAndLevel } = buildCurriculumEligibility({
+  const {
+    enabledLevelKeysByStudent,
+    dueAtByStudentAndLevel,
+    displayTitleByLevelKey,
+  } = buildCurriculumEligibility({
     classroomIds,
     studentIds,
     membershipsByStudent,
@@ -741,6 +1090,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     rows: progressRows,
     eligibleStudentIds: studentIds,
     enabledLevelKeysByStudent,
+    displayTitleByLevelKey,
     filters,
   }));
   const classroomById = new Map(classrooms.map((item) => [Number(item.id), item]));
@@ -753,7 +1103,13 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     classroomName: classroomById.get(entry.classroomId)?.className || "Classroom",
     showClassroomName: classrooms.length > 1,
   }));
-  let lessonPerformance = [...curriculumMetrics, ...customMetrics];
+  const allLessonPerformance = [...curriculumMetrics, ...customMetrics];
+  if (filters.lessonId && !allLessonPerformance.some((lesson) => lesson.id === filters.lessonId)) {
+    const error = new Error("Lesson is not available in the selected teacher scope");
+    error.status = 403;
+    throw error;
+  }
+  let lessonPerformance = allLessonPerformance;
   if (filters.lessonId) lessonPerformance = lessonPerformance.filter((lesson) => lesson.id === filters.lessonId);
 
   const statesByStudent = new Map(studentIds.map((id) => [id, []]));
@@ -804,6 +1160,9 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
   const curriculumProgressStates = startedStates.filter((state) => state.lessonId.startsWith("curriculum:"));
   const selectedCurriculumMetrics = lessonPerformance.filter((lesson) => lesson.source === "curriculum");
   const selectedCurriculumRows = selectedCurriculumMetrics.flatMap((lesson) => lesson.activityRows);
+  const failurePatterns = buildFailurePatterns(
+    selectedCurriculumMetrics.flatMap((lesson) => lesson.failureSignals),
+  );
   const completedWithAttempts = selectedCurriculumRows.filter((row) => row.isCompleted);
   const mostCompletedLesson = [...lessonPerformance]
     .filter((lesson) => lesson.studentsStarted > 0)
@@ -831,7 +1190,12 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     item.lessonTitle = lessonPerformance.find((lesson) => lesson.id === item.lessonId)?.title || item.levelKey;
   }
 
-  const publicLessons = lessonPerformance.map(({ studentStates: _studentStates, activityRows: _activityRows, ...lesson }) => lesson);
+  const publicLessons = lessonPerformance.map(({
+    studentStates: _studentStates,
+    activityRows: _activityRows,
+    failureSignals: _failureSignals,
+    ...lesson
+  }) => lesson);
   return {
     meta: {
       generatedAt: now,
@@ -853,11 +1217,15 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
         hintUsageRate: "Started curriculum student-lesson outcomes with any recorded hint use divided by started curriculum outcomes.",
         dateFilter: "Date windows include outcomes whose latest recorded activity falls in the window. Roster size is always current; historical snapshots are not fabricated.",
         difficulty: "35% failed-attempt rate + 30% non-completion rate + 20% score deficit + 15% hint-use rate, reweighted for available signals; minimum sample is 3 starters.",
+        levelCompletionRate: "Completed applicable student-level outcomes divided by started applicable student-level outcomes; start and attempt rates use applicable students.",
+        learningFunnel: "Applicable means at least one enabled lesson level; started requires progress evidence; attempted requires a failed submission or completion; completed requires every applicable enabled level.",
+        failurePatterns: "Each applicable student-level contributes at most its latest recorded failure signal. Unfinished signals are separate from completed-after-failure outcomes and are not historical error totals.",
       },
       limitations: [
         "Built-in UserProgress records predate classroom-scoped progress and remain student-scoped; access is limited to current valid classroom membership.",
         "When all classrooms are selected, each student is counted once and curriculum eligibility is the union of levels enabled across that student's selected classroom memberships.",
         "Cumulative records cannot reconstruct attempts or active time by historical day.",
+        "Latest failure fields retain only one signal per student-level and remain after later completion; failure-pattern date filters use latestFailureAt.",
         "Classroom lesson reading progress does not track active time, failed attempts, or hints.",
       ],
     },
@@ -892,6 +1260,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
       } : null,
     },
     lessonPerformance: publicLessons,
+    failurePatterns,
     studentPerformance,
     attention: studentPerformance.filter((student) => student.attentionReasons.length),
     heatmap: {
@@ -968,6 +1337,7 @@ const emptyAnalyticsPayload = ({ filters, availableClassrooms }) => ({
   },
   highlights: { mostCompletedLesson: null, mostDifficultLesson: null },
   lessonPerformance: [],
+  failurePatterns: buildFailurePatterns([]),
   studentPerformance: [],
   attention: [],
   heatmap: { lessons: [], students: [] },

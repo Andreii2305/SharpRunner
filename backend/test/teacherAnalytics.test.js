@@ -56,6 +56,14 @@ const progressRow = ({
   timeSpentSeconds = 60,
   finalScore = 100,
   hintUsed = false,
+  hintType = hintUsed ? "basic" : null,
+  detailedHintUnlocked = false,
+  startedAt,
+  latestFailureCode = null,
+  latestFailureCategory = null,
+  latestFailureMetadata = {},
+  latestFailureAt = null,
+  latestFailureAttemptCount = null,
   at = new Date("2026-09-17T12:00:00Z"),
 } = {}) => ({
   userId: studentId,
@@ -66,11 +74,18 @@ const progressRow = ({
   attemptCount,
   timeSpentSeconds,
   finalScore: isCompleted ? finalScore : null,
-  startedAt: at,
+  startedAt: startedAt === undefined ? at : startedAt,
   hintUsed,
   hintUsedAt: hintUsed ? at : null,
-  hintType: hintUsed ? "basic" : null,
-  detailedHintUnlocked: false,
+  hintType,
+  attemptCountAtHintUnlock: hintUsed ? attemptCount : null,
+  detailedHintUnlocked,
+  detailedHintPurchasedAt: detailedHintUnlocked ? at : null,
+  latestFailureCode,
+  latestFailureCategory,
+  latestFailureMetadata,
+  latestFailureAt,
+  latestFailureAttemptCount,
   updatedAt: at,
 });
 
@@ -403,4 +418,236 @@ test("an enabled unfinished level with a past due date keeps the overdue attenti
   });
   const reasons = payload.studentPerformance[0].attentionReasons;
   assert.equal(reasons.some((reason) => reason.includes("past its class due date")), true);
+});
+
+test("level analytics expose all supported metrics with the documented denominators", async () => {
+  const memberships = [1, 2, 3].map((studentId) => ({ classroomId: 1, studentId }));
+  const students = [1, 2, 3].map((id) => ({
+    id, firstName: "Student", lastName: String(id), username: `student-${id}`, status: "active",
+  }));
+  const payload = await analyticsFixture({
+    memberships,
+    students,
+    progress: [
+      progressRow({ studentId: 1, level: 1, attemptCount: 0, finalScore: 100, timeSpentSeconds: 60 }),
+      progressRow({ studentId: 2, level: 1, attemptCount: 2, finalScore: 80, timeSpentSeconds: 120, hintUsed: true }),
+      progressRow({
+        studentId: 3, level: 1, isCompleted: false, progressPercent: 40, attemptCount: 1,
+        timeSpentSeconds: 180, hintUsed: true, hintType: "detailed", detailedHintUnlocked: true,
+      }),
+    ],
+  });
+  const level = tutorialLesson(payload).levels.find((item) => item.levelKey === "tutorial-level-1");
+
+  assert.equal(level.levelNumber, 1);
+  assert.equal(level.title, "Level 1");
+  assert.equal(level.applicableStudents, 3);
+  assert.equal(level.studentsStarted, 3);
+  assert.equal(level.studentsAttempted, 3);
+  assert.equal(level.studentsCompleted, 2);
+  assert.equal(level.startRate, 100);
+  assert.equal(level.attemptRate, 100);
+  assert.equal(level.completionRate, 66.7);
+  assert.equal(level.averageScore, 90);
+  assert.equal(level.averageAttempts, 1.7);
+  assert.equal(level.averageFailedAttempts, 1);
+  assert.equal(level.totalFailedAttempts, 3);
+  assert.equal(level.averageActiveSeconds, 120);
+  assert.equal(level.averageActiveTimeLabel, "2m");
+  assert.equal(level.hintUsageRate, 66.7);
+  assert.equal(level.basicHintUsers, 1);
+  assert.equal(level.purchasedHintUsers, 1);
+  assert.equal(level.firstAttemptSuccessRate, 50);
+  assert.equal(level.difficulty.sufficientData, true);
+});
+
+test("level difficulty remains insufficient below three starters", async () => {
+  const payload = await analyticsFixture({
+    memberships: [1, 2].map((studentId) => ({ classroomId: 1, studentId })),
+    students: [1, 2].map((id) => ({ id, firstName: "Student", lastName: String(id), username: `student-${id}`, status: "active" })),
+    progress: [
+      progressRow({ studentId: 1, level: 1, attemptCount: 4, isCompleted: false }),
+      progressRow({ studentId: 2, level: 1, attemptCount: 3, isCompleted: false }),
+    ],
+  });
+  const level = tutorialLesson(payload).levels.find((item) => item.levelKey === "tutorial-level-1");
+  assert.deepEqual(level.difficulty, { score: null, label: null, sufficientData: false });
+});
+
+test("lesson funnel distinguishes started, attempted, first-attempt success, and lesson completion", async () => {
+  const memberships = [1, 2, 3, 4].map((studentId) => ({ classroomId: 1, studentId }));
+  const students = [1, 2, 3, 4].map((id) => ({
+    id, firstName: "Student", lastName: String(id), username: `student-${id}`, status: "active",
+  }));
+  const payload = await analyticsFixture({
+    memberships,
+    students,
+    progress: [
+      progressRow({ studentId: 1, level: 1, isCompleted: false, progressPercent: 0, attemptCount: 0 }),
+      progressRow({ studentId: 2, level: 1, isCompleted: false, progressPercent: 0, attemptCount: 1 }),
+      progressRow({ studentId: 3, level: 1, isCompleted: true, attemptCount: 0 }),
+      ...[1, 2, 3, 4, 5].map((level) => progressRow({ studentId: 4, level, isCompleted: true, attemptCount: 0 })),
+    ],
+  });
+  assert.deepEqual(tutorialLesson(payload).funnel, {
+    applicable: 4,
+    started: 4,
+    startedRate: 100,
+    attempted: 3,
+    attemptedRate: 75,
+    completed: 1,
+    completionRate: 25,
+    startedFromApplicable: 100,
+    attemptedFromStarted: 75,
+    completedFromAttempted: 33.3,
+  });
+});
+
+test("disabled historical rows are omitted from level, funnel, and failure analytics", async () => {
+  const payload = await analyticsFixture({
+    progress: [
+      ...[1, 2, 3, 4].map((level) => progressRow({ level })),
+      progressRow({
+        level: 5, isCompleted: false, attemptCount: 9,
+        latestFailureCode: "COMPILER_ERROR", latestFailureCategory: "compilation",
+        latestFailureAt: new Date("2026-09-17T12:00:00Z"), latestFailureAttemptCount: 9,
+      }),
+    ],
+    overrides: [{ classroomId: 1, levelKey: "tutorial-level-5", isEnabled: false, dueAt: null }],
+    query: { classroomId: "1" },
+  });
+  const lesson = tutorialLesson(payload);
+  assert.equal(lesson.levels.some((level) => level.levelKey === "tutorial-level-5"), false);
+  assert.equal(lesson.funnel.applicable, 1);
+  assert.equal(lesson.funnel.attempted, 1);
+  assert.equal(lesson.funnel.completed, 1);
+  assert.equal(payload.failurePatterns.unresolved.signalCount, 0);
+});
+
+test("a zero-enabled lesson has no level rows and null funnel rates", async () => {
+  const payload = await analyticsFixture({
+    overrides: [1, 2, 3, 4, 5].map((level) => ({
+      classroomId: 1, levelKey: `tutorial-level-${level}`, isEnabled: false, dueAt: null,
+    })),
+    query: { classroomId: "1" },
+  });
+  const lesson = tutorialLesson(payload);
+  assert.deepEqual(lesson.levels, []);
+  assert.deepEqual(lesson.funnel, {
+    applicable: 0,
+    started: 0,
+    startedRate: null,
+    attempted: 0,
+    attemptedRate: null,
+    completed: 0,
+    completionRate: null,
+    startedFromApplicable: null,
+    attemptedFromStarted: null,
+    completedFromAttempted: null,
+  });
+});
+
+test("multi-classroom union keeps one student per applicable level and funnel", async () => {
+  const payload = await analyticsFixture({
+    classrooms: [
+      { id: 1, teacherId: 10, isActive: true, className: "Alpha", section: "A" },
+      { id: 2, teacherId: 10, isActive: true, className: "Beta", section: "B" },
+    ],
+    memberships: [{ classroomId: 1, studentId: 1 }, { classroomId: 2, studentId: 1 }],
+    progress: [1, 2, 3, 4, 5].map((level) => progressRow({ level })),
+    overrides: [
+      { classroomId: 1, levelKey: "tutorial-level-5", isEnabled: false, dueAt: null },
+      ...[1, 2, 3, 4].map((level) => ({ classroomId: 2, levelKey: `tutorial-level-${level}`, isEnabled: false, dueAt: null })),
+    ],
+  });
+  const lesson = tutorialLesson(payload);
+  assert.equal(lesson.levels.every((level) => level.applicableStudents === 1), true);
+  assert.equal(lesson.funnel.applicable, 1);
+  assert.equal(lesson.funnel.started, 1);
+  assert.equal(lesson.funnel.attempted, 1);
+  assert.equal(lesson.funnel.completed, 1);
+});
+
+test("level titles use a classroom override only when it is unambiguous in scope", async () => {
+  const classrooms = [
+    { id: 1, teacherId: 10, isActive: true, className: "Alpha", section: "A" },
+    { id: 2, teacherId: 10, isActive: true, className: "Beta", section: "B" },
+  ];
+  const memberships = [{ classroomId: 1, studentId: 1 }, { classroomId: 2, studentId: 1 }];
+  const overrides = [{
+    classroomId: 1,
+    levelKey: "tutorial-level-1",
+    lessonCardTitle: "Variables at the Village Gate",
+    isEnabled: true,
+    dueAt: null,
+  }];
+  const single = await analyticsFixture({
+    classrooms,
+    memberships,
+    overrides,
+    query: { classroomId: "1" },
+  });
+  assert.equal(tutorialLesson(single).levels[0].title, "Variables at the Village Gate");
+
+  const all = await analyticsFixture({ classrooms, memberships, overrides });
+  assert.equal(tutorialLesson(all).levels[0].title, "Level 1");
+});
+
+test("failure patterns aggregate latest signals and separate completed outcomes", async () => {
+  const at = new Date("2026-09-17T12:00:00Z");
+  const payload = await analyticsFixture({
+    memberships: [1, 2, 3].map((studentId) => ({ classroomId: 1, studentId })),
+    students: [1, 2, 3].map((id) => ({ id, firstName: "Student", lastName: String(id), username: `student-${id}`, status: "active" })),
+    progress: [
+      progressRow({ studentId: 1, level: 1, isCompleted: false, attemptCount: 7, latestFailureCode: "COMPILER_MISSING_SEMICOLON", latestFailureCategory: "syntax", latestFailureAt: at, latestFailureAttemptCount: 7 }),
+      progressRow({ studentId: 1, level: 2, isCompleted: false, attemptCount: 2, latestFailureCode: "COMPILER_UNMATCHED_DELIMITER", latestFailureCategory: "syntax", latestFailureAt: at, latestFailureAttemptCount: 2 }),
+      progressRow({ studentId: 2, level: 1, isCompleted: false, attemptCount: 3, latestFailureCode: "WRONG_VALUE", latestFailureCategory: "wrong_logic", latestFailureAt: at, latestFailureAttemptCount: 3 }),
+      progressRow({ studentId: 3, level: 1, isCompleted: true, attemptCount: 1, latestFailureCode: "COMPILER_ERROR", latestFailureCategory: "compilation", latestFailureAt: at, latestFailureAttemptCount: 1 }),
+    ],
+  });
+  const unresolved = payload.failurePatterns.unresolved;
+  const completed = payload.failurePatterns.completedAfterFailure;
+  const syntax = unresolved.categories.find((category) => category.category === "syntax");
+
+  assert.equal(unresolved.signalCount, 3, "one current signal per unfinished student-level, not cumulative attempts");
+  assert.equal(unresolved.affectedStudents, 2);
+  assert.equal(syntax.label, "Syntax");
+  assert.equal(syntax.affectedStudents, 1);
+  assert.equal(syntax.affectedLevels, 2);
+  assert.equal(syntax.codes.find((code) => code.code === "COMPILER_MISSING_SEMICOLON").affectedStudents, 1);
+  assert.equal(syntax.levels.find((level) => level.levelKey === "tutorial-level-1").affectedStudents, 1);
+  assert.equal(completed.signalCount, 1);
+  assert.equal(completed.affectedStudents, 1);
+  assert.equal(completed.categories[0].category, "compilation");
+  assert.equal(tutorialLesson(payload).levels.find((level) => level.levelNumber === 1).failurePatterns.completedAfterFailureStudents, 1);
+});
+
+test("failure patterns use latestFailureAt for date filters", async () => {
+  const payload = await analyticsFixture({
+    progress: [progressRow({
+      isCompleted: false,
+      attemptCount: 1,
+      latestFailureCode: "WRONG_VALUE",
+      latestFailureCategory: "wrong_logic",
+      latestFailureAt: new Date("2026-08-01T12:00:00Z"),
+      latestFailureAttemptCount: 1,
+      at: new Date("2026-09-17T12:00:00Z"),
+    })],
+    query: { datePreset: "7d" },
+  });
+  assert.equal(payload.failurePatterns.unresolved.signalCount, 0);
+});
+
+test("analytics reject lesson filters outside the authorized scope", async () => {
+  await assert.rejects(
+    analyticsFixture({ query: { lessonId: "custom:999:123" } }),
+    (error) => error.status === 403,
+  );
+});
+
+test("analytics reject students outside the authorized classroom scope", async () => {
+  await assert.rejects(
+    analyticsFixture({ query: { studentId: "999" } }),
+    (error) => error.status === 403,
+  );
 });

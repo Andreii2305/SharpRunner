@@ -17,7 +17,9 @@ The repaired analytics path is:
 3. Batched reads of `UserProgress`, `LevelContentOverride`, `ClassroomLessonPlacement`, `ClassroomLesson`, `ClassroomLessonProgress`, and `ClassroomLessonSubmission`.
 4. Server-side transformation by `teacherAnalyticsService`.
 5. `GET /api/teacher/analytics` for the dashboard and `GET /api/teacher/analytics/students/:studentId` for an authorized drill-down.
-6. `TeacherAnalyticsPage.jsx`, which renders cards, sortable tables, deterministic heatmap states, and small CSS distributions.
+6. `TeacherAnalyticsPage.jsx`, which renders cards, sortable tables, deterministic heatmap states, CSS funnels, expandable curriculum-level tables, and current failure-pattern summaries.
+
+Phase 2 keeps level details in the existing analytics response. SharpRunner has 29 playable level keys, so compact server-aggregated metrics do not justify a second endpoint or duplicated authorization/filter logic. Raw `UserProgress` rows and failure metadata are never returned to React.
 
 The dashboard endpoint remains for the overview/classes/students pages. Its legacy lesson insights now use recorded time and the same evidence-based difficulty formula instead of the old inverse-progress calculation.
 
@@ -42,6 +44,10 @@ The dashboard endpoint remains for the overview/classes/students pages. Its lega
 
 Replay attempts do not update completed `UserProgress` rows, so stored attempts, time, score, and completion remain the original academic outcome. Legacy rows with null timing or scores remain valid and produce an explicit “Not enough data” value rather than zero.
 
+`attemptCount` is the number of failed solution submissions, not total submissions. A completed row therefore proves one successful solution attempt even when `attemptCount === 0`; analytics calculate recorded solution attempts as failed submissions plus one when completed. Opening or timing a level can establish started evidence without establishing an attempted state.
+
+`latestFailureCode`, `latestFailureCategory`, sanitized `latestFailureMetadata`, `latestFailureAt`, and `latestFailureAttemptCount` are overwritten together after each failed validated submission. `latestFailureAttemptCount` is the cumulative failed-attempt count at which that latest signal was recorded; it is not the number of occurrences of that failure code or category. Successful completion does not clear these fields, so completed rows can retain a pre-success signal.
+
 ## Curriculum enablement and classroom scope
 
 Built-in curriculum eligibility is derived from `PLAYABLE_LEVEL_KEYS` plus the already-batched `LevelContentOverride` rows. An explicit `isEnabled: false` disables a level. A missing override is enabled by default, matching `classroomLevelSettingsService` and the student level-access flow.
@@ -53,6 +59,52 @@ The same applicable-level set controls both the denominator and the included pro
 If a student has no enabled levels in a curriculum lesson, that student-lesson outcome is unavailable: it has zero expected levels, null progress, no completion state, and an explicit `Unavailable` heatmap cell. If no student in scope has an enabled level for the lesson, the lesson remains visible as unavailable but is excluded from progress, completion, difficulty, highlights, and attention calculations. It is never treated as 0% complete or as unstarted work.
 
 Disabling a level is an analytics and access-policy decision only. Existing `UserProgress` rows are neither changed nor deleted and become eligible again if the level is re-enabled in the applicable scope.
+
+The same rules apply to Phase 2 details. A level appears in a lesson drill-down only when it is applicable to at least one student in the selected scope. A disabled historical row cannot contribute to its level metrics, lesson funnel, or failure patterns. In the all-classrooms view, each student-level is counted once when that level is enabled in at least one of the student's selected classroom memberships.
+
+## Curriculum level analytics
+
+Each curriculum lesson returns a compact `levels` array. Zero-applicable levels are omitted instead of being displayed as failed 0% outcomes. A teacher-provided `lessonCardTitle` is used when one unambiguous enabled title exists in the selected scope; otherwise the display name is `Level N`.
+
+Per-level formulas are:
+
+- Applicable Students: distinct scoped students for whom this exact level is enabled.
+- Started: applicable students with legitimate progress evidence in the selected activity window (`startedAt`, progress, completion, failed attempt, positive active time, or hint evidence).
+- Attempted: applicable students with at least one failed submission or a completed outcome. Started alone is not attempted.
+- Completed: applicable students whose row records completion.
+- Start Rate: started divided by applicable students.
+- Attempt Rate: attempted divided by applicable students.
+- Completion Rate: completed divided by started, matching the lesson-performance completion denominator.
+- Average Score: mean stored first-completion `finalScore` among completed rows with a score.
+- Average Attempts: mean failed submissions plus one successful submission when completed, among attempted rows.
+- Average Failed Attempts: mean `attemptCount` among attempted rows; Total Failed Attempts is the sum of `attemptCount`.
+- Average Active Time: mean positive confirmed `timeSpentSeconds` among started rows.
+- Hint Usage Rate: started rows with `hintUsed` divided by started rows. Basic users require recorded basic use; purchased/situational users use `detailedHintUnlocked` or the detailed hint type.
+- First-attempt Success: completed rows with zero failed submissions divided by completed rows.
+
+Level difficulty calls the same shared `calculateDifficulty()` implementation as lesson difficulty: 35% failed-attempt rate, 30% non-completion rate, 20% score deficit, and 15% hint-use rate, with available weights normalized and at least three starters required. Raw time is not a difficulty signal.
+
+## Learning funnel
+
+Each curriculum lesson returns one funnel based on the same per-student applicable-level set used by lesson completion:
+
+- Applicable: the student has at least one enabled level in the lesson.
+- Started: at least one applicable enabled level has legitimate progress evidence in the selected activity window.
+- Attempted: at least one applicable enabled level has a failed submission or recorded completion. A successful first submission counts even when `attemptCount === 0`.
+- Completed: every applicable enabled level in the lesson is completed under the Phase 1 semantics.
+
+`startedRate`, `attemptedRate`, and funnel `completionRate` use Applicable as the denominator. The response also returns `startedFromApplicable`, `attemptedFromStarted`, and `completedFromAttempted`. A zero denominator returns `null`, never a fabricated percentage. The funnel completion rate therefore answers a different explicit question from the lesson-performance completion rate: completion across all applicable students versus completion among students who started.
+
+## Current failure patterns
+
+Failure analytics describe latest recorded signals, not historical error frequency. Each applicable student-level contributes at most one signal. Aggregates preserve raw category/code values in the API, add safe readable labels, count distinct affected students/levels/lessons, identify the most affected level, and expose the latest occurrence. `latestFailureAttemptCount` and cumulative `attemptCount` are never treated as category occurrence counts.
+
+The default presentation has two explicit groups:
+
+- Unresolved Latest Signals: the level remains unfinished, so the retained latest failure is a current blocker signal.
+- Completed After Latest Failure: the student subsequently completed the level. The retained pre-success signal is useful context but is not labeled current or unresolved.
+
+Only category/code identifiers and safe aggregates reach the teacher UI. `latestFailureMetadata` is not included in the analytics payload, so compiler/debug details and submitted source cannot be exposed by this feature. Unknown stored categories or codes fall back to a readable form without being reclassified.
 
 ## Formulas
 
@@ -80,10 +132,12 @@ Attention rules are centralized in `ATTENTION_RULES` and emit plain-language rea
 
 Classroom filters are validated against teacher ownership before roster/activity reads. Date windows use the latest recorded activity on cumulative progress records. Current roster size is not presented as historical roster size. The existing schema cannot reconstruct attempts-by-day or active-time-by-day, so those metrics are explicitly unavailable rather than inferred.
 
+Current failure patterns apply the selected window directly to `latestFailureAt`. A signal outside the window is excluded even if another cumulative field on the row changed inside the window. This does not reconstruct failures that occurred before the latest retained failure and does not claim historical frequency.
+
 Built-in `UserProgress` predates classroom placement and is student-scoped. A teacher can see it only while the student is an active member of that teacher’s selected classroom. Consequently, the all-classrooms union rule can determine current eligibility but cannot determine which classroom produced a built-in progress event. Reusable teacher-library lesson progress is fully classroom-scoped.
 
 ## Query and authorization audit
 
-The analytics service uses a fixed number of batched queries. It does not issue one query per student or per lesson and does not return raw level rows to React. Student detail uses the same ownership and membership checks with a narrowed student scope.
+The analytics service uses a fixed number of batched queries. Level metrics, funnels, and failure patterns reuse the same one `UserProgress` read and the same one `LevelContentOverride` read; they do not issue one query per level, lesson, student, or failure category. Student detail uses the same ownership and membership checks with a narrowed student scope. An unknown lesson filter is rejected rather than being treated as an authorized empty drill-down.
 
-The additive migration changes reusable lesson progress uniqueness to `(classroomId, lessonId, studentId)` and adds indexes for the actual analytics predicates. No analytics columns or synthetic events were added.
+The earlier additive migration changed reusable lesson progress uniqueness to `(classroomId, lessonId, studentId)` and added indexes for the actual analytics predicates. Phase 2 requires no migration: it uses the existing latest-failure fields and does not add synthetic or historical failure events.

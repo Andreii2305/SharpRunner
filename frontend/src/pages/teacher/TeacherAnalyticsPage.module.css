@@ -31,6 +31,7 @@
 .heatmapTable th:first-child { text-align: left; min-width: 150px; position: sticky; left: 0; z-index: 1; }
 .heatmapTable td { padding: 8px; border-bottom: 1px solid #f1f5f9; text-align: center; }
 .heatCell { width: 34px; height: 34px; display: inline-grid; place-items: center; border-radius: 7px; font-weight: 800; font-size: var(--teacher-text-md); }
+.heat_unavailable { background: repeating-linear-gradient(135deg, #f8fafc, #f8fafc 4px, #e2e8f0 4px, #e2e8f0 8px); color: #526174; font-size: var(--teacher-text-xs); }
 .heat_not_started { background: #edf1f5; color: #7b8794; }
 .heat_healthy { background: #dceefb; color: #175b87; }
 .heat_moderate { background: #fff0cf; color: #80520b; }

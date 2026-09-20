@@ -27,6 +27,13 @@ const ATTENTION_RULES = Object.freeze({
 const LESSON_BY_KEY = new Map(
   LESSON_DEFINITIONS.map((lesson) => [lesson.lessonKey, lesson]),
 );
+const PLAYABLE_LEVEL_KEY_SET = new Set(PLAYABLE_LEVEL_KEYS);
+const LEVEL_KEYS_BY_LESSON = new Map(
+  LESSON_DEFINITIONS.map((lesson) => [
+    lesson.lessonKey,
+    PLAYABLE_LEVEL_KEYS.filter((levelKey) => levelKey.startsWith(`${lesson.lessonKey}-level-`)),
+  ]),
+);
 const isNumeric = (value) => value !== null
   && value !== undefined
   && value !== ""
@@ -57,6 +64,53 @@ const parsePositiveInteger = (value) => {
 const parseLevelKey = (levelKey) => {
   const match = /^(.*)-level-(\d+)$/.exec(String(levelKey || ""));
   return match ? { lessonKey: match[1], levelNumber: Number(match[2]) } : null;
+};
+
+const buildCurriculumEligibility = ({
+  classroomIds,
+  studentIds,
+  membershipsByStudent,
+  overrides,
+}) => {
+  const overrideByClassAndLevel = new Map();
+  const overridesByClassroom = new Map(classroomIds.map((classroomId) => [classroomId, []]));
+  for (const override of overrides) {
+    const classroomId = Number(override.classroomId);
+    if (!overridesByClassroom.has(classroomId) || !PLAYABLE_LEVEL_KEY_SET.has(override.levelKey)) continue;
+    overrideByClassAndLevel.set(`${classroomId}:${override.levelKey}`, override);
+    overridesByClassroom.get(classroomId).push(override);
+  }
+
+  const enabledLevelKeysByClassroom = new Map(classroomIds.map((classroomId) => [
+    classroomId,
+    new Set(PLAYABLE_LEVEL_KEYS.filter(
+      (levelKey) => overrideByClassAndLevel.get(`${classroomId}:${levelKey}`)?.isEnabled !== false,
+    )),
+  ]));
+  const enabledLevelKeysByStudent = new Map();
+  const dueAtByStudentAndLevel = new Map();
+
+  for (const studentId of studentIds) {
+    const enabledLevelKeys = new Set();
+    const dueAtByLevelKey = new Map();
+    const membershipClassroomIds = membershipsByStudent.get(studentId) || new Set();
+    for (const classroomId of membershipClassroomIds) {
+      for (const levelKey of enabledLevelKeysByClassroom.get(classroomId) || []) {
+        enabledLevelKeys.add(levelKey);
+      }
+      for (const override of overridesByClassroom.get(classroomId) || []) {
+        if (override.isEnabled === false || !override.dueAt) continue;
+        const current = dueAtByLevelKey.get(override.levelKey);
+        if (!current || new Date(override.dueAt) < new Date(current)) {
+          dueAtByLevelKey.set(override.levelKey, override.dueAt);
+        }
+      }
+    }
+    enabledLevelKeysByStudent.set(studentId, enabledLevelKeys);
+    dueAtByStudentAndLevel.set(studentId, dueAtByLevelKey);
+  }
+
+  return { enabledLevelKeysByStudent, dueAtByStudentAndLevel };
 };
 
 const validDate = (value) => {
@@ -222,35 +276,44 @@ const buildCurriculumLessonMetric = ({
   lesson,
   rows,
   eligibleStudentIds,
+  enabledLevelKeysByStudent,
   filters,
 }) => {
-  const lessonRows = rows.filter((row) => parseLevelKey(row.levelKey)?.lessonKey === lesson.lessonKey);
-  const inWindowRows = lessonRows.filter((row) => progressInWindow(row, filters));
-  const expectedLevelCount = PLAYABLE_LEVEL_KEYS.filter(
-    (levelKey) => parseLevelKey(levelKey)?.lessonKey === lesson.lessonKey,
-  ).length;
+  const lessonLevelKeys = LEVEL_KEYS_BY_LESSON.get(lesson.lessonKey) || [];
+  const lessonLevelKeySet = new Set(lessonLevelKeys);
+  const lessonRows = rows.filter((row) => lessonLevelKeySet.has(row.levelKey));
   const byStudent = new Map();
   for (const row of lessonRows) {
-    if (!byStudent.has(row.userId)) byStudent.set(row.userId, []);
-    byStudent.get(row.userId).push(row);
+    const studentId = Number(row.userId);
+    if (!byStudent.has(studentId)) byStudent.set(studentId, []);
+    byStudent.get(studentId).push(row);
   }
 
   const studentStates = eligibleStudentIds.map((studentId) => {
-    const allRows = byStudent.get(studentId) || [];
+    const enabledLevelKeys = enabledLevelKeysByStudent.get(studentId) || new Set();
+    const applicableLevelKeys = lessonLevelKeys.filter((levelKey) => enabledLevelKeys.has(levelKey));
+    const applicableLevelKeySet = new Set(applicableLevelKeys);
+    const allRows = (byStudent.get(studentId) || []).filter(
+      (row) => applicableLevelKeySet.has(row.levelKey),
+    );
     const activeRows = allRows.filter((row) => progressInWindow(row, filters));
-    const started = activeRows.some(hasProgressEvidence);
-    const expectedLevels = expectedLevelCount;
+    const expectedLevels = applicableLevelKeys.length;
+    const applicable = expectedLevels > 0;
+    const started = applicable && activeRows.some(hasProgressEvidence);
     const completedLevels = activeRows.filter((row) => row.isCompleted).length;
     const totalProgress = activeRows.reduce((sum, row) => sum + (Number(row.progressPercent) || 0), 0);
     const failedAttempts = activeRows.reduce((sum, row) => sum + Math.max(0, Number(row.attemptCount) || 0), 0);
     const completionAttempts = activeRows.filter((row) => row.isCompleted).length;
     return {
       studentId,
+      applicable,
       started,
-      completed: started && expectedLevels > 0 && completedLevels >= expectedLevels,
+      completed: applicable && started && completedLevels >= expectedLevels,
       completedLevels,
       expectedLevels,
-      progressPercent: started && expectedLevels > 0 ? round(totalProgress / expectedLevels, 1) : 0,
+      progressPercent: applicable
+        ? started ? round(totalProgress / expectedLevels, 1) : 0
+        : null,
       failedAttempts,
       totalAttempts: failedAttempts + completionAttempts,
       attemptValues: activeRows
@@ -270,6 +333,7 @@ const buildCurriculumLessonMetric = ({
     };
   });
 
+  const applicableStates = studentStates.filter((state) => state.applicable);
   const startedStates = studentStates.filter((state) => state.started);
   const completedStates = startedStates.filter((state) => state.completed);
   const scoreValues = startedStates.flatMap((state) => state.scoreValues);
@@ -295,7 +359,9 @@ const buildCurriculumLessonMetric = ({
     lessonId: null,
     classroomId: filters.classroomId,
     title: lesson.lessonTitle,
+    available: applicableStates.length > 0,
     eligibleStudents: eligibleStudentIds.length,
+    applicableStudents: applicableStates.length,
     studentsStarted: startedStates.length,
     studentsCompleted: completedStates.length,
     completionRate: percent(completedStates.length, startedStates.length),
@@ -316,7 +382,7 @@ const buildCurriculumLessonMetric = ({
     firstAttemptCompletions: completedStates.filter((state) => state.failedAttempts === 0).length,
     difficulty,
     studentStates,
-    activityRows: inWindowRows,
+    activityRows: studentStates.flatMap((state) => state.rows),
     tracking: {
       score: true,
       failedAttempts: true,
@@ -435,6 +501,7 @@ const buildCustomLessonMetric = ({
 };
 
 const studentHeatmapState = (state) => {
+  if (state?.applicable === false) return { key: "unavailable", label: "Unavailable" };
   if (!state?.started) return { key: "not_started", label: "Not started" };
   if (state.completed) return { key: "completed", label: "Completed" };
   if ((state.failedAttempts ?? 0) >= 4) return { key: "high", label: "High difficulty" };
@@ -654,33 +721,32 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
   ]);
 
   const membershipsByStudent = new Map();
-  const studentIdsByClassroom = new Map(classroomIds.map((id) => [id, []]));
+  const studentIdsByClassroom = new Map(classroomIds.map((id) => [id, new Set()]));
   for (const membership of validMemberships) {
     const studentId = Number(membership.studentId);
     const classroomId = Number(membership.classroomId);
-    if (!membershipsByStudent.has(studentId)) membershipsByStudent.set(studentId, []);
-    membershipsByStudent.get(studentId).push(classroomId);
-    studentIdsByClassroom.get(classroomId)?.push(studentId);
+    if (!membershipsByStudent.has(studentId)) membershipsByStudent.set(studentId, new Set());
+    membershipsByStudent.get(studentId).add(classroomId);
+    studentIdsByClassroom.get(classroomId)?.add(studentId);
   }
-  const overrideByClassAndLevel = new Map(
-    overrides.map((row) => [`${row.classroomId}:${row.levelKey}`, row]),
-  );
-  const rowIsEnabled = (row) => {
-    const classIds = membershipsByStudent.get(Number(row.userId)) || [];
-    return classIds.some((classroomId) => overrideByClassAndLevel.get(`${classroomId}:${row.levelKey}`)?.isEnabled !== false);
-  };
-  const enabledProgressRows = progressRows.filter(rowIsEnabled);
+  const { enabledLevelKeysByStudent, dueAtByStudentAndLevel } = buildCurriculumEligibility({
+    classroomIds,
+    studentIds,
+    membershipsByStudent,
+    overrides,
+  });
 
   const curriculumMetrics = LESSON_DEFINITIONS.map((lesson) => buildCurriculumLessonMetric({
     lesson,
-    rows: enabledProgressRows,
+    rows: progressRows,
     eligibleStudentIds: studentIds,
+    enabledLevelKeysByStudent,
     filters,
   }));
   const classroomById = new Map(classrooms.map((item) => [Number(item.id), item]));
   const customMetrics = customEntries.map((entry) => buildCustomLessonMetric({
     entry,
-    studentIds: [...new Set(studentIdsByClassroom.get(entry.classroomId) || [])],
+    studentIds: [...(studentIdsByClassroom.get(entry.classroomId) || new Set())],
     progressRows: customProgressRows,
     submissions,
     filters,
@@ -708,13 +774,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     const failed = startedStates.flatMap((state) => state.failedAttemptValues || []);
     const activeSeconds = curriculumStates.reduce((sum, state) => sum + (Number(state.activeSeconds) || 0), 0);
     const lastActivityAt = maxDate(...states.map((state) => state.lastActivityAt));
-    const studentClassIds = membershipsByStudent.get(studentId) || [];
-    const dueAtByLevelKey = new Map();
-    for (const row of overrides) {
-      if (!row.dueAt || !studentClassIds.includes(Number(row.classroomId))) continue;
-      const current = dueAtByLevelKey.get(row.levelKey);
-      if (!current || new Date(row.dueAt) < new Date(current)) dueAtByLevelKey.set(row.levelKey, row.dueAt);
-    }
+    const dueAtByLevelKey = dueAtByStudentAndLevel.get(studentId) || new Map();
     const reasons = buildAttentionReasons({ student, states, dueAtByLevelKey, now });
     return {
       studentId,
@@ -796,6 +856,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
       },
       limitations: [
         "Built-in UserProgress records predate classroom-scoped progress and remain student-scoped; access is limited to current valid classroom membership.",
+        "When all classrooms are selected, each student is counted once and curriculum eligibility is the union of levels enabled across that student's selected classroom memberships.",
         "Cumulative records cannot reconstruct attempts or active time by historical day.",
         "Classroom lesson reading progress does not track active time, failed attempts, or hints.",
       ],
@@ -843,6 +904,8 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
           ...studentHeatmapState(state),
           progress: state.progressPercent,
           failedAttempts: state.failedAttempts,
+          expectedLevels: state.expectedLevels,
+          completedLevels: state.completedLevels,
         })),
       })),
     },

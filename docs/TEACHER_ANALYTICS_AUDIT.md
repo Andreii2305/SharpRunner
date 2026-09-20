@@ -42,11 +42,23 @@ The dashboard endpoint remains for the overview/classes/students pages. Its lega
 
 Replay attempts do not update completed `UserProgress` rows, so stored attempts, time, score, and completion remain the original academic outcome. Legacy rows with null timing or scores remain valid and produce an explicit “Not enough data” value rather than zero.
 
+## Curriculum enablement and classroom scope
+
+Built-in curriculum eligibility is derived from `PLAYABLE_LEVEL_KEYS` plus the already-batched `LevelContentOverride` rows. An explicit `isEnabled: false` disables a level. A missing override is enabled by default, matching `classroomLevelSettingsService` and the student level-access flow.
+
+For a single-classroom filter, each student's expected curriculum levels are the levels enabled in that classroom. For the all-classrooms view, students are deduplicated and each student's applicable level set is the union of levels enabled across that student's selected classroom memberships. A student-scoped `UserProgress` row therefore contributes at most once even when the student belongs to multiple selected classrooms. This union is deterministic and reflects every currently assigned level, but it cannot attribute the student's built-in progress to a particular classroom because `UserProgress` has no `classroomId`.
+
+The same applicable-level set controls both the denominator and the included progress rows. A currently disabled level does not contribute progress, completion, attempts, scores, active time, hints, activity, difficulty, or attention evidence, even if the student completed or attempted it before it was disabled. Due dates are considered only from classroom settings where that level is enabled; when multiple enabled selected classrooms provide due dates, the earliest due date is used.
+
+If a student has no enabled levels in a curriculum lesson, that student-lesson outcome is unavailable: it has zero expected levels, null progress, no completion state, and an explicit `Unavailable` heatmap cell. If no student in scope has an enabled level for the lesson, the lesson remains visible as unavailable but is excluded from progress, completion, difficulty, highlights, and attention calculations. It is never treated as 0% complete or as unstarted work.
+
+Disabling a level is an analytics and access-policy decision only. Existing `UserProgress` rows are neither changed nor deleted and become eligible again if the level is re-enabled in the applicable scope.
+
 ## Formulas
 
 - Total Students: distinct active students with an active membership in the selected active classroom scope.
-- Average Progress: mean current progress across started, enabled built-in curriculum lessons in scope.
-- Completion Rate: completed student-lesson outcomes divided by started student-lesson outcomes in the selected activity window.
+- Average Progress: mean current progress across started, applicable built-in curriculum lessons in scope; unavailable outcomes are excluded.
+- Completion Rate: completed applicable student-lesson outcomes divided by started applicable student-lesson outcomes in the selected activity window.
 - Average Score: mean stored first-completion level scores plus normalized graded assignment scores.
 - Average Attempts: mean recorded solution attempts, where a curriculum outcome is failed attempts plus one successful attempt when completed; assignments use stored submission attempts.
 - Average Active Time: mean confirmed active timer seconds for started curriculum lessons with positive time.
@@ -68,7 +80,7 @@ Attention rules are centralized in `ATTENTION_RULES` and emit plain-language rea
 
 Classroom filters are validated against teacher ownership before roster/activity reads. Date windows use the latest recorded activity on cumulative progress records. Current roster size is not presented as historical roster size. The existing schema cannot reconstruct attempts-by-day or active-time-by-day, so those metrics are explicitly unavailable rather than inferred.
 
-Built-in `UserProgress` predates classroom placement and is student-scoped. A teacher can see it only while the student is an active member of that teacher’s selected classroom. Reusable teacher-library lesson progress is fully classroom-scoped.
+Built-in `UserProgress` predates classroom placement and is student-scoped. A teacher can see it only while the student is an active member of that teacher’s selected classroom. Consequently, the all-classrooms union rule can determine current eligibility but cannot determine which classroom produced a built-in progress event. Reusable teacher-library lesson progress is fully classroom-scoped.
 
 ## Query and authorization audit
 

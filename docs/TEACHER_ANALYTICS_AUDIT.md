@@ -128,9 +128,9 @@ Missing signals are omitted and remaining weights are normalized. Scores below 3
 
 Attention rules are centralized in `ATTENTION_RULES` and emit plain-language reasons. Current rules cover five or more failed attempts on unfinished work, four or more attempts without completion, progress at or below 25% across started work, 14 days of inactivity, hint use on at least half of three or more started lessons, and known overdue class work.
 
-## Filters and historical limits
+## Filters and current-state limits
 
-Classroom filters are validated against teacher ownership before roster/activity reads. Date windows use the latest recorded activity on cumulative progress records. Current roster size is not presented as historical roster size. The existing schema cannot reconstruct attempts-by-day or active-time-by-day, so those metrics are explicitly unavailable rather than inferred.
+Classroom filters are validated against teacher ownership before roster/activity reads. For the current-state cards, tables, funnels, and failure patterns, date windows use the latest recorded activity on cumulative progress records. Current roster size is not presented as historical roster size. Pre-event data cannot reconstruct attempts-by-day or active-time-by-day, so those metrics remain explicitly unavailable before Phase 3 tracking began rather than being inferred.
 
 Current failure patterns apply the selected window directly to `latestFailureAt`. A signal outside the window is excluded even if another cumulative field on the row changed inside the window. This does not reconstruct failures that occurred before the latest retained failure and does not claim historical frequency.
 
@@ -140,4 +140,42 @@ Built-in `UserProgress` predates classroom placement and is student-scoped. A te
 
 The analytics service uses a fixed number of batched queries. Level metrics, funnels, and failure patterns reuse the same one `UserProgress` read and the same one `LevelContentOverride` read; they do not issue one query per level, lesson, student, or failure category. Student detail uses the same ownership and membership checks with a narrowed student scope. An unknown lesson filter is rejected rather than being treated as an authorized empty drill-down.
 
-The earlier additive migration changed reusable lesson progress uniqueness to `(classroomId, lessonId, studentId)` and added indexes for the actual analytics predicates. Phase 2 requires no migration: it uses the existing latest-failure fields and does not add synthetic or historical failure events.
+The earlier additive migration changed reusable lesson progress uniqueness to `(classroomId, lessonId, studentId)` and added indexes for the actual analytics predicates. Phase 2 required no migration: it uses the existing latest-failure fields and does not add synthetic or historical failure events.
+
+## Phase 3 event history
+
+Phase 3 adds the append-only `LearningAnalyticsEvents` table as a durable history source while retaining `UserProgress` as the current-state source. It does not rewrite or backfill either source. The event table contains only typed analytics fields: student, nullable classroom, curriculum level and lesson keys, event type and occurrence time, plus the small event-specific values needed for attempts, score, failure category/code, active seconds, or hint type/purchase. `dedupeKey` is a unique server-generated idempotency key. Rows have `createdAt` but deliberately have no `updatedAt`, free-form metadata, source code, compiler output, stdout, stderr, request payload, or student-authored text.
+
+The supported event taxonomy and recording points are:
+
+- `level_started`: recorded once for the first non-replay start of a student-level.
+- `solution_attempt_failed`: recorded after each validated failed submission, with the resulting cumulative failed-attempt number and sanitized failure category/code.
+- `level_completed`: recorded for the first successful completion submission, with score and total solution-attempt number. Replay completion is excluded.
+- `active_time_recorded`: recorded only for a positive timer delta accepted into `UserProgress.timeSpentSeconds`, including accepted heartbeat, end, level replacement/switch, or completion flushes.
+- `hint_used`: recorded once for first basic-hint use and once for detailed-hint purchase/use for a student-level.
+
+The frontend generates stable opaque action identifiers for an evaluation and unique timer synchronization identifiers for timer writes. The backend validates their format, derives a hashed event `dedupeKey`, and enforces uniqueness in PostgreSQL. State-transition events such as first start, first completion, and each hint type derive their key from student and level. Timer and failed-attempt retries are detected under the progress-row lock before cumulative state changes, while first completion and hint events are protected by monotonic state transitions. The database unique index remains a final race barrier: a conflicting insert rejects and rolls back its transaction instead of creating duplicate state or history. All authoritative values—including attempt number, score, failure classification, timer delta, and classroom—come from backend state rather than the client.
+
+Event insertion occurs in the same database transaction and under the same row lock as the corresponding `UserProgress` mutation wherever the current-state row changes. Detailed-hint events share the existing idempotent XP/progress purchase transaction. A failure therefore cannot commit its current-state counter without its event, a completion cannot commit without its event, and accepted active seconds cannot be accumulated without their event. Timer mutations recheck completion and session identity after locking, and out-of-order heartbeats or replacement starts cannot move the locked watermark backward. Stale sessions, duplicate synchronization identifiers, non-positive elapsed time, and unconfirmed gaps over 45 seconds add neither cumulative time nor history.
+
+### Classroom attribution and replay behavior
+
+Every gameplay request resolves the student's primary active membership: the most recently joined, then most recently updated, active membership whose classroom is active. That same membership authorizes/configures the gameplay request and supplies `classroomId` to its event; analytics do not independently choose a classroom after the fact. If a student belongs to multiple active classrooms, an event is attributed to this one authoritative gameplay-policy context. The foreign key uses `ON DELETE SET NULL` so deleting a classroom does not delete the student's academic history, although such an orphaned event is no longer included in a classroom-scoped teacher view. Deleting the student uses `ON DELETE CASCADE` in accordance with removal of that student's account data.
+
+Completed-level replay remains practice-only. It does not change original progress, attempts, score, completion, failure history, active-time history, or completion events. Starting an already completed level is treated as replay and does not create a new start event. This preserves the first academic outcome while allowing gameplay.
+
+### Historical aggregation and filters
+
+Teacher history is authorized through the same teacher-owned active classroom, active membership, active-student, lesson, and currently enabled curriculum-level checks as the current analytics. The server never returns raw event rows. It performs exactly three aggregate reads: one grouped time series, one grouped historical failure-category summary, and the earliest eligible event timestamp used as `trackingSince`. Disabled levels and students no longer in the authorized roster do not leak through history. The classroom, student drill-down, lesson, and inclusive UTC date-window filters are applied in PostgreSQL.
+
+Seven-day, 30-day, and custom windows up to 93 days use UTC daily buckets; longer custom windows and all-time history use UTC monthly buckets. The UI exposes one selectable metric at a time—attempts, completions, failures, active time, or hint usage—with exact values and no fabricated zero periods. Historical failure counts are actual failed-submission events and are displayed separately from current latest-failure signals. If there are no eligible events, the response has an empty series and explains that tracking has no data; it never manufactures legacy history.
+
+`trackingSince` is the earliest eligible event for the currently authorized classroom/student/lesson/level scope, intentionally ignoring the selected date window. This makes the limitation visible when a teacher selects a window that predates tracking. It is not a claim that the student, class, or product began on that date.
+
+### Privacy, access, retention, and deployment
+
+`LearningAnalyticsEvents` has row-level security enabled and grants revoked from `PUBLIC` and, when present, Supabase `anon` and `authenticated` roles. Normal writes occur only through authenticated backend routes and typed server-side writers. Teacher reads are backend aggregates after ownership/membership authorization. The migration adds indexes for classroom/student/time, student/time, event-type/time, lesson/level/time, and unique deduplication; aggregation remains a fixed query count rather than growing per student or period.
+
+Retention is currently unlimited so the first deployment does not silently discard academic history. Once real volume and institutional policy are known, a later phase should define a documented retention window and, if needed, PostgreSQL time partitioning or archival. No automatic deletion is introduced here.
+
+Deploy by running `npm run db:migrate` from `backend`. Migration `20260921000000_learning_analytics_events.sql` is additive and idempotent: it creates the event table, checks, indexes, foreign keys, RLS, and revokes, and the migration ledger prevents reapplying completed work. It performs no event replay and does not mutate `UserProgresses`. Consequently, trends begin only when the Phase 3 backend is deployed; all earlier current-state metrics remain available, but pre-deployment daily/monthly attempts, failures, active time, and hints are unknowable and stay absent.

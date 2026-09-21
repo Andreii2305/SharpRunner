@@ -6,6 +6,7 @@ const {
   XP_REWARDS,
   DETAILED_HINT_XP_COST,
 } = require("../constants/gamificationConfig");
+const { recordHintUsed } = require("./learningAnalyticsEventService");
 
 class GamificationError extends Error {
   constructor(code, message, status = 400, details = {}) {
@@ -82,6 +83,7 @@ const awardFirstCompletionXp = async ({ userId, levelKey, attemptCount, hintUsed
 
 const purchaseDetailedHint = async ({
   userId,
+  classroomId = null,
   levelKey,
   hintsEnabled,
   hintUnlockThreshold,
@@ -108,6 +110,13 @@ const purchaseDetailedHint = async ({
   });
   if (!progress) {
     throw new GamificationError("PROGRESS_NOT_FOUND", "Progress row not found", 404);
+  }
+  if (progress.isCompleted) {
+    throw new GamificationError(
+      "LEVEL_ALREADY_COMPLETED",
+      "Completed-level replay does not change academic hint history.",
+      409,
+    );
   }
   if (!hintsEnabled) {
     throw new GamificationError(
@@ -171,6 +180,14 @@ const purchaseDetailedHint = async ({
 
   await user.save({ transaction });
   await progress.save({ transaction });
+  await recordHintUsed({
+    studentId: userId,
+    classroomId,
+    levelKey,
+    hintType: "detailed",
+    hintPurchased: true,
+    occurredAt: purchasedAt,
+  }, { transaction });
 
   return {
     purchased: true,

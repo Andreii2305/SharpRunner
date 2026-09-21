@@ -9,6 +9,8 @@ const ClassroomLessonSubmission = require("../src/models/ClassroomLessonSubmissi
 const LevelContentOverride = require("../src/models/LevelContentOverride");
 const User = require("../src/models/User");
 const UserProgress = require("../src/models/UserProgress");
+const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
+const { Op } = require("sequelize");
 const {
   buildAttentionReasons,
   calculateDifficulty,
@@ -35,7 +37,13 @@ const analyticsFixture = async ({
   overrides = [],
   query = {},
   now = new Date("2026-09-18T00:00:00Z"),
-} = {}) => withStubs([
+  historySeries = [],
+  historyFailures = [],
+  trackingSince = null,
+  onHistoryQuery = null,
+} = {}) => {
+  let historyFindCalls = 0;
+  return withStubs([
   [Classroom, "findAll", async () => classrooms],
   [ClassroomMembership, "findAll", async () => memberships],
   [User, "findAll", async () => students],
@@ -45,7 +53,17 @@ const analyticsFixture = async ({
   [ClassroomLesson, "findAll", async () => []],
   [ClassroomLessonProgress, "findAll", async () => []],
   [ClassroomLessonSubmission, "findAll", async () => []],
-], () => getTeacherAnalytics({ req: request, query, now }));
+  [LearningAnalyticsEvent, "findAll", async (options) => {
+    historyFindCalls += 1;
+    onHistoryQuery?.({ kind: historyFindCalls === 1 ? "series" : "failures", options });
+    return historyFindCalls === 1 ? historySeries : historyFailures;
+  }],
+  [LearningAnalyticsEvent, "min", async (_field, options) => {
+    onHistoryQuery?.({ kind: "tracking", options });
+    return trackingSince;
+  }],
+  ], () => getTeacherAnalytics({ req: request, query, now }));
+};
 
 const progressRow = ({
   studentId = 1,
@@ -142,6 +160,7 @@ test("empty classrooms return null evidence metrics instead of misleading zeroes
     assert.equal(payload.overview.averageScore, null);
     assert.equal(payload.overview.averageActiveTimeLabel, null);
     assert.deepEqual(payload.lessonPerformance, []);
+    assert.deepEqual(payload.historical.series, []);
   });
 });
 
@@ -206,6 +225,8 @@ test("analytics aggregate attempts, time, scores and hints in bounded queries an
       { classroomId: 2, lessonId: 99, studentId: 1, viewedAt: at, completedAt: null },
     ]],
     [ClassroomLessonSubmission, "findAll", async () => []],
+    [LearningAnalyticsEvent, "findAll", async () => []],
+    [LearningAnalyticsEvent, "min", async () => null],
   ], async () => {
     const payload = await getTeacherAnalytics({ req: request, query: { datePreset: "7d" }, now: new Date("2026-09-18T00:00:00Z") });
     assert.equal(payload.overview.totalStudents, 3);
@@ -236,6 +257,8 @@ test("date filtering excludes old cumulative activity without fabricating histor
     [LevelContentOverride, "findAll", async () => []],
     [ClassroomLessonPlacement, "findAll", async () => []],
     [ClassroomLesson, "findAll", async () => []],
+    [LearningAnalyticsEvent, "findAll", async () => []],
+    [LearningAnalyticsEvent, "min", async () => null],
   ], async () => {
     const payload = await getTeacherAnalytics({ req: request, query: { datePreset: "7d" }, now: new Date("2026-09-18T00:00:00Z") });
     assert.equal(payload.overview.totalStudents, 1);
@@ -243,6 +266,72 @@ test("date filtering excludes old cumulative activity without fabricating histor
     assert.equal(payload.overview.completionRate, null);
     assert.equal(payload.activity.byDay.length, 0);
   });
+});
+
+test("event-backed history aggregates actual activity in three bounded authorized queries", async () => {
+  const historyQueries = [];
+  const occurredAt = new Date("2026-09-17T00:00:00.000Z");
+  const payload = await analyticsFixture({
+    progress: [progressRow({
+      isCompleted: false,
+      attemptCount: 1,
+      latestFailureCode: "WRONG_VALUE",
+      latestFailureCategory: "wrong_logic",
+      latestFailureAt: occurredAt,
+    })],
+    query: {
+      classroomId: "1",
+      studentId: "1",
+      lessonId: "curriculum:tutorial",
+      datePreset: "custom",
+      startDate: "2026-09-01",
+      endDate: "2026-09-21",
+    },
+    historySeries: [{
+      periodStart: occurredAt,
+      attempts: "2",
+      successfulAttempts: "1",
+      failedAttempts: "1",
+      completions: "1",
+      activeSeconds: "30",
+      hintUses: "1",
+      firstAttemptSuccesses: "0",
+    }],
+    historyFailures: [{
+      failureCategory: "wrong_logic",
+      count: "1",
+      affectedStudents: "1",
+      latestOccurrence: occurredAt,
+    }],
+    trackingSince: new Date("2026-09-10T00:00:00.000Z"),
+    onHistoryQuery: (queryCall) => historyQueries.push(queryCall),
+  });
+
+  assert.equal(historyQueries.length, 3);
+  assert.deepEqual(payload.historical.series[0], {
+    periodStart: "2026-09-17T00:00:00.000Z",
+    attempts: 2,
+    successfulAttempts: 1,
+    failedAttempts: 1,
+    completions: 1,
+    activeSeconds: 30,
+    hintUses: 1,
+    firstAttemptSuccesses: 0,
+  });
+  assert.equal(payload.historical.bucket, "day");
+  assert.equal(payload.historical.trackingSince, "2026-09-10T00:00:00.000Z");
+  assert.equal(payload.historical.hasData, true);
+  assert.equal(payload.historical.failures[0].count, 1);
+  assert.equal(payload.failurePatterns.unresolved.signalCount, 1);
+
+  const seriesWhere = historyQueries.find((item) => item.kind === "series").options.where;
+  assert.deepEqual(seriesWhere.classroomId[Op.in], [1]);
+  assert.equal(seriesWhere.lessonKey, "tutorial");
+  assert.ok(seriesWhere.occurredAt[Op.gte] instanceof Date);
+  assert.ok(seriesWhere.occurredAt[Op.lte] instanceof Date);
+  assert.equal(seriesWhere[Op.or].some((clause) => (
+    clause.levelKey === "tutorial-level-1" && clause.studentId[Op.in].includes(1)
+  )), true);
 });
 
 test("curriculum analytics preserve default enabled behavior when there are no overrides", async () => {
@@ -282,6 +371,7 @@ test("historical progress on a now-disabled level contributes to no current anal
     finalScore: 0,
     hintUsed: true,
   });
+  const historyQueries = [];
   const payload = await analyticsFixture({
     progress: [
       ...[1, 2, 3, 4].map((level) => progressRow({ level })),
@@ -289,6 +379,7 @@ test("historical progress on a now-disabled level contributes to no current anal
     ],
     overrides: [{ classroomId: 1, levelKey: "tutorial-level-5", isEnabled: false, dueAt: null }],
     query: { classroomId: "1" },
+    onHistoryQuery: (queryCall) => historyQueries.push(queryCall),
   });
   const lesson = tutorialLesson(payload);
   assert.equal(lesson.averageProgress, 100);
@@ -303,6 +394,9 @@ test("historical progress on a now-disabled level contributes to no current anal
   assert.equal(payload.activity.recent.some((item) => item.levelKey === "tutorial-level-5"), false);
   assert.equal(payload.scoresAndAttempts.scoreDistribution.find((row) => row.key === "below-60").count, 0);
   assert.deepEqual(payload.attention, []);
+  const historyLevelClauses = historyQueries
+    .find((item) => item.kind === "series").options.where[Op.or];
+  assert.equal(historyLevelClauses.some((clause) => clause.levelKey === "tutorial-level-5"), false);
 });
 
 test("a lesson with no enabled levels is unavailable and excluded from outcomes", async () => {
@@ -646,8 +740,13 @@ test("analytics reject lesson filters outside the authorized scope", async () =>
 });
 
 test("analytics reject students outside the authorized classroom scope", async () => {
+  let historyRead = false;
   await assert.rejects(
-    analyticsFixture({ query: { studentId: "999" } }),
+    analyticsFixture({
+      query: { studentId: "999" },
+      onHistoryQuery: () => { historyRead = true; },
+    }),
     (error) => error.status === 403,
   );
+  assert.equal(historyRead, false);
 });

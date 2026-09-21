@@ -9,6 +9,10 @@ const LevelContentOverride = require("../models/LevelContentOverride");
 const User = require("../models/User");
 const UserProgress = require("../models/UserProgress");
 const {
+  emptyHistoricalAnalytics,
+  getHistoricalLearningAnalytics,
+} = require("./learningAnalyticsHistoryService");
+const {
   LESSON_DEFINITIONS,
   PLAYABLE_LEVEL_KEYS,
 } = require("../constants/progressDefaults");
@@ -1112,6 +1116,18 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
   let lessonPerformance = allLessonPerformance;
   if (filters.lessonId) lessonPerformance = lessonPerformance.filter((lesson) => lesson.id === filters.lessonId);
 
+  const selectedCurriculumLessonKey = filters.lessonId?.startsWith("curriculum:")
+    ? filters.lessonId.slice("curriculum:".length)
+    : null;
+  const historical = await getHistoricalLearningAnalytics({
+    classroomIds,
+    studentIds,
+    enabledLevelKeysByStudent,
+    filters,
+    lessonKey: selectedCurriculumLessonKey,
+    includeCurriculumEvents: !filters.lessonId || Boolean(selectedCurriculumLessonKey),
+  });
+
   const statesByStudent = new Map(studentIds.map((id) => [id, []]));
   for (const lesson of lessonPerformance) {
     for (const state of lesson.studentStates) {
@@ -1220,11 +1236,12 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
         levelCompletionRate: "Completed applicable student-level outcomes divided by started applicable student-level outcomes; start and attempt rates use applicable students.",
         learningFunnel: "Applicable means at least one enabled lesson level; started requires progress evidence; attempted requires a failed submission or completion; completed requires every applicable enabled level.",
         failurePatterns: "Each applicable student-level contributes at most its latest recorded failure signal. Unfinished signals are separate from completed-after-failure outcomes and are not historical error totals.",
+        historicalLearningTrends: "Actual append-only learning events grouped by UTC day or month after event tracking began; retries and replay activity do not add academic events.",
       },
       limitations: [
         "Built-in UserProgress records predate classroom-scoped progress and remain student-scoped; access is limited to current valid classroom membership.",
         "When all classrooms are selected, each student is counted once and curriculum eligibility is the union of levels enabled across that student's selected classroom memberships.",
-        "Cumulative records cannot reconstruct attempts or active time by historical day.",
+        "Event-backed learning trends begin when Phase 3 tracking is deployed; earlier cumulative progress is not backfilled or assigned to artificial dates.",
         "Latest failure fields retain only one signal per student-level and remain after later completion; failure-pattern date filters use latestFailureAt.",
         "Classroom lesson reading progress does not track active time, failed attempts, or hints.",
       ],
@@ -1260,6 +1277,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
       } : null,
     },
     lessonPerformance: publicLessons,
+    historical,
     failurePatterns,
     studentPerformance,
     attention: studentPerformance.filter((student) => student.attentionReasons.length),
@@ -1337,6 +1355,7 @@ const emptyAnalyticsPayload = ({ filters, availableClassrooms }) => ({
   },
   highlights: { mostCompletedLesson: null, mostDifficultLesson: null },
   lessonPerformance: [],
+  historical: emptyHistoricalAnalytics(),
   failurePatterns: buildFailurePatterns([]),
   studentPerformance: [],
   attention: [],

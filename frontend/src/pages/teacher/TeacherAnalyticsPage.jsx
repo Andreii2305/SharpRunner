@@ -15,12 +15,23 @@ const EMPTY_DATA = {
   heatmap: { lessons: [], students: [] },
   scoresAndAttempts: { scoreDistribution: [], attemptDistribution: [], failedAttemptsByLesson: [] },
   hints: { byLesson: [] }, activity: { byDay: [], recent: [], unavailableMetrics: [] },
+  historical: {
+    trackingSince: null, hasData: false, bucket: null, series: [], failures: [], semantics: {},
+  },
   failurePatterns: {
     unresolved: { signalCount: 0, affectedStudents: 0, categories: [] },
     completedAfterFailure: { signalCount: 0, affectedStudents: 0, categories: [] },
   },
   meta: { formulas: {}, limitations: [] },
 };
+
+const TREND_METRICS = [
+  { key: "attempts", label: "Attempts" },
+  { key: "completions", label: "Completions" },
+  { key: "failedAttempts", label: "Failures" },
+  { key: "activeSeconds", label: "Active Time", duration: true },
+  { key: "hintUses", label: "Hint Usage" },
+];
 
 const valueOrEmpty = (value, suffix = "") => (
   value == null || !Number.isFinite(Number(value)) ? "Not enough data" : `${value}${suffix}`
@@ -29,6 +40,28 @@ const shortDate = (value) => {
   if (!value) return "No activity";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "No activity" : date.toLocaleDateString();
+};
+const longDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleDateString(undefined, { dateStyle: "long", timeZone: "UTC" });
+};
+const trendPeriodLabel = (value, bucket) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown period";
+  return date.toLocaleDateString(undefined, bucket === "month"
+    ? { month: "short", year: "numeric", timeZone: "UTC" }
+    : { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+};
+const trendDuration = (value) => {
+  const seconds = Math.max(0, Math.trunc(Number(value) || 0));
+  if (seconds < 60) return `${seconds}s`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (!hours) return `${minutes}m`;
+  return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
 };
 const sortRows = (rows, sort) => [...rows].sort((left, right) => {
   const a = left[sort.key]; const b = right[sort.key];
@@ -57,6 +90,60 @@ function DistributionBars({ rows, emptyText = "No recorded data for this selecti
   return <div className={pgStyles.distribution}>{rows.map((row) => <div className={pgStyles.distributionRow} key={row.key || row.label}>
     <span>{row.label}</span><div className={pgStyles.barTrack} aria-label={`${row.label}: ${row.count}`}><div className={pgStyles.barFill} style={{ width: `${(row.count / maximum) * 100}%` }} /></div><strong>{row.count}</strong>
   </div>)}</div>;
+}
+
+function LearningTrends({ historical }) {
+  const [selectedMetric, setSelectedMetric] = useState("attempts");
+  const metric = TREND_METRICS.find((item) => item.key === selectedMetric) || TREND_METRICS[0];
+  const series = Array.isArray(historical?.series) ? historical.series : [];
+  const failures = Array.isArray(historical?.failures) ? historical.failures : [];
+  const maximum = Math.max(0, ...series.map((row) => Number(row[metric.key]) || 0));
+  const trackingDate = longDate(historical?.trackingSince);
+  const valueLabel = (value) => metric.duration ? trendDuration(value) : String(Number(value) || 0);
+
+  return <section className={`${styles.card} ${pgStyles.trendsCard}`}>
+    <div className={pgStyles.trendsHeader}>
+      <div>
+        <div className={styles.sectionTitle}>Learning Trends</div>
+        <div className={styles.sectionSub}>Actual recorded learning events, separate from cumulative current-state metrics.</div>
+      </div>
+      <div className={pgStyles.trendMetricPicker} role="group" aria-label="Learning trend metric">
+        {TREND_METRICS.map((item) => <button
+          type="button"
+          key={item.key}
+          aria-pressed={selectedMetric === item.key}
+          onClick={() => setSelectedMetric(item.key)}
+        >{item.label}</button>)}
+      </div>
+    </div>
+
+    {!historical?.hasData || !series.length ? <>
+      <div className={styles.emptyText}>{trackingDate
+        ? `No historical activity matches this selection. Event tracking is available from ${trackingDate} onward.`
+        : "No historical activity has been recorded yet."}</div>
+    </> : <>
+      <div className={pgStyles.trendAvailability}>Historical activity is available from {trackingDate || "the first recorded event"} onward. Periods before tracking began are not backfilled.</div>
+      <div className={pgStyles.trendChart} aria-label={`${metric.label} over time`}>
+        {series.map((row) => {
+          const value = Math.max(0, Number(row[metric.key]) || 0);
+          const period = trendPeriodLabel(row.periodStart, historical.bucket);
+          return <div className={pgStyles.trendRow} key={`${row.periodStart}-${metric.key}`}>
+            <span className={pgStyles.trendPeriod}>{period}</span>
+            <div className={pgStyles.trendBarTrack} role="img" aria-label={`${period}: ${valueLabel(value)} ${metric.label.toLowerCase()}`}>
+              <div className={pgStyles.trendBarFill} style={{ width: maximum > 0 ? `${(value / maximum) * 100}%` : "0%" }} />
+            </div>
+            <strong>{valueLabel(value)}</strong>
+          </div>;
+        })}
+      </div>
+      {selectedMetric === "failedAttempts" && <div className={pgStyles.trendFailures}>
+        <div><strong>Recorded failure categories</strong><span>Actual failed submissions in this filter window</span></div>
+        {!failures.length
+          ? <span className={styles.emptyText}>No recorded failure events match this selection.</span>
+          : failures.map((failure) => <span className={pgStyles.trendFailureItem} key={failure.category}><b>{failure.label}</b><strong>{failure.count}</strong></span>)}
+      </div>}
+    </>}
+  </section>;
 }
 
 function LearningFunnel({ lesson }) {
@@ -222,6 +309,8 @@ function TeacherAnalyticsPage() {
           <div className={styles.card}><div className={pgStyles.highlightTitle}><FiBookOpen /> Most completed lesson</div><strong>{completed?.title || "Not enough data"}</strong>{completed && <span>{valueOrEmpty(completed.completionRate, "%")} completion among starters</span>}</div>
           <div className={styles.card}><div className={pgStyles.highlightTitle}><FiAlertCircle /> Most difficult lesson</div><strong>{difficult?.title || "Not enough data"}</strong>{difficult && <span>{difficult.label} · {valueOrEmpty(difficult.averageAttempts)} avg attempts · {valueOrEmpty(difficult.completionRate, "%")} completion · {valueOrEmpty(difficult.hintUsageRate, "%")} hint use</span>}</div>
         </section>
+
+        <LearningTrends historical={data.historical} />
 
         <section className={styles.card}>
           <div className={styles.sectionHead}><div><div className={styles.sectionTitle}>Learning Funnel</div><div className={styles.sectionSub}>Applicable students may start without submitting; an actual failed or successful solution marks attempted.</div></div></div>

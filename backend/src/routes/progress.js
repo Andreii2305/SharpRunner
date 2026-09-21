@@ -48,6 +48,14 @@ const {
   pauseProgressSession,
   startProgressSession,
 } = require("../services/activeLevelTimerService");
+const {
+  buildEventDedupeKey,
+  findRecordedEvent,
+  normalizeActionId,
+  recordFailedAttempt,
+  recordHintUsed,
+  recordLevelCompleted,
+} = require("../services/learningAnalyticsEventService");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
@@ -109,9 +117,17 @@ const buildHintState = (levelRow, setting = {}, currentXp = null) => {
 const normalizeLevelKey = (value) =>
   typeof value === "string" ? value.trim().toLowerCase() : "";
 
-const findLevelAccessRestriction = async (userId, levelKey) => {
-  const access = await getStudentLevelAccess({ userId, levelKey });
+const findLevelAccessRestriction = async (userId, levelKey, membership = null) => {
+  const access = await getStudentLevelAccess({ userId, levelKey, membership });
   return access.allowed ? null : restrictionPayload(access);
+};
+
+const readActionId = (value) => {
+  try {
+    return { value: normalizeActionId(value) };
+  } catch (error) {
+    return { error: error.message };
+  }
 };
 
 const sendLevelRestrictionResponse = (res, restriction) =>
@@ -240,7 +256,14 @@ router.post("/level/:levelKey/start", async (req, res) => {
 
     await ensureProgressRowsForUser(req.userId);
 
-    const access = await getStudentLevelAccess({ userId: req.userId, levelKey });
+    const sessionAction = readActionId(req.body?.sessionId);
+    if (sessionAction.error) return res.status(400).json({ message: sessionAction.error });
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const access = await getStudentLevelAccess({
+      userId: req.userId,
+      levelKey,
+      membership,
+    });
     if (!access.allowed) {
       return sendLevelRestrictionResponse(res, restrictionPayload(access));
     }
@@ -267,7 +290,7 @@ router.post("/level/:levelKey/start", async (req, res) => {
         ...buildHintState(
           levelRow,
           (await getClassroomLevelSettings(
-            (await findPrimaryActiveMembership(req.userId))?.classroomId,
+            membership?.classroomId,
           )).find((row) => row.levelKey === levelKey),
           currentUser?.xpTotal,
         ),
@@ -275,12 +298,26 @@ router.post("/level/:levelKey/start", async (req, res) => {
     }
 
     const now = new Date();
-    await pauseOtherLevelSessions(req.userId, levelKey, now);
-    const timer = await startProgressSession(levelRow, req.body?.sessionId, now);
+    const analyticsContext = {
+      studentId: req.userId,
+      classroomId: membership?.classroomId ?? null,
+      syncId: sessionAction.value,
+    };
+    await pauseOtherLevelSessions(req.userId, levelKey, now, analyticsContext);
+    const timer = await startProgressSession(levelRow, sessionAction.value, now, analyticsContext);
 
-    const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
+    if (timer.completed) {
+      return res.json({
+        activeSeconds: timer.activeSeconds,
+        attemptCount: levelRow.attemptCount ?? 0,
+        ephemeral: true,
+        effectiveDueAt: access.effectiveDueAt,
+        hasExtension: access.hasExtension,
+        ...buildHintState(levelRow, setting, currentUser?.xpTotal),
+      });
+    }
     return res.json({
       ...timer,
       attemptCount: levelRow.attemptCount,
@@ -302,21 +339,48 @@ router.post("/level/:levelKey/heartbeat", async (req, res) => {
     if (!LEVEL_KEYS.has(levelKey)) return res.status(404).json({ message: "Unknown level key" });
     const levelRow = await UserProgress.findOne({ where: { userId: req.userId, levelKey } });
     if (!levelRow) return res.status(404).json({ message: "Progress row not found" });
+    const syncAction = readActionId(req.body?.syncId);
+    if (syncAction.error) return res.status(400).json({ message: syncAction.error });
 
     const now = new Date();
-    const access = await getStudentLevelAccess({ userId: req.userId, levelKey, now });
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const analyticsContext = {
+      studentId: req.userId,
+      classroomId: membership?.classroomId ?? null,
+      syncId: syncAction.value,
+    };
+    const access = await getStudentLevelAccess({
+      userId: req.userId,
+      levelKey,
+      membership,
+      now,
+    });
     if (!access.allowed || levelRow.isCompleted) {
       if (levelRow.activeSessionId) {
         await pauseProgressSession(levelRow, {
           now,
           stopAt: access.reason === "DEADLINE_PASSED" ? access.effectiveDueAt : null,
+          expectedSessionId: req.body?.sessionId,
+          analyticsContext,
         });
       }
       if (!access.allowed) return sendLevelRestrictionResponse(res, restrictionPayload(access));
       return res.status(409).json({ code: "LEVEL_ALREADY_COMPLETED", message: "This level is already complete." });
     }
 
-    const result = await heartbeatProgressSession(levelRow, req.body?.sessionId, now);
+    const result = await heartbeatProgressSession(
+      levelRow,
+      req.body?.sessionId,
+      now,
+      analyticsContext,
+    );
+    if (result.completed) {
+      return res.status(409).json({
+        code: "LEVEL_ALREADY_COMPLETED",
+        message: "This level is already complete.",
+        activeSeconds: result.activeSeconds,
+      });
+    }
     if (result.replaced) {
       return res.status(409).json({
         code: "LEVEL_SESSION_REPLACED",
@@ -340,11 +404,20 @@ router.post("/level/:levelKey/end", async (req, res) => {
     if (!req.body?.sessionId || levelRow.activeSessionId !== req.body.sessionId) {
       return res.json({ activeSeconds: levelRow.timeSpentSeconds ?? 0, ended: false });
     }
-    const access = await getStudentLevelAccess({ userId: req.userId, levelKey });
-    const activeSeconds = await pauseProgressSession(levelRow, {
+    const syncAction = readActionId(req.body?.syncId);
+    if (syncAction.error) return res.status(400).json({ message: syncAction.error });
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const access = await getStudentLevelAccess({ userId: req.userId, levelKey, membership });
+    const result = await pauseProgressSession(levelRow, {
       stopAt: access.reason === "DEADLINE_PASSED" ? access.effectiveDueAt : null,
+      expectedSessionId: req.body.sessionId,
+      analyticsContext: {
+        studentId: req.userId,
+        classroomId: membership?.classroomId ?? null,
+        syncId: syncAction.value,
+      },
     });
-    return res.json({ activeSeconds, ended: true });
+    return res.json({ activeSeconds: result.activeSeconds, ended: result.ended });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
@@ -358,16 +431,20 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
       return res.status(404).json({ message: "Unknown level key" });
     }
 
+    const actionId = readActionId(req.body?.activityId);
+    if (actionId.error) return res.status(400).json({ message: actionId.error });
+
     await ensureProgressRowsForUser(req.userId);
+    const membership = await findPrimaryActiveMembership(req.userId);
     const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
+      membership,
     );
     if (accessRestriction) {
       return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
-    const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
     const currentUser = await User.findByPk(req.userId, {
@@ -378,6 +455,12 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
       sourceCode: req.body?.sourceCode,
       validatorConfig: setting?.validatorConfig ?? null,
     });
+    const occurredAt = new Date();
+    const dedupeKey = buildEventDedupeKey("failed-attempt", [
+      req.userId,
+      levelKey,
+      actionId.value,
+    ]);
     const attemptResult = await UserProgress.sequelize.transaction(async (transaction) => {
       const levelRow = await UserProgress.findOne({
         where: { userId: req.userId, levelKey },
@@ -389,13 +472,28 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
         return { levelRow, recorded: false, replay: Boolean(levelRow.isCompleted) };
       }
 
+      const recordedEvent = await findRecordedEvent(dedupeKey, { transaction });
+      if (recordedEvent) {
+        return { levelRow, recorded: false, replay: false };
+      }
+
       levelRow.attemptCount = (levelRow.attemptCount || 0) + 1;
       levelRow.latestFailureCode = validation?.failureCode ?? "UNKNOWN";
       levelRow.latestFailureCategory = validation?.category ?? "unknown";
       levelRow.latestFailureMetadata = validation?.metadata ?? {};
-      levelRow.latestFailureAt = new Date();
+      levelRow.latestFailureAt = occurredAt;
       levelRow.latestFailureAttemptCount = levelRow.attemptCount;
       await levelRow.save({ transaction });
+      await recordFailedAttempt({
+        studentId: req.userId,
+        classroomId: membership?.classroomId ?? null,
+        levelKey,
+        attemptNumber: levelRow.attemptCount,
+        failureCategory: validation?.category ?? "unknown",
+        failureCode: validation?.failureCode ?? "UNKNOWN",
+        activityId: actionId.value,
+        occurredAt,
+      }, { transaction });
       return { levelRow, recorded: true, replay: false };
     });
     if (!attemptResult) {
@@ -473,15 +571,21 @@ router.post("/level/:levelKey/hint-use", async (req, res) => {
       return res.status(404).json({ message: "Unknown level key" });
     }
     await ensureProgressRowsForUser(req.userId);
-    const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey);
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey, membership);
     if (accessRestriction) return sendLevelRestrictionResponse(res, accessRestriction);
 
     const levelRow = await UserProgress.findOne({
       where: { userId: req.userId, levelKey },
     });
     if (!levelRow) return res.status(404).json({ message: "Progress row not found" });
+    if (levelRow.isCompleted) {
+      return res.status(409).json({
+        code: "LEVEL_ALREADY_COMPLETED",
+        message: "Completed-level replay does not change academic hint history.",
+      });
+    }
 
-    const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
     const currentUser = await User.findByPk(req.userId, {
@@ -499,16 +603,42 @@ router.post("/level/:levelKey/hint-use", async (req, res) => {
       });
     }
 
-    if (!levelRow.hintUsed) {
-      levelRow.hintUsed = true;
-      levelRow.hintUsedAt = new Date();
-      levelRow.hintType = "basic";
-      levelRow.attemptCountAtHintUnlock = levelRow.attemptCount;
-      await levelRow.save();
+    const persistedLevelRow = await UserProgress.sequelize.transaction(async (transaction) => {
+      const lockedRow = await UserProgress.findOne({
+        where: { userId: req.userId, levelKey },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!lockedRow) return null;
+      if (lockedRow.isCompleted) return { levelRow: lockedRow, completed: true };
+      if (!lockedRow.hintUsed) {
+        const occurredAt = new Date();
+        lockedRow.hintUsed = true;
+        lockedRow.hintUsedAt = occurredAt;
+        lockedRow.hintType = "basic";
+        lockedRow.attemptCountAtHintUnlock = lockedRow.attemptCount;
+        await lockedRow.save({ transaction });
+        await recordHintUsed({
+          studentId: req.userId,
+          classroomId: membership?.classroomId ?? null,
+          levelKey,
+          hintType: "basic",
+          hintPurchased: false,
+          occurredAt,
+        }, { transaction });
+      }
+      return { levelRow: lockedRow, completed: false };
+    });
+    if (!persistedLevelRow) return res.status(404).json({ message: "Progress row not found" });
+    if (persistedLevelRow.completed) {
+      return res.status(409).json({
+        code: "LEVEL_ALREADY_COMPLETED",
+        message: "Completed-level replay does not change academic hint history.",
+      });
     }
     return res.json({
       message: "Basic hint opened",
-      ...buildHintState(levelRow, setting, currentUser?.xpTotal),
+      ...buildHintState(persistedLevelRow.levelRow, setting, currentUser?.xpTotal),
     });
   } catch (error) {
     console.error(error);
@@ -524,10 +654,10 @@ router.post("/level/:levelKey/detailed-hint-purchase", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
-    const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey);
+    const membership = await findPrimaryActiveMembership(req.userId);
+    const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey, membership);
     if (accessRestriction) return sendLevelRestrictionResponse(res, accessRestriction);
 
-    const membership = await findPrimaryActiveMembership(req.userId);
     const setting = (await getClassroomLevelSettings(membership?.classroomId))
       .find((row) => row.levelKey === levelKey);
     const hintsEnabled = setting?.hintsEnabled !== false;
@@ -536,6 +666,7 @@ router.post("/level/:levelKey/detailed-hint-purchase", async (req, res) => {
 
     const purchase = await purchaseDetailedHint({
       userId: req.userId,
+      classroomId: membership?.classroomId ?? null,
       levelKey,
       hintsEnabled,
       hintUnlockThreshold,
@@ -587,43 +718,42 @@ router.put("/level/:levelKey", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
-
+    const membership = await findPrimaryActiveMembership(req.userId);
     const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
+      membership,
     );
     if (accessRestriction) {
       return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
-    const levelRow = await UserProgress.findOne({
+    const initialLevelRow = await UserProgress.findOne({
       where: {
         userId: req.userId,
         levelKey,
       },
     });
 
-    if (!levelRow) {
+    if (!initialLevelRow) {
       return res.status(404).json({ message: "Progress row not found" });
     }
 
     const newProgress = progressInput.hasValue
       ? progressInput.value
-      : levelRow.progressPercent;
+      : initialLevelRow.progressPercent;
     const completedFromBody = body.isCompleted;
-    const isCompleted =
+    const requestedCompletion =
       typeof completedFromBody === "boolean"
         ? completedFromBody || newProgress === 100
-        : levelRow.isCompleted || newProgress === 100;
+        : initialLevelRow.isCompleted || newProgress === 100;
 
-    const wasAlreadyCompleted = levelRow.isCompleted;
-    const completedAt = isCompleted ? levelRow.completedAt ?? new Date() : null;
+    const settings = await getClassroomLevelSettings(membership?.classroomId);
+    const setting = settings.find((row) => row.levelKey === levelKey);
+    let completionActionId = null;
 
     let completionAccess = null;
-    if (isCompleted && !wasAlreadyCompleted) {
-      const membership = await findPrimaryActiveMembership(req.userId);
-      const settings = await getClassroomLevelSettings(membership?.classroomId);
-      const setting = settings.find((row) => row.levelKey === levelKey);
+    if (requestedCompletion && !initialLevelRow.isCompleted) {
       const validation = await validateLevelCode({
         levelKey,
         sourceCode: body.sourceCode,
@@ -638,63 +768,106 @@ router.put("/level/:levelKey", async (req, res) => {
           failureMetadata: validation?.metadata ?? {},
         });
       }
+      const actionId = readActionId(body.activityId);
+      if (actionId.error) return res.status(400).json({ message: actionId.error });
+      completionActionId = actionId.value;
       completionAccess = await getStudentLevelAccess({
         userId: req.userId,
         levelKey,
+        membership,
         now: new Date(),
       });
       if (!completionAccess.allowed) {
-        if (levelRow.activeSessionId) {
-          await pauseProgressSession(levelRow, {
+        if (initialLevelRow.activeSessionId) {
+          await pauseProgressSession(initialLevelRow, {
             stopAt: completionAccess.reason === "DEADLINE_PASSED"
               ? completionAccess.effectiveDueAt
               : null,
+            analyticsContext: {
+              studentId: req.userId,
+              classroomId: membership?.classroomId ?? null,
+              syncId: completionActionId,
+            },
           });
         }
         return sendLevelRestrictionResponse(res, restrictionPayload(completionAccess));
       }
     }
 
-    if (isCompleted && (!wasAlreadyCompleted || levelRow.finalScore == null)) {
-      const attemptCount = levelRow.attemptCount;
-      if (levelRow.activeSessionId) await pauseProgressSession(levelRow);
-      const timeSpentSeconds = Math.max(0, Number(levelRow.timeSpentSeconds) || 0);
-
-      const primaryMembership = await findPrimaryActiveMembership(req.userId);
-      let deadlineAt = null;
-      let wrongAttemptDeduction = 5;
-      let lateDeductionPerDay = 3;
-      if (primaryMembership) {
-        const levelSettings = await getClassroomLevelSettings(primaryMembership.classroomId);
-        const levelSetting = levelSettings.find((setting) => setting.levelKey === levelKey);
-        deadlineAt = completionAccess?.effectiveDueAt ?? levelSetting?.dueAt ?? null;
-        wrongAttemptDeduction = levelSetting?.wrongAttemptDeduction ?? 5;
-        lateDeductionPerDay = levelSetting?.lateDeductionPerDay ?? 3;
+    const completionOccurredAt = new Date();
+    const mutation = await UserProgress.sequelize.transaction(async (transaction) => {
+      const levelRow = await UserProgress.findOne({
+        where: { userId: req.userId, levelKey },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!levelRow) return null;
+      if (levelRow.isCompleted) {
+        return { levelRow, completedNow: false };
       }
 
-      const parTimeSeconds = getParTimeSeconds(levelRow.orderIndex);
-      const finalScore = computeFinalScore({
-        attemptCount,
-        timeSpentSeconds,
-        parTimeSeconds,
-        deadlineAt,
-        completedAt,
-        wrongAttemptDeduction,
-        lateDeductionPerDay,
-      });
+      const progress = progressInput.hasValue
+        ? progressInput.value
+        : levelRow.progressPercent;
+      const isCompleted = typeof completedFromBody === "boolean"
+        ? completedFromBody || progress === 100
+        : levelRow.isCompleted || progress === 100;
+      const completedNow = isCompleted && !levelRow.isCompleted;
 
-      levelRow.attemptCount = attemptCount;
-      levelRow.timeSpentSeconds = timeSpentSeconds;
-      levelRow.finalScore = finalScore;
-    }
+      if (completedNow) {
+        if (levelRow.activeSessionId) {
+          await pauseProgressSession(levelRow, {
+            analyticsContext: {
+              studentId: req.userId,
+              classroomId: membership?.classroomId ?? null,
+              syncId: completionActionId,
+            },
+            transaction,
+          });
+        }
+        const attemptCount = Math.max(0, Number(levelRow.attemptCount) || 0);
+        const timeSpentSeconds = Math.max(0, Number(levelRow.timeSpentSeconds) || 0);
+        const completedAt = levelRow.completedAt ?? completionOccurredAt;
+        const finalScore = computeFinalScore({
+          attemptCount,
+          timeSpentSeconds,
+          parTimeSeconds: getParTimeSeconds(levelRow.orderIndex),
+          deadlineAt: completionAccess?.effectiveDueAt ?? setting?.dueAt ?? null,
+          completedAt,
+          wrongAttemptDeduction: setting?.wrongAttemptDeduction ?? 5,
+          lateDeductionPerDay: setting?.lateDeductionPerDay ?? 3,
+        });
 
-    levelRow.progressPercent = isCompleted ? 100 : newProgress;
-    levelRow.isCompleted = isCompleted;
-    levelRow.completedAt = completedAt;
-    await levelRow.save();
+        levelRow.progressPercent = 100;
+        levelRow.isCompleted = true;
+        levelRow.completedAt = completedAt;
+        levelRow.attemptCount = attemptCount;
+        levelRow.timeSpentSeconds = timeSpentSeconds;
+        levelRow.finalScore = finalScore;
+        await levelRow.save({ transaction });
+        await recordLevelCompleted({
+          studentId: req.userId,
+          classroomId: membership?.classroomId ?? null,
+          levelKey,
+          attemptNumber: attemptCount + 1,
+          score: finalScore,
+          activityId: completionActionId,
+          occurredAt: completedAt,
+        }, { transaction });
+      } else {
+        levelRow.progressPercent = isCompleted ? 100 : progress;
+        levelRow.isCompleted = isCompleted;
+        levelRow.completedAt = isCompleted ? levelRow.completedAt ?? completionOccurredAt : null;
+        await levelRow.save({ transaction });
+      }
+
+      return { levelRow, completedNow };
+    });
+    if (!mutation) return res.status(404).json({ message: "Progress row not found" });
+    const { levelRow, completedNow } = mutation;
 
     let xpAward = null;
-    if (isCompleted && !wasAlreadyCompleted) {
+    if (completedNow) {
       xpAward = await awardFirstCompletionXp({
         userId: req.userId,
         levelKey,

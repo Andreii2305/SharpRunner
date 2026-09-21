@@ -24,6 +24,7 @@ const {
 } = require("../src/services/hintResolverService");
 const { validateLevelCode } = require("../src/services/levelCodeValidationService");
 const HintFeedback = require("../src/models/HintFeedback");
+const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
 const {
   GamificationError,
   purchaseDetailedHint,
@@ -334,22 +335,26 @@ test("detailed hint purchase deducts the centralized cost and is idempotent", as
     async save() { this.saveCalls += 1; },
   };
   const transactions = [];
+  const events = [];
 
   await withStubs([
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
     [User, "findByPk", async () => user],
     [UserProgress, "findOne", async () => progress],
     [XpTransaction, "create", async (values) => { transactions.push(values); return values; }],
+    [LearningAnalyticsEvent, "create", async (values) => { events.push(values); return values; }],
   ], async () => {
     const first = await purchaseDetailedHint({
       userId: 1,
       levelKey: progress.levelKey,
+      classroomId: 9,
       hintsEnabled: true,
       hintUnlockThreshold: 3,
     });
     const retry = await purchaseDetailedHint({
       userId: 1,
       levelKey: progress.levelKey,
+      classroomId: 9,
       hintsEnabled: true,
       hintUnlockThreshold: 3,
     });
@@ -362,6 +367,18 @@ test("detailed hint purchase deducts the centralized cost and is idempotent", as
     assert.equal(transactions[0].kind, "detailed_hint_purchase");
     assert.equal(progress.hintType, "detailed");
     assert.equal(progress.detailedHintXpCost, DETAILED_HINT_XP_COST);
+    assert.equal(events.length, 1);
+    assert.deepEqual({
+      classroomId: events[0].classroomId,
+      eventType: events[0].eventType,
+      hintType: events[0].hintType,
+      hintPurchased: events[0].hintPurchased,
+    }, {
+      classroomId: 9,
+      eventType: "hint_used",
+      hintType: "detailed",
+      hintPurchased: true,
+    });
   });
 });
 

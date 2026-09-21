@@ -7,3 +7,4 @@ require("./practiceRunner.test");
 require("./practiceRunner.execution.test");
 require("./lessonBuilderService.test");
 require("./teacherAnalytics.test");
+require("./learningAnalyticsEvents.test");

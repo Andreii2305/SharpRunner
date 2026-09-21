@@ -28,6 +28,7 @@ const XpTransaction = require("../src/models/XpTransaction");
 const PasswordResetToken = require("../src/models/PasswordResetToken");
 const EmailVerificationToken = require("../src/models/EmailVerificationToken");
 const HintFeedback = require("../src/models/HintFeedback");
+const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
 const sequelize = require("../src/config/database");
 const {
   TERMS_VERSION,
@@ -576,6 +577,7 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
     [UserProgress, "findOne", async () => progressRow],
     [LevelContentOverride, "findAll", async () => []],
     [LevelDeadline, "findOne", async () => null],
+    [LearningAnalyticsEvent, "create", async (values) => values],
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
     [XpTransaction, "findOne", async () => null],
     [XpTransaction, "create", async (value) => value],
@@ -589,6 +591,7 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
           progressPercent: 100,
           isCompleted: true,
           sourceCode: "int steps = 3;",
+          activityId: "valid_completion_123",
         },
       },
     );
@@ -598,6 +601,202 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
     assert.equal(payload.levels[0].finalScore, 95);
     assert.equal(payload.xpAward.amount, 25);
     assert.equal(payload.summary.xp, 25);
+  });
+});
+
+test("failed solution retries create one sanitized event and increment academic attempts once", async () => {
+  const user = activeUser({ xpTotal: 40 });
+  const progressRow = {
+    id: 1,
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    lessonTitle: "Tutorial",
+    orderIndex: 1,
+    progressPercent: 0,
+    isCompleted: false,
+    completedAt: null,
+    attemptCount: 0,
+    timeSpentSeconds: 0,
+    finalScore: null,
+    startedAt: new Date("2026-09-21T00:00:00Z"),
+    hintUsed: false,
+    detailedHintUnlocked: false,
+    save: async () => undefined,
+  };
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const events = [];
+  const wrongSource = `using System;
+class Program {
+  static void WalkToPortal(int distanceInSteps) {}
+  static void Main(string[] args) {
+    int steps = 0;
+    WalkToPortal(steps);
+  }
+}`;
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [User, "findAll", async () => []],
+    [ClassroomMembership, "findOne", async () => membership],
+    [ClassroomMembership, "findAll", async () => []],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async () => []],
+    [LevelDeadline, "findOne", async () => null],
+    [LearningAnalyticsEvent, "findOne", async ({ where }) => (
+      events.find((event) => event.dedupeKey === where.dedupeKey) ?? null
+    )],
+    [LearningAnalyticsEvent, "create", async (values) => {
+      const event = { ...values };
+      events.push(event);
+      return event;
+    }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [XpTransaction, "findOne", async () => null],
+    [XpTransaction, "create", async (values) => values],
+  ], async () => {
+    const body = { sourceCode: wrongSource, activityId: "attempt_action_123" };
+    const first = await apiRequest("/api/progress/level/tutorial-level-1/attempt", {
+      method: "POST", token: authToken(1, "student"), body,
+    });
+    const retry = await apiRequest("/api/progress/level/tutorial-level-1/attempt", {
+      method: "POST", token: authToken(1, "student"), body,
+    });
+    const completion = await apiRequest("/api/progress/level/tutorial-level-1", {
+      method: "PUT",
+      token: authToken(1, "student"),
+      body: {
+        progressPercent: 100,
+        isCompleted: true,
+        sourceCode: "int steps = 3;",
+        activityId: "completion_after_failure_123",
+      },
+    });
+
+    assert.equal(first.response.status, 200);
+    assert.equal(first.payload.attemptRecorded, true);
+    assert.equal(retry.response.status, 200);
+    assert.equal(retry.payload.attemptRecorded, false);
+    assert.equal(completion.response.status, 200);
+    assert.equal(progressRow.attemptCount, 1);
+    assert.equal(events.length, 2);
+    assert.deepEqual({
+      classroomId: events[0].classroomId,
+      eventType: events[0].eventType,
+      attemptNumber: events[0].attemptNumber,
+      failureCategory: events[0].failureCategory,
+    }, {
+      classroomId: 9,
+      eventType: "solution_attempt_failed",
+      attemptNumber: 1,
+      failureCategory: "wrong_logic",
+    });
+    assert.equal(events[0].sourceCode, undefined);
+    assert.equal(events[0].stderr, undefined);
+    assert.equal(events[0].metadata, undefined);
+    assert.deepEqual(events.map((event) => [event.eventType, event.attemptNumber]), [
+      ["solution_attempt_failed", 1],
+      ["level_completed", 2],
+    ]);
+    assert.equal(events[1].score, 95);
+    assert.ok(events.every((event) => event.occurredAt instanceof Date));
+    assert.ok(events[0].occurredAt <= events[1].occurredAt);
+    assert.equal(events[1].sourceCode, undefined);
+  });
+});
+
+test("first-submission completion records one successful academic attempt and replay records none", async () => {
+  const user = activeUser();
+  const progressRow = {
+    id: 1,
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    lessonTitle: "Tutorial",
+    orderIndex: 1,
+    progressPercent: 0,
+    isCompleted: false,
+    completedAt: null,
+    attemptCount: 0,
+    timeSpentSeconds: 0,
+    finalScore: null,
+    startedAt: new Date("2026-09-21T00:00:00Z"),
+    activeSessionId: null,
+    hintUsed: false,
+    save: async () => undefined,
+  };
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const events = [];
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [User, "findAll", async () => []],
+    [ClassroomMembership, "findOne", async () => membership],
+    [ClassroomMembership, "findAll", async () => []],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async () => []],
+    [LevelDeadline, "findOne", async () => null],
+    [LearningAnalyticsEvent, "findOne", async ({ where }) => (
+      events.find((event) => event.dedupeKey === where.dedupeKey) ?? null
+    )],
+    [LearningAnalyticsEvent, "create", async (values) => {
+      const event = { ...values };
+      events.push(event);
+      return event;
+    }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [XpTransaction, "findOne", async () => null],
+    [XpTransaction, "create", async (value) => value],
+  ], async () => {
+    const first = await apiRequest("/api/progress/level/tutorial-level-1", {
+      method: "PUT",
+      token: authToken(1, "student"),
+      body: {
+        progressPercent: 100,
+        isCompleted: true,
+        sourceCode: "int steps = 3;",
+        activityId: "completion_action_123",
+      },
+    });
+    const demotion = await apiRequest("/api/progress/level/tutorial-level-1", {
+      method: "PUT",
+      token: authToken(1, "student"),
+      body: {
+        progressPercent: 0,
+        isCompleted: false,
+      },
+    });
+    const replay = await apiRequest("/api/progress/level/tutorial-level-1", {
+      method: "PUT",
+      token: authToken(1, "student"),
+      body: {
+        progressPercent: 100,
+        isCompleted: true,
+        sourceCode: "int steps = 3;",
+        activityId: "completion_action_456",
+      },
+    });
+
+    assert.equal(first.response.status, 200);
+    assert.equal(demotion.response.status, 200);
+    assert.equal(replay.response.status, 200);
+    assert.equal(events.length, 1);
+    assert.deepEqual({
+      classroomId: events[0].classroomId,
+      eventType: events[0].eventType,
+      attemptNumber: events[0].attemptNumber,
+      score: events[0].score,
+    }, {
+      classroomId: 9,
+      eventType: "level_completed",
+      attemptNumber: 1,
+      score: 100,
+    });
+    assert.equal(progressRow.isCompleted, true);
+    assert.equal(progressRow.progressPercent, 100);
+    assert.equal(progressRow.finalScore, 100);
   });
 });
 
@@ -613,6 +812,7 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
     save: async () => undefined,
   };
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const events = [];
 
   await withStubs([
     [User, "findByPk", async () => user],
@@ -627,6 +827,13 @@ test("failed attempts unlock the free hint at the teacher-controlled threshold",
       isEnabled: true,
       displayOrder: 1,
     }]],
+    [LearningAnalyticsEvent, "findOne", async ({ where }) => (
+      events.find((event) => event.dedupeKey === where.dedupeKey) ?? null
+    )],
+    [LearningAnalyticsEvent, "create", async (values) => {
+      events.push({ ...values });
+      return values;
+    }],
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
     [XpTransaction, "create", async (values) => values],
     [HintFeedback, "upsert", async (values) => [{ ...values }, true]],
@@ -642,7 +849,11 @@ class Program {
     for (let expected = 1; expected <= 3; expected += 1) {
       const { response, payload } = await apiRequest(
         "/api/progress/level/tutorial-level-1/attempt",
-        { method: "POST", token: authToken(1, "student"), body: { sourceCode: wrongSource } },
+        {
+          method: "POST",
+          token: authToken(1, "student"),
+          body: { sourceCode: wrongSource, activityId: `hint_attempt_${expected}` },
+        },
       );
       assert.equal(response.status, 200);
       assert.equal(payload.attemptCount, expected);
@@ -660,6 +871,14 @@ class Program {
     assert.equal(hintResponse.payload.hintUsed, true);
     assert.equal(progressRow.hintType, "basic");
     assert.equal(progressRow.attemptCountAtHintUnlock, 3);
+    const hintRetryResponse = await apiRequest(
+      "/api/progress/level/tutorial-level-1/hint-use",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(hintRetryResponse.response.status, 200);
+    assert.equal(events.filter((event) => (
+      event.eventType === "hint_used" && event.hintType === "basic"
+    )).length, 1);
 
     const purchaseResponse = await apiRequest(
       "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
@@ -689,7 +908,11 @@ class Program {
 }`;
     const continuedFailure = await apiRequest(
       "/api/progress/level/tutorial-level-1/attempt",
-      { method: "POST", token: authToken(1, "student"), body: { sourceCode: changedMistakeSource } },
+      {
+        method: "POST",
+        token: authToken(1, "student"),
+        body: { sourceCode: changedMistakeSource, activityId: "hint_attempt_changed" },
+      },
     );
     assert.equal(continuedFailure.payload.hintStage, "stronger");
     assert.equal(continuedFailure.payload.currentXp, 25);
@@ -734,6 +957,8 @@ test("hint state persists across refresh for teacher thresholds 1 and 5", async 
     [UserProgress, "bulkCreate", async () => []],
     [UserProgress, "findOne", async () => progressRow],
     [LevelContentOverride, "findAll", async () => [setting]],
+    [LearningAnalyticsEvent, "findOne", async () => null],
+    [LearningAnalyticsEvent, "create", async (values) => values],
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
   ], async () => {
     for (const threshold of [1, 5]) {
@@ -743,7 +968,11 @@ test("hint state persists across refresh for teacher thresholds 1 and 5", async 
       for (let expected = 1; expected <= threshold; expected += 1) {
         const attempt = await apiRequest(
           "/api/progress/level/tutorial-level-1/attempt",
-          { method: "POST", token: authToken(1, "student"), body: {} },
+          {
+            method: "POST",
+            token: authToken(1, "student"),
+            body: { activityId: `threshold_${threshold}_attempt_${expected}` },
+          },
         );
         assert.equal(attempt.response.status, 200);
         assert.equal(attempt.payload.hintUnlocked, expected === threshold);
@@ -753,7 +982,11 @@ test("hint state persists across refresh for teacher thresholds 1 and 5", async 
 
       const refreshed = await apiRequest(
         "/api/progress/level/tutorial-level-1/start",
-        { method: "POST", token: authToken(1, "student"), body: {} },
+        {
+          method: "POST",
+          token: authToken(1, "student"),
+          body: { sessionId: `refresh_threshold_${threshold}` },
+        },
       );
       assert.equal(refreshed.response.status, 200);
       assert.equal(refreshed.payload.hintUnlockThreshold, threshold);
@@ -797,7 +1030,11 @@ test("teacher-disabled hints hide both tiers and reject use or purchase", async 
   ], async () => {
     const refreshed = await apiRequest(
       "/api/progress/level/tutorial-level-1/start",
-      { method: "POST", token: authToken(1, "student"), body: {} },
+      {
+        method: "POST",
+        token: authToken(1, "student"),
+        body: { sessionId: "disabled_hint_refresh_123" },
+      },
     );
     assert.equal(refreshed.response.status, 200);
     assert.equal(refreshed.payload.hintsEnabled, false);
@@ -820,6 +1057,121 @@ test("teacher-disabled hints hide both tiers and reject use or purchase", async 
     assert.equal(detailed.payload.code, "HINTS_DISABLED");
     assert.equal(user.xpTotal, 40);
   });
+});
+
+test("completed-level replay cannot mutate or record either hint tier", async () => {
+  const user = activeUser({ xpTotal: 40 });
+  const progressRow = {
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    attemptCount: 5,
+    isCompleted: true,
+    hintUsed: false,
+    detailedHintUnlocked: false,
+    startedAt: new Date(),
+    save: async () => assert.fail("completed replay must not save hint state"),
+  };
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const setting = {
+    levelKey: "tutorial-level-1",
+    hintsEnabled: true,
+    hintUnlockThreshold: 3,
+    isEnabled: true,
+    displayOrder: 1,
+  };
+  const events = [];
+  const xpTransactions = [];
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [ClassroomMembership, "findOne", async () => membership],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async () => [setting]],
+    [LearningAnalyticsEvent, "create", async (values) => { events.push(values); return values; }],
+    [XpTransaction, "create", async (values) => { xpTransactions.push(values); return values; }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const basic = await apiRequest(
+      "/api/progress/level/tutorial-level-1/hint-use",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(basic.response.status, 409);
+    assert.equal(basic.payload.code, "LEVEL_ALREADY_COMPLETED");
+
+    const detailed = await apiRequest(
+      "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(detailed.response.status, 409);
+    assert.equal(detailed.payload.code, "LEVEL_ALREADY_COMPLETED");
+  });
+
+  assert.equal(progressRow.hintUsed, false);
+  assert.equal(progressRow.detailedHintUnlocked, false);
+  assert.equal(user.xpTotal, 40);
+  assert.deepEqual(events, []);
+  assert.deepEqual(xpTransactions, []);
+});
+
+test("detailed hint authorization and event attribution reuse one gameplay membership", async () => {
+  const user = activeUser({ xpTotal: 40 });
+  const progressRow = {
+    userId: 1,
+    levelKey: "tutorial-level-1",
+    attemptCount: 3,
+    isCompleted: false,
+    hintUsed: false,
+    detailedHintUnlocked: false,
+    save: async () => undefined,
+  };
+  const memberships = [
+    { id: 1, classroomId: 9, studentId: 1, status: "active" },
+    { id: 2, classroomId: 10, studentId: 1, status: "active" },
+  ];
+  const events = [];
+  const settingsClassroomIds = [];
+  let gameplayMembershipReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [ClassroomMembership, "findOne", async (options) => {
+      if (options?.attributes?.length === 1 && options.attributes[0] === "id") {
+        return { id: 99 };
+      }
+      const membership = memberships[Math.min(gameplayMembershipReads, memberships.length - 1)];
+      gameplayMembershipReads += 1;
+      return membership;
+    }],
+    [UserProgress, "findAll", async () => [progressRow]],
+    [UserProgress, "bulkCreate", async () => []],
+    [UserProgress, "findOne", async () => progressRow],
+    [LevelContentOverride, "findAll", async ({ where }) => {
+      settingsClassroomIds.push(where.classroomId);
+      return [{
+        levelKey: "tutorial-level-1",
+        hintsEnabled: true,
+        hintUnlockThreshold: 3,
+        isEnabled: true,
+        displayOrder: 1,
+      }];
+    }],
+    [LearningAnalyticsEvent, "create", async (values) => { events.push(values); return values; }],
+    [XpTransaction, "create", async (values) => values],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const detailed = await apiRequest(
+      "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(detailed.response.status, 200);
+  });
+
+  assert.equal(gameplayMembershipReads, 1);
+  assert.ok(settingsClassroomIds.every((classroomId) => Number(classroomId) === 9));
+  assert.equal(events.length, 1);
+  assert.equal(events[0].classroomId, 9);
 });
 
 test("teacher routes reject students and allow teachers to create their own classroom", async () => {

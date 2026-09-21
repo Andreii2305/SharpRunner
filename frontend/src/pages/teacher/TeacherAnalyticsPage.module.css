@@ -14,6 +14,26 @@
 .highlightTitle { display: flex; align-items: center; gap: 7px; text-transform: uppercase; letter-spacing: .05em; color: #526174; font-size: var(--teacher-text-xs); font-weight: 800; }
 .highlights strong { color: #1e3a5f; font-size: var(--teacher-text-lg); }
 .highlights span { color: #526174; font-size: var(--teacher-text-sm); line-height: 1.5; }
+.trendsCard { display: grid; gap: 14px; }
+.trendsHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.trendMetricPicker { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.trendMetricPicker button { border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; color: #475569; cursor: pointer; font: inherit; font-size: var(--teacher-text-sm); font-weight: 700; min-height: 36px; padding: 7px 11px; }
+.trendMetricPicker button:hover { background: #f8fafc; border-color: #94a3b8; }
+.trendMetricPicker button[aria-pressed="true"] { border-color: #26547c; background: #26547c; color: #fff; }
+.trendMetricPicker button:focus-visible { outline: 3px solid rgba(38,84,124,.22); outline-offset: 2px; }
+.trendAvailability { border-left: 3px solid #6da7cf; background: #f5f9fc; color: #526174; font-size: var(--teacher-text-sm); line-height: 1.5; padding: 9px 11px; }
+.trendChart { display: grid; gap: 9px; }
+.trendRow { display: grid; grid-template-columns: minmax(105px, auto) minmax(100px, 1fr) minmax(54px, auto); align-items: center; gap: 11px; color: #526174; font-size: var(--teacher-text-sm); }
+.trendPeriod { white-space: nowrap; }
+.trendRow > strong { color: #1e3a5f; text-align: right; overflow-wrap: anywhere; }
+.trendBarTrack { height: 13px; border-radius: 999px; background: #e8edf3; overflow: hidden; }
+.trendBarFill { height: 100%; min-width: 0; border-radius: inherit; background: linear-gradient(90deg, #26547c, #4d8db8); }
+.trendFailures { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; border-top: 1px solid #e2e8f0; padding-top: 12px; }
+.trendFailures > div { display: flex; flex: 1 1 220px; flex-direction: column; color: #1e3a5f; }
+.trendFailures > div span { color: #64748b; font-size: var(--teacher-text-xs); line-height: 1.4; }
+.trendFailureItem { display: inline-flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 150px; border: 1px solid #e2e8f0; border-radius: 8px; color: #526174; padding: 9px 10px; font-size: var(--teacher-text-sm); }
+.trendFailureItem b { font-weight: 600; }
+.trendFailureItem strong { color: #993c1d; }
 .funnelGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .funnelCard { min-width: 0; border: 1px solid #dbe4ed; border-radius: 10px; background: #fbfdff; padding: 12px; }
 .funnelTitle { color: #1e3a5f; font-weight: 750; line-height: 1.4; overflow-wrap: anywhere; margin-bottom: 10px; }
@@ -131,4 +151,5 @@
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (max-width: 1100px) { .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .funnelGrid { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .highlights, .analyticsGrid, .failureColumns { grid-template-columns: 1fr; } .filters label { flex: 1 1 150px; } .studentHeader { align-items: stretch; flex-direction: column; } .search input { width: 100%; } .funnelStages { grid-template-columns: 1fr; } .funnelArrow { transform: rotate(90deg); min-height: 16px; } }
-@media (max-width: 520px) { .kpiGrid { grid-template-columns: 1fr; } .inlineStats, .drawerStats, .failureBreakdown { grid-template-columns: 1fr; } .failureItem summary { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 760px) { .trendsHeader { flex-direction: column; } .trendMetricPicker { justify-content: flex-start; } }
+@media (max-width: 520px) { .kpiGrid { grid-template-columns: 1fr; } .inlineStats, .drawerStats, .failureBreakdown { grid-template-columns: 1fr; } .failureItem summary { align-items: flex-start; flex-direction: column; } .trendRow { grid-template-columns: minmax(72px, auto) minmax(72px, 1fr) minmax(48px, auto); gap: 7px; } .trendPeriod { white-space: normal; } }

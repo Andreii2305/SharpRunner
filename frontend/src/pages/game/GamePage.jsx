@@ -37,6 +37,9 @@ const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
 const MOBILE_GAME_QUERY = "(max-width: 820px) and (orientation: portrait), (max-height: 500px) and (orientation: landscape)";
 
+const createRequestId = () => window.crypto?.randomUUID?.()
+  ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
 const readBooleanPreference = (key, fallback = false) => {
   try {
     const saved = window.localStorage.getItem(key);
@@ -147,6 +150,8 @@ function GamePage({ levelConfig }) {
   const nextLevelTimerRef = useRef(null);
   const completionRequestRef = useRef(null);
   const runLevelCheckRef = useRef(null);
+  const evaluationActivityIdRef = useRef(null);
+  const evaluationInFlightRef = useRef(false);
   const dialogueButtonRef = useRef(null);
   const hintButtonRef = useRef(null);
   const gradeButtonRef = useRef(null);
@@ -251,6 +256,8 @@ function GamePage({ levelConfig }) {
   useEffect(() => {
     clearNextLevelTimer();
     completionRequestRef.current = null;
+    evaluationActivityIdRef.current = null;
+    evaluationInFlightRef.current = false;
     setMergedLevelConfig(levelConfig);
     setDialogueScript(getDefaultDialogueScript(levelConfig));
     setActiveDialogueId(null);
@@ -373,8 +380,6 @@ function GamePage({ levelConfig }) {
     let cancelled = false;
     let heartbeatTimer = null;
     let transitionPromise = Promise.resolve();
-    const createSessionId = () => window.crypto?.randomUUID?.()
-      ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const syncTimer = (activeSeconds) => {
       const seconds = Math.max(0, Number(activeSeconds) || 0);
       confirmedSecondsRef.current = seconds;
@@ -401,10 +406,11 @@ function GamePage({ levelConfig }) {
     };
     const heartbeat = async () => {
       if (cancelled || document.hidden || !levelSessionActiveRef.current) return;
+      const syncId = createRequestId();
       try {
         const response = await axios.post(
           buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/heartbeat`),
-          { sessionId: levelSessionIdRef.current },
+          { sessionId: levelSessionIdRef.current, syncId },
           { headers: getAuthHeaders() },
         );
         if (!cancelled) syncTimer(response.data.activeSeconds);
@@ -418,7 +424,7 @@ function GamePage({ levelConfig }) {
     };
     const startSession = async () => {
       if (cancelled || document.hidden) return;
-      const sessionId = createSessionId();
+      const sessionId = createRequestId();
       levelSessionIdRef.current = sessionId;
       try {
         const response = await axios.post(
@@ -444,7 +450,10 @@ function GamePage({ levelConfig }) {
       stopHeartbeat();
       levelSessionActiveRef.current = false;
       const url = buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/end`);
-      const payload = { sessionId: levelSessionIdRef.current };
+      const payload = {
+        sessionId: levelSessionIdRef.current,
+        syncId: createRequestId(),
+      };
       if (keepalive) {
         void fetch(url, {
           method: "POST",
@@ -551,7 +560,7 @@ function GamePage({ levelConfig }) {
     };
   }, [levelConfig, reportGameActivity]);
 
-  const markLevelAsCompleted = useCallback(async () => {
+  const markLevelAsCompleted = useCallback(async (activityId) => {
     if (!levelConfig?.progressKey) {
       return null;
     }
@@ -560,7 +569,12 @@ function GamePage({ levelConfig }) {
       completionRequestRef.current = axios
         .put(
           buildApiUrl(`/api/progress/level/${levelConfig.progressKey}`),
-          { progressPercent: 100, isCompleted: true, sourceCode: code ?? "" },
+          {
+            progressPercent: 100,
+            isCompleted: true,
+            sourceCode: code ?? "",
+            activityId,
+          },
           { headers: getAuthHeaders() },
         )
         .then((response) => response.data)
@@ -591,6 +605,9 @@ function GamePage({ levelConfig }) {
       if (outcomeLevelNumber !== levelConfig.levelNumber) {
         return;
       }
+      const activityId = evaluationActivityIdRef.current ?? createRequestId();
+      evaluationActivityIdRef.current = null;
+      evaluationInFlightRef.current = false;
 
       if (status === "success") {
         if (levelConfig.levelNumber === 30) void bgmManager.fadeOut();
@@ -601,7 +618,7 @@ function GamePage({ levelConfig }) {
 
         if (shouldProceed) {
           void (async () => {
-            const progressPayload = await markLevelAsCompleted();
+            const progressPayload = await markLevelAsCompleted(activityId);
             if (!progressPayload) {
               setResult({
                 type: "error",
@@ -658,7 +675,7 @@ function GamePage({ levelConfig }) {
         axios
           .post(
             buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`),
-            { sourceCode: code ?? "" },
+            { sourceCode: code ?? "", activityId },
             { headers: getAuthHeaders() },
           )
           .then((res) => {
@@ -696,6 +713,7 @@ function GamePage({ levelConfig }) {
   }, [result.type]);
 
   const runLevelCheck = () => {
+    if (evaluationInFlightRef.current) return;
     if (isCodeLocked) {
       setResult({
         type: "error",
@@ -716,6 +734,8 @@ function GamePage({ levelConfig }) {
 
     const sourceCode = code ?? "";
     const validation = mergedLevelConfig.validateCode(sourceCode);
+    evaluationInFlightRef.current = true;
+    evaluationActivityIdRef.current = createRequestId();
 
     gameEvents.emit(GAME_LEVEL_CODE_EVALUATED, {
       levelNumber: mergedLevelConfig.levelNumber,

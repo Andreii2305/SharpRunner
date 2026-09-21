@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_ANALYTICS_FILTERS,
   buildAnalyticsQuery,
   buildExportPath,
   createEmptyAnalyticsData,
+  createLatestRequestGuard,
   downloadAnalyticsCsv,
   formatComparison,
   formatTrendValue,
   normalizeTrendValue,
   resetAnalyticsFilters,
+  trapDialogFocus,
 } from "./teacherAnalyticsUtils.js";
 
 const filters = {
@@ -99,5 +104,37 @@ const result = await downloadAnalyticsCsv({
 assert.deepEqual(result, { filename: "teacher-data.csv" });
 assert.deepEqual(clicks, ["clicked"]);
 assert.deepEqual(revoked, ["blob:test"]);
+
+const requestGuard = createLatestRequestGuard();
+const firstRequest = requestGuard.begin();
+assert.equal(requestGuard.isCurrent(firstRequest), true);
+const secondRequest = requestGuard.begin();
+assert.equal(requestGuard.isCurrent(firstRequest), false);
+assert.equal(requestGuard.isCurrent(secondRequest), true);
+requestGuard.invalidate();
+assert.equal(requestGuard.isCurrent(secondRequest), false);
+
+const firstFocusable = { focusCalled: 0, focus() { this.focusCalled += 1; } };
+const lastFocusable = { focusCalled: 0, focus() { this.focusCalled += 1; } };
+const dialog = { querySelectorAll: () => [firstFocusable, lastFocusable] };
+const forwardEvent = {
+  key: "Tab", shiftKey: false, currentTarget: dialog, target: lastFocusable,
+  prevented: false, preventDefault() { this.prevented = true; },
+};
+assert.equal(trapDialogFocus(forwardEvent, dialog), true);
+assert.equal(forwardEvent.prevented, true);
+assert.equal(firstFocusable.focusCalled, 1);
+const backwardEvent = {
+  key: "Tab", shiftKey: true, currentTarget: dialog, target: firstFocusable,
+  prevented: false, preventDefault() { this.prevented = true; },
+};
+assert.equal(trapDialogFocus(backwardEvent, dialog), true);
+assert.equal(lastFocusable.focusCalled, 1);
+
+const directory = path.dirname(fileURLToPath(import.meta.url));
+const pageSource = fs.readFileSync(path.join(directory, "TeacherAnalyticsPage.jsx"), "utf8");
+assert.match(pageSource, /<h1[^>]*>Analytics<\/h1>/);
+assert.match(pageSource, /<h2[^>]*>Learning Trends<\/h2>/);
+assert.match(pageSource, /ref=\{drawerRef\}[\s\S]*role="dialog"/);
 
 console.log("teacher analytics utility tests passed");

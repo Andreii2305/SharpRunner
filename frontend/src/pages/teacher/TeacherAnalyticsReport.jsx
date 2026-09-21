@@ -29,7 +29,7 @@ function TeacherAnalyticsReport({ data, filterContext }) {
     </header>
 
     <section className={`${styles.card} ${pgStyles.printSection}`}>
-      <div className={styles.sectionTitle}>Overview</div>
+      <h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Overview</h2>
       <div className={pgStyles.reportMetrics}>
         <span>Total Students<strong>{overview.totalStudents ?? 0}</strong></span>
         <span>Average Progress<strong>{display(overview.averageProgress, "%")}</strong></span>
@@ -43,7 +43,7 @@ function TeacherAnalyticsReport({ data, filterContext }) {
     </section>
 
     <section className={`${styles.card} ${pgStyles.printSection}`}>
-      <div className={styles.sectionTitle}>Engagement</div>
+      <h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Engagement</h2>
       <div className={pgStyles.reportMetrics}>
         <span>Attempts<strong>{totals.attempts ?? 0}</strong></span>
         <span>Successful Attempts<strong>{totals.successfulAttempts ?? 0}</strong></span>
@@ -57,7 +57,7 @@ function TeacherAnalyticsReport({ data, filterContext }) {
     </section>
 
     <section className={`${styles.card} ${pgStyles.printSection}`}>
-      <div className={styles.sectionTitle}>Lesson Performance</div>
+      <h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Lesson Performance</h2>
       <div className={styles.tableWrap}><table className={`${styles.table} ${pgStyles.reportTable}`}>
         <thead><tr><th scope="col">Lesson</th><th scope="col">Applicable</th><th scope="col">Started</th><th scope="col">Completed</th><th scope="col">Completion</th><th scope="col">Avg score</th><th scope="col">Avg attempts</th><th scope="col">Difficulty</th></tr></thead>
         <tbody>{!(data.lessonPerformance || []).length
@@ -76,7 +76,7 @@ function TeacherAnalyticsReport({ data, filterContext }) {
     </section>
 
     <section className={`${styles.card} ${pgStyles.printSection}`}>
-      <div className={styles.sectionTitle}>Students Needing Attention</div>
+      <h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Students Needing Attention</h2>
       <div className={styles.tableWrap}><table className={styles.table}>
         <thead><tr><th scope="col">Student</th><th scope="col">Progress</th><th scope="col">Failed attempts</th><th scope="col">Last activity</th><th scope="col">Attention reasons</th></tr></thead>
         <tbody>{!(data.attention || []).length
@@ -91,7 +91,7 @@ function TeacherAnalyticsReport({ data, filterContext }) {
     </section>
 
     <section className={`${styles.card} ${pgStyles.printSection}`}>
-      <div className={styles.sectionTitle}>Failure Summary</div>
+      <h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Failure Summary</h2>
       <div className={pgStyles.reportMetrics}>
         <span>Current unresolved signals<strong>{unresolved.signalCount ?? 0}</strong></span>
         <span>Affected students<strong>{unresolved.affectedStudents ?? 0}</strong></span>

@@ -143,16 +143,65 @@ test("analytics date filters validate custom ranges", () => {
   });
   assert.equal(custom.startAt.toISOString(), "2026-09-01T00:00:00.000Z");
   assert.equal(custom.endAt.toISOString(), "2026-09-03T23:59:59.999Z");
+  const leapDay = parseAnalyticsFilters({
+    datePreset: "custom",
+    startDate: "2028-02-29",
+    endDate: "2028-02-29",
+  });
+  assert.equal(leapDay.startAt.toISOString(), "2028-02-29T00:00:00.000Z");
+  assert.equal(leapDay.endAt.toISOString(), "2028-02-29T23:59:59.999Z");
+  const yearBoundary = parseAnalyticsFilters({
+    datePreset: "custom",
+    startDate: "2026-12-31",
+    endDate: "2027-01-01",
+  });
+  assert.equal(yearBoundary.startAt.toISOString(), "2026-12-31T00:00:00.000Z");
+  assert.equal(yearBoundary.endAt.toISOString(), "2027-01-01T23:59:59.999Z");
+  assert.throws(() => parseAnalyticsFilters({
+    datePreset: "custom",
+    startDate: "2026-02-29",
+    endDate: "2026-02-29",
+  }), /valid startDate/);
   assert.throws(() => parseAnalyticsFilters({ datePreset: "custom", startDate: "2026-09-18", endDate: "2026-09-01" }), /startDate/);
   assert.throws(() => parseAnalyticsFilters({ classroomId: "not-an-id" }), /Invalid classroom/);
   assert.throws(
+    () => parseAnalyticsFilters({ classroomId: "" }),
+    (error) => error.status === 400 && /classroom/i.test(error.message),
+  );
+  assert.throws(
     () => parseAnalyticsFilters({ studentId: "not-an-id" }),
+    (error) => error.status === 400 && /student/i.test(error.message),
+  );
+  assert.throws(
+    () => parseAnalyticsFilters({ studentId: "" }),
     (error) => error.status === 400 && /student/i.test(error.message),
   );
   for (const studentId of ["1abc", "1.5", "1e2", ["1", "2"], "9007199254740992"]) {
     assert.throws(
       () => parseAnalyticsFilters({ studentId }),
       (error) => error.status === 400 && /student/i.test(error.message),
+    );
+  }
+  for (const datePreset of ["yesterday", "", ["7d", "30d"]]) {
+    assert.throws(
+      () => parseAnalyticsFilters({ datePreset }),
+      (error) => error.status === 400 && /date/i.test(error.message),
+    );
+  }
+  for (const lessonId of [["curriculum:tutorial", "curriculum:arrays"], 123, {}]) {
+    assert.throws(
+      () => parseAnalyticsFilters({ lessonId }),
+      (error) => error.status === 400 && /lesson/i.test(error.message),
+    );
+  }
+  for (const query of [
+    { startDate: "2026-09-01" },
+    { datePreset: "all", startDate: "2026-09-01", endDate: "2026-09-02" },
+    { datePreset: "7d", endDate: "2026-09-02" },
+  ]) {
+    assert.throws(
+      () => parseAnalyticsFilters(query),
+      (error) => error.status === 400 && /custom date/i.test(error.message),
     );
   }
 });
@@ -199,6 +248,22 @@ test("analytics reject a classroom owned by another teacher before reading stude
       (error) => error.status === 403,
     );
     assert.equal(membershipsRead, false);
+  });
+});
+
+test("admin analytics reject malformed teacher scope instead of broadening it", async () => {
+  let classroomsRead = false;
+  await withStubs([
+    [Classroom, "findAll", async () => { classroomsRead = true; return []; }],
+  ], async () => {
+    await assert.rejects(
+      getTeacherAnalytics({
+        req: { userId: 99, userRole: "admin" },
+        query: { teacherId: ["10", "11"] },
+      }),
+      (error) => error.status === 400 && /teacher/i.test(error.message),
+    );
+    assert.equal(classroomsRead, false);
   });
 });
 

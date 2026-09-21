@@ -12,12 +12,14 @@ import pgStyles from "./TeacherAnalyticsPage.module.css";
 import TeacherAnalyticsReport from "./TeacherAnalyticsReport.jsx";
 import {
   buildAnalyticsQuery,
+  createLatestRequestGuard,
   createEmptyAnalyticsData,
   downloadAnalyticsCsv,
   formatComparison,
   formatTrendValue,
   normalizeTrendValue,
   resetAnalyticsFilters,
+  trapDialogFocus,
 } from "./teacherAnalyticsUtils.js";
 
 const TREND_METRICS = [
@@ -95,7 +97,7 @@ function LearningTrends({ historical }) {
   return <section className={`${styles.card} ${pgStyles.trendsCard}`}>
     <div className={pgStyles.trendsHeader}>
       <div>
-        <div className={styles.sectionTitle}>Learning Trends</div>
+        <h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Learning Trends</h2>
         <div className={styles.sectionSub}>Actual recorded learning events, separate from cumulative current-state metrics.</div>
       </div>
       <div className={pgStyles.trendMetricPicker} role="group" aria-label="Learning trend metric">
@@ -226,7 +228,13 @@ function TeacherAnalyticsPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [expandedLessons, setExpandedLessons] = useState(() => new Set());
   const closeDrawerRef = useRef(null);
+  const drawerRef = useRef(null);
   const drawerLauncherRef = useRef(null);
+  const detailRequestControllerRef = useRef(null);
+  const detailRequestGuardRef = useRef(null);
+  if (!detailRequestGuardRef.current) {
+    detailRequestGuardRef.current = createLatestRequestGuard();
+  }
 
   const queryString = useMemo(() => buildAnalyticsQuery(filters), [filters]);
 
@@ -274,26 +282,56 @@ function TeacherAnalyticsPage() {
   }, [data.studentPerformance, studentSearch, studentSort]);
 
   const openStudent = async (student, launcher = null) => {
+    detailRequestControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestVersion = detailRequestGuardRef.current.begin();
+    detailRequestControllerRef.current = controller;
     drawerLauncherRef.current = launcher;
     setSelectedStudent(student); setStudentDetail(null); setDetailLoading(true);
     try {
-      const response = await axios.get(buildApiUrl(`/api/teacher/analytics/students/${student.studentId}?${queryString}`), { headers: getAuthHeaders() });
-      setStudentDetail(response.data);
-    } catch (requestError) { setStudentDetail({ error: requestError.response?.data?.message || "Student details could not be loaded." }); }
-    finally { setDetailLoading(false); }
+      const response = await axios.get(
+        buildApiUrl(`/api/teacher/analytics/students/${student.studentId}?${queryString}`),
+        { headers: getAuthHeaders(), signal: controller.signal },
+      );
+      if (detailRequestGuardRef.current.isCurrent(requestVersion)) {
+        setStudentDetail(response.data);
+      }
+    } catch (requestError) {
+      if (requestError.code !== "ERR_CANCELED" && detailRequestGuardRef.current.isCurrent(requestVersion)) {
+        setStudentDetail({ error: requestError.response?.data?.message || "Student details could not be loaded." });
+      }
+    } finally {
+      if (detailRequestGuardRef.current.isCurrent(requestVersion)) setDetailLoading(false);
+    }
   };
 
   const closeStudent = useCallback(() => {
+    detailRequestControllerRef.current?.abort();
+    detailRequestGuardRef.current.invalidate();
     setSelectedStudent(null);
     setStudentDetail(null);
+    setDetailLoading(false);
     requestAnimationFrame(() => drawerLauncherRef.current?.focus());
   }, []);
+
+  useEffect(() => {
+    detailRequestControllerRef.current?.abort();
+    detailRequestGuardRef.current.invalidate();
+    setSelectedStudent(null);
+    setStudentDetail(null);
+    setDetailLoading(false);
+    return () => {
+      detailRequestControllerRef.current?.abort();
+      detailRequestGuardRef.current.invalidate();
+    };
+  }, [queryString]);
 
   useEffect(() => {
     if (!selectedStudent) return undefined;
     closeDrawerRef.current?.focus();
     const handleKeyDown = (event) => {
       if (event.key === "Escape") closeStudent();
+      else trapDialogFocus(event, drawerRef.current);
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
@@ -346,7 +384,7 @@ function TeacherAnalyticsPage() {
   return <div className={`${styles.root} ${pgStyles.analyticsRoot}`}>
     <Sidebar />
     <main className={`${styles.main} ${pgStyles.analyticsMain}`}>
-      <header className={`${styles.pageHeader} ${pgStyles.analyticsHeader}`}><div><div className={styles.pageTitle}>Analytics</div><div className={pgStyles.pageSubtitle}>Classroom learning evidence and progress</div></div><div className={`${styles.pageActions} ${pgStyles.interactiveOnly}`}>
+      <header className={`${styles.pageHeader} ${pgStyles.analyticsHeader}`}><div><h1 className={`${styles.pageTitle} ${pgStyles.headingReset}`}>Analytics</h1><div className={pgStyles.pageSubtitle}>Classroom learning evidence and progress</div></div><div className={`${styles.pageActions} ${pgStyles.interactiveOnly}`}>
         <div className={pgStyles.viewToggle} role="group" aria-label="Analytics view">
           <button type="button" aria-pressed={viewMode === "dashboard"} onClick={() => setViewMode("dashboard")}>Dashboard</button>
           <button type="button" aria-pressed={viewMode === "report"} disabled={!reportAvailable} onClick={() => setViewMode("report")}><FiFileText aria-hidden="true" /> Report</button>
@@ -391,12 +429,12 @@ function TeacherAnalyticsPage() {
         <LearningTrends historical={data.historical} />
 
         <section className={styles.card}>
-          <div className={styles.sectionHead}><div><div className={styles.sectionTitle}>Learning Funnel</div><div className={styles.sectionSub}>Applicable students may start without submitting; an actual failed or successful solution marks attempted.</div></div></div>
+          <div className={styles.sectionHead}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Learning Funnel</h2><div className={styles.sectionSub}>Applicable students may start without submitting; an actual failed or successful solution marks attempted.</div></div></div>
           {!curriculumFunnels.length ? <div className={styles.emptyText}>Learning funnels are available for game curriculum lessons.</div> : <div className={pgStyles.funnelGrid}>{curriculumFunnels.map((lesson) => <LearningFunnel key={lesson.id} lesson={lesson} />)}</div>}
         </section>
 
         <section className={styles.card}>
-          <div className={styles.sectionHead}><div><div className={styles.sectionTitle}>Lesson Performance</div><div className={styles.sectionSub}>Expand a game curriculum lesson for applicable level evidence. Unavailable tracking is shown explicitly.</div></div></div>
+          <div className={styles.sectionHead}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Lesson Performance</h2><div className={styles.sectionSub}>Expand a game curriculum lesson for applicable level evidence. Unavailable tracking is shown explicitly.</div></div></div>
           <div className={styles.tableWrap}><table className={`${styles.table} ${pgStyles.wideTable}`}><thead><tr>
             <th scope="col"><SortButton label="Lesson" column="title" sort={lessonSort} onSort={changeSort(setLessonSort)} /></th><th scope="col"><SortButton label="Completion" column="completionRate" sort={lessonSort} onSort={changeSort(setLessonSort)} /></th><th scope="col"><SortButton label="Started" column="studentsStarted" sort={lessonSort} onSort={changeSort(setLessonSort)} /></th><th scope="col">Completed</th><th scope="col">Avg score</th><th scope="col">Avg attempts</th><th scope="col">Failed attempts</th><th scope="col">Active time</th><th scope="col">Hint use</th><th scope="col">Difficulty</th>
           </tr></thead><tbody>{!lessonRows.length ? <tr><td colSpan="10" className={styles.emptyRow}>No lesson activity matches these filters.</td></tr> : lessonRows.map((lesson) => {
@@ -412,7 +450,7 @@ function TeacherAnalyticsPage() {
         </section>
 
         <section className={styles.card}>
-          <div className={styles.sectionHead}><div><div className={styles.sectionTitle}>Current Failure Patterns</div><div className={styles.sectionSub}>Latest recorded signal per applicable student and level, not historical error totals.</div></div></div>
+          <div className={styles.sectionHead}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Current Failure Patterns</h2><div className={styles.sectionSub}>Latest recorded signal per applicable student and level, not historical error totals.</div></div></div>
           <div className={pgStyles.failureColumns}>
             <div><div className={pgStyles.failureGroupTitle}><strong>Unresolved latest signals</strong><span>{data.failurePatterns?.unresolved?.affectedStudents ?? 0} affected students · {data.failurePatterns?.unresolved?.signalCount ?? 0} level signals</span></div><FailurePatternGroup group={data.failurePatterns?.unresolved} /></div>
             <div><div className={pgStyles.failureGroupTitle}><strong>Completed after latest failure</strong><span>Retained pre-success signals, shown separately</span></div><FailurePatternGroup group={data.failurePatterns?.completedAfterFailure} completed /></div>
@@ -420,26 +458,26 @@ function TeacherAnalyticsPage() {
         </section>
 
         <section className={styles.card}>
-          <div className={styles.sectionHead}><div><div className={styles.sectionTitle}>Student × Lesson Heatmap</div><div className={styles.sectionSub}>Labels and tooltips accompany every color state.</div></div></div>
+          <div className={styles.sectionHead}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Student × Lesson Heatmap</h2><div className={styles.sectionSub}>Labels and tooltips accompany every color state.</div></div></div>
           <div className={pgStyles.legend} aria-label="Heatmap legend">{[["unavailable", "Unavailable"], ["not_started", "Not started"], ["healthy", "Healthy"], ["moderate", "Moderate difficulty"], ["high", "High difficulty"], ["completed", "Completed"]].map(([key, label]) => <span key={key}><i className={pgStyles[`heat_${key}`]} />{label}</span>)}</div>
           {!heatmapLessons.length || !(data.heatmap?.students || []).length ? <div className={styles.emptyText}>No student lesson activity to display.</div> : <div className={pgStyles.heatmapWrap}><table className={pgStyles.heatmapTable}><thead><tr><th scope="col">Student</th>{heatmapLessons.map((lesson) => <th scope="col" key={lesson.id} title={lesson.title}>{lesson.title}</th>)}</tr></thead><tbody>{data.heatmap.students.map((student) => <tr key={student.studentId}><th scope="row">{student.name}</th>{heatmapLessons.map((lesson) => { const cell = student.cells.find((item) => item.lessonId === lesson.id) || { key: "not_started", label: "Not started" }; return <td key={lesson.id}><span className={`${pgStyles.heatCell} ${pgStyles[`heat_${cell.key}`]}`} title={`${student.name} · ${lesson.title}: ${cell.label}${cell.failedAttempts != null ? `, ${cell.failedAttempts} failed attempts` : ""}`} aria-label={`${student.name}, ${lesson.title}: ${cell.label}`}>{cell.key === "unavailable" ? "N/A" : cell.key === "completed" ? "✓" : cell.key === "high" ? "!" : cell.key === "moderate" ? "•" : cell.key === "healthy" ? "↗" : "—"}</span></td>; })}</tr>)}</tbody></table></div>}
         </section>
 
-        <section className={styles.card}><div className={styles.sectionTitle}>Students Needing Attention</div><div className={pgStyles.attentionList}>{!(data.attention || []).length ? <div className={styles.emptyText}>No students match the current attention rules.</div> : data.attention.map((student) => <button type="button" key={student.studentId} onClick={(event) => openStudent(student, event.currentTarget)} className={pgStyles.attentionItem}><FiAlertCircle /><span><strong>{student.name}</strong><small>{student.attentionReasons.join(" ")}</small></span><b>Review</b></button>)}</div></section>
+        <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Students Needing Attention</h2><div className={pgStyles.attentionList}>{!(data.attention || []).length ? <div className={styles.emptyText}>No students match the current attention rules.</div> : data.attention.map((student) => <button type="button" key={student.studentId} onClick={(event) => openStudent(student, event.currentTarget)} className={pgStyles.attentionItem}><FiAlertCircle /><span><strong>{student.name}</strong><small>{student.attentionReasons.join(" ")}</small></span><b>Review</b></button>)}</div></section>
 
         <section className={styles.card}>
-          <div className={pgStyles.studentHeader}><div><div className={styles.sectionTitle}>Student Performance</div><div className={styles.sectionSub}>Select a student for lesson-level details.</div></div><label className={pgStyles.search}><FiSearch /><span className={pgStyles.srOnly}>Search students</span><input value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="Search students" /></label></div>
+          <div className={pgStyles.studentHeader}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Student Performance</h2><div className={styles.sectionSub}>Select a student for lesson-level details.</div></div><label className={pgStyles.search}><FiSearch /><span className={pgStyles.srOnly}>Search students</span><input value={studentSearch} onChange={(event) => setStudentSearch(event.target.value)} placeholder="Search students" /></label></div>
           <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th scope="col"><SortButton label="Student" column="name" sort={studentSort} onSort={changeSort(setStudentSort)} /></th><th scope="col"><SortButton label="Progress" column="progress" sort={studentSort} onSort={changeSort(setStudentSort)} /></th><th scope="col">Avg score</th><th scope="col">Avg attempts</th><th scope="col">Active time</th><th scope="col">Completed lessons</th><th scope="col">Last activity</th><th scope="col">Status</th></tr></thead><tbody>{!studentRows.length ? <tr><td colSpan="8" className={styles.emptyRow}>No students match this selection.</td></tr> : studentRows.map((student) => <tr key={student.studentId}><th scope="row"><button type="button" className={pgStyles.studentButton} onClick={(event) => openStudent(student, event.currentTarget)}><strong>{student.name}</strong><small className={pgStyles.sourceLabel}>@{student.username}</small></button></th><td>{valueOrEmpty(student.progress, "%")}</td><td>{valueOrEmpty(student.averageScore, "%")}</td><td>{valueOrEmpty(student.averageAttempts)}</td><td>{student.activeTimeLabel || "Not enough data"}</td><td>{student.completedLessons ?? 0}</td><td>{shortDate(student.lastActivityAt)}</td><td><span className={`${pgStyles.status} ${pgStyles[`status_${student.status}`]}`}>{student.statusLabel}</span></td></tr>)}</tbody></table></div>
         </section>
 
         <div className={pgStyles.analyticsGrid}>
-          <section className={styles.card}><div className={styles.sectionTitle}>Score Distribution</div><DistributionBars rows={data.scoresAndAttempts?.scoreDistribution || []} /></section>
-          <section className={styles.card}><div className={styles.sectionTitle}>Attempt Distribution</div><DistributionBars rows={data.scoresAndAttempts?.attemptDistribution || []} /><div className={pgStyles.inlineStats}><span>First-attempt success<strong>{valueOrEmpty(data.scoresAndAttempts?.firstAttemptSuccessRate, "%")}</strong></span><span>Attempts before completion<strong>{valueOrEmpty(data.scoresAndAttempts?.averageAttemptsBeforeCompletion)}</strong></span></div></section>
+          <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Score Distribution</h2><DistributionBars rows={data.scoresAndAttempts?.scoreDistribution || []} /></section>
+          <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Attempt Distribution</h2><DistributionBars rows={data.scoresAndAttempts?.attemptDistribution || []} /><div className={pgStyles.inlineStats}><span>First-attempt success<strong>{valueOrEmpty(data.scoresAndAttempts?.firstAttemptSuccessRate, "%")}</strong></span><span>Attempts before completion<strong>{valueOrEmpty(data.scoresAndAttempts?.averageAttemptsBeforeCompletion)}</strong></span></div></section>
         </div>
 
         <div className={pgStyles.analyticsGrid}>
-          <section className={styles.card}><div className={styles.sectionTitle}>Hint Analytics</div><div className={pgStyles.inlineStats}><span>Basic hint users<strong>{data.hints?.basicHintUsers ?? 0}</strong></span><span>Purchased hint users<strong>{data.hints?.purchasedHintUsers ?? 0}</strong></span><span>Attempts before hint<strong>{valueOrEmpty(data.hints?.averageAttemptsBeforeHint)}</strong></span><span>Completion after hint<strong>{valueOrEmpty(data.hints?.completionAfterHintRate, "%")}</strong></span></div><div className={pgStyles.compactList}>{(data.hints?.byLesson || []).map((lesson) => <div key={lesson.lessonId}><span>{lesson.title}</span><strong>{valueOrEmpty(lesson.hintUsageRate, "%")}</strong></div>)}</div></section>
-          <section className={styles.card}><div className={styles.sectionTitle}>Learning Activity</div>{!(data.activity?.byDay || []).length ? <div className={styles.emptyText}>No dated activity matches this selection.</div> : <div className={pgStyles.compactList}>{data.activity.byDay.map((day) => <div key={day.date}><span>{shortDate(day.date)}</span><strong>{day.activeStudents} active · {day.completions} completions</strong></div>)}</div>}{(data.activity?.unavailableMetrics || []).length > 0 && <div className={pgStyles.trackingNote}><FiAlertCircle /> {data.activity.unavailableMetrics.join("; ")}.</div>}</section>
+          <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Hint Analytics</h2><div className={pgStyles.inlineStats}><span>Basic hint users<strong>{data.hints?.basicHintUsers ?? 0}</strong></span><span>Purchased hint users<strong>{data.hints?.purchasedHintUsers ?? 0}</strong></span><span>Attempts before hint<strong>{valueOrEmpty(data.hints?.averageAttemptsBeforeHint)}</strong></span><span>Completion after hint<strong>{valueOrEmpty(data.hints?.completionAfterHintRate, "%")}</strong></span></div><div className={pgStyles.compactList}>{(data.hints?.byLesson || []).map((lesson) => <div key={lesson.lessonId}><span>{lesson.title}</span><strong>{valueOrEmpty(lesson.hintUsageRate, "%")}</strong></div>)}</div></section>
+          <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Learning Activity</h2>{!(data.activity?.byDay || []).length ? <div className={styles.emptyText}>No dated activity matches this selection.</div> : <div className={pgStyles.compactList}>{data.activity.byDay.map((day) => <div key={day.date}><span>{shortDate(day.date)}</span><strong>{day.activeStudents} active · {day.completions} completions</strong></div>)}</div>}{(data.activity?.unavailableMetrics || []).length > 0 && <div className={pgStyles.trackingNote}><FiAlertCircle /> {data.activity.unavailableMetrics.join("; ")}.</div>}</section>
         </div>
 
         {(data.meta?.limitations || []).length > 0 && <details className={pgStyles.notes}><summary>Data definitions and limitations</summary><p>{formulas.dateFilter}</p><p>{formulas.difficulty}</p><ul>{data.meta.limitations.map((item) => <li key={item}>{item}</li>)}</ul></details>}
@@ -447,7 +485,7 @@ function TeacherAnalyticsPage() {
       </div>
     </main>
 
-    {selectedStudent && <div className={pgStyles.drawerBackdrop} onMouseDown={closeStudent}><aside className={pgStyles.drawer} aria-modal="true" role="dialog" aria-labelledby="student-analytics-title" onMouseDown={(event) => event.stopPropagation()}><div className={pgStyles.drawerHeader}><div><h2 id="student-analytics-title">{selectedStudent.name}</h2><span>{selectedStudent.statusLabel}</span></div><button ref={closeDrawerRef} type="button" onClick={closeStudent} aria-label="Close student details"><FiX /></button></div>{detailLoading ? <div className={styles.loadingText} role="status">Loading student details…</div> : studentDetail?.error ? <div className={styles.errorText} role="alert">{studentDetail.error}</div> : studentDetail && <>
+    {selectedStudent && <div className={pgStyles.drawerBackdrop} onMouseDown={closeStudent}><aside ref={drawerRef} className={pgStyles.drawer} aria-modal="true" role="dialog" aria-labelledby="student-analytics-title" onMouseDown={(event) => event.stopPropagation()}><div className={pgStyles.drawerHeader}><div><h2 id="student-analytics-title">{selectedStudent.name}</h2><span>{selectedStudent.statusLabel}</span></div><button ref={closeDrawerRef} type="button" onClick={closeStudent} aria-label="Close student details"><FiX /></button></div>{detailLoading ? <div className={styles.loadingText} role="status">Loading student details…</div> : studentDetail?.error ? <div className={styles.errorText} role="alert">{studentDetail.error}</div> : studentDetail && <>
       {studentDetail.student.attentionReasons?.length > 0 && <div className={pgStyles.drawerAlert}><strong>Reasons to check in</strong>{studentDetail.student.attentionReasons.map((reason) => <span key={reason}>{reason}</span>)}</div>}
       <div className={pgStyles.drawerStats}><span>Progress<strong>{valueOrEmpty(studentDetail.student.progress, "%")}</strong></span><span>Average score<strong>{valueOrEmpty(studentDetail.student.averageScore, "%")}</strong></span><span>Average attempts<strong>{valueOrEmpty(studentDetail.student.averageAttempts)}</strong></span><span>Failed attempts<strong>{valueOrEmpty(studentDetail.student.failedAttempts)}</strong></span><span>Active time<strong>{studentDetail.student.activeTimeLabel || "Not enough data"}</strong></span><span>Hint usage<strong>{studentDetail.student.hintUsageCount == null ? "N/A" : `${studentDetail.student.hintUsageCount} lessons`}</strong></span><span>Latest activity<strong>{shortDate(studentDetail.student.lastActivityAt)}</strong></span></div>
       <h3>Historical activity</h3>{studentDetail.historical?.hasData ? <div className={pgStyles.drawerStats}><span>Attempts<strong>{studentDetail.historical.totals?.attempts ?? 0}</strong></span><span>Completions<strong>{studentDetail.historical.totals?.completions ?? 0}</strong></span><span>Recorded failures<strong>{studentDetail.historical.totals?.failedAttempts ?? 0}</strong></span><span>Active time<strong>{formatTrendValue({ duration: true }, studentDetail.historical.totals?.activeSeconds ?? 0)}</strong></span></div> : <div className={styles.emptyText}>No historical activity has been recorded for this student and period.</div>}

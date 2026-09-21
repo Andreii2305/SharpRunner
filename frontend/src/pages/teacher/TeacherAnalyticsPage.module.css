@@ -1,4 +1,5 @@
 .pageSubtitle { color: #64748b; font-size: var(--teacher-text-sm); }
+.headingReset { margin: 0; }
 .viewToggle { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 9px; overflow: hidden; }
 .viewToggle button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; border: 0; border-right: 1px solid #cbd5e1; background: #fff; color: #475569; padding: 8px 12px; font: inherit; font-weight: 700; cursor: pointer; }
 .viewToggle button:last-child { border-right: 0; }

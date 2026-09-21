@@ -708,6 +708,9 @@ class Program {
 
 test("first-submission completion records one successful academic attempt and replay records none", async () => {
   const user = activeUser();
+  const writeTransactions = {};
+  let transactionSequence = 0;
+  user.save = async (options = {}) => { writeTransactions.user = options.transaction; };
   const progressRow = {
     id: 1,
     userId: 1,
@@ -723,7 +726,9 @@ test("first-submission completion records one successful academic attempt and re
     startedAt: new Date("2026-09-21T00:00:00Z"),
     activeSessionId: null,
     hintUsed: false,
-    save: async () => undefined,
+    save: async (options = {}) => {
+      if (progressRow.isCompleted) writeTransactions.progress = options.transaction;
+    },
   };
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
   const events = [];
@@ -741,14 +746,21 @@ test("first-submission completion records one successful academic attempt and re
     [LearningAnalyticsEvent, "findOne", async ({ where }) => (
       events.find((event) => event.dedupeKey === where.dedupeKey) ?? null
     )],
-    [LearningAnalyticsEvent, "create", async (values) => {
+    [LearningAnalyticsEvent, "create", async (values, options = {}) => {
       const event = { ...values };
       events.push(event);
+      if (values.eventType === "level_completed") writeTransactions.event = options.transaction;
       return event;
     }],
-    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [sequelize, "transaction", async (callback) => callback({
+      id: `transaction-${++transactionSequence}`,
+      LOCK: { UPDATE: "UPDATE" },
+    })],
     [XpTransaction, "findOne", async () => null],
-    [XpTransaction, "create", async (value) => value],
+    [XpTransaction, "create", async (value, options = {}) => {
+      writeTransactions.xp = options.transaction;
+      return value;
+    }],
   ], async () => {
     const first = await apiRequest("/api/progress/level/tutorial-level-1", {
       method: "PUT",
@@ -782,6 +794,7 @@ test("first-submission completion records one successful academic attempt and re
     assert.equal(first.response.status, 200);
     assert.equal(demotion.response.status, 200);
     assert.equal(replay.response.status, 200);
+    assert.equal(replay.payload.xpAward, null);
     assert.equal(events.length, 1);
     assert.deepEqual({
       classroomId: events[0].classroomId,
@@ -797,6 +810,10 @@ test("first-submission completion records one successful academic attempt and re
     assert.equal(progressRow.isCompleted, true);
     assert.equal(progressRow.progressPercent, 100);
     assert.equal(progressRow.finalScore, 100);
+    assert.ok(writeTransactions.progress, "completion progress must be transactional");
+    assert.equal(writeTransactions.event, writeTransactions.progress);
+    assert.equal(writeTransactions.xp, writeTransactions.progress);
+    assert.equal(writeTransactions.user, writeTransactions.progress);
   });
 });
 
@@ -1263,6 +1280,18 @@ test("teacher analytics CSV routes enforce teacher-owned classroom and student s
       { token: authToken(4, "teacher") },
     );
     assert.equal(malformedStudentDetail.response.status, 400);
+
+    const duplicateDateFilter = await apiRequest(
+      "/api/teacher/analytics?classroomId=41&datePreset=7d&datePreset=30d",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(duplicateDateFilter.response.status, 400);
+
+    const duplicateLessonFilter = await apiRequest(
+      "/api/teacher/analytics/export/lessons.csv?classroomId=41&lessonId=curriculum%3Atutorial&lessonId=curriculum%3Aarrays",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(duplicateLessonFilter.response.status, 400);
   });
 });
 

@@ -34,8 +34,11 @@ const buildCompletionXp = ({ attemptCount = 0, hintUsed = false } = {}) => {
   };
 };
 
-const awardFirstCompletionXp = async ({ userId, levelKey, attemptCount, hintUsed }) =>
-  sequelize.transaction(async (transaction) => {
+const awardFirstCompletionXp = async (
+  { userId, levelKey, attemptCount, hintUsed },
+  { transaction: existingTransaction = null } = {},
+) => {
+  const award = async (transaction) => {
     const user = await User.findByPk(userId, {
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -79,7 +82,9 @@ const awardFirstCompletionXp = async ({ userId, levelKey, attemptCount, hintUsed
       totalXp: user.xpTotal,
       breakdown: reward.breakdown,
     };
-  });
+  };
+  return existingTransaction ? award(existingTransaction) : sequelize.transaction(award);
+};
 
 const purchaseDetailedHint = async ({
   userId,

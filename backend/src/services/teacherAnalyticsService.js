@@ -173,18 +173,33 @@ const maxDate = (...values) => {
 };
 
 const parseAnalyticsFilters = (query = {}, now = new Date()) => {
-  const classroomId = query.classroomId && query.classroomId !== "all"
+  const hasClassroomFilter = Object.prototype.hasOwnProperty.call(query, "classroomId");
+  const classroomId = hasClassroomFilter && query.classroomId !== "all"
     ? parsePositiveInteger(query.classroomId)
     : null;
-  if (query.classroomId && query.classroomId !== "all" && !classroomId) {
+  if (hasClassroomFilter && query.classroomId !== "all" && !classroomId) {
     const error = new Error("Invalid classroom filter");
     error.status = 400;
     throw error;
   }
 
-  const datePreset = ["all", "7d", "30d", "custom"].includes(query.datePreset)
-    ? query.datePreset
-    : "all";
+  const hasDatePreset = Object.prototype.hasOwnProperty.call(query, "datePreset");
+  if (hasDatePreset && (
+    typeof query.datePreset !== "string"
+    || !["all", "7d", "30d", "custom"].includes(query.datePreset)
+  )) {
+    const error = new Error("Invalid date filter");
+    error.status = 400;
+    throw error;
+  }
+  const datePreset = hasDatePreset ? query.datePreset : "all";
+  const hasCustomDateValue = Object.prototype.hasOwnProperty.call(query, "startDate")
+    || Object.prototype.hasOwnProperty.call(query, "endDate");
+  if (datePreset !== "custom" && hasCustomDateValue) {
+    const error = new Error("Custom date values require the custom date filter");
+    error.status = 400;
+    throw error;
+  }
   let startAt = null;
   let endAt = null;
   if (datePreset === "7d" || datePreset === "30d") {
@@ -206,26 +221,34 @@ const parseAnalyticsFilters = (query = {}, now = new Date()) => {
     }
   }
 
-  const hasStudentFilter = query.studentId !== undefined
-    && query.studentId !== null
-    && query.studentId !== ""
-    && query.studentId !== "all";
+  const hasStudentFilter = Object.prototype.hasOwnProperty.call(query, "studentId");
   const studentId = hasStudentFilter ? parsePositiveInteger(query.studentId) : null;
-  if (hasStudentFilter && !studentId) {
+  if (hasStudentFilter && query.studentId !== "all" && !studentId) {
     const error = new Error("Invalid student filter");
     error.status = 400;
     throw error;
   }
+
+  const hasLessonFilter = Object.prototype.hasOwnProperty.call(query, "lessonId");
+  if (hasLessonFilter && (
+    typeof query.lessonId !== "string"
+    || !query.lessonId.trim()
+  )) {
+    const error = new Error("Invalid lesson filter");
+    error.status = 400;
+    throw error;
+  }
+  const lessonId = hasLessonFilter && query.lessonId !== "all"
+    ? query.lessonId.trim()
+    : null;
 
   return {
     classroomId,
     datePreset,
     startAt,
     endAt,
-    studentId,
-    lessonId: typeof query.lessonId === "string" && query.lessonId !== "all"
-      ? query.lessonId.trim()
-      : null,
+    studentId: query.studentId === "all" ? null : studentId,
+    lessonId,
   };
 };
 
@@ -1007,9 +1030,20 @@ const buildAttentionReasons = ({ student, states, dueAtByLevelKey, now }) => {
 
 const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
   const filters = parseAnalyticsFilters(query, now);
-  const teacherId = req.userRole === "admin"
-    ? parsePositiveInteger(query.teacherId)
-    : req.userId;
+  let teacherId = req.userId;
+  if (req.userRole === "admin") {
+    const hasTeacherFilter = Object.prototype.hasOwnProperty.call(query, "teacherId");
+    if (hasTeacherFilter && query.teacherId !== "all") {
+      teacherId = parsePositiveInteger(query.teacherId);
+      if (!teacherId) {
+        const error = new Error("Invalid teacher filter");
+        error.status = 400;
+        throw error;
+      }
+    } else {
+      teacherId = null;
+    }
+  }
   const classroomWhere = teacherId ? { teacherId } : {};
   const availableClassrooms = await Classroom.findAll({
     where: { ...classroomWhere, isActive: true },

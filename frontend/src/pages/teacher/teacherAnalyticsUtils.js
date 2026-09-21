@@ -38,6 +38,51 @@ export const createEmptyAnalyticsData = () => ({
   meta: { formulas: {}, limitations: [] },
 });
 
+export const createLatestRequestGuard = () => {
+  let version = 0;
+  return {
+    begin: () => {
+      version += 1;
+      return version;
+    },
+    invalidate: () => { version += 1; },
+    isCurrent: (candidate) => candidate === version,
+  };
+};
+
+const DIALOG_FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  "summary",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+
+export const trapDialogFocus = (event, dialog) => {
+  if (event?.key !== "Tab" || !dialog?.querySelectorAll) return false;
+  const focusable = [...dialog.querySelectorAll(DIALOG_FOCUSABLE_SELECTOR)];
+  if (!focusable.length) {
+    event.preventDefault();
+    dialog.focus?.();
+    return true;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && (!focusable.includes(event.target) || event.target === first)) {
+    event.preventDefault();
+    last.focus();
+    return true;
+  }
+  if (!event.shiftKey && (!focusable.includes(event.target) || event.target === last)) {
+    event.preventDefault();
+    first.focus();
+    return true;
+  }
+  return false;
+};
+
 export const buildAnalyticsQuery = (filters) => {
   const params = new URLSearchParams();
   params.set("classroomId", filters.classroomId || "all");

@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { serializeCsv } = require("../src/services/csvService");
+const { safeCsvFilename, serializeCsv } = require("../src/services/csvService");
 const {
   buildLessonPerformanceCsv,
   buildStudentPerformanceCsv,
@@ -16,6 +16,9 @@ test("CSV serialization preserves structured text and neutralizes spreadsheet fo
       ["Formula", "=SUM(1,2)"],
       ["Spaced formula", "  +cmd"],
       ["Tabbed formula", "\t@cmd"],
+      ["CRLF formula", "\r\n=cmd"],
+      ["Control formula", "\u0001@cmd"],
+      ["Unicode-space formula", "\u00A0+cmd"],
       ["Missing", null],
     ],
   });
@@ -27,8 +30,12 @@ test("CSV serialization preserves structured text and neutralizes spreadsheet fo
   assert.match(csv, /"Formula","'=SUM\(1,2\)"/);
   assert.match(csv, /"Spaced formula","'  \+cmd"/);
   assert.match(csv, /"Tabbed formula","'\t@cmd"/);
+  assert.match(csv, /"CRLF formula","'\r\n=cmd"/);
+  assert.match(csv, /"Control formula","'\u0001@cmd"/);
+  assert.match(csv, /"Unicode-space formula","'\u00A0\+cmd"/);
   assert.match(csv, /"Missing",""/);
   assert.equal(csv.includes("\r\n"), true);
+  assert.equal(safeCsvFilename('report.csv"\r\nX-Injected: yes'), "report.csv-X-Injected-yes.csv");
 });
 
 test("student performance CSV contains authorized aggregates and no sensitive fields", () => {

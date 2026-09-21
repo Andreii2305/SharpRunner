@@ -796,6 +796,14 @@ router.put("/level/:levelKey", async (req, res) => {
 
     const completionOccurredAt = new Date();
     const mutation = await UserProgress.sequelize.transaction(async (transaction) => {
+      // Detailed-hint purchase locks User before UserProgress. Preserve that
+      // order here so concurrent completion and purchase cannot deadlock.
+      if (requestedCompletion && !initialLevelRow.isCompleted) {
+        await User.findByPk(req.userId, {
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+      }
       const levelRow = await UserProgress.findOne({
         where: { userId: req.userId, levelKey },
         transaction,
@@ -803,7 +811,7 @@ router.put("/level/:levelKey", async (req, res) => {
       });
       if (!levelRow) return null;
       if (levelRow.isCompleted) {
-        return { levelRow, completedNow: false };
+        return { levelRow, completedNow: false, xpAward: null };
       }
 
       const progress = progressInput.hasValue
@@ -854,6 +862,18 @@ router.put("/level/:levelKey", async (req, res) => {
           activityId: completionActionId,
           occurredAt: completedAt,
         }, { transaction });
+        const xpAward = await awardFirstCompletionXp({
+          userId: req.userId,
+          levelKey,
+          attemptCount: levelRow.attemptCount,
+          hintUsed: levelRow.hintUsed,
+        }, { transaction });
+        if (xpAward.awarded) {
+          levelRow.xpAwarded = xpAward.amount;
+          levelRow.xpAwardedAt = new Date();
+          await levelRow.save({ transaction });
+        }
+        return { levelRow, completedNow, xpAward };
       } else {
         levelRow.progressPercent = isCompleted ? 100 : progress;
         levelRow.isCompleted = isCompleted;
@@ -861,25 +881,10 @@ router.put("/level/:levelKey", async (req, res) => {
         await levelRow.save({ transaction });
       }
 
-      return { levelRow, completedNow };
+      return { levelRow, completedNow, xpAward: null };
     });
     if (!mutation) return res.status(404).json({ message: "Progress row not found" });
-    const { levelRow, completedNow } = mutation;
-
-    let xpAward = null;
-    if (completedNow) {
-      xpAward = await awardFirstCompletionXp({
-        userId: req.userId,
-        levelKey,
-        attemptCount: levelRow.attemptCount,
-        hintUsed: levelRow.hintUsed,
-      });
-      if (xpAward.awarded) {
-        levelRow.xpAwarded = xpAward.amount;
-        levelRow.xpAwardedAt = new Date();
-        await levelRow.save();
-      }
-    }
+    const { xpAward } = mutation;
 
     const payload = await buildProgressPayloadForUser(req.userId);
     payload.xpAward = xpAward;

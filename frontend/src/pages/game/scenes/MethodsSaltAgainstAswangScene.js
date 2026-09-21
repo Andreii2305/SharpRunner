@@ -20,6 +20,8 @@ const ASWANG_SCALE = 0.46;
 const SALT_WHITE = 0xf8fbff;
 const HIT_BLUE = 0xcff7ff;
 const FAIL_RED = 0xff6677;
+const ASWANG_AURA_COLOR = 0x42101c;
+const ASWANG_AURA_FILL_ALPHA = 0.36;
 const REQUIRED_SALT_AMOUNT = 5;
 
 export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
@@ -185,7 +187,7 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
 
   createAswang() {
     this.aswangAura = this.add
-      .ellipse(this.aswangPoint.x, this.aswangPoint.y - 56, 112, 142, 0x42101c, 0.36)
+      .ellipse(this.aswangPoint.x, this.aswangPoint.y - 56, 112, 142, ASWANG_AURA_COLOR, ASWANG_AURA_FILL_ALPHA)
       .setDepth(1.35)
       .setBlendMode(Phaser.BlendModes.SCREEN);
     this.aswang = this.add
@@ -408,10 +410,10 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
     this.createLandingSparkle(this.saltTarget, HIT_BLUE);
     this.createHitBurst();
     this.aswang.setTint(HIT_BLUE);
-    this.aswangAura.setTint(HIT_BLUE).setAlpha(0.58);
+    this.aswangAura.setFillStyle(HIT_BLUE, ASWANG_AURA_FILL_ALPHA).setAlpha(0.58);
     this.schedule(140, () => {
       this.aswang.clearTint();
-      this.aswangAura.clearTint();
+      this.aswangAura.setFillStyle(ASWANG_AURA_COLOR, ASWANG_AURA_FILL_ALPHA);
     });
     this.tweens.add({
       targets: [this.aswang, this.aswangAura],
@@ -586,7 +588,7 @@ export default class MethodsSaltAgainstAswangScene extends Phaser.Scene {
     this.player.setPosition(this.spawnPoint.x, this.spawnPoint.y).setAlpha(1).setTint(0xffffff);
     this.player.play("methods-8-player-idle", true);
     this.aswang.setPosition(this.aswangPoint.x, this.aswangPoint.y - 8).setAlpha(1).clearTint();
-    this.aswangAura.setPosition(this.aswangPoint.x, this.aswangPoint.y - 56).setAlpha(0.36).clearTint();
+    this.aswangAura.setPosition(this.aswangPoint.x, this.aswangPoint.y - 56).setAlpha(0.36).setFillStyle(ASWANG_AURA_COLOR, ASWANG_AURA_FILL_ALPHA);
     this.callText.setText("ThrowSalt(?)").setColor("#f4e7cc").setAlpha(1);
     this.amountText.setText("").setAlpha(0);
     this.sequenceMode = "idle";

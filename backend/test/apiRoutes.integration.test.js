@@ -1208,6 +1208,64 @@ test("teacher routes reject students and allow teachers to create their own clas
   });
 });
 
+test("teacher analytics CSV routes enforce teacher-owned classroom and student scope", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = {
+    id: 41,
+    teacherId: 4,
+    isActive: true,
+    className: "CSV Class",
+    section: "A",
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findAll", async () => [classroom]],
+    [ClassroomMembership, "findAll", async () => []],
+    [LevelContentOverride, "findAll", async () => []],
+    [ClassroomLessonPlacement, "findAll", async () => []],
+    [ClassroomLesson, "findAll", async () => []],
+    [LearningAnalyticsEvent, "findAll", async () => []],
+    [LearningAnalyticsEvent, "min", async () => null],
+  ], async () => {
+    for (const exportPath of ["students", "lessons"]) {
+      const response = await fetch(
+        `${baseUrl}/api/teacher/analytics/export/${exportPath}.csv?classroomId=41`,
+        { headers: { Authorization: `Bearer ${authToken(4, "teacher")}` } },
+      );
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("content-type"), /^text\/csv/);
+      assert.match(response.headers.get("content-disposition"), /attachment; filename="sharprunner-/);
+      assert.deepEqual([...bytes.slice(0, 3)], [0xEF, 0xBB, 0xBF]);
+    }
+
+    const unauthorizedClassroom = await apiRequest(
+      "/api/teacher/analytics/export/students.csv?classroomId=999",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(unauthorizedClassroom.response.status, 403);
+
+    const unauthorizedStudent = await apiRequest(
+      "/api/teacher/analytics/export/students.csv?classroomId=41&studentId=999",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(unauthorizedStudent.response.status, 403);
+
+    const malformedStudentFilter = await apiRequest(
+      "/api/teacher/analytics/export/students.csv?classroomId=41&studentId=1abc",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(malformedStudentFilter.response.status, 400);
+
+    const malformedStudentDetail = await apiRequest(
+      "/api/teacher/analytics/students/1abc?classroomId=41",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(malformedStudentDetail.response.status, 400);
+  });
+});
+
 test("teacher lesson library is role-protected and returns reusable lesson metadata", async () => {
   const teacher = activeUser({ id: 71, role: "teacher" });
   const student = activeUser({ id: 72, role: "student" });

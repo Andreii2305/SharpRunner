@@ -16,6 +16,7 @@ const { validateEmailAddress } = require("../services/emailValidationService");
 const { sendTeacherInviteEmail, sendTemporaryPasswordEmail } = require("../services/emailService");
 const { createRateLimit } = require("../middleware/rateLimit");
 const { getPolicyStatus } = require("../constants/policyVersions");
+const { sendCsv } = require("../services/csvService");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
 const ALLOWED_STATUSES = new Set(["active", "inactive", "pending", "archived"]);
@@ -95,21 +96,6 @@ const parseDate = (value, endOfDay = false) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
   const date = new Date(`${normalized}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
   return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const csvEscape = (value) => {
-  const text = value === null || value === undefined ? "" : String(value);
-  const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
-  return `"${safe.replace(/"/g, '""')}"`;
-};
-
-const sendCsv = (res, filename, headers, rows) => {
-  const csv = [headers, ...rows].map((row) => row.map(csvEscape).join(",")).join("\r\n");
-  res.set({
-    "Content-Type": "text/csv; charset=utf-8",
-    "Content-Disposition": `attachment; filename="${filename}"`,
-  });
-  return res.send(`\uFEFF${csv}`);
 };
 
 const buildUserWhere = (query) => {

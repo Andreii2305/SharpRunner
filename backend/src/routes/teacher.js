@@ -36,6 +36,11 @@ const {
 const lessonStorage = require("../services/lessonFileStorageService");
 const { getEffectiveDueAt } = require("../services/levelAccessService");
 const { calculateDifficulty, formatDuration, getTeacherAnalytics } = require("../services/teacherAnalyticsService");
+const { sendCsv } = require("../services/csvService");
+const {
+  lessonPerformanceCsvData,
+  studentPerformanceCsvData,
+} = require("../services/teacherAnalyticsExportService");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -55,6 +60,12 @@ const normalizeString = (value) =>
 const parseInteger = (value) => {
   const parsed = Number.parseInt(value, 10);
   return Number.isInteger(parsed) ? parsed : null;
+};
+
+const parsePositiveInteger = (value) => {
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 };
 
 const getLessonKeyFromLevelKey = (levelKey) => {
@@ -625,9 +636,33 @@ router.get("/analytics", async (req, res) => {
   }
 });
 
+router.get("/analytics/export/students.csv", async (req, res) => {
+  try {
+    const payload = await getTeacherAnalytics({ req, query: req.query });
+    const { headers, rows } = studentPerformanceCsvData(payload);
+    return sendCsv(res, "sharprunner-student-performance.csv", headers, rows);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to export student analytics" });
+  }
+});
+
+router.get("/analytics/export/lessons.csv", async (req, res) => {
+  try {
+    const payload = await getTeacherAnalytics({ req, query: req.query });
+    const { headers, rows } = lessonPerformanceCsvData(payload);
+    return sendCsv(res, "sharprunner-lesson-performance.csv", headers, rows);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ message: error.message });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to export lesson analytics" });
+  }
+});
+
 router.get("/analytics/students/:studentId", async (req, res) => {
   try {
-    const studentId = parseInteger(req.params.studentId);
+    const studentId = parsePositiveInteger(req.params.studentId);
     if (!studentId) return res.status(400).json({ message: "Invalid student ID" });
     const payload = await getTeacherAnalytics({
       req,
@@ -645,6 +680,8 @@ router.get("/analytics/students/:studentId", async (req, res) => {
       })),
       recentActivity: payload.activity.recent,
       hints: payload.hints,
+      details: payload.studentDetails,
+      historical: payload.historical,
     });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ message: error.message });

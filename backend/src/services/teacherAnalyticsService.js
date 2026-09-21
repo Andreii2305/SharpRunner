@@ -61,8 +61,12 @@ const percent = (numerator, denominator, digits = 1) => (
 );
 
 const parsePositiveInteger = (value) => {
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
 };
 
 const parseLevelKey = (levelKey) => {
@@ -137,6 +141,30 @@ const validDate = (value) => {
   return Number.isFinite(date.getTime()) ? date : null;
 };
 
+const utcDateBoundary = (value, endOfDay = false) => {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(
+    year,
+    month - 1,
+    day,
+    endOfDay ? 23 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 59 : 0,
+    endOfDay ? 999 : 0,
+  ));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return null;
+  return date;
+};
+
 const maxDate = (...values) => {
   const dates = values.map(validDate).filter(Boolean);
   return dates.length
@@ -164,15 +192,13 @@ const parseAnalyticsFilters = (query = {}, now = new Date()) => {
     endAt = new Date(now);
     startAt = new Date(endAt.getTime() - days * DAY_MS);
   } else if (datePreset === "custom") {
-    startAt = validDate(query.startDate);
-    endAt = validDate(query.endDate);
+    startAt = utcDateBoundary(query.startDate);
+    endAt = utcDateBoundary(query.endDate, true);
     if (!startAt || !endAt) {
       const error = new Error("Custom date filters require valid startDate and endDate values");
       error.status = 400;
       throw error;
     }
-    startAt.setHours(0, 0, 0, 0);
-    endAt.setHours(23, 59, 59, 999);
     if (startAt > endAt) {
       const error = new Error("startDate must be on or before endDate");
       error.status = 400;
@@ -180,11 +206,23 @@ const parseAnalyticsFilters = (query = {}, now = new Date()) => {
     }
   }
 
+  const hasStudentFilter = query.studentId !== undefined
+    && query.studentId !== null
+    && query.studentId !== ""
+    && query.studentId !== "all";
+  const studentId = hasStudentFilter ? parsePositiveInteger(query.studentId) : null;
+  if (hasStudentFilter && !studentId) {
+    const error = new Error("Invalid student filter");
+    error.status = 400;
+    throw error;
+  }
+
   return {
     classroomId,
     datePreset,
     startAt,
     endAt,
+    studentId,
     lessonId: typeof query.lessonId === "string" && query.lessonId !== "all"
       ? query.lessonId.trim()
       : null,
@@ -551,6 +589,9 @@ const buildCurriculumLevelMetric = ({
     .map((state) => Number(state.row.timeSpentSeconds) || 0)
     .filter((seconds) => seconds > 0);
   const hintStates = startedStates.filter((state) => state.row.hintUsed);
+  const firstAttemptCompletions = completedStates.filter(
+    (state) => (Number(state.row.attemptCount) || 0) === 0,
+  ).length;
   const totalFailedAttempts = failedAttemptValues.reduce((sum, value) => sum + value, 0);
   const totalSolutionAttempts = attemptValues.reduce((sum, value) => sum + value, 0);
   const averageScore = average(scoreValues);
@@ -582,10 +623,8 @@ const buildCurriculumLevelMetric = ({
     purchasedHintUsers: startedStates.filter(
       (state) => state.row.detailedHintUnlocked || state.row.hintType === "detailed",
     ).length,
-    firstAttemptSuccessRate: percent(
-      completedStates.filter((state) => (Number(state.row.attemptCount) || 0) === 0).length,
-      completedStates.length,
-    ),
+    firstAttemptCompletions,
+    firstAttemptSuccessRate: percent(firstAttemptCompletions, completedStates.length),
     difficulty: calculateDifficulty({
       studentsStarted: startedStates.length,
       studentsCompleted: completedStates.length,
@@ -676,6 +715,14 @@ const buildCurriculumLessonMetric = ({
   })).filter(Boolean);
   const failureSignals = internalLevelMetrics.flatMap((level) => level.failureSignals);
   const levels = internalLevelMetrics.map(({ failureSignals: _failureSignals, ...level }) => level);
+  const completedLevelCount = internalLevelMetrics.reduce(
+    (sum, level) => sum + level.studentsCompleted,
+    0,
+  );
+  const firstAttemptLevelCompletions = internalLevelMetrics.reduce(
+    (sum, level) => sum + level.firstAttemptCompletions,
+    0,
+  );
 
   const applicableStates = studentStates.filter((state) => state.applicable);
   const startedStates = studentStates.filter((state) => state.started);
@@ -699,6 +746,7 @@ const buildCurriculumLessonMetric = ({
   return {
     id: `curriculum:${lesson.lessonKey}`,
     source: "curriculum",
+    type: "curriculum",
     lessonKey: lesson.lessonKey,
     lessonId: null,
     classroomId: filters.classroomId,
@@ -723,7 +771,8 @@ const buildCurriculumLessonMetric = ({
     averageAttemptsBeforeHint: average(startedStates.flatMap((state) => state.attemptsBeforeHint)),
     completedAfterHint: startedStates.filter((state) => state.hintUsed && state.completed).length,
     totalSolutionAttempts: totalAttempts,
-    firstAttemptCompletions: completedStates.filter((state) => state.failedAttempts === 0).length,
+    firstAttemptCompletions: firstAttemptLevelCompletions,
+    firstAttemptSuccessRate: percent(firstAttemptLevelCompletions, completedLevelCount),
     difficulty,
     funnel: buildLearningFunnel(studentStates),
     levels,
@@ -811,6 +860,7 @@ const buildCustomLessonMetric = ({
   return {
     id: `custom:${entry.classroomId}:${lesson.id}`,
     source: "classroom",
+    type: lesson.contentType,
     lessonKey: null,
     lessonId: lesson.id,
     classroomId: entry.classroomId,
@@ -835,6 +885,9 @@ const buildCustomLessonMetric = ({
     totalSolutionAttempts: attempts.reduce((sum, value) => sum + value, 0),
     firstAttemptCompletions: isAssignment
       ? completed.filter((state) => state.totalAttempts === 1).length
+      : null,
+    firstAttemptSuccessRate: isAssignment
+      ? percent(completed.filter((state) => state.totalAttempts === 1).length, completed.length)
       : null,
     difficulty: { score: null, label: null, sufficientData: false },
     studentStates: states,
@@ -980,23 +1033,31 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     where: { classroomId: { [Op.in]: classroomIds }, status: "active" },
     attributes: ["classroomId", "studentId", "joinedAt"],
   });
-  const requestedStudentId = parsePositiveInteger(query.studentId);
-  const scopedMemberships = requestedStudentId
-    ? memberships.filter((row) => Number(row.studentId) === requestedStudentId)
-    : memberships;
-  if (requestedStudentId && !scopedMemberships.length) {
+  const requestedStudentId = filters.studentId;
+  const candidateStudentIds = [...new Set(memberships.map((row) => Number(row.studentId)))];
+  const authorizedStudents = candidateStudentIds.length ? await User.findAll({
+    where: { id: { [Op.in]: candidateStudentIds }, role: "student", status: "active" },
+    attributes: ["id", "firstName", "lastName", "username", "status", "createdAt", "updatedAt"],
+  }) : [];
+  const authorizedStudentIdSet = new Set(authorizedStudents.map((student) => Number(student.id)));
+  const authorizedMemberships = memberships.filter(
+    (row) => authorizedStudentIdSet.has(Number(row.studentId)),
+  );
+  if (requestedStudentId && !authorizedMemberships.some(
+    (row) => Number(row.studentId) === requestedStudentId,
+  )) {
     const error = new Error("Student is not an active member of the selected classroom scope");
     error.status = 403;
     throw error;
   }
-  const candidateStudentIds = [...new Set(scopedMemberships.map((row) => Number(row.studentId)))];
-  const students = candidateStudentIds.length ? await User.findAll({
-    where: { id: { [Op.in]: candidateStudentIds }, role: "student", status: "active" },
-    attributes: ["id", "firstName", "lastName", "username", "status", "createdAt", "updatedAt"],
-  }) : [];
+  const students = requestedStudentId
+    ? authorizedStudents.filter((student) => Number(student.id) === requestedStudentId)
+    : authorizedStudents;
   const studentIds = students.map((student) => Number(student.id));
   const studentIdSet = new Set(studentIds);
-  const validMemberships = scopedMemberships.filter((row) => studentIdSet.has(Number(row.studentId)));
+  const validMemberships = authorizedMemberships.filter(
+    (row) => studentIdSet.has(Number(row.studentId)),
+  );
 
   const [progressRows, overrides, placements, directLessons] = await Promise.all([
     studentIds.length ? UserProgress.findAll({
@@ -1145,6 +1206,12 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     const attempts = startedStates.flatMap((state) => state.attemptValues || []);
     const failed = startedStates.flatMap((state) => state.failedAttemptValues || []);
     const activeSeconds = curriculumStates.reduce((sum, state) => sum + (Number(state.activeSeconds) || 0), 0);
+    const failedAttempts = curriculumStates.length
+      ? curriculumStates.reduce((sum, state) => sum + (Number(state.failedAttempts) || 0), 0)
+      : null;
+    const hintUsageCount = curriculumStates.length
+      ? curriculumStates.filter((state) => state.hintUsed).length
+      : null;
     const lastActivityAt = maxDate(...states.map((state) => state.lastActivityAt));
     const dueAtByLevelKey = dueAtByStudentAndLevel.get(studentId) || new Map();
     const reasons = buildAttentionReasons({ student, states, dueAtByLevelKey, now });
@@ -1156,6 +1223,10 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
       averageScore: average(scores),
       averageAttempts: average(attempts),
       averageFailedAttempts: average(failed),
+      startedLessons: startedStates.length,
+      completedLessons: startedStates.filter((state) => state.completed).length,
+      failedAttempts,
+      hintUsageCount,
       activeSeconds,
       activeTimeLabel: activeSeconds > 0 ? formatDuration(activeSeconds) : null,
       completedLevels: curriculumStates.reduce((sum, state) => sum + state.completedLevels, 0),
@@ -1206,6 +1277,61 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     item.lessonTitle = lessonPerformance.find((lesson) => lesson.id === item.lessonId)?.title || item.levelKey;
   }
 
+  const studentDetails = requestedStudentId ? {
+    studentId: requestedStudentId,
+    lessons: lessonPerformance.map((lesson) => {
+      const state = lesson.studentStates.find(
+        (item) => Number(item.studentId) === requestedStudentId,
+      );
+      const status = !state || state.applicable === false
+        ? "Unavailable"
+        : state.completed
+          ? "Completed"
+          : state.started ? "In progress" : "Not started";
+      const rowsByLevel = new Map(
+        (state?.rows || []).map((row) => [row.levelKey, row]),
+      );
+      const levels = lesson.source === "curriculum" ? lesson.levels.map((level) => {
+        const row = rowsByLevel.get(level.levelKey) || null;
+        const started = Boolean(row && hasProgressEvidence(row));
+        const completed = Boolean(row?.isCompleted);
+        const failedAttempts = started ? Math.max(0, Number(row.attemptCount) || 0) : null;
+        return {
+          levelKey: level.levelKey,
+          title: level.title,
+          status: completed ? "Completed" : started ? "In progress" : "Not started",
+          progress: started ? round(Number(row.progressPercent) || 0, 1) : null,
+          score: completed && isNumeric(row.finalScore) ? round(Number(row.finalScore), 1) : null,
+          attempts: started && hasSolutionAttempt(row)
+            ? failedAttempts + (completed ? 1 : 0)
+            : null,
+          failedAttempts,
+          activeSeconds: started ? Math.max(0, Number(row.timeSpentSeconds) || 0) : null,
+          activeTimeLabel: started && Number(row.timeSpentSeconds) > 0
+            ? formatDuration(row.timeSpentSeconds)
+            : null,
+          hintUsed: started ? Boolean(row.hintUsed || row.detailedHintUnlocked) : null,
+          lastActivityAt: started ? progressActivityAt(row) : null,
+        };
+      }) : [];
+      return {
+        id: lesson.id,
+        title: lesson.title,
+        source: lesson.source,
+        status,
+        progress: state?.progressPercent ?? null,
+        score: average(state?.scoreValues || []),
+        attempts: Number.isFinite(state?.totalAttempts) ? state.totalAttempts : null,
+        failedAttempts: Number.isFinite(state?.failedAttempts) ? state.failedAttempts : null,
+        activeSeconds: Number.isFinite(state?.activeSeconds) ? state.activeSeconds : null,
+        activeTimeLabel: Number(state?.activeSeconds) > 0 ? formatDuration(state.activeSeconds) : null,
+        hintUsed: state?.hintUsed ?? null,
+        lastActivityAt: state?.lastActivityAt || null,
+        levels,
+      };
+    }),
+  } : null;
+
   const publicLessons = lessonPerformance.map(({
     studentStates: _studentStates,
     activityRows: _activityRows,
@@ -1221,6 +1347,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
         startAt: filters.startAt,
         endAt: filters.endAt,
         lessonId: filters.lessonId,
+        studentId: filters.studentId,
       },
       formulas: {
         totalStudents: "Distinct active student accounts with an active membership in the selected active classroom(s).",
@@ -1249,6 +1376,11 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     filters: {
       classrooms: availableClassrooms.map((item) => ({ id: item.id, name: item.className, section: item.section })),
       lessons: [...curriculumMetrics, ...customMetrics].map((lesson) => ({ id: lesson.id, title: lesson.title, source: lesson.source })),
+      students: authorizedStudents.map((student) => ({
+        id: Number(student.id),
+        name: `${student.firstName || ""} ${student.lastName || ""}`.trim() || student.username,
+        username: student.username,
+      })),
     },
     overview: {
       totalStudents: studentIds.length,
@@ -1280,6 +1412,7 @@ const getTeacherAnalytics = async ({ req, query = {}, now = new Date() }) => {
     historical,
     failurePatterns,
     studentPerformance,
+    studentDetails,
     attention: studentPerformance.filter((student) => student.attentionReasons.length),
     heatmap: {
       lessons: publicLessons.map((lesson) => ({ id: lesson.id, title: lesson.title })),
@@ -1341,6 +1474,7 @@ const emptyAnalyticsPayload = ({ filters, availableClassrooms }) => ({
   filters: {
     classrooms: availableClassrooms.map((item) => ({ id: item.id, name: item.className, section: item.section })),
     lessons: [],
+    students: [],
   },
   overview: {
     totalStudents: 0,
@@ -1358,6 +1492,7 @@ const emptyAnalyticsPayload = ({ filters, availableClassrooms }) => ({
   historical: emptyHistoricalAnalytics(),
   failurePatterns: buildFailurePatterns([]),
   studentPerformance: [],
+  studentDetails: null,
   attention: [],
   heatmap: { lessons: [], students: [] },
   scoresAndAttempts: {

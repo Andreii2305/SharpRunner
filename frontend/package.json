@@ -10,7 +10,7 @@
     "dev:lan": "vite --host 0.0.0.0",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "npm run test:preferences && npm run test:audio && npm run test:camera && npm run test:validators && npm run test:uploads && npm run test:levels && npm run test:assets && npm run test:practice-state && npm run test:practice-content && npm run test:lesson-blocks && npm run test:legal",
+    "test": "npm run test:preferences && npm run test:audio && npm run test:camera && npm run test:validators && npm run test:uploads && npm run test:levels && npm run test:assets && npm run test:practice-state && npm run test:practice-content && npm run test:lesson-blocks && npm run test:legal && npm run test:teacher-analytics",
     "test:preferences": "node src/Components/Dashboard/preferencePersonalization.test.js",
     "test:audio": "node src/pages/game/audio/bgmConfig.test.js && node src/pages/game/audio/dialogueSfxManager.test.js && node src/pages/game/audio/gameSfx.test.js",
     "test:camera": "node src/pages/game/camera/cameraMath.test.js",
@@ -22,6 +22,7 @@
     "test:practice-content": "node scripts/audit-practice-content.mjs",
     "test:lesson-blocks": "node src/utils/lessonBlocks.test.js",
     "test:legal": "node src/pages/legal/legalPages.test.js",
+    "test:teacher-analytics": "node src/pages/teacher/teacherAnalyticsUtils.test.js",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"

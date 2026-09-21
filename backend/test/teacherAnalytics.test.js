@@ -39,6 +39,7 @@ const analyticsFixture = async ({
   now = new Date("2026-09-18T00:00:00Z"),
   historySeries = [],
   historyFailures = [],
+  historyPrevious = [],
   trackingSince = null,
   onHistoryQuery = null,
 } = {}) => {
@@ -46,7 +47,10 @@ const analyticsFixture = async ({
   return withStubs([
   [Classroom, "findAll", async () => classrooms],
   [ClassroomMembership, "findAll", async () => memberships],
-  [User, "findAll", async () => students],
+  [User, "findAll", async (options = {}) => {
+    const requestedIds = options.where?.id?.[Op.in];
+    return requestedIds ? students.filter((student) => requestedIds.includes(Number(student.id))) : students;
+  }],
   [UserProgress, "findAll", async () => progress],
   [LevelContentOverride, "findAll", async () => overrides],
   [ClassroomLessonPlacement, "findAll", async () => []],
@@ -55,8 +59,11 @@ const analyticsFixture = async ({
   [ClassroomLessonSubmission, "findAll", async () => []],
   [LearningAnalyticsEvent, "findAll", async (options) => {
     historyFindCalls += 1;
-    onHistoryQuery?.({ kind: historyFindCalls === 1 ? "series" : "failures", options });
-    return historyFindCalls === 1 ? historySeries : historyFailures;
+    const kind = historyFindCalls === 1 ? "series" : historyFindCalls === 2 ? "failures" : "previous";
+    onHistoryQuery?.({ kind, options });
+    if (kind === "series") return historySeries;
+    if (kind === "failures") return historyFailures;
+    return historyPrevious;
   }],
   [LearningAnalyticsEvent, "min", async (_field, options) => {
     onHistoryQuery?.({ kind: "tracking", options });
@@ -129,8 +136,25 @@ test("analytics difficulty requires evidence and uses the documented composite",
 test("analytics date filters validate custom ranges", () => {
   const recent = parseAnalyticsFilters({ datePreset: "7d" }, new Date("2026-09-18T00:00:00Z"));
   assert.equal(recent.startAt.toISOString(), "2026-09-11T00:00:00.000Z");
+  const custom = parseAnalyticsFilters({
+    datePreset: "custom",
+    startDate: "2026-09-01",
+    endDate: "2026-09-03",
+  });
+  assert.equal(custom.startAt.toISOString(), "2026-09-01T00:00:00.000Z");
+  assert.equal(custom.endAt.toISOString(), "2026-09-03T23:59:59.999Z");
   assert.throws(() => parseAnalyticsFilters({ datePreset: "custom", startDate: "2026-09-18", endDate: "2026-09-01" }), /startDate/);
   assert.throws(() => parseAnalyticsFilters({ classroomId: "not-an-id" }), /Invalid classroom/);
+  assert.throws(
+    () => parseAnalyticsFilters({ studentId: "not-an-id" }),
+    (error) => error.status === 400 && /student/i.test(error.message),
+  );
+  for (const studentId of ["1abc", "1.5", "1e2", ["1", "2"], "9007199254740992"]) {
+    assert.throws(
+      () => parseAnalyticsFilters({ studentId }),
+      (error) => error.status === 400 && /student/i.test(error.message),
+    );
+  }
 });
 
 test("score ranges are deterministic and preserve low-score buckets", () => {
@@ -268,7 +292,7 @@ test("date filtering excludes old cumulative activity without fabricating histor
   });
 });
 
-test("event-backed history aggregates actual activity in three bounded authorized queries", async () => {
+test("event-backed history aggregates actual activity and compares the preceding bounded period", async () => {
   const historyQueries = [];
   const occurredAt = new Date("2026-09-17T00:00:00.000Z");
   const payload = await analyticsFixture({
@@ -289,13 +313,22 @@ test("event-backed history aggregates actual activity in three bounded authorize
     },
     historySeries: [{
       periodStart: occurredAt,
-      attempts: "2",
-      successfulAttempts: "1",
+      attempts: "3",
+      successfulAttempts: "2",
       failedAttempts: "1",
-      completions: "1",
+      completions: "2",
       activeSeconds: "30",
       hintUses: "1",
-      firstAttemptSuccesses: "0",
+      firstAttemptSuccesses: "1",
+    }],
+    historyPrevious: [{
+      attempts: "1",
+      successfulAttempts: "1",
+      failedAttempts: "0",
+      completions: "1",
+      activeSeconds: "10",
+      hintUses: "0",
+      firstAttemptSuccesses: "1",
     }],
     historyFailures: [{
       failureCategory: "wrong_logic",
@@ -307,21 +340,59 @@ test("event-backed history aggregates actual activity in three bounded authorize
     onHistoryQuery: (queryCall) => historyQueries.push(queryCall),
   });
 
-  assert.equal(historyQueries.length, 3);
+  assert.equal(historyQueries.length, 4);
   assert.deepEqual(payload.historical.series[0], {
     periodStart: "2026-09-17T00:00:00.000Z",
-    attempts: 2,
-    successfulAttempts: 1,
+    attempts: 3,
+    successfulAttempts: 2,
     failedAttempts: 1,
-    completions: 1,
+    completions: 2,
     activeSeconds: 30,
     hintUses: 1,
-    firstAttemptSuccesses: 0,
+    firstAttemptSuccesses: 1,
+    firstAttemptSuccessDenominator: 2,
+    firstAttemptSuccessRate: 50,
   });
   assert.equal(payload.historical.bucket, "day");
   assert.equal(payload.historical.trackingSince, "2026-09-10T00:00:00.000Z");
   assert.equal(payload.historical.hasData, true);
   assert.equal(payload.historical.failures[0].count, 1);
+  assert.deepEqual(payload.historical.totals, {
+    attempts: 3,
+    successfulAttempts: 2,
+    failedAttempts: 1,
+    completions: 2,
+    activeSeconds: 30,
+    hintUses: 1,
+    firstAttemptSuccesses: 1,
+    firstAttemptSuccessDenominator: 2,
+    firstAttemptSuccessRate: 50,
+  });
+  assert.equal(payload.historical.comparison.currentWindow.startAt, "2026-09-01T00:00:00.000Z");
+  assert.equal(payload.historical.comparison.previousWindow.startAt, "2026-08-11T00:00:00.000Z");
+  assert.equal(payload.historical.comparison.previousWindow.endAt, "2026-08-31T23:59:59.999Z");
+  assert.deepEqual(payload.historical.comparison.metrics.attempts, {
+    current: 3,
+    previous: 1,
+    absoluteChange: 2,
+    percentageChange: 200,
+    unit: "count",
+    message: null,
+  });
+  assert.equal(payload.historical.comparison.metrics.failedAttempts.percentageChange, null);
+  assert.match(payload.historical.comparison.metrics.failedAttempts.message, /previous period was zero/i);
+  assert.deepEqual(payload.historical.comparison.metrics.firstAttemptSuccess, {
+    current: 50,
+    previous: 100,
+    absoluteChange: -50,
+    percentageChange: null,
+    unit: "percentage_points",
+    message: null,
+    currentNumerator: 1,
+    currentDenominator: 2,
+    previousNumerator: 1,
+    previousDenominator: 1,
+  });
   assert.equal(payload.failurePatterns.unresolved.signalCount, 1);
 
   const seriesWhere = historyQueries.find((item) => item.kind === "series").options.where;
@@ -579,7 +650,7 @@ test("lesson funnel distinguishes started, attempted, first-attempt success, and
     progress: [
       progressRow({ studentId: 1, level: 1, isCompleted: false, progressPercent: 0, attemptCount: 0 }),
       progressRow({ studentId: 2, level: 1, isCompleted: false, progressPercent: 0, attemptCount: 1 }),
-      progressRow({ studentId: 3, level: 1, isCompleted: true, attemptCount: 0 }),
+      progressRow({ studentId: 3, level: 1, isCompleted: true, attemptCount: 1 }),
       ...[1, 2, 3, 4, 5].map((level) => progressRow({ studentId: 4, level, isCompleted: true, attemptCount: 0 })),
     ],
   });
@@ -595,6 +666,8 @@ test("lesson funnel distinguishes started, attempted, first-attempt success, and
     attemptedFromStarted: 75,
     completedFromAttempted: 33.3,
   });
+  assert.equal(tutorialLesson(payload).firstAttemptSuccessRate, 83.3);
+  assert.equal(tutorialLesson(payload).type, "curriculum");
 });
 
 test("disabled historical rows are omitted from level, funnel, and failure analytics", async () => {
@@ -749,4 +822,42 @@ test("analytics reject students outside the authorized classroom scope", async (
     (error) => error.status === 403,
   );
   assert.equal(historyRead, false);
+});
+
+test("student filters retain the authorized roster and expose only sanitized aggregate detail", async () => {
+  const payload = await analyticsFixture({
+    memberships: [
+      { classroomId: 1, studentId: 1 },
+      { classroomId: 1, studentId: 2 },
+    ],
+    students: [
+      { id: 1, firstName: "Student", lastName: "One", username: "student-1", status: "active" },
+      { id: 2, firstName: "Student", lastName: "Two", username: "student-2", status: "active" },
+    ],
+    progress: [
+      progressRow({ level: 1, attemptCount: 2, hintUsed: true, timeSpentSeconds: 125 }),
+      progressRow({ level: 2, progressPercent: 50, isCompleted: false, attemptCount: 1, timeSpentSeconds: 35 }),
+    ],
+    query: { studentId: "1" },
+  });
+
+  assert.deepEqual(payload.filters.students.map(({ id, username }) => ({ id, username })), [
+    { id: 1, username: "student-1" },
+    { id: 2, username: "student-2" },
+  ]);
+  assert.deepEqual(payload.studentPerformance.map((student) => student.studentId), [1]);
+  assert.equal(payload.studentPerformance[0].startedLessons, 1);
+  assert.equal(payload.studentPerformance[0].completedLessons, 0);
+  assert.equal(payload.studentPerformance[0].failedAttempts, 3);
+  assert.equal(payload.studentPerformance[0].hintUsageCount, 1);
+
+  const tutorial = payload.studentDetails.lessons.find((lesson) => lesson.id === "curriculum:tutorial");
+  assert.equal(tutorial.status, "In progress");
+  assert.equal(tutorial.failedAttempts, 3);
+  assert.equal(tutorial.levels[0].status, "Completed");
+  assert.equal(tutorial.levels[0].attempts, 3);
+  assert.equal(tutorial.levels[1].status, "In progress");
+  assert.equal(tutorial.levels[1].hintUsed, false);
+  assert.equal(JSON.stringify(payload.studentDetails).includes("latestFailureMetadata"), false);
+  assert.equal(JSON.stringify(payload.studentDetails).includes("dedupeKey"), false);
 });

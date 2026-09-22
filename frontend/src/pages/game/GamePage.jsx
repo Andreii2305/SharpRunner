@@ -35,7 +35,8 @@ import {
 import GameTutorial from "./tutorial/GameTutorial.jsx";
 import { getGameTutorialSteps } from "./tutorial/gameTutorialSteps.js";
 import { shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
-import { finishGameTutorialSession } from "./tutorial/gameTutorialFlow.js";
+import { finishGameTutorialSession, shouldDismissPortraitPrompt } from "./tutorial/gameTutorialFlow.js";
+import { readGameAuthHeaders, readGameDraft, removeGameDraft } from "./gamePageStorage.js";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -53,9 +54,11 @@ const readBooleanPreference = (key, fallback = false) => {
   }
 };
 
-const getTutorialStorage = () => {
+const getGameStorage = () => {
   try { return window.localStorage; } catch { return null; }
 };
+
+const getGameAuthHeaders = () => readGameAuthHeaders(getAuthHeaders);
 
 const getTutorialUserId = () => {
   try {
@@ -125,7 +128,7 @@ function GamePage({ levelConfig }) {
   const toast = useToast();
   const [tutorialUserId] = useState(getTutorialUserId);
   const [tutorialRequested, setTutorialRequested] = useState(
-    () => shouldOpenTutorial(getTutorialStorage(), tutorialUserId),
+    () => shouldOpenTutorial(getGameStorage(), tutorialUserId),
   );
   const tutorialRequestedRef = useRef(tutorialRequested);
   tutorialRequestedRef.current = tutorialRequested;
@@ -140,6 +143,7 @@ function GamePage({ levelConfig }) {
   const [cameraAvailable, setCameraAvailable] = useState(false);
   const [recenterRequest, setRecenterRequest] = useState(0);
   const [orientationPromptDismissed, setOrientationPromptDismissed] = useState(false);
+  const tutorialWasVisibleRef = useRef(false);
 
   useEffect(() => {
     const mobileQuery = window.matchMedia(MOBILE_GAME_QUERY);
@@ -164,9 +168,17 @@ function GamePage({ levelConfig }) {
   }, [isMobile]);
 
   useEffect(() => {
-    // Once the tour is visible, keep an orientation change from replacing its dialog.
-    if (tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed)) {
+    // Keep the first portrait prompt; suppress it only after the tutorial has appeared.
+    if (shouldDismissPortraitPrompt({
+      tutorialRequested,
+      tutorialWasVisible: tutorialWasVisibleRef.current,
+      isMobile,
+      isPortrait,
+      orientationPromptDismissed,
+    })) {
       setOrientationPromptDismissed(true);
+    } else if (tutorialRequested && (!isMobile || !isPortrait || orientationPromptDismissed)) {
+      tutorialWasVisibleRef.current = true;
     }
   }, [isMobile, isPortrait, orientationPromptDismissed, tutorialRequested]);
 
@@ -281,7 +293,7 @@ function GamePage({ levelConfig }) {
       await axios.post(
         buildApiUrl("/api/progress/activity"),
         { isPlayingGame },
-        { headers: getAuthHeaders() },
+        { headers: getGameAuthHeaders() },
       );
     } catch {
       // Activity reporting is best effort and must not interrupt the lesson.
@@ -297,7 +309,7 @@ function GamePage({ levelConfig }) {
     setDialogueScript(getDefaultDialogueScript(levelConfig));
     setActiveDialogueId(null);
     const draftKey = getDraftKey(levelConfig);
-    const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+    const savedDraft = readGameDraft(getGameStorage(), draftKey);
     setCode(savedDraft ?? levelConfig?.defaultCode ?? "");
     setDraftRestored(Boolean(savedDraft && savedDraft !== levelConfig?.defaultCode));
     setResult(getIdleResult(levelConfig));
@@ -358,7 +370,7 @@ function GamePage({ levelConfig }) {
     axios
       .get(
         buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/content`),
-        { headers: getAuthHeaders() },
+        { headers: getGameAuthHeaders() },
       )
       .then((res) => {
         if (cancelled) return;
@@ -397,7 +409,7 @@ function GamePage({ levelConfig }) {
         if (override.defaultCode != null) {
           merged.defaultCode = override.defaultCode;
           const draftKey = getDraftKey(levelConfig);
-          const savedDraft = draftKey ? localStorage.getItem(draftKey) : null;
+          const savedDraft = readGameDraft(getGameStorage(), draftKey);
           if (!savedDraft) setCode(override.defaultCode);
         }
         if (override.validatorConfig != null) {
@@ -448,7 +460,7 @@ function GamePage({ levelConfig }) {
         const response = await axios.post(
           buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/heartbeat`),
           { sessionId: levelSessionIdRef.current, syncId },
-          { headers: getAuthHeaders() },
+          { headers: getGameAuthHeaders() },
         );
         if (!cancelled) syncTimer(response.data.activeSeconds);
       } catch (error) {
@@ -467,7 +479,7 @@ function GamePage({ levelConfig }) {
         const response = await axios.post(
           buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/start`),
           { sessionId },
-          { headers: getAuthHeaders() },
+          { headers: getGameAuthHeaders() },
         );
         if (cancelled) return;
         syncTimer(response.data.activeSeconds);
@@ -494,14 +506,14 @@ function GamePage({ levelConfig }) {
       if (keepalive) {
         void fetch(url, {
           method: "POST",
-          headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+          headers: { ...getGameAuthHeaders(), "Content-Type": "application/json" },
           body: JSON.stringify(payload),
           keepalive: true,
         });
         return;
       }
       try {
-        const response = await axios.post(url, payload, { headers: getAuthHeaders() });
+        const response = await axios.post(url, payload, { headers: getGameAuthHeaders() });
         if (!cancelled && response.data.ended) syncTimer(response.data.activeSeconds);
       } catch {
         // Heartbeat staleness still prevents indefinite accumulation.
@@ -605,7 +617,7 @@ function GamePage({ levelConfig }) {
             sourceCode: code ?? "",
             activityId,
           },
-          { headers: getAuthHeaders() },
+          { headers: getGameAuthHeaders() },
         )
         .then((response) => response.data)
         .catch((error) => {
@@ -675,7 +687,7 @@ function GamePage({ levelConfig }) {
             }
 
             const draftKey = getDraftKey(levelConfig);
-            if (draftKey) localStorage.removeItem(draftKey);
+            removeGameDraft(getGameStorage(), draftKey);
 
             setCurrentXp(
               progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp,
@@ -706,7 +718,7 @@ function GamePage({ levelConfig }) {
           .post(
             buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`),
             { sourceCode: code ?? "", activityId },
-            { headers: getAuthHeaders() },
+            { headers: getGameAuthHeaders() },
           )
           .then((res) => {
             failedAttemptsRef.current = res.data.attemptCount;
@@ -807,7 +819,7 @@ function GamePage({ levelConfig }) {
       const response = await axios.post(
         buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/hint-use`),
         {},
-        { headers: getAuthHeaders() },
+        { headers: getGameAuthHeaders() },
       );
       syncHintState(response.data);
       if (response.data?.basicHint) {
@@ -851,7 +863,7 @@ function GamePage({ levelConfig }) {
           `/api/progress/level/${levelConfig.progressKey}/detailed-hint-purchase`,
         ),
         {},
-        { headers: getAuthHeaders() },
+        { headers: getGameAuthHeaders() },
       );
       syncHintState(response.data);
       setShowHintPurchase(false);
@@ -887,7 +899,7 @@ function GamePage({ levelConfig }) {
       await axios.post(
         buildApiUrl(`/api/progress/level/${levelConfig.progressKey}/hint-feedback`),
         { helpful },
-        { headers: getAuthHeaders() },
+        { headers: getGameAuthHeaders() },
       );
       setHintFeedback(helpful);
     } catch (error) {
@@ -908,7 +920,7 @@ function GamePage({ levelConfig }) {
       return;
     }
     const draftKey = getDraftKey(levelConfig);
-    if (draftKey) localStorage.removeItem(draftKey);
+    removeGameDraft(getGameStorage(), draftKey);
     setCode(defaultCode);
     setDraftRestored(false);
     setResult(getIdleResult(mergedLevelConfig));
@@ -1077,7 +1089,7 @@ function GamePage({ levelConfig }) {
 
   const finishTutorial = () => {
     const nextDialogue = finishGameTutorialSession({
-      storage: getTutorialStorage(),
+      storage: getGameStorage(),
       userId: tutorialUserId,
       pendingDialogue: pendingDialogueRef.current,
       deferredIntro: deferredIntroRef.current,
@@ -1098,7 +1110,7 @@ function GamePage({ levelConfig }) {
     setShowAudioSettings(false);
     setActiveMobileTab("game");
     tutorialRequestedRef.current = true;
-    setTutorialRequested(shouldOpenTutorial(getTutorialStorage(), tutorialUserId, { replay: true }));
+    setTutorialRequested(shouldOpenTutorial(getGameStorage(), tutorialUserId, { replay: true }));
   };
 
   const prepareTutorialStep = useCallback((step) => {

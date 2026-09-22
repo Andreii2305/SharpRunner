@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { getSpotlightRect, placeTutorialCard } from "./gameTutorialPosition.js";
+import { getSpotlightRect, placeTutorialCard, scrollTutorialTargetIntoView } from "./gameTutorialPosition.js";
 import { moveTutorialStep } from "./gameTutorialState.js";
 import styles from "./GameTutorial.module.css";
 
@@ -96,7 +96,10 @@ export default function GameTutorial({
 
   useLayoutEffect(() => {
     if (!step || (isMobile && step.mobileTab && activeMobileTab !== step.mobileTab)) return undefined;
-    findVisibleTarget(rootRef.current, step.target)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    scrollTutorialTargetIntoView(
+      findVisibleTarget(rootRef.current, step.target),
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+    );
     measure();
 
     const target = findVisibleTarget(rootRef.current, step.target);

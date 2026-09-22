@@ -38,3 +38,34 @@ test("replay completion does not start a story when none was deferred", () => {
   assert.deepEqual(next, { kind: "none" });
   assert.equal(readTutorialCompletion(storage, 42), true);
 });
+
+test("a level without intro or queued dialogue remains in gameplay after onboarding", () => {
+  const next = flow.finishGameTutorialSession({
+    storage: makeStorage(), userId: 42, deferredIntro: false,
+  });
+  assert.deepEqual(next, { kind: "none" });
+});
+
+test("a first portrait visit keeps its orientation prompt until the student dismisses it", () => {
+  assert.equal(flow.shouldDismissPortraitPrompt({
+    tutorialRequested: true,
+    tutorialWasVisible: false,
+    isMobile: true,
+    isPortrait: true,
+    orientationPromptDismissed: false,
+  }), false);
+  assert.equal(flow.shouldDismissPortraitPrompt({
+    tutorialRequested: true,
+    tutorialWasVisible: true,
+    isMobile: true,
+    isPortrait: true,
+    orientationPromptDismissed: false,
+  }), true);
+  assert.equal(flow.shouldDismissPortraitPrompt({
+    tutorialRequested: false,
+    tutorialWasVisible: true,
+    isMobile: true,
+    isPortrait: true,
+    orientationPromptDismissed: false,
+  }), false);
+});

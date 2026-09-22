@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getSpotlightRect, placeTutorialCard } from "./gameTutorialPosition.js";
+import * as position from "./gameTutorialPosition.js";
+
+const { getSpotlightRect, placeTutorialCard } = position;
 
 const viewport = { width: 800, height: 600 };
 
@@ -36,4 +38,26 @@ test("when no side fits, the card stays near the target with the least overlap",
     preferred: "bottom",
   });
   assert.deepEqual(result, { left: 220, top: 344, placement: "bottom" });
+});
+
+test("reduced motion scrolls the target without the page's smooth scrolling", () => {
+  let options;
+  const target = { scrollIntoView(value) { options = value; } };
+  position.scrollTutorialTargetIntoView(target, true);
+  assert.deepEqual(options, { block: "nearest", inline: "nearest", behavior: "instant" });
+});
+
+test("an oversized target still leaves the card inside a narrow viewport", () => {
+  const narrowViewport = { width: 320, height: 568 };
+  const spotlight = getSpotlightRect(
+    { left: -120, top: -60, width: 560, height: 690 }, narrowViewport,
+  );
+  const card = placeTutorialCard({
+    target: spotlight,
+    card: { width: 360, height: 240 },
+    viewport: narrowViewport,
+  });
+  assert.deepEqual(spotlight, { left: 0, top: 0, right: 320, bottom: 568, width: 320, height: 568 });
+  assert.ok(card.left >= 16 && card.left + 288 <= 304);
+  assert.ok(card.top >= 16 && card.top + 240 <= 552);
 });

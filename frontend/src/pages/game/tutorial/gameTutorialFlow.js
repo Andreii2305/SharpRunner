@@ -10,3 +10,14 @@ export const finishGameTutorialSession = ({
   if (pendingDialogue) return { kind: "triggered", payload: pendingDialogue };
   return { kind: deferredIntro ? "intro" : "none" };
 };
+
+export const shouldDismissPortraitPrompt = ({
+  tutorialRequested,
+  tutorialWasVisible,
+  isMobile,
+  isPortrait,
+  orientationPromptDismissed,
+}) => Boolean(
+  tutorialRequested && tutorialWasVisible && isMobile && isPortrait
+  && !orientationPromptDismissed
+);

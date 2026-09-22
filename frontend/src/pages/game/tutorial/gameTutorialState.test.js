@@ -33,6 +33,18 @@ test("completion writes fail safely and do not claim a completed visit", () => {
   assert.equal(markTutorialComplete(null, 42), false);
 });
 
+test("missing account IDs and malformed completion values cannot mark another account complete", () => {
+  const local = storage();
+  assert.equal(getTutorialStorageKey(null), null);
+  assert.equal(getTutorialStorageKey(""), null);
+  assert.equal(markTutorialComplete(local, null), false);
+  assert.equal(shouldOpenTutorial(local, null), true);
+  local.setItem(getTutorialStorageKey(42), "not-a-boolean");
+  assert.equal(readTutorialCompletion(local, 42), false);
+  assert.equal(shouldOpenTutorial(local, 42), true);
+  assert.equal(readTutorialCompletion(local, 43), false);
+});
+
 test("Back and Next stop at the first and last steps", () => {
   assert.equal(moveTutorialStep(0, "back", 3), 0);
   assert.equal(moveTutorialStep(0, "next", 3), 1);

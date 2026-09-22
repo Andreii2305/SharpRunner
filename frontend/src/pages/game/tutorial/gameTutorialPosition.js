@@ -17,6 +17,14 @@ export const getSpotlightRect = (rect, viewport, padding = 8) => {
   return { left, top, right, bottom, width: right - left, height: bottom - top };
 };
 
+export const scrollTutorialTargetIntoView = (target, prefersReducedMotion = false) => {
+  target?.scrollIntoView?.({
+    block: "nearest",
+    inline: "nearest",
+    behavior: prefersReducedMotion ? "instant" : "auto",
+  });
+};
+
 export const placeTutorialCard = ({ target, card, viewport, preferred = "bottom", gap = DEFAULT_GAP, margin = DEFAULT_MARGIN }) => {
   const width = Math.min(card.width, viewport.width - margin * 2);
   const height = Math.min(card.height, viewport.height - margin * 2);

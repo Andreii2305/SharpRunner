@@ -16,7 +16,7 @@ SharpRunner aims to make introductory programming less intimidating by turning c
 - Teachers can manage classrooms, view student progress, post announcements, manage classwork, and configure the currently supported per-classroom level settings.
 - Teachers can organize secure classroom modules, lessons, assignments, external links, and multimedia resources. They cannot edit Phaser levels or validators.
 - Failed attempts unlock a free basic hint at the teacher-configured threshold (three by default).
-- After that threshold, students may optionally spend 15 XP once per level for protected, situational guidance based on their latest server-classified failure.
+- After that threshold, students may optionally spend 30 XP once per level for protected, situational guidance based on their latest server-classified failure.
 - First completions award server-owned XP and bonuses separately from academic scores.
 - Admins govern account retention and sessions, oversee classrooms/content, monitor system health, export reports, and review audit activity.
 - Developer tools can generate one-time admin invite codes.

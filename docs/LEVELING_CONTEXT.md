@@ -101,7 +101,7 @@ The legacy five-level descriptions below describe only the tutorial/prologue.
 - Backend derives `grade` from `finalScore` in the progress payload.
 - The game completion modal uses the backend-saved score and grade.
 - The default Basic Hint unlock is three failed attempts; teachers may configure 1–10 or disable both hint tiers.
-- Once unlocked, the Basic Hint is free and a protected Detailed Hint can be purchased once for 15 XP.
+- Once unlocked, the Basic Hint is free and a protected Detailed Hint can be purchased once for 30 XP.
 - Hint use/purchase metadata and one-time first-completion XP are saved centrally. Detailed-hint text is returned only after authorization confirms purchase.
 - XP is separate from score. Completion is +20 XP, first attempt +10, and no hint +5.
 - Replay remains available but does not overwrite the original score/attempt record or award XP again.

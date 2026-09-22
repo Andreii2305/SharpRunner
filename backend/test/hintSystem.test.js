@@ -5,7 +5,6 @@ const User = require("../src/models/User");
 const UserProgress = require("../src/models/UserProgress");
 const XpTransaction = require("../src/models/XpTransaction");
 const { PLAYABLE_LEVEL_KEYS } = require("../src/constants/progressDefaults");
-const { DETAILED_HINT_XP_COST } = require("../src/constants/gamificationConfig");
 const { LEVEL_HINTS } = require("../src/constants/levelHintCatalog");
 const {
   FAILURE_GUIDANCE,
@@ -360,29 +359,37 @@ test("detailed hint purchase deducts the centralized cost and is idempotent", as
     });
 
     assert.equal(first.purchased, true);
+    assert.equal(first.xpCost, 30);
+    assert.equal(first.totalXp, 10);
     assert.equal(retry.alreadyUnlocked, true);
-    assert.equal(user.xpTotal, 40 - DETAILED_HINT_XP_COST);
+    assert.equal(retry.xpCost, 30);
+    assert.equal(user.xpTotal, 10);
     assert.equal(transactions.length, 1);
-    assert.equal(transactions[0].amount, -DETAILED_HINT_XP_COST);
+    assert.equal(transactions[0].amount, -30);
     assert.equal(transactions[0].kind, "detailed_hint_purchase");
     assert.equal(progress.hintType, "detailed");
-    assert.equal(progress.detailedHintXpCost, DETAILED_HINT_XP_COST);
+    assert.equal(progress.detailedHintXpCost, 30);
     assert.equal(events.length, 1);
     assert.deepEqual({
       classroomId: events[0].classroomId,
       eventType: events[0].eventType,
       hintType: events[0].hintType,
       hintPurchased: events[0].hintPurchased,
+      hintXpCost: events[0].hintXpCost,
+      attemptNumber: events[0].attemptNumber,
     }, {
       classroomId: 9,
       eventType: "hint_used",
       hintType: "detailed",
       hintPurchased: true,
+      hintXpCost: 30,
+      attemptNumber: 3,
     });
   });
 });
 
 test("purchase rejects locked, teacher-disabled, and insufficient-XP hints", async () => {
+  const writes = [];
   const user = { id: 1, role: "student", xpTotal: 10, save: async () => undefined };
   const progress = {
     userId: 1,
@@ -396,6 +403,8 @@ test("purchase rejects locked, teacher-disabled, and insufficient-XP hints", asy
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
     [User, "findByPk", async () => user],
     [UserProgress, "findOne", async () => progress],
+    [XpTransaction, "create", async () => { writes.push("ledger"); }],
+    [LearningAnalyticsEvent, "create", async () => { writes.push("event"); }],
   ], async () => {
     await assert.rejects(
       purchaseDetailedHint({ userId: 1, levelKey: progress.levelKey, hintsEnabled: true, hintUnlockThreshold: 3 }),
@@ -412,7 +421,12 @@ test("purchase rejects locked, teacher-disabled, and insufficient-XP hints", asy
       purchaseDetailedHint({ userId: 1, levelKey: progress.levelKey, hintsEnabled: true, hintUnlockThreshold: 3 }),
       (error) => error instanceof GamificationError
         && error.code === "INSUFFICIENT_XP"
-        && error.details.requiredXp === DETAILED_HINT_XP_COST,
+        && error.details.requiredXp === 30
+        && error.details.currentXp === 10
+        && error.details.shortageXp === 20,
     );
+    assert.equal(user.xpTotal, 10);
+    assert.equal(progress.detailedHintUnlocked, false);
+    assert.deepEqual(writes, []);
   });
 });

@@ -29,6 +29,7 @@ const TREND_METRICS = [
   { key: "completions", label: "Completions" },
   { key: "activeSeconds", label: "Active Learning Time", duration: true },
   { key: "hintUses", label: "Hint Usage" },
+  { key: "purchasedHints", label: "Purchased Hints" },
   { key: "firstAttemptSuccessRate", comparisonKey: "firstAttemptSuccess", label: "First-Attempt Success", rate: true },
 ];
 
@@ -476,7 +477,7 @@ function TeacherAnalyticsPage() {
         </div>
 
         <div className={pgStyles.analyticsGrid}>
-          <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Hint Analytics</h2><div className={pgStyles.inlineStats}><span>Basic hint users<strong>{data.hints?.basicHintUsers ?? 0}</strong></span><span>Purchased hint users<strong>{data.hints?.purchasedHintUsers ?? 0}</strong></span><span>Attempts before hint<strong>{valueOrEmpty(data.hints?.averageAttemptsBeforeHint)}</strong></span><span>Completion after hint<strong>{valueOrEmpty(data.hints?.completionAfterHintRate, "%")}</strong></span></div><div className={pgStyles.compactList}>{(data.hints?.byLesson || []).map((lesson) => <div key={lesson.lessonId}><span>{lesson.title}</span><strong>{valueOrEmpty(lesson.hintUsageRate, "%")}</strong></div>)}</div></section>
+          <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Hint Analytics</h2><div className={pgStyles.inlineStats}><span>Basic hint users<strong>{data.hints?.basicHintUsers ?? 0}</strong></span><span>Purchased hint users<strong>{data.hints?.purchasedHintUsers ?? 0}</strong></span><span>Purchase events<strong>{data.historical?.totals?.purchasedHints ?? 0}</strong></span><span>Recorded XP spent<strong>{data.historical?.totals?.knownHintXpSpent ?? 0}</strong></span><span>Attempts before hint<strong>{valueOrEmpty(data.hints?.averageAttemptsBeforeHint)}</strong></span><span>Completion after hint<strong>{valueOrEmpty(data.hints?.completionAfterHintRate, "%")}</strong></span></div>{(data.historical?.totals?.unpricedHintPurchases ?? 0) > 0 && <p>{data.historical.totals.unpricedHintPurchases} older purchase event(s) lack a recorded XP cost and are excluded from XP spent.</p>}<div className={pgStyles.compactList}>{(data.hints?.byLesson || []).map((lesson) => <div key={lesson.lessonId}><span>{lesson.title}</span><strong>{valueOrEmpty(lesson.hintUsageRate, "%")}</strong></div>)}</div></section>
           <section className={styles.card}><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Learning Activity</h2>{!(data.activity?.byDay || []).length ? <div className={styles.emptyText}>No dated activity matches this selection.</div> : <div className={pgStyles.compactList}>{data.activity.byDay.map((day) => <div key={day.date}><span>{shortDate(day.date)}</span><strong>{day.activeStudents} active · {day.completions} completions</strong></div>)}</div>}{(data.activity?.unavailableMetrics || []).length > 0 && <div className={pgStyles.trackingNote}><FiAlertCircle /> {data.activity.unavailableMetrics.join("; ")}.</div>}</section>
         </div>
 

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const { Op } = require("sequelize");
+const { migrations } = require("../src/services/migrationService");
 
 let LearningAnalyticsEvent = null;
 let eventService = null;
@@ -33,7 +34,7 @@ test("learning event schema is typed, append-only, and excludes sensitive payloa
   for (const required of [
     "studentId", "classroomId", "levelKey", "lessonKey", "eventType",
     "occurredAt", "attemptNumber", "score", "failureCategory", "failureCode",
-    "activeSeconds", "hintType", "hintPurchased", "dedupeKey", "createdAt",
+    "activeSeconds", "hintType", "hintPurchased", "hintXpCost", "dedupeKey", "createdAt",
   ]) {
     assert.ok(fields[required], `${required} must be modeled`);
   }
@@ -187,6 +188,30 @@ test("event migration creates protected indexed history without backfilling prog
   assert.match(sql, /ALTER TABLE "LearningAnalyticsEvents" ENABLE ROW LEVEL SECURITY/);
   assert.doesNotMatch(sql, /INSERT\s+INTO\s+"LearningAnalyticsEvents"\s+SELECT/i);
   assert.doesNotMatch(sql, /UPDATE\s+"UserProgresses"/i);
+});
+
+test("hint cost migration preserves legacy events with unknown prices", () => {
+  const migrationPath = path.resolve(
+    __dirname,
+    "../../supabase/migrations/20260922000000_hint_purchase_event_cost.sql",
+  );
+  assert.equal(fs.existsSync(migrationPath), true);
+  const sql = fs.readFileSync(migrationPath, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "hintXpCost" INTEGER/);
+  assert.match(sql, /"hintXpCost" IS NULL OR "hintXpCost" > 0/);
+  assert.doesNotMatch(sql, /UPDATE\s+"LearningAnalyticsEvents"/i);
+  assert.ok(migrations.some(([name]) => name === "20260922000000_hint_purchase_event_cost"));
+});
+
+test("historical hint totals accept legacy aggregate rows without purchase cost fields", () => {
+  const totals = historyService.summarizeHistoricalRows([
+    { hintUses: "2", purchasedHints: "1", unpricedHintPurchases: "1" },
+    { hintUses: "1", purchasedHints: "1", knownHintXpSpent: "30" },
+  ]);
+  assert.equal(totals.hintUses, 3);
+  assert.equal(totals.purchasedHints, 2);
+  assert.equal(totals.knownHintXpSpent, 30);
+  assert.equal(totals.unpricedHintPurchases, 1);
 });
 
 test("historical predicates pair current eligible students with levels and trusted filters", () => {

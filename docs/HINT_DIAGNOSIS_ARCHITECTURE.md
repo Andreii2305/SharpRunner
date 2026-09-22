@@ -8,7 +8,7 @@
 - `backend/src/constants/levelHintCatalog.js` owns free/basic hints only.
 - `backend/src/constants/levelSituationalHintCatalog.js` owns paid personalized/stronger hints, supported failure codes, and level fallbacks.
 - `backend/src/services/hintResolverService.js` enforces `supportedFailureCodes` and renders safe stored metadata where a level-specific hint benefits from it.
-- `backend/src/services/gamificationService.js` remains the separate, transactional authority for the one-time 15-XP purchase.
+- `backend/src/services/gamificationService.js` remains the separate, transactional authority for the one-time 30-XP purchase.
 
 ## Data flow
 

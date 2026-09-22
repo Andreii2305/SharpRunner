@@ -899,11 +899,12 @@ class Program {
 
     const purchaseResponse = await apiRequest(
       "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
-      { method: "POST", token: authToken(1, "student"), body: {} },
+      { method: "POST", token: authToken(1, "student"), body: { xpCost: 1 } },
     );
     assert.equal(purchaseResponse.response.status, 200);
     assert.equal(purchaseResponse.payload.purchased, true);
-    assert.equal(purchaseResponse.payload.currentXp, 25);
+    assert.equal(purchaseResponse.payload.detailedHintXpCost, 30);
+    assert.equal(purchaseResponse.payload.currentXp, 10);
     assert.ok(purchaseResponse.payload.personalizedHint.includes("steps"));
     assert.equal(purchaseResponse.payload.hintStage, "personalized");
 
@@ -913,7 +914,7 @@ class Program {
     );
     assert.equal(retryResponse.response.status, 200);
     assert.equal(retryResponse.payload.purchased, false);
-    assert.equal(retryResponse.payload.currentXp, 25);
+    assert.equal(retryResponse.payload.currentXp, 10);
 
     const changedMistakeSource = `using System;
 class Program {
@@ -932,7 +933,7 @@ class Program {
       },
     );
     assert.equal(continuedFailure.payload.hintStage, "stronger");
-    assert.equal(continuedFailure.payload.currentXp, 25);
+    assert.equal(continuedFailure.payload.currentXp, 10);
     assert.notEqual(continuedFailure.payload.failureCode, purchaseResponse.payload.failureCode);
     assert.notEqual(continuedFailure.payload.personalizedHint, purchaseResponse.payload.personalizedHint);
 
@@ -1011,6 +1012,29 @@ test("hint state persists across refresh for teacher thresholds 1 and 5", async 
       assert.ok(refreshed.payload.basicHint.includes("portal method"));
       assert.equal(refreshed.payload.detailedHint, null);
     }
+
+    progressRow.attemptCount = 5;
+    progressRow.detailedHintUnlocked = true;
+    progressRow.detailedHintXpCost = 15;
+    const ownedHint = await apiRequest(
+      "/api/progress/level/tutorial-level-1/start",
+      {
+        method: "POST",
+        token: authToken(1, "student"),
+        body: { sessionId: "return_to_owned_hint" },
+      },
+    );
+    assert.equal(ownedHint.response.status, 200);
+    assert.equal(ownedHint.payload.detailedHintUnlocked, true);
+    assert.equal(ownedHint.payload.detailedHintXpCost, 15);
+    const ownedRetry = await apiRequest(
+      "/api/progress/level/tutorial-level-1/detailed-hint-purchase",
+      { method: "POST", token: authToken(1, "student"), body: {} },
+    );
+    assert.equal(ownedRetry.response.status, 200);
+    assert.equal(ownedRetry.payload.purchased, false);
+    assert.equal(ownedRetry.payload.currentXp, 40);
+    assert.equal(ownedRetry.payload.detailedHintXpCost, 15);
   });
 });
 

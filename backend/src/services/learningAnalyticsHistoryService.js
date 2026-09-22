@@ -24,6 +24,9 @@ const emptyHistoricalAnalytics = () => ({
     completions: 0,
     activeSeconds: 0,
     hintUses: 0,
+    purchasedHints: 0,
+    knownHintXpSpent: 0,
+    unpricedHintPurchases: 0,
     firstAttemptSuccesses: 0,
     firstAttemptSuccessDenominator: 0,
     firstAttemptSuccessRate: null,
@@ -119,6 +122,9 @@ const normalizeAggregateRow = (row = {}) => {
     completions,
     activeSeconds: integer(row.activeSeconds),
     hintUses: integer(row.hintUses),
+    purchasedHints: integer(row.purchasedHints),
+    knownHintXpSpent: integer(row.knownHintXpSpent),
+    unpricedHintPurchases: integer(row.unpricedHintPurchases),
     firstAttemptSuccesses,
     firstAttemptSuccessDenominator: completions,
     firstAttemptSuccessRate: roundedPercent(firstAttemptSuccesses, completions),
@@ -132,6 +138,9 @@ const summarizeHistoricalRows = (rows = []) => normalizeAggregateRow(rows.reduce
   completions: integer(totals.completions) + integer(row.completions),
   activeSeconds: integer(totals.activeSeconds) + integer(row.activeSeconds),
   hintUses: integer(totals.hintUses) + integer(row.hintUses),
+  purchasedHints: integer(totals.purchasedHints) + integer(row.purchasedHints),
+  knownHintXpSpent: integer(totals.knownHintXpSpent) + integer(row.knownHintXpSpent),
+  unpricedHintPurchases: integer(totals.unpricedHintPurchases) + integer(row.unpricedHintPurchases),
   firstAttemptSuccesses: integer(totals.firstAttemptSuccesses) + integer(row.firstAttemptSuccesses),
 }), {}));
 
@@ -176,6 +185,7 @@ const buildHistoricalComparison = ({ filters, current, previous }) => {
     ["completions", "count"],
     ["activeSeconds", "seconds"],
     ["hintUses", "count"],
+    ["purchasedHints", "count"],
   ]) metrics[key] = changeMetric(current[key], previous[key], unit);
 
   const currentRate = current.firstAttemptSuccessRate;
@@ -216,6 +226,9 @@ const aggregateAttributes = () => [
   [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.LEVEL_COMPLETED}' THEN 1 ELSE 0 END)`), "completions"],
   [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.ACTIVE_TIME}' THEN COALESCE("activeSeconds", 0) ELSE 0 END)`), "activeSeconds"],
   [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.HINT_USED}' THEN 1 ELSE 0 END)`), "hintUses"],
+  [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.HINT_USED}' AND "hintPurchased" IS TRUE THEN 1 ELSE 0 END)`), "purchasedHints"],
+  [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.HINT_USED}' AND "hintPurchased" IS TRUE THEN COALESCE("hintXpCost", 0) ELSE 0 END)`), "knownHintXpSpent"],
+  [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.HINT_USED}' AND "hintPurchased" IS TRUE AND "hintXpCost" IS NULL THEN 1 ELSE 0 END)`), "unpricedHintPurchases"],
   [literal(`SUM(CASE WHEN "eventType" = '${EVENT_TYPES.LEVEL_COMPLETED}' AND "attemptNumber" = 1 THEN 1 ELSE 0 END)`), "firstAttemptSuccesses"],
 ];
 

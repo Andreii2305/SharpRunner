@@ -18,7 +18,7 @@ run without PostgreSQL and never modifies development or production data.
 - Rejection of forged level completion
 - Acceptance and backend scoring of valid level code
 - Three-failure basic-hint unlock, protected detailed-hint delivery, and persisted hint use
-- Transactional 15-XP detailed-hint purchase, insufficient-XP rejection, teacher-disable rejection, and idempotent retry
+- Transactional 30-XP detailed-hint purchase, insufficient-XP rejection, teacher-disable rejection, and idempotent retry
 - One-time first-completion XP and bonus breakdown
 - Student rejection from teacher routes
 - Teacher classroom creation and ownership

@@ -51,8 +51,11 @@ function TeacherAnalyticsReport({ data, filterContext }) {
         <span>Completions<strong>{totals.completions ?? 0}</strong></span>
         <span>Active Learning Time<strong>{formatTrendValue({ duration: true }, totals.activeSeconds ?? 0)}</strong></span>
         <span>Hint Usage<strong>{totals.hintUses ?? 0}</strong></span>
+        <span>Purchased Hints<strong>{totals.purchasedHints ?? 0}</strong></span>
+        <span>Recorded Hint XP Spent<strong>{totals.knownHintXpSpent ?? 0}</strong></span>
         <span>First-Attempt Success<strong>{display(totals.firstAttemptSuccessRate, "%")}</strong></span>
       </div>
+      {(totals.unpricedHintPurchases ?? 0) > 0 && <p>{totals.unpricedHintPurchases} older purchase event(s) have no recorded XP cost.</p>}
       {!data.historical?.hasData && <p className={styles.emptyText}>No historical activity has been recorded for this scope and period.</p>}
     </section>
 

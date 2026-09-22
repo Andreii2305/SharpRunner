@@ -147,7 +147,9 @@ const purchaseDetailedHint = async ({
     return {
       purchased: false,
       alreadyUnlocked: true,
-      xpCost: Number(progress.detailedHintXpCost) || DETAILED_HINT_XP_COST,
+      xpCost: progress.detailedHintXpCost == null
+        ? DETAILED_HINT_XP_COST
+        : Number(progress.detailedHintXpCost),
       totalXp: currentXp,
       progress,
     };
@@ -155,9 +157,13 @@ const purchaseDetailedHint = async ({
   if (currentXp < DETAILED_HINT_XP_COST) {
     throw new GamificationError(
       "INSUFFICIENT_XP",
-      `You need ${DETAILED_HINT_XP_COST} XP to unlock the detailed hint.`,
+      `You need ${DETAILED_HINT_XP_COST} XP to unlock the detailed hint. Current XP: ${currentXp}.`,
       409,
-      { currentXp, requiredXp: DETAILED_HINT_XP_COST },
+      {
+        currentXp,
+        requiredXp: DETAILED_HINT_XP_COST,
+        shortageXp: DETAILED_HINT_XP_COST - currentXp,
+      },
     );
   }
 
@@ -191,6 +197,9 @@ const purchaseDetailedHint = async ({
     levelKey,
     hintType: "detailed",
     hintPurchased: true,
+    hintXpCost: DETAILED_HINT_XP_COST,
+    attemptNumber: attemptCount,
+    failureCategory: progress.latestFailureCategory ?? null,
     occurredAt: purchasedAt,
   }, { transaction });
 

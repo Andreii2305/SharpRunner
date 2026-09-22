@@ -1593,7 +1593,7 @@ function GamePage({ levelConfig }) {
       <ConfirmModal
         open={showHintPurchase}
         title={`Unlock Personalized Hint for ${detailedHintXpCost ?? "—"} XP?`}
-        message={`We'll identify the part of your latest solution that may be causing the problem and guide you without revealing the full answer. It stays unlocked for this level, and stronger guidance never costs extra. Current XP: ${currentXp ?? 0}.`}
+        message={`We'll identify the part of your latest solution that may be causing the problem and guide you without revealing the full answer. It stays unlocked for this level, and stronger guidance never costs extra. Current XP: ${currentXp ?? 0}. After purchase: ${currentXp != null && detailedHintXpCost != null ? currentXp - detailedHintXpCost : "—"} XP.`}
         confirmLabel={isPurchasingHint ? "Unlocking..." : "Unlock"}
         cancelLabel="Cancel"
         confirmDisabled={isPurchasingHint}

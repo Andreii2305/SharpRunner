@@ -91,9 +91,9 @@ Only when account registration is part of the demo:
 - [ ] Fail the same incomplete level once and confirm two attempts remain before the default hint unlock.
 - [ ] Fail a second time and confirm one attempt remains.
 - [ ] Fail a third time and confirm the free Basic Hint and Detailed Hint purchase appear without refresh; open the Basic Hint and refresh to confirm it remains reviewable.
-- [ ] With at least 15 XP, confirm a Detailed Hint purchase, verify exactly 15 XP is deducted, and confirm the level-specific hint appears immediately.
+- [ ] With at least 30 XP, confirm the purchase dialog shows current and remaining XP, verify exactly 30 XP is deducted, and confirm the level-specific hint appears immediately.
 - [ ] Refresh and repeatedly click the Detailed Hint control; confirm it remains unlocked and no second deduction occurs.
-- [ ] With fewer than 15 XP, confirm purchase is disabled and the current/required XP message is supportive and accurate.
+- [ ] With fewer than 30 XP, confirm purchase is disabled and the current/required XP message is supportive and accurate.
 - [ ] Submitting valid C# completes the level and shows the backend-issued score and grade.
 - [ ] Completion shows XP earned, bonus breakdown, and total XP; refresh/replay does not award it again.
 - [ ] Refreshing the game/map/dashboard preserves completion, score, attempts, and time.

@@ -89,6 +89,7 @@ const createValidatedEvent = async (input, { transaction } = {}) => {
     activeSeconds: nullablePositiveInteger(input.activeSeconds, "activeSeconds"),
     hintType: input.hintType ?? null,
     hintPurchased: input.hintPurchased == null ? null : Boolean(input.hintPurchased),
+    hintXpCost: input.hintXpCost == null ? null : positiveInteger(input.hintXpCost, "hintXpCost"),
     dedupeKey: boundedString(input.dedupeKey, "dedupeKey", 96),
   };
 
@@ -173,6 +174,9 @@ const recordHintUsed = (input, options = {}) => {
     occurredAt: input.occurredAt,
     hintType: input.hintType,
     hintPurchased: Boolean(input.hintPurchased),
+    hintXpCost: input.hintXpCost ?? null,
+    attemptNumber: input.attemptNumber ?? null,
+    failureCategory: input.failureCategory ?? null,
     dedupeKey: buildEventDedupeKey(`hint-${input.hintType}`, [input.studentId, input.levelKey]),
   }, options);
 };

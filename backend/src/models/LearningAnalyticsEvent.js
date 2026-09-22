@@ -49,6 +49,11 @@ const LearningAnalyticsEvent = sequelize.define("LearningAnalyticsEvent", {
     validate: { isIn: [["basic", "detailed"]] },
   },
   hintPurchased: { type: DataTypes.BOOLEAN, allowNull: true },
+  hintXpCost: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    validate: { min: 1 },
+  },
   dedupeKey: { type: DataTypes.STRING(96), allowNull: false },
 }, {
   updatedAt: false,

@@ -96,7 +96,9 @@ const buildHintState = (levelRow, setting = {}, currentXp = null) => {
     hintUsedAt: levelRow?.hintUsedAt ?? null,
     hintType: levelRow?.hintType ?? null,
     attemptsRemaining: hintsEnabled ? Math.max(0, threshold - attemptCount) : null,
-    detailedHintXpCost: DETAILED_HINT_XP_COST,
+    detailedHintXpCost: detailedHintUnlocked && levelRow?.detailedHintXpCost != null
+      ? Number(levelRow.detailedHintXpCost)
+      : DETAILED_HINT_XP_COST,
     detailedHintUnlocked,
     detailedHintPurchasedAt: levelRow?.detailedHintPurchasedAt ?? null,
     currentXp: Number.isFinite(Number(currentXp))

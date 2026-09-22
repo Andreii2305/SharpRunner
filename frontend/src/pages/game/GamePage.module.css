@@ -62,6 +62,21 @@
   margin-bottom: 20px;
 }
 
+.tutorialReplayButton {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: 2px solid #26547c;
+  border-radius: 12px;
+  background: #fff;
+  color: #26547c;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+.tutorialReplayButton:focus-visible { outline: 3px solid #60a5fa; outline-offset: 2px; }
+.tutorialReplayButton:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .titleGroup h1 {
   margin: 0;
   color: #1a365d;

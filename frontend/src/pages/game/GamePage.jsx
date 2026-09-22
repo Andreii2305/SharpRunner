@@ -17,7 +17,7 @@ import {
   GAME_ACCESSIBILITY_CHANGED,
   GAME_LEVEL_RESET,
 } from "./gameEvents";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth";
 import { buildValidatorFromConfig } from "./levels/buildValidator";
 import {
   getLevelConfigByProgressKey,
@@ -32,6 +32,9 @@ import {
   dialogueSfxManager,
   shouldPlayDialogueBlipForProgress,
 } from "./audio/dialogueSfxManager";
+import GameTutorial from "./tutorial/GameTutorial.jsx";
+import { GAME_TUTORIAL_STEPS } from "./tutorial/gameTutorialSteps.js";
+import { markTutorialComplete, shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -46,6 +49,19 @@ const readBooleanPreference = (key, fallback = false) => {
     return saved == null ? fallback : saved === "true";
   } catch {
     return fallback;
+  }
+};
+
+const getTutorialStorage = () => {
+  try { return window.localStorage; } catch { return null; }
+};
+
+const getTutorialUserId = () => {
+  try {
+    const user = getUser();
+    return user?.id ?? user?.userId ?? null;
+  } catch {
+    return null;
   }
 };
 
@@ -106,6 +122,15 @@ const formatPhilippineDeadline = (value) => value
 function GamePage({ levelConfig }) {
   const navigate = useNavigate();
   const toast = useToast();
+  const [tutorialUserId] = useState(getTutorialUserId);
+  const [tutorialRequested, setTutorialRequested] = useState(
+    () => shouldOpenTutorial(getTutorialStorage(), tutorialUserId),
+  );
+  const tutorialRequestedRef = useRef(tutorialRequested);
+  tutorialRequestedRef.current = tutorialRequested;
+  const gamePageRef = useRef(null);
+  const pendingDialogueRef = useRef(null);
+  const deferredIntroRef = useRef(tutorialRequested && shouldStartWithDialogue(levelConfig));
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_GAME_QUERY).matches);
   const [isPortrait, setIsPortrait] = useState(() =>
     window.matchMedia?.("(orientation: portrait)").matches ?? false,
@@ -136,6 +161,13 @@ function GamePage({ levelConfig }) {
   useEffect(() => {
     if (!isMobile) setOrientationPromptDismissed(false);
   }, [isMobile]);
+
+  useEffect(() => {
+    // Once the tour is visible, keep an orientation change from replacing its dialog.
+    if (tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed)) {
+      setOrientationPromptDismissed(true);
+    }
+  }, [isMobile, isPortrait, orientationPromptDismissed, tutorialRequested]);
 
   useEffect(() => {
     setCameraAvailable(false);
@@ -184,7 +216,9 @@ function GamePage({ levelConfig }) {
   const [isPurchasingHint, setIsPurchasingHint] = useState(false);
   const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
   const [activeDialogueId, setActiveDialogueId] = useState(null);
-  const [showStoryIntro, setShowStoryIntro] = useState(shouldStartWithDialogue(levelConfig));
+  const [showStoryIntro, setShowStoryIntro] = useState(
+    shouldStartWithDialogue(levelConfig) && !tutorialRequested,
+  );
   const [dialogueStep, setDialogueStep] = useState(0);
   const [typedCharacters, setTypedCharacters] = useState(0);
   const [isCodeLocked, setIsCodeLocked] = useState(isCodeLockedByDialogue(levelConfig));
@@ -268,7 +302,9 @@ function GamePage({ levelConfig }) {
     setResult(getIdleResult(levelConfig));
     setDialogueStep(0);
     setTypedCharacters(0);
-    setShowStoryIntro(shouldStartWithDialogue(levelConfig));
+    deferredIntroRef.current = tutorialRequestedRef.current && shouldStartWithDialogue(levelConfig);
+    pendingDialogueRef.current = null;
+    setShowStoryIntro(shouldStartWithDialogue(levelConfig) && !tutorialRequestedRef.current);
     setIsCodeLocked(isCodeLockedByDialogue(levelConfig));
     setFailedAttempts(0);
     setHintUnlockThreshold(3);
@@ -500,46 +536,39 @@ function GamePage({ levelConfig }) {
     return () => window.clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (!levelConfig) {
-      return undefined;
+  const showTriggeredDialogue = useCallback((payload = {}) => {
+    const { dialogueId = null, dialogueSteps = null } = payload;
+    const nextDialogueScript =
+      Array.isArray(dialogueSteps) && dialogueSteps.length > 0
+        ? dialogueSteps
+        : getDefaultDialogueScript(levelConfig);
+
+    if (!nextDialogueScript.length) {
+      setIsCodeLocked(false);
+      return;
     }
 
-    const handleDialogueTriggered = (payload = {}) => {
-      const {
-        levelNumber: dialogueLevelNumber,
-        dialogueId = null,
-        dialogueSteps = null,
-      } = payload;
-
-      if (dialogueLevelNumber !== levelConfig.levelNumber) {
-        return;
-      }
-
-      const nextDialogueScript =
-        Array.isArray(dialogueSteps) && dialogueSteps.length > 0
-          ? dialogueSteps
-          : getDefaultDialogueScript(levelConfig);
-
-      if (!nextDialogueScript.length) {
-        setIsCodeLocked(false);
-        return;
-      }
-
-      setDialogueScript(nextDialogueScript);
-      setActiveDialogueId(dialogueId);
-      setDialogueStep(0);
-      setTypedCharacters(0);
-      setIsCodeLocked(true);
-      setShowStoryIntro(true);
-    };
-
-    gameEvents.on(GAME_LEVEL_DIALOGUE_TRIGGERED, handleDialogueTriggered);
-
-    return () => {
-      gameEvents.off(GAME_LEVEL_DIALOGUE_TRIGGERED, handleDialogueTriggered);
-    };
+    setDialogueScript(nextDialogueScript);
+    setActiveDialogueId(dialogueId);
+    setDialogueStep(0);
+    setTypedCharacters(0);
+    setIsCodeLocked(true);
+    setShowStoryIntro(true);
   }, [levelConfig]);
+
+  useEffect(() => {
+    if (!levelConfig) return undefined;
+    const handleDialogueTriggered = (payload = {}) => {
+      if (payload.levelNumber !== levelConfig.levelNumber) return;
+      if (tutorialRequestedRef.current) {
+        pendingDialogueRef.current = payload;
+        return;
+      }
+      showTriggeredDialogue(payload);
+    };
+    gameEvents.on(GAME_LEVEL_DIALOGUE_TRIGGERED, handleDialogueTriggered);
+    return () => gameEvents.off(GAME_LEVEL_DIALOGUE_TRIGGERED, handleDialogueTriggered);
+  }, [levelConfig, showTriggeredDialogue]);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -713,6 +742,7 @@ function GamePage({ levelConfig }) {
   }, [result.type]);
 
   const runLevelCheck = () => {
+    if (tutorialRequestedRef.current) return;
     if (evaluationInFlightRef.current) return;
     if (isCodeLocked) {
       setResult({
@@ -770,6 +800,7 @@ function GamePage({ levelConfig }) {
   };
 
   const openBasicHint = async () => {
+    if (tutorialRequestedRef.current) return;
     if (!basicHint || !hintUnlocked || !hintsEnabledRef.current) return;
     try {
       const response = await axios.post(
@@ -790,6 +821,7 @@ function GamePage({ levelConfig }) {
   };
 
   const openDetailedHint = () => {
+    if (tutorialRequestedRef.current) return;
     if (detailedHintUnlocked && detailedHint) {
       setActiveHint({
         title: hintStage === "stronger" ? "Stronger Guidance · Unlocked" : "Personalized Hint · Unlocked",
@@ -809,6 +841,7 @@ function GamePage({ levelConfig }) {
   };
 
   const purchaseDetailedHintNow = async () => {
+    if (tutorialRequestedRef.current) return;
     if (isPurchasingHint) return;
     setIsPurchasingHint(true);
     try {
@@ -1041,6 +1074,33 @@ function GamePage({ levelConfig }) {
     setDialogueStep((current) => current + 1);
   };
 
+  const finishTutorial = () => {
+    markTutorialComplete(getTutorialStorage(), tutorialUserId);
+    tutorialRequestedRef.current = false;
+    setTutorialRequested(false);
+    if (pendingDialogueRef.current) {
+      const pending = pendingDialogueRef.current;
+      pendingDialogueRef.current = null;
+      deferredIntroRef.current = false;
+      showTriggeredDialogue(pending);
+    } else if (deferredIntroRef.current) {
+      deferredIntroRef.current = false;
+      setShowStoryIntro(true);
+    }
+  };
+
+  const replayTutorial = () => {
+    if (showStoryIntro || activeHint || showHintPurchase || gradeModal) return;
+    setShowAudioSettings(false);
+    setActiveMobileTab("game");
+    tutorialRequestedRef.current = true;
+    setTutorialRequested(shouldOpenTutorial(getTutorialStorage(), tutorialUserId, { replay: true }));
+  };
+
+  const prepareTutorialStep = useCallback((step) => {
+    if (isMobile && step.mobileTab) setActiveMobileTab(step.mobileTab);
+  }, [isMobile]);
+
   const parTimeSeconds = levelConfig?.parTimeSeconds ?? 900;
   const isOvertime = elapsedSeconds > parTimeSeconds;
   const timerMinutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
@@ -1104,7 +1164,7 @@ function GamePage({ levelConfig }) {
     levelConfig.chapterLabel ?? `Chapter ${levelConfig.levelNumber}`;
 
   return (
-    <div className={styles.gameContainer}>
+    <div className={styles.gameContainer} ref={gamePageRef}>
       {isMobile && isPortrait && !orientationPromptDismissed && (
         <div className={styles.orientationOverlay} role="presentation">
           <div className={styles.orientationPrompt} role="dialog" aria-modal="true" aria-labelledby="orientation-title">
@@ -1131,6 +1191,16 @@ function GamePage({ levelConfig }) {
           <span className={styles.timerLabel}>Time spent</span>
           <span className={styles.timerValue}>{timerLabel}</span>
         </div>
+        <button
+          type="button"
+          className={styles.tutorialReplayButton}
+          onClick={replayTutorial}
+          disabled={showStoryIntro || Boolean(activeHint) || showHintPurchase || Boolean(gradeModal) || (isMobile && isPortrait && !orientationPromptDismissed)}
+          aria-label="Replay game tutorial"
+          title="Replay game tutorial"
+        >
+          ?
+        </button>
         <Button label="Exit" variant="outline" size="sm" onClick={exitButton} />
       </header>
 
@@ -1157,6 +1227,7 @@ function GamePage({ levelConfig }) {
         <div className={styles.upperRow}>
           <div
             id="phaser-canvas-root"
+            data-game-tutorial-target="world"
             className={`${styles.phaserCanvasRoot} ${activeMobileTab === "game" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}
           >
             <Game
@@ -1285,7 +1356,7 @@ function GamePage({ levelConfig }) {
             )}
           </div>
 
-          <div className={`${styles.editorPanel} ${activeMobileTab === "code" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
+          <div data-game-tutorial-target="editor" className={`${styles.editorPanel} ${activeMobileTab === "code" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
             <div className={styles.editorHeader}>
               <div className={styles.editorTitleGroup}>
                 <b>C#</b>
@@ -1378,12 +1449,13 @@ function GamePage({ levelConfig }) {
                   automaticLayout: true,
                   scrollBeyondLastLine: false,
                   wordWrap: "off",
-                  readOnly: isCodeLocked,
+                  readOnly: isCodeLocked || tutorialRequested,
                 }}
               />
             </div>
             <div className={styles.editorFooter}>
               <Button
+                data-game-tutorial-target="run"
                 label="Run Code"
                 variant="outline"
                 size="sm"
@@ -1453,7 +1525,7 @@ function GamePage({ levelConfig }) {
         </div>
 
         <div className={`${styles.lowerRow} ${activeMobileTab === "lesson" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
-          <section className={styles.card}>
+          <section className={styles.card} data-game-tutorial-target="task">
             <h3>{goalTitle}</h3>
             <p>{goalDescription}</p>
             <h3>{instructionTitle}</h3>
@@ -1610,6 +1682,17 @@ function GamePage({ levelConfig }) {
             </div>
           </div>
         </div>
+      )}
+      {tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed) && (
+        <GameTutorial
+          steps={GAME_TUTORIAL_STEPS}
+          rootRef={gamePageRef}
+          isMobile={isMobile}
+          activeMobileTab={activeMobileTab}
+          onBeforeStep={prepareTutorialStep}
+          onSkip={finishTutorial}
+          onFinish={finishTutorial}
+        />
       )}
     </div>
   );

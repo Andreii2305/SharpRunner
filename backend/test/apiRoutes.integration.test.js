@@ -1763,7 +1763,7 @@ test("admin summary reports active users and classrooms", async () => {
   });
 });
 
-test("admin role changes and deletion are audited while admin accounts remain protected", async () => {
+test("admin role changes are unavailable and deletion remains audited", async () => {
   const admin = activeUser({ id: 7, username: "admin", role: "admin" });
   const target = activeUser({ id: 8, username: "student-eight", role: "student" });
   const auditRows = [];
@@ -1774,14 +1774,15 @@ test("admin role changes and deletion are audited while admin accounts remain pr
     const changed = await apiRequest("/api/admin/users/8/role", {
       method: "PATCH", token: authToken(7, "admin"), body: { role: "teacher" },
     });
-    assert.equal(changed.response.status, 200);
-    assert.equal(target.role, "teacher");
-    assert.equal(auditRows.at(-1).activity, "Updated user role");
+    assert.equal(changed.response.status, 404);
+    assert.equal(target.role, "student");
+    assert.equal(auditRows.length, 0);
 
-    const protectedAdmin = await apiRequest("/api/admin/users/7/role", {
+    const demoted = await apiRequest("/api/admin/users/8/role", {
       method: "PATCH", token: authToken(7, "admin"), body: { role: "student" },
     });
-    assert.equal(protectedAdmin.response.status, 403);
+    assert.equal(demoted.response.status, 404);
+    assert.equal(target.role, "student");
   });
 
   let destroyed = false;

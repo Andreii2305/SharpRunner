@@ -368,34 +368,6 @@ router.patch("/users/:id/status", adminMutationRateLimit, async (req, res) => {
   }
 });
 
-router.patch("/users/:id/role", adminMutationRateLimit, async (req, res) => {
-  try {
-    const userId = Number.parseInt(req.params.id, 10);
-    const nextRole = normalizeString(req.body?.role).toLowerCase();
-    if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ message: "Invalid user id" });
-    if (!["student", "teacher"].includes(nextRole)) return res.status(400).json({ message: "Role must be student or teacher" });
-
-    const user = await User.findByPk(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.role === "admin") return res.status(403).json({ message: "Admin roles cannot be changed from the dashboard" });
-    if (user.role === nextRole) return res.json({ message: `User is already a ${nextRole}`, user: sanitizeUser(user) });
-    if (user.role === "teacher" && nextRole === "student") {
-      const classroomCount = await Classroom.count({ where: { teacherId: user.id } });
-      if (classroomCount > 0) return res.status(409).json({ message: "Reassign or remove this teacher's classrooms before changing the role" });
-    }
-
-    const previousRole = user.role;
-    user.role = nextRole;
-    await user.save();
-    const actorUsername = await getActorUsername(req.userId);
-    await logAdminActivity({ actorUserId: req.userId, actorUsername, role: req.userRole ?? "admin", targetUserId: user.id, targetUsername: user.username, activity: "Updated user role", details: `${user.username}: ${previousRole} -> ${nextRole}`, status: "success" });
-    return res.json({ message: "User role updated", user: sanitizeUser(user) });
-  } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
-  }
-});
-
 router.post("/users/:id/reset-password", adminMutationRateLimit, async (req, res) => {
   try {
     const userId = Number.parseInt(req.params.id, 10);

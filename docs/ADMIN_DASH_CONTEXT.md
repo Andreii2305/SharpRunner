@@ -29,7 +29,6 @@ The admin area is a responsive platform-governance workspace. It manages account
 - `POST /api/admin/users/:id/restore`
 - `POST /api/admin/users/:id/force-logout`
 - `PATCH /api/admin/users/:id/status`
-- `PATCH /api/admin/users/:id/role`
 - `POST /api/admin/users/:id/reset-password` with optional `{ "revokeSessions": false }` (defaults to true)
 - `DELETE /api/admin/users/:id` with `{ "confirmation": "DELETE" }`; archived users only
 - `POST /api/admin/users/teacher`

@@ -33,8 +33,9 @@ import {
   shouldPlayDialogueBlipForProgress,
 } from "./audio/dialogueSfxManager";
 import GameTutorial from "./tutorial/GameTutorial.jsx";
-import { GAME_TUTORIAL_STEPS } from "./tutorial/gameTutorialSteps.js";
-import { markTutorialComplete, shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
+import { getGameTutorialSteps } from "./tutorial/gameTutorialSteps.js";
+import { shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
+import { finishGameTutorialSession } from "./tutorial/gameTutorialFlow.js";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -1075,16 +1076,19 @@ function GamePage({ levelConfig }) {
   };
 
   const finishTutorial = () => {
-    markTutorialComplete(getTutorialStorage(), tutorialUserId);
+    const nextDialogue = finishGameTutorialSession({
+      storage: getTutorialStorage(),
+      userId: tutorialUserId,
+      pendingDialogue: pendingDialogueRef.current,
+      deferredIntro: deferredIntroRef.current,
+    });
     tutorialRequestedRef.current = false;
     setTutorialRequested(false);
-    if (pendingDialogueRef.current) {
-      const pending = pendingDialogueRef.current;
-      pendingDialogueRef.current = null;
-      deferredIntroRef.current = false;
-      showTriggeredDialogue(pending);
-    } else if (deferredIntroRef.current) {
-      deferredIntroRef.current = false;
+    pendingDialogueRef.current = null;
+    deferredIntroRef.current = false;
+    if (nextDialogue.kind === "triggered") {
+      showTriggeredDialogue(nextDialogue.payload);
+    } else if (nextDialogue.kind === "intro") {
       setShowStoryIntro(true);
     }
   };
@@ -1101,6 +1105,7 @@ function GamePage({ levelConfig }) {
     if (isMobile && step.mobileTab) setActiveMobileTab(step.mobileTab);
   }, [isMobile]);
 
+  const tutorialSteps = getGameTutorialSteps(levelConfig?.levelNumber);
   const parTimeSeconds = levelConfig?.parTimeSeconds ?? 900;
   const isOvertime = elapsedSeconds > parTimeSeconds;
   const timerMinutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, "0");
@@ -1199,7 +1204,7 @@ function GamePage({ levelConfig }) {
           aria-label="Replay game tutorial"
           title="Replay game tutorial"
         >
-          ?
+          Tutorial
         </button>
         <Button label="Exit" variant="outline" size="sm" onClick={exitButton} />
       </header>
@@ -1462,7 +1467,7 @@ function GamePage({ levelConfig }) {
                 onClick={runLevelCheck}
               />
               {hintsEnabledRef.current ? (
-                <div className={styles.hintAccess} aria-live="polite">
+                <div className={styles.hintAccess} data-game-tutorial-target="hints" aria-live="polite">
                   {hintUnlocked ? (
                     <div className={styles.hintChoices}>
                       <button
@@ -1517,10 +1522,10 @@ function GamePage({ levelConfig }) {
                   )}
                 </div>
               ) : (
-                <span className={styles.hintDisabled}>Hints are disabled for this classroom.</span>
+                <span className={styles.hintDisabled} data-game-tutorial-target="hints">Hints are disabled for this classroom.</span>
               )}
             </div>
-            <div className={resultClassName} role="status" aria-live="polite">{result.message}</div>
+            <div className={resultClassName} data-game-tutorial-target="feedback" role="status" aria-live="polite">{result.message}</div>
           </div>
         </div>
 
@@ -1685,7 +1690,7 @@ function GamePage({ levelConfig }) {
       )}
       {tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed) && (
         <GameTutorial
-          steps={GAME_TUTORIAL_STEPS}
+          steps={tutorialSteps}
           rootRef={gamePageRef}
           isMobile={isMobile}
           activeMobileTab={activeMobileTab}

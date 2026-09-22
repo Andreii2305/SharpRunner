@@ -64,8 +64,9 @@
 
 .tutorialReplayButton {
   flex: 0 0 auto;
-  width: 40px;
+  min-width: 40px;
   height: 40px;
+  padding: 0 10px;
   border: 2px solid #26547c;
   border-radius: 12px;
   background: #fff;

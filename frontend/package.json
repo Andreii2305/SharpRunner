@@ -14,7 +14,7 @@
     "test:preferences": "node src/Components/Dashboard/preferencePersonalization.test.js",
     "test:audio": "node src/pages/game/audio/bgmConfig.test.js && node src/pages/game/audio/dialogueSfxManager.test.js && node src/pages/game/audio/gameSfx.test.js",
     "test:camera": "node src/pages/game/camera/cameraMath.test.js",
-    "test:tutorial": "node src/pages/game/tutorial/gameTutorialState.test.js && node src/pages/game/tutorial/gameTutorialPosition.test.js && node src/pages/game/tutorial/GameTutorial.render.test.mjs",
+    "test:tutorial": "node src/pages/game/tutorial/gameTutorialState.test.js && node src/pages/game/tutorial/gameTutorialPosition.test.js && node src/pages/game/tutorial/gameTutorialSteps.test.js && node src/pages/game/tutorial/gameTutorialFlow.test.js && node src/pages/game/tutorial/gameTutorialTargets.test.js && node src/pages/game/tutorial/GameTutorial.render.test.mjs",
     "test:validators": "node src/pages/game/levels/validators.test.js",
     "test:uploads": "node src/utils/uploadPolicy.test.js",
     "test:levels": "node scripts/audit-levels.mjs",

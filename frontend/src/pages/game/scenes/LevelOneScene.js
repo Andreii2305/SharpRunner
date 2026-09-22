@@ -121,6 +121,7 @@ export default class LevelOneScene extends Phaser.Scene {
           this.stepSizePx
       )
     );
+    this.createStepLabels();
     this.createPlayerAnimations();
     this.createPortalAnimations();
 
@@ -232,6 +233,27 @@ export default class LevelOneScene extends Phaser.Scene {
     }
 
     this.playAnimation("player-idle");
+  }
+
+  createStepLabels() {
+    for (let step = 1; step <= this.portalTargetSteps; step += 1) {
+      this.add
+        .text(
+          this.spawnPoint.x + step * this.stepSizePx,
+          this.spawnPoint.y + this.stepSizePx / 2,
+          String(step),
+          {
+            fontFamily: "Arial",
+            fontSize: "14px",
+            fontStyle: "bold",
+            color: "#fff4a3",
+            stroke: "#1f2937",
+            strokeThickness: 3,
+          }
+        )
+        .setOrigin(0.5)
+        .setDepth(0.5);
+    }
   }
 
   createPlayerAnimations() {

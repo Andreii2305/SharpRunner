@@ -3,6 +3,7 @@ backend/node_modules/
 backend/uploads/
 backend/compiler-host/bin/
 backend/compiler-host/obj/
+backend/practice-template/obj/
 frontend/node_modules/
 frontend/.vite/
 

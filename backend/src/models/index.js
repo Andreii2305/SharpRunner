@@ -24,6 +24,11 @@ const XpTransaction = require("./XpTransaction");
 const StudentLevelExtension = require("./StudentLevelExtension");
 const HintFeedback = require("./HintFeedback");
 const LearningAnalyticsEvent = require("./LearningAnalyticsEvent");
+const LessonAssessment = require("./LessonAssessment");
+const AssessmentQuestion = require("./AssessmentQuestion");
+const AssessmentChoice = require("./AssessmentChoice");
+const AssessmentAttempt = require("./AssessmentAttempt");
+const AssessmentResponse = require("./AssessmentResponse");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -315,6 +320,107 @@ User.hasMany(StudentLevelExtension, {
 });
 StudentLevelExtension.belongsTo(User, { foreignKey: "studentId", as: "student" });
 
+Classroom.hasMany(LessonAssessment, {
+  foreignKey: "classroomId",
+  as: "assessments",
+  onDelete: "RESTRICT",
+});
+LessonAssessment.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+User.hasMany(LessonAssessment, {
+  foreignKey: "createdBy",
+  as: "createdAssessments",
+  onDelete: "SET NULL",
+});
+LessonAssessment.belongsTo(User, {
+  foreignKey: "createdBy",
+  as: "creator",
+  onDelete: "SET NULL",
+});
+LessonAssessment.hasMany(AssessmentQuestion, {
+  foreignKey: "assessmentId",
+  as: "questions",
+  onDelete: "CASCADE",
+});
+AssessmentQuestion.belongsTo(LessonAssessment, {
+  foreignKey: "assessmentId",
+  as: "assessment",
+  onDelete: "CASCADE",
+});
+AssessmentQuestion.hasMany(AssessmentChoice, {
+  foreignKey: "questionId",
+  as: "choices",
+  onDelete: "CASCADE",
+});
+AssessmentChoice.belongsTo(AssessmentQuestion, {
+  foreignKey: "questionId",
+  as: "question",
+  onDelete: "CASCADE",
+});
+LessonAssessment.hasMany(AssessmentAttempt, {
+  foreignKey: "assessmentId",
+  as: "attempts",
+  onDelete: "RESTRICT",
+});
+AssessmentAttempt.belongsTo(LessonAssessment, {
+  foreignKey: "assessmentId",
+  as: "assessment",
+  onDelete: "RESTRICT",
+});
+Classroom.hasMany(AssessmentAttempt, {
+  foreignKey: "classroomId",
+  as: "assessmentAttempts",
+  onDelete: "RESTRICT",
+});
+AssessmentAttempt.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+User.hasMany(AssessmentAttempt, {
+  foreignKey: "studentId",
+  as: "assessmentAttempts",
+  onDelete: "RESTRICT",
+});
+AssessmentAttempt.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+  onDelete: "RESTRICT",
+});
+AssessmentAttempt.hasMany(AssessmentResponse, {
+  foreignKey: "attemptId",
+  as: "responses",
+  onDelete: "RESTRICT",
+});
+AssessmentResponse.belongsTo(AssessmentAttempt, {
+  foreignKey: "attemptId",
+  as: "attempt",
+  onDelete: "RESTRICT",
+});
+AssessmentQuestion.hasMany(AssessmentResponse, {
+  foreignKey: "questionId",
+  as: "responses",
+  onDelete: "RESTRICT",
+});
+AssessmentResponse.belongsTo(AssessmentQuestion, {
+  foreignKey: "questionId",
+  as: "question",
+  onDelete: "RESTRICT",
+});
+AssessmentChoice.hasMany(AssessmentResponse, {
+  foreignKey: "selectedChoiceId",
+  as: "responses",
+  onDelete: "RESTRICT",
+});
+AssessmentResponse.belongsTo(AssessmentChoice, {
+  foreignKey: "selectedChoiceId",
+  as: "selectedChoice",
+  onDelete: "RESTRICT",
+});
+
 module.exports = {
   User,
   UserProgress,
@@ -342,4 +448,9 @@ module.exports = {
   StudentLevelExtension,
   HintFeedback,
   LearningAnalyticsEvent,
+  LessonAssessment,
+  AssessmentQuestion,
+  AssessmentChoice,
+  AssessmentAttempt,
+  AssessmentResponse,
 };

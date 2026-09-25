@@ -9,3 +9,6 @@ require("./lessonBuilderService.test");
 require("./teacherAnalytics.test");
 require("./teacherAnalyticsExport.test");
 require("./learningAnalyticsEvents.test");
+require("./assessmentPolicyService.test");
+require("./assessmentMigration.test");
+require("./assessmentAttemptService.test");

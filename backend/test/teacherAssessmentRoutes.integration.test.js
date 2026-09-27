@@ -126,6 +126,16 @@ const submittedAttempt = (overrides = {}) => ({
   ...overrides,
 });
 
+const exhaustedFailedAttempts = (count = 3) => Array.from({ length: count }, (_, index) => (
+  submittedAttempt({
+    id: 41 + index,
+    attemptNumber: index + 1,
+    percentage: 50 + index,
+    passed: false,
+    submittedAt: new Date(`2026-09-${String(index + 1).padStart(2, "0")}T12:10:00.000Z`),
+  })
+));
+
 const cloneRows = (rows) => rows.map((row) => ({ ...row }));
 const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => {
   if (Array.isArray(value)) return value.includes(row[key]);
@@ -434,6 +444,177 @@ test("teacher assessment routes require authentication and teacher or admin role
   assert.equal(student.response.status, 403);
   assert.equal((await request("/api/teacher/classrooms/7/assessments?lessonKey=arrays", { actorId: 5 })).response.status, 200);
   assert.equal((await request("/api/teacher/classrooms/7/assessments?lessonKey=arrays", { actorId: 9 })).response.status, 200);
+});
+
+test("additional-attempt route requires authentication teacher role and exact classroom authority", async () => {
+  const h = harness({
+    assessments: [baseAssessment({ isPublished: true })],
+    attempts: exhaustedFailedAttempts(),
+  });
+  const path = "/api/teacher/classrooms/7/assessments/12/students/42/additional-attempt";
+  const unauthenticated = await request(path, { method: "POST" });
+  assert.equal(unauthenticated.response.status, 401);
+  const student = await request(path, { actorId: 42, method: "POST" });
+  assert.equal(student.response.status, 403);
+  const wrongTeacher = await request(path, { actorId: 6, method: "POST" });
+  assert.equal(wrongTeacher.response.status, 403);
+  const wrongClass = await request(
+    "/api/teacher/classrooms/8/assessments/12/students/42/additional-attempt",
+    { actorId: 5, method: "POST" },
+  );
+  assert.equal(wrongClass.response.status, 403);
+  assert.equal(h.store.attempts.length, 3);
+});
+
+test("additional-attempt route rejects substituted assessment and inactive student", async () => {
+  const substituted = harness({
+    assessments: [baseAssessment({ classroomId: 8, isPublished: true })],
+    attempts: exhaustedFailedAttempts().map((row) => ({ ...row, classroomId: 8 })),
+  });
+  const wrongAssessment = await substituted.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+    { method: "POST" },
+  );
+  assert.equal(wrongAssessment.response.status, 404);
+  assert.equal(wrongAssessment.payload.code, "ASSESSMENT_NOT_FOUND");
+
+  while (restorations.length) {
+    const [target, property, original] = restorations.pop();
+    target[property] = original;
+  }
+  const inactive = harness({
+    assessments: [baseAssessment({ isPublished: true })],
+    attempts: exhaustedFailedAttempts(),
+    memberships: [{ classroomId: 7, studentId: 42, status: "removed" }],
+  });
+  const denied = await inactive.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+    { method: "POST" },
+  );
+  assert.equal(denied.response.status, 403);
+  assert.equal(denied.payload.code, "FORBIDDEN");
+  assert.equal(inactive.store.events.includes("attempt-findAll"), false);
+});
+
+test("additional-attempt route requires positive IDs and an exactly empty request", async () => {
+  const h = harness({
+    assessments: [baseAssessment({ isPublished: true })],
+    attempts: exhaustedFailedAttempts(),
+  });
+  for (const path of [
+    "/classrooms/no/assessments/12/students/42/additional-attempt",
+    "/classrooms/7/assessments/0/students/42/additional-attempt",
+    "/classrooms/7/assessments/12/students/1.5/additional-attempt",
+    "/classrooms/7/assessments/12/students/42/additional-attempt?force=true",
+  ]) {
+    const result = await h.call(path, { method: "POST" });
+    assert.equal(result.response.status, 400, path);
+    assert.equal(result.payload.code, "INVALID_REQUEST", path);
+  }
+  const body = await h.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+    { method: "POST", body: {} },
+  );
+  assert.equal(body.response.status, 400);
+  assert.equal(body.payload.code, "INVALID_REQUEST");
+  assert.equal(h.store.attempts.length, 3);
+});
+
+test("additional-attempt route exposes recovery policy conflicts in required precedence", async () => {
+  const scenarios = [
+    {
+      assessment: baseAssessment({ type: "PRE", isPublished: true, maxAttempts: 1,
+        requirePassingForCompletion: false }),
+      attempts: exhaustedFailedAttempts(1),
+      code: "POST_RECOVERY_NOT_ALLOWED",
+      message: "An additional POST attempt cannot be granted for this assessment",
+    },
+    {
+      assessment: baseAssessment({ isPublished: false }),
+      attempts: exhaustedFailedAttempts(),
+      code: "POST_RECOVERY_NOT_ALLOWED",
+      message: "An additional POST attempt cannot be granted for this assessment",
+    },
+    {
+      assessment: baseAssessment({ isPublished: true, requirePassingForCompletion: false }),
+      attempts: exhaustedFailedAttempts(),
+      code: "POST_RECOVERY_NOT_ALLOWED",
+      message: "An additional POST attempt cannot be granted for this assessment",
+    },
+    {
+      assessment: baseAssessment({ isPublished: true }),
+      attempts: exhaustedFailedAttempts(2),
+      code: "POST_ATTEMPTS_NOT_EXHAUSTED",
+      message: "Ordinary POST attempts are not exhausted",
+    },
+    {
+      assessment: baseAssessment({ isPublished: true }),
+      attempts: exhaustedFailedAttempts().map((row, index) => index === 1
+        ? { ...row, passed: true, percentage: 90 } : row),
+      code: "POST_ALREADY_PASSED",
+      message: "The student already has a passing POST result",
+    },
+    {
+      assessment: baseAssessment({ isPublished: true }),
+      attempts: [...exhaustedFailedAttempts(), {
+        id: 99, assessmentId: 12, classroomId: 7, studentId: 42,
+        attemptNumber: 4, status: "IN_PROGRESS", assessmentVersion: 1,
+      }],
+      code: "ACTIVE_ATTEMPT_EXISTS",
+      message: "The student already has an active assessment attempt",
+    },
+  ];
+  for (const scenario of scenarios) {
+    const h = harness({ assessments: [scenario.assessment], attempts: scenario.attempts });
+    const result = await h.call(
+      "/classrooms/7/assessments/12/students/42/additional-attempt",
+      { method: "POST" },
+    );
+    assert.equal(result.response.status, 409, scenario.code);
+    assert.deepEqual(result.payload, {
+      code: scenario.code,
+      message: scenario.message,
+    });
+    while (restorations.length) {
+      const [target, property, original] = restorations.pop();
+      target[property] = original;
+    }
+  }
+});
+
+test("additional-attempt route returns 201 with an attempt envelope and eight-field allowlist", async () => {
+  const h = harness({
+    assessments: [baseAssessment({ isPublished: true, version: 4 })],
+    attempts: exhaustedFailedAttempts(),
+  });
+  const result = await h.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+    { method: "POST" },
+  );
+  assert.equal(result.response.status, 201);
+  assert.deepEqual(Object.keys(result.payload), ["attempt"]);
+  assert.deepEqual(Object.keys(result.payload.attempt), [
+    "id", "assessmentId", "classroomId", "studentId", "attemptNumber",
+    "status", "assessmentVersion", "startedAt",
+  ]);
+  assert.deepEqual({ ...result.payload.attempt, startedAt: "timestamp" }, {
+    id: 44,
+    assessmentId: 12,
+    classroomId: 7,
+    studentId: 42,
+    attemptNumber: 4,
+    status: "IN_PROGRESS",
+    assessmentVersion: 4,
+    startedAt: "timestamp",
+  });
+  for (const forbidden of [
+    "questionOrder", "choiceOrder", "responses", "pointsEarned", "maxPoints",
+    "percentage", "correctCount", "questionCount", "passed", "submissionKey",
+    "questions", "choices", "isCorrect", "correctChoiceId", "explanation",
+  ]) assert.equal(JSON.stringify(result.payload).includes(forbidden), false, forbidden);
+  assert.deepEqual(h.store.events.slice(-3), ["assessment-lock", "attempt-findAll", "attempt-create"]);
+  assert.equal(h.store.attemptCounts, 0);
+  assert.equal(h.store.assessments[0].maxAttempts, 3);
 });
 
 test("teacher cannot access another teacher classroom", async () => {
@@ -1098,6 +1279,7 @@ test("concurrent start versus teacher mutation is resolved by the assessment loc
     models: sharedModels,
     random: () => 0.5,
     now: () => new Date("2026-09-25T12:00:00.000Z"),
+    progressionService: { assertAssessmentInteractionAllowed: async () => ({ allowed: true }) },
   });
   const teacherService = createTeacherAssessmentService({
     models: sharedModels,
@@ -1118,6 +1300,124 @@ test("concurrent start versus teacher mutation is resolved by the assessment loc
   await assert.rejects(teacherPublish, (error) => error.code === "ASSESSMENT_LOCKED");
   assert.equal(attempts.length, 1);
   assert.equal(assessment.version, 1);
+});
+
+test("teacher recovery races share the assessment lock with recovery and student start", async () => {
+  let lockOwner = null;
+  const waiters = [];
+  const events = [];
+  const transactionRunner = (actor) => ({
+    transaction: async (callback) => {
+      const transaction = { actor, LOCK: { UPDATE: "UPDATE" }, releaseLocks: [] };
+      try {
+        return await callback(transaction);
+      } finally {
+        for (const release of transaction.releaseLocks.reverse()) release();
+      }
+    },
+  });
+  const acquireAssessmentLock = async (transaction) => {
+    if (lockOwner && lockOwner !== transaction) {
+      await new Promise((resolve) => waiters.push(resolve));
+    }
+    lockOwner = transaction;
+    events.push(`assessment-lock:${transaction.actor}`);
+    transaction.releaseLocks.push(() => {
+      lockOwner = null;
+      waiters.shift()?.();
+    });
+  };
+  const assessment = {
+    ...baseAssessment({ isPublished: true, publishedAt: new Date() }),
+    questions: [{ ...baseQuestion(), choices: baseChoices() }],
+  };
+  const attempts = exhaustedFailedAttempts();
+  const sharedModels = {
+    Classroom: { findByPk: async () => ({ id: 7, teacherId: 5 }) },
+    ClassroomMembership: {
+      findOne: async ({ where }) => (where.classroomId === 7 && where.studentId === 42
+        && where.status === "active" ? { ...where } : null),
+    },
+    LessonAssessment: {
+      findByPk: async (_id, options) => {
+        if (options.lock) await acquireAssessmentLock(options.transaction);
+        return assessment;
+      },
+    },
+    AssessmentQuestion: {},
+    AssessmentChoice: {},
+    AssessmentResponse: { findAll: async () => [] },
+    AssessmentAttempt: {
+      findOne: async ({ where, transaction }) => {
+        events.push(`attempt-findOne:${transaction.actor}`);
+        return attempts.find((row) => matches(row, where)) || null;
+      },
+      findAll: async ({ where, transaction }) => {
+        events.push(`attempt-findAll:${transaction.actor}`);
+        return attempts.filter((row) => matches(row, where));
+      },
+      create: async (values, { transaction }) => {
+        events.push(`attempt-create:${transaction.actor}`);
+        const created = { id: Math.max(...attempts.map(({ id }) => id)) + 1, ...values };
+        attempts.push(created);
+        return created;
+      },
+    },
+  };
+  const authorizationService = createAssessmentAuthorizationService({ models: sharedModels });
+  const teacherAttemptService = createAssessmentAttemptService({
+    sequelize: transactionRunner("unused"), models: sharedModels,
+    random: () => 0.5, now: () => new Date("2026-09-25T12:00:00.000Z"),
+    progressionService: { assertAssessmentInteractionAllowed: async () => ({ allowed: true }) },
+  });
+  const teacherService = createTeacherAssessmentService({
+    models: sharedModels,
+    sequelize: transactionRunner("teacher"),
+    authorizationService,
+    assessmentAttemptService: teacherAttemptService,
+  });
+  const studentService = createAssessmentAttemptService({
+    sequelize: transactionRunner("student"), models: sharedModels,
+    random: () => 0.5, now: () => new Date("2026-09-25T12:00:00.000Z"),
+    progressionService: { assertAssessmentInteractionAllowed: async () => ({ allowed: true }) },
+  });
+  const grant = () => teacherService.grantAdditionalPostAttempt({
+    classroomId: 7, assessmentId: 12, studentId: 42, actorId: 5, actorRole: "teacher",
+  });
+
+  const duplicate = await Promise.allSettled([grant(), grant()]);
+  assert.equal(duplicate.filter((item) => item.status === "fulfilled").length, 1);
+  const granted = duplicate.find((item) => item.status === "fulfilled").value;
+  assert.deepEqual(Object.keys(granted), ["attempt"]);
+  assert.deepEqual(Object.keys(granted.attempt), [
+    "id", "assessmentId", "classroomId", "studentId", "attemptNumber",
+    "status", "assessmentVersion", "startedAt",
+  ]);
+  assert.equal(granted.attempt.attemptNumber, 4);
+  assert.equal(duplicate.find((item) => item.status === "rejected").reason.code,
+    "ACTIVE_ATTEMPT_EXISTS");
+  assert.equal(attempts.filter((row) => row.status === "IN_PROGRESS").length, 1);
+  for (const [index, event] of events.entries()) {
+    if (event.startsWith("attempt-")) {
+      const actor = event.split(":")[1];
+      assert.ok(events.slice(0, index).includes(`assessment-lock:${actor}`), event);
+    }
+  }
+
+  attempts.splice(3);
+  events.splice(0);
+  const mixed = await Promise.allSettled([
+    grant(),
+    studentService.startOrResumeAttempt({ assessmentId: 12, studentId: 42 }),
+  ]);
+  assert.equal(mixed.filter((item) => item.status === "fulfilled").length >= 1, true);
+  assert.equal(attempts.filter((row) => row.status === "IN_PROGRESS").length, 1);
+  for (const [index, event] of events.entries()) {
+    if (event.startsWith("attempt-")) {
+      const actor = event.split(":")[1];
+      assert.ok(events.slice(0, index).includes(`assessment-lock:${actor}`), event);
+    }
+  }
 });
 
 test("save publish unpublish and delete never query attempts before acquiring the assessment lock", async () => {

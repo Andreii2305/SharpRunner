@@ -3,6 +3,10 @@ const {
   LESSON_DEFINITIONS,
 } = require("../constants/progressDefaults");
 const UserProgress = require("../models/UserProgress");
+const {
+  CANONICAL_LESSON_ORDER,
+  LESSON_NEXT_ACTIONS,
+} = require("../constants/lessonProgressionConfig");
 
 const LEVEL_KEY_PATTERN = /^(.*)-level-(\d+)$/;
 const DEFAULT_LEVEL_KEY_SET = new Set(
@@ -147,7 +151,7 @@ const ensureProgressRowsForUser = async (userId) => {
 
 const buildProgressSummary = (
   rows,
-  { classRank = null, classSize = null, xpTotal = null } = {},
+  { classRank = null, classSize = null, xpTotal = null, lessonProgressionByKey } = {},
 ) => {
   const normalizedRows = normalizeLevelRows(rows);
   const totalLevels = normalizedRows.length;
@@ -220,7 +224,7 @@ const buildProgressSummary = (
     ? `Continue ${currentLevelName} to keep progressing.`
     : "Open the map to continue your journey.";
 
-  return {
+  const payload = {
     summary: {
       overallProgress,
       completedLessons,
@@ -250,6 +254,55 @@ const buildProgressSummary = (
     })),
     levels: normalizedRows,
   };
+
+  if (lessonProgressionByKey) {
+    const states = CANONICAL_LESSON_ORDER
+      .map((lessonKey) => lessonProgressionByKey.get(lessonKey))
+      .filter(Boolean);
+    const nextState = states.find((state) => !state.lessonCompleted);
+    Object.assign(payload.summary, {
+      gameCompletedLessons: states.filter((state) => state.gameCompleted).length,
+      assessmentCompletedLessons: states.filter((state) => state.assessmentCompleted).length,
+      lessonCompletedLessons: states.filter((state) => state.lessonCompleted).length,
+      nextAction: nextState?.nextAction ?? LESSON_NEXT_ACTIONS.LESSON_COMPLETE,
+      nextActionLessonKey: nextState?.lessonKey ?? null,
+    });
+    payload.lessons = payload.lessons.map((lesson) => {
+      const state = lessonProgressionByKey.get(lesson.lessonKey);
+      if (!state) return lesson;
+      // isCompleted and progressPercent remain legacy game-only fields.
+      // Copy only the public progression contract, never assessment records.
+      return {
+        ...lesson,
+        prerequisiteLessonKey: state.prerequisiteLessonKey,
+        curriculumPrerequisiteSatisfied: state.curriculumPrerequisiteSatisfied,
+        preRequired: state.preRequired,
+        preAssessmentId: state.preAssessmentId,
+        preUnlocked: state.preUnlocked,
+        preAttemptInProgress: state.preAttemptInProgress,
+        preCompleted: state.preCompleted,
+        moduleUnlocked: state.moduleUnlocked,
+        gameUnlocked: state.gameUnlocked,
+        gameStarted: state.gameStarted,
+        gameCompleted: state.gameCompleted,
+        postRequired: state.postRequired,
+        postAssessmentId: state.postAssessmentId,
+        postUnlocked: state.postUnlocked,
+        postAttemptInProgress: state.postAttemptInProgress,
+        postCompleted: state.postCompleted,
+        postPassingRequired: state.postPassingRequired,
+        postPassed: state.postPassed,
+        postAttemptsUsed: state.postAttemptsUsed,
+        postAttemptsRemaining: state.postAttemptsRemaining,
+        postAttemptsExhausted: state.postAttemptsExhausted,
+        assessmentCompleted: state.assessmentCompleted,
+        lessonCompleted: state.lessonCompleted,
+        nextAction: state.nextAction,
+      };
+    });
+  }
+
+  return payload;
 };
 
 const MIN_SCORE = 75;

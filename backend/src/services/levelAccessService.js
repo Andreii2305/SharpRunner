@@ -1,7 +1,13 @@
+const { Op } = require("sequelize");
 const UserProgress = require("../models/UserProgress");
 const StudentLevelExtension = require("../models/StudentLevelExtension");
+const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const { findPrimaryActiveMembership } = require("./studentClassService");
 const { getClassroomLevelSettings } = require("./classroomLevelSettingsService");
+const { getLessonProgressionState } = require("./lessonProgressionService");
+const { CANONICAL_LESSON_ORDER } = require("../constants/lessonProgressionConfig");
+
+const PLAYABLE_LEVEL_KEY_SET = new Set(PLAYABLE_LEVEL_KEYS);
 
 const toTime = (value) => {
   if (!value) return null;
@@ -26,10 +32,40 @@ const deadlineFields = (classDueAt, extensionDueAt) => {
   };
 };
 
+const lessonKeyForLevel = (levelKey) => CANONICAL_LESSON_ORDER.find(
+  (lessonKey) => levelKey.startsWith(`${lessonKey}-level-`),
+) ?? null;
+
+const canonicalPrefixLevelKeys = (lessonKey) => {
+  const lessonIndex = CANONICAL_LESSON_ORDER.indexOf(lessonKey);
+  if (lessonIndex < 0) return [];
+  const prefixLessonKeys = new Set(CANONICAL_LESSON_ORDER.slice(0, lessonIndex + 1));
+  return PLAYABLE_LEVEL_KEYS.filter((levelKey) => (
+    prefixLessonKeys.has(lessonKeyForLevel(levelKey))
+  ));
+};
+
+const orderedEnabledSettings = (settings, lessonKey = null) => settings
+  .filter((setting) => (
+    setting.isEnabled
+    && PLAYABLE_LEVEL_KEY_SET.has(setting.levelKey)
+    && (!lessonKey || setting.levelKey.startsWith(`${lessonKey}-level-`))
+  ))
+  .sort((left, right) => {
+    const leftOrder = Number.isFinite(Number(left.displayOrder))
+      ? Number(left.displayOrder)
+      : Number.MAX_SAFE_INTEGER;
+    const rightOrder = Number.isFinite(Number(right.displayOrder))
+      ? Number(right.displayOrder)
+      : Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder || left.levelKey.localeCompare(right.levelKey);
+  });
+
 const evaluateStudentLevelAccess = ({
   levelKey,
   settings,
   progressByKey,
+  lessonProgressionState = null,
   extensionDueAt = null,
   now = new Date(),
 }) => {
@@ -44,8 +80,33 @@ const evaluateStudentLevelAccess = ({
   if (!target?.isEnabled) {
     return { allowed: false, reason: "LEVEL_DISABLED", completed: false, ...deadlines };
   }
+  if (lessonProgressionState && !lessonProgressionState.curriculumPrerequisiteSatisfied) {
+    return {
+      allowed: false,
+      reason: "LESSON_PREREQUISITE_REQUIRED",
+      completed: false,
+      lessonKey: lessonProgressionState.lessonKey,
+      prerequisiteLessonKey: lessonProgressionState.prerequisiteLessonKey,
+      nextAction: lessonProgressionState.nextAction,
+      ...deadlines,
+    };
+  }
+  if (lessonProgressionState?.preRequired && !lessonProgressionState.preCompleted) {
+    return {
+      allowed: false,
+      reason: "PRE_ASSESSMENT_REQUIRED",
+      completed: false,
+      lessonKey: lessonProgressionState.lessonKey,
+      assessmentId: lessonProgressionState.preAssessmentId,
+      nextAction: lessonProgressionState.nextAction,
+      ...deadlines,
+    };
+  }
 
-  const enabledSettings = settings.filter((setting) => setting.isEnabled);
+  const enabledSettings = orderedEnabledSettings(
+    settings,
+    lessonProgressionState?.lessonKey ?? lessonKeyForLevel(levelKey),
+  );
   const targetIndex = enabledSettings.findIndex((setting) => setting.levelKey === levelKey);
   const prerequisiteLevelKey = targetIndex > 0
     ? enabledSettings[targetIndex - 1].levelKey
@@ -74,7 +135,15 @@ const evaluateStudentLevelAccess = ({
   return { allowed: true, reason: null, completed: false, ...deadlines };
 };
 
-const getStudentLevelAccess = async ({ userId, levelKey, membership = null, now = new Date() }) => {
+const getStudentLevelAccess = async ({
+  userId,
+  levelKey,
+  membership = null,
+  lessonProgressionState = null,
+  levelSettings = null,
+  progressRows = null,
+  now = new Date(),
+}) => {
   const activeMembership = membership ?? await findPrimaryActiveMembership(userId);
   if (!activeMembership) {
     return {
@@ -88,23 +157,39 @@ const getStudentLevelAccess = async ({ userId, levelKey, membership = null, now 
     };
   }
 
-  const settings = await getClassroomLevelSettings(activeMembership.classroomId);
-  const progressRows = await UserProgress.findAll({
-    where: { userId },
+  const settings = levelSettings ?? await getClassroomLevelSettings(activeMembership.classroomId);
+  const targetLessonKey = lessonKeyForLevel(levelKey);
+  const requiredProgressLevelKeys = Array.from(new Set([
+    ...(targetLessonKey ? canonicalPrefixLevelKeys(targetLessonKey) : []),
+    levelKey,
+  ]));
+  const resolvedProgressRows = progressRows ?? await UserProgress.findAll({
+    where: { userId, levelKey: { [Op.in]: requiredProgressLevelKeys } },
     attributes: ["levelKey", "isCompleted"],
   });
-  const progressByKey = new Map(progressRows.map((row) => [row.levelKey, row]));
+  const progressByKey = new Map(resolvedProgressRows.map((row) => [row.levelKey, row]));
   const target = settings.find((setting) => setting.levelKey === levelKey);
   const extension = target?.dueAt
     ? await StudentLevelExtension.findOne({
         where: { classroomId: activeMembership.classroomId, studentId: userId, levelKey },
       })
     : null;
+  const state = lessonProgressionState ?? (targetLessonKey
+    ? await getLessonProgressionState({
+        classroomId: activeMembership.classroomId,
+        studentId: userId,
+        lessonKey: targetLessonKey,
+        authorizedMembership: activeMembership,
+        progressRows: resolvedProgressRows,
+        levelSettings: settings,
+      })
+    : null);
 
   return evaluateStudentLevelAccess({
     levelKey,
     settings,
     progressByKey,
+    lessonProgressionState: state,
     extensionDueAt: extension?.extendedDueAt ?? null,
     now,
   });
@@ -128,6 +213,24 @@ const restrictionPayload = (access) => {
       unlockAt: access.unlockAt,
     };
   }
+  if (access.reason === "LESSON_PREREQUISITE_REQUIRED") {
+    return {
+      ...common,
+      message: "Complete the prerequisite lesson before opening this lesson.",
+      lessonKey: access.lessonKey,
+      prerequisiteLessonKey: access.prerequisiteLessonKey,
+      nextAction: access.nextAction,
+    };
+  }
+  if (access.reason === "PRE_ASSESSMENT_REQUIRED") {
+    return {
+      ...common,
+      message: "Complete the required pre-test before opening this lesson.",
+      lessonKey: access.lessonKey,
+      assessmentId: access.assessmentId,
+      nextAction: access.nextAction,
+    };
+  }
   return {
     ...common,
     message: "Complete the previous assigned level before opening this level.",
@@ -140,5 +243,6 @@ module.exports = {
   evaluateStudentLevelAccess,
   getEffectiveDueAt,
   getStudentLevelAccess,
+  lessonKeyForLevel,
   restrictionPayload,
 };

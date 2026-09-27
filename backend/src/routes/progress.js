@@ -21,6 +21,7 @@ const {
 const {
   getClassroomLevelSettings,
 } = require("../services/classroomLevelSettingsService");
+const { getLessonProgressionStates } = require("../services/lessonProgressionService");
 const { validateLevelCode } = require("../services/levelCodeValidationService");
 const {
   GamificationError,
@@ -180,6 +181,16 @@ const buildProgressPayloadForUser = async (userId) => {
   const levelSettings = await getClassroomLevelSettings(
     primaryMembership?.classroomId,
   );
+  // Keep the batched map available for level access as well as summary consumers.
+  const lessonProgressionByKey = primaryMembership
+    ? await getLessonProgressionStates({
+        classroomId: primaryMembership.classroomId,
+        studentId: userId,
+        authorizedMembership: primaryMembership,
+        progressRows: rows,
+        levelSettings,
+      })
+    : undefined;
   const rowByKey = new Map(rows.map((row) => [row.levelKey, row]));
   const enabledSettings = levelSettings.filter((setting) => setting.isEnabled);
   const activeRows = enabledSettings
@@ -189,7 +200,9 @@ const buildProgressPayloadForUser = async (userId) => {
     classRank,
     classSize,
     xpTotal: currentUser?.xpTotal ?? 0,
+    lessonProgressionByKey,
   });
+  payload.classroomId = primaryMembership?.classroomId ?? null;
   const settingsByKey = new Map(
     enabledSettings.map((setting) => [setting.levelKey, setting]),
   );
@@ -205,8 +218,9 @@ const buildProgressPayloadForUser = async (userId) => {
     const setting = settingsByKey.get(level.levelKey);
     const access = evaluateStudentLevelAccess({
       levelKey: level.levelKey,
-      settings: enabledSettings,
+      settings: levelSettings,
       progressByKey: activeProgressByKey,
+      lessonProgressionState: lessonProgressionByKey?.get(level.lessonKey) ?? null,
       extensionDueAt: extensionByKey.get(level.levelKey)?.extendedDueAt ?? null,
     });
     return {

@@ -1,7 +1,11 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
+const { Op } = require("sequelize");
 const sequelize = require("../src/config/database");
 const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
+const UserProgress = require("../src/models/UserProgress");
+const LessonAssessment = require("../src/models/LessonAssessment");
+const AssessmentAttempt = require("../src/models/AssessmentAttempt");
 const {
   heartbeatProgressSession,
   pauseProgressSession,
@@ -10,6 +14,7 @@ const {
 const {
   evaluateStudentLevelAccess,
   getEffectiveDueAt,
+  getStudentLevelAccess,
 } = require("../src/services/levelAccessService");
 
 const progressRow = (overrides = {}) => ({
@@ -323,4 +328,347 @@ test("unfinished work expires while completed work remains accessible", () => {
   });
   assert.equal(completed.allowed, true);
   assert.equal(completed.reason, "COMPLETED");
+});
+
+const levelSetting = (levelKey, displayOrder, overrides = {}) => ({
+  levelKey,
+  displayOrder,
+  isEnabled: true,
+  unlockAt: null,
+  dueAt: null,
+  ...overrides,
+});
+
+const lessonState = (lessonKey, overrides = {}) => ({
+  lessonKey,
+  prerequisiteLessonKey: lessonKey === "tutorial" ? null : "tutorial",
+  curriculumPrerequisiteSatisfied: true,
+  preRequired: false,
+  preCompleted: false,
+  preAssessmentId: null,
+  nextAction: "PLAY_GAME",
+  ...overrides,
+});
+
+test("required PRE blocks both first and later incomplete lesson levels before sequencing", () => {
+  const settings = [
+    levelSetting("arrays-level-1", 1),
+    levelSetting("arrays-level-2", 2),
+  ];
+  const progressByKey = new Map([
+    ["arrays-level-1", progressRow({ levelKey: "arrays-level-1" })],
+    ["arrays-level-2", progressRow({ levelKey: "arrays-level-2" })],
+  ]);
+  const state = lessonState("arrays", {
+    preRequired: true,
+    preAssessmentId: 81,
+    nextAction: "TAKE_PRE",
+  });
+
+  for (const levelKey of ["arrays-level-1", "arrays-level-2"]) {
+    const access = evaluateStudentLevelAccess({
+      levelKey,
+      settings,
+      progressByKey,
+      lessonProgressionState: state,
+    });
+    assert.equal(access.allowed, false);
+    assert.equal(access.reason, "PRE_ASSESSMENT_REQUIRED");
+    assert.equal(access.lessonKey, "arrays");
+    assert.equal(access.assessmentId, 81);
+    assert.equal(access.nextAction, "TAKE_PRE");
+  }
+});
+
+test("submitted PRE permits existing same-lesson sequencing to decide access", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "arrays-level-2",
+    settings: [
+      levelSetting("arrays-level-1", 1),
+      levelSetting("arrays-level-2", 2),
+    ],
+    progressByKey: new Map([
+      ["arrays-level-1", progressRow({ levelKey: "arrays-level-1" })],
+      ["arrays-level-2", progressRow({ levelKey: "arrays-level-2" })],
+    ]),
+    lessonProgressionState: lessonState("arrays", {
+      preRequired: true,
+      preCompleted: true,
+      preAssessmentId: 81,
+    }),
+  });
+
+  assert.equal(access.allowed, false);
+  assert.equal(access.reason, "LEVEL_LOCKED");
+  assert.equal(access.prerequisiteLevelKey, "arrays-level-1");
+});
+
+test("an incomplete prior canonical lesson blocks entry before PRE and level sequencing", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "functions-level-1",
+    settings: [levelSetting("functions-level-1", 1)],
+    progressByKey: new Map([
+      ["functions-level-1", progressRow({ levelKey: "functions-level-1" })],
+    ]),
+    lessonProgressionState: lessonState("functions", {
+      prerequisiteLessonKey: "arrays",
+      curriculumPrerequisiteSatisfied: false,
+      preRequired: true,
+      preAssessmentId: 91,
+      nextAction: "COMPLETE_PREREQUISITE_LESSON",
+    }),
+  });
+
+  assert.equal(access.allowed, false);
+  assert.equal(access.reason, "LESSON_PREREQUISITE_REQUIRED");
+  assert.equal(access.lessonKey, "functions");
+  assert.equal(access.prerequisiteLessonKey, "arrays");
+  assert.equal(access.nextAction, "COMPLETE_PREREQUISITE_LESSON");
+  assert.equal(access.assessmentId, undefined);
+});
+
+test("teacher displayOrder selects the previous enabled playable level only within the target lesson", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "arrays-level-2",
+    settings: [
+      levelSetting("tutorial-level-5", 10),
+      levelSetting("arrays-level-1", 20),
+      levelSetting("tutorial-level-1", 25),
+      levelSetting("arrays-level-2", 30),
+    ],
+    progressByKey: new Map([
+      ["tutorial-level-1", progressRow({ levelKey: "tutorial-level-1", isCompleted: true })],
+      ["arrays-level-1", progressRow({ levelKey: "arrays-level-1" })],
+      ["arrays-level-2", progressRow({ levelKey: "arrays-level-2" })],
+    ]),
+    lessonProgressionState: lessonState("arrays"),
+  });
+
+  assert.equal(access.allowed, false);
+  assert.equal(access.reason, "LEVEL_LOCKED");
+  assert.equal(access.prerequisiteLevelKey, "arrays-level-1");
+});
+
+test("cross-lesson displayOrder interleaving cannot create a prerequisite cycle", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "tutorial-level-5",
+    settings: [
+      levelSetting("tutorial-level-4", 10),
+      levelSetting("arrays-level-1", 20),
+      levelSetting("tutorial-level-5", 30),
+    ],
+    progressByKey: new Map([
+      ["tutorial-level-4", progressRow({ levelKey: "tutorial-level-4", isCompleted: true })],
+      ["arrays-level-1", progressRow({ levelKey: "arrays-level-1" })],
+      ["tutorial-level-5", progressRow({ levelKey: "tutorial-level-5" })],
+    ]),
+    lessonProgressionState: lessonState("tutorial"),
+  });
+
+  assert.equal(access.allowed, true);
+  assert.equal(access.reason, null);
+});
+
+test("access without preloaded state still ignores cross-lesson displayOrder predecessors", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "tutorial-level-5",
+    settings: [
+      levelSetting("tutorial-level-4", 10),
+      levelSetting("arrays-level-1", 20),
+      levelSetting("tutorial-level-5", 30),
+    ],
+    progressByKey: new Map([
+      ["tutorial-level-4", progressRow({ levelKey: "tutorial-level-4", isCompleted: true })],
+      ["arrays-level-1", progressRow({ levelKey: "arrays-level-1" })],
+      ["tutorial-level-5", progressRow({ levelKey: "tutorial-level-5" })],
+    ]),
+  });
+
+  assert.equal(access.allowed, true);
+  assert.equal(access.reason, null);
+});
+
+test("no-preload access reads only the target canonical-prefix progress rows", async () => {
+  const expectedPrefixLevelKeys = [
+    "tutorial-level-1",
+    "tutorial-level-2",
+    "tutorial-level-3",
+    "tutorial-level-4",
+    "tutorial-level-5",
+    "arrays-level-1",
+    "arrays-level-2",
+    "arrays-level-3",
+    "arrays-level-4",
+    "arrays-level-5",
+    "arrays-level-6",
+    "arrays-level-7",
+    "arrays-level-8",
+  ];
+  const progressQueries = [];
+  const progressRows = expectedPrefixLevelKeys.map((levelKey) => ({
+    levelKey,
+    isCompleted: levelKey.startsWith("tutorial-") || levelKey === "arrays-level-1",
+  }));
+
+  await withStubs([
+    [UserProgress, "findAll", async (options) => {
+      progressQueries.push(options);
+      return progressRows;
+    }],
+    [LessonAssessment, "findAll", async () => []],
+  ], async () => {
+    const access = await getStudentLevelAccess({
+      userId: 1,
+      levelKey: "arrays-level-2",
+      membership: { classroomId: 9, studentId: 1, status: "active" },
+      levelSettings: [
+        levelSetting("arrays-level-1", 1),
+        levelSetting("arrays-level-2", 2),
+      ],
+    });
+    assert.equal(access.allowed, true);
+  });
+
+  assert.equal(progressQueries.length, 1);
+  assert.deepEqual(progressQueries[0].where, {
+    userId: 1,
+    levelKey: { [Op.in]: expectedPrefixLevelKeys },
+  });
+});
+
+test("completed non-playable target replay is included beside the playable canonical prefix", async () => {
+  const targetLevelKey = "functions-level-12";
+  const canonicalPlayablePrefix = [
+    ...Array.from({ length: 5 }, (_, index) => `tutorial-level-${index + 1}`),
+    ...Array.from({ length: 8 }, (_, index) => `arrays-level-${index + 1}`),
+    ...Array.from({ length: 11 }, (_, index) => `functions-level-${index + 1}`),
+  ];
+  const progressQueries = [];
+  const rowsByLevelKey = new Map([
+    ...canonicalPlayablePrefix.map((levelKey) => [levelKey, {
+      levelKey,
+      isCompleted: true,
+    }]),
+    [targetLevelKey, { levelKey: targetLevelKey, isCompleted: true }],
+  ]);
+
+  await withStubs([
+    [UserProgress, "findAll", async (options) => {
+      progressQueries.push(options);
+      const requestedLevelKeys = options.where.levelKey[Op.in];
+      return requestedLevelKeys.map((levelKey) => rowsByLevelKey.get(levelKey)).filter(Boolean);
+    }],
+    [LessonAssessment, "findAll", async () => [{
+      id: 82,
+      classroomId: 9,
+      lessonKey: "functions",
+      type: "PRE",
+      isPublished: true,
+      isRequired: true,
+      maxAttempts: 1,
+      requirePassingForCompletion: false,
+    }]],
+    [AssessmentAttempt, "findAll", async () => []],
+  ], async () => {
+    const access = await getStudentLevelAccess({
+      userId: 1,
+      levelKey: targetLevelKey,
+      membership: { classroomId: 9, studentId: 1, status: "active" },
+      levelSettings: [levelSetting(targetLevelKey, 1, { isEnabled: false })],
+    });
+    assert.equal(access.allowed, true);
+    assert.equal(access.reason, "COMPLETED");
+  });
+
+  assert.deepEqual(progressQueries[0].where.levelKey[Op.in], [
+    ...canonicalPlayablePrefix,
+    targetLevelKey,
+  ]);
+});
+
+test("completed level replay wins before disabled, canonical, PRE, schedule, and deadline gates", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "arrays-level-1",
+    settings: [levelSetting("arrays-level-1", 1, {
+      isEnabled: false,
+      unlockAt: new Date("2026-10-01T00:00:00Z"),
+      dueAt: new Date("2026-09-01T00:00:00Z"),
+    })],
+    progressByKey: new Map([
+      ["arrays-level-1", progressRow({ levelKey: "arrays-level-1", isCompleted: true })],
+    ]),
+    lessonProgressionState: lessonState("arrays", {
+      curriculumPrerequisiteSatisfied: false,
+      preRequired: true,
+      preAssessmentId: 81,
+    }),
+    now: new Date("2026-09-15T00:00:00Z"),
+  });
+
+  assert.equal(access.allowed, true);
+  assert.equal(access.reason, "COMPLETED");
+  assert.equal(access.completed, true);
+});
+
+test("disabled, scheduled, deadline, extension, and completion precedence remains unchanged", () => {
+  const now = new Date("2026-09-15T00:00:00Z");
+  const state = lessonState("arrays");
+  const progressByKey = new Map([
+    ["arrays-level-1", progressRow({ levelKey: "arrays-level-1" })],
+  ]);
+  const decide = (overrides, extensionDueAt = null) => evaluateStudentLevelAccess({
+    levelKey: "arrays-level-1",
+    settings: [levelSetting("arrays-level-1", 1, overrides)],
+    progressByKey,
+    lessonProgressionState: state,
+    extensionDueAt,
+    now,
+  });
+
+  assert.equal(decide({ isEnabled: false }).reason, "LEVEL_DISABLED");
+  assert.equal(decide({
+    unlockAt: new Date("2026-09-20T00:00:00Z"),
+    dueAt: new Date("2026-09-10T00:00:00Z"),
+  }).reason, "LEVEL_SCHEDULED");
+  assert.equal(decide({ dueAt: new Date("2026-09-10T00:00:00Z") }).reason, "DEADLINE_PASSED");
+  assert.equal(decide(
+    { dueAt: new Date("2026-09-10T00:00:00Z") },
+    new Date("2026-09-20T00:00:00Z"),
+  ).allowed, true);
+
+  progressByKey.get("arrays-level-1").isCompleted = true;
+  assert.equal(decide({ isEnabled: false }).reason, "COMPLETED");
+});
+
+test("tutorial has no assessment gate and final has only the prior-lesson gate", () => {
+  const tutorial = evaluateStudentLevelAccess({
+    levelKey: "tutorial-level-1",
+    settings: [levelSetting("tutorial-level-1", 1)],
+    progressByKey: new Map([
+      ["tutorial-level-1", progressRow({ levelKey: "tutorial-level-1" })],
+    ]),
+    lessonProgressionState: lessonState("tutorial"),
+  });
+  assert.equal(tutorial.allowed, true);
+
+  const finalState = lessonState("final", {
+    prerequisiteLessonKey: "functions-with-arrays",
+    curriculumPrerequisiteSatisfied: false,
+  });
+  const finalInput = {
+    levelKey: "final-level-1",
+    settings: [levelSetting("final-level-1", 1)],
+    progressByKey: new Map([
+      ["final-level-1", progressRow({ levelKey: "final-level-1" })],
+    ]),
+    lessonProgressionState: finalState,
+  };
+  assert.equal(
+    evaluateStudentLevelAccess(finalInput).reason,
+    "LESSON_PREREQUISITE_REQUIRED",
+  );
+  finalState.curriculumPrerequisiteSatisfied = true;
+  const unlockedFinal = evaluateStudentLevelAccess(finalInput);
+  assert.equal(unlockedFinal.allowed, true);
+  assert.equal(unlockedFinal.reason, null);
 });

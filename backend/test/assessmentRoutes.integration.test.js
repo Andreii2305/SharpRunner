@@ -8,6 +8,7 @@ process.env.JWT_SECRET = "assessment-route-integration-secret";
 const models = require("../src/models");
 const User = require("../src/models/User");
 const assessmentAttemptService = require("../src/services/assessmentAttemptService");
+const lessonProgressionService = require("../src/services/lessonProgressionService");
 const { canExposeAnswerReview } = require("../src/services/assessmentReadService");
 const sequelize = require("../src/config/database");
 const productionApp = require("../src/app");
@@ -82,7 +83,9 @@ const assessment = (overrides = {}) => ({
 
 // Exercise the real router, authorization, serializers and Phase B mutations.
 // Only persistence is replaced; the transaction queue models serialized row locks.
-const mutationHarness = (overrides = {}) => {
+const mutationHarness = (overrides = {}, {
+  progressionGuard = async () => ({ allowed: true, reason: null }),
+} = {}) => {
   const graph = assessment({ shuffleQuestions: true, shuffleChoices: true,
     requirePassingForCompletion: true, ...overrides });
   const store = { assessments: [graph], attempts: [], responses: [],
@@ -96,12 +99,16 @@ const mutationHarness = (overrides = {}) => {
       value: async () => { if (isAttempt) store.saves += 1; return value; } });
     return value;
   };
-  stub(User, "findByPk", async (id) => activeUser(Number(id)));
+  stub(User, "findByPk", async (id) => activeUser(Number(id), Number(id) === 5 ? "teacher" : "student"));
+  stub(lessonProgressionService, "assertAssessmentInteractionAllowed", progressionGuard);
   stub(sequelize, "transaction", (callback) => {
     const pending = tail.then(() => callback({ LOCK: { UPDATE: "UPDATE" } }));
     tail = pending.catch(() => {});
     return pending;
   });
+  stub(models.Classroom, "findByPk", async (id) => (
+    Number(id) === graph.classroomId ? { id: graph.classroomId, teacherId: 5 } : null
+  ));
   stub(models.ClassroomMembership, "findOne", async ({ where }) => store.memberships.find((row) => matches(row, where)) || null);
   stub(models.LessonAssessment, "findByPk", async (id, options = {}) => {
     if (options.include) store.graphReads += 1;
@@ -137,6 +144,30 @@ const mutationHarness = (overrides = {}) => {
   const start = () => call(`/${graph.id}/attempts`, { method: "POST", body: {} });
   const save = (id, choice = 1001) => call(`/attempts/${id}/responses/101`, { method: "PUT", body: { selectedChoiceId: choice } });
   const submit = (id, key = `submit_key_${id}`) => call(`/attempts/${id}/submit`, { method: "POST", headers: { "Idempotency-Key": key } });
+  const teacherGrant = () => request(
+    `/api/teacher/classrooms/${graph.classroomId}/assessments/${graph.id}/students/42/additional-attempt`,
+    { authToken: token(5, "teacher"), method: "POST" },
+  );
+  const seedActive = () => {
+    const row = {
+      id: store.attempts.length + 1,
+      assessmentId: graph.id,
+      classroomId: graph.classroomId,
+      studentId: 42,
+      attemptNumber: 1,
+      status: "IN_PROGRESS",
+      assessmentVersion: graph.version,
+      startedAt: new Date("2026-09-24T00:00:00.000Z"),
+      submittedAt: null,
+      questionOrder: graph.questions.map((question) => question.id),
+      choiceOrder: Object.fromEntries(graph.questions.map((question) => [
+        question.id,
+        question.choices.map((choice) => choice.id),
+      ])),
+    };
+    store.attempts.push(row);
+    return row;
+  };
   const completed = async (choice = 1001) => {
     const begun = await start();
     assert.equal(begun.response.status, 201);
@@ -146,7 +177,7 @@ const mutationHarness = (overrides = {}) => {
     assert.equal(result.response.status, 200);
     return { id, ...result };
   };
-  return { graph, store, call, start, save, submit, completed };
+  return { graph, store, call, start, save, submit, teacherGrant, seedActive, completed };
 };
 
 test("start returns 201 and resume returns 200 with the same attempt and order", async () => {
@@ -270,8 +301,22 @@ test("submission maps the header to Phase B submissionKey and returns the result
 });
 
 test("same-key retry returns 200 with the immutable result", async () => {
-  const h = mutationHarness();
+  let progressionAllowed = true;
+  const h = mutationHarness({}, {
+    progressionGuard: async () => {
+      if (!progressionAllowed) {
+        throw new lessonProgressionService.LessonProgressionError({
+          code: "POST_ASSESSMENT_LOCKED",
+          message: "locked after submission",
+          lessonKey: "arrays",
+          nextAction: "PLAY_GAME",
+        });
+      }
+      return { allowed: true, reason: null };
+    },
+  });
   const first = await h.completed();
+  progressionAllowed = false;
   const retry = await h.submit(first.id);
   assert.equal(retry.response.status, 200);
   assert.deepEqual(retry.payload, first.payload);
@@ -373,9 +418,24 @@ test("hidden-score POST keeps passed and omits every score and comparison field"
 });
 
 test("former classroom member cannot retrieve a submitted result or answer review", async () => {
-  const h = mutationHarness({ answerReviewPolicy: "AFTER_SUBMISSION" });
+  let progressionAllowed = true;
+  const h = mutationHarness({ answerReviewPolicy: "AFTER_SUBMISSION" }, {
+    progressionGuard: async () => {
+      if (!progressionAllowed) {
+        throw new lessonProgressionService.LessonProgressionError({
+          code: "POST_ASSESSMENT_LOCKED",
+          message: "locked after submission",
+          lessonKey: "arrays",
+          nextAction: "PLAY_GAME",
+        });
+      }
+      return { allowed: true, reason: null };
+    },
+  });
   const submitted = await h.completed();
+  assert.equal(submitted.payload.reviewAvailable, true);
   assert.equal(h.store.attempts.find(({ id }) => id === submitted.id).studentId, 42);
+  progressionAllowed = false;
   h.store.memberships.splice(0);
   const { graphReads, responseReads } = h.store;
   for (const result of [await h.call(`/attempts/${submitted.id}/result`), await h.submit(submitted.id)]) {
@@ -494,6 +554,61 @@ test("AFTER_FINAL_ATTEMPT requires exhaustion and no active attempt", async () =
   const active = await h.call(`/attempts/${final.id}/result`);
   assert.equal(active.payload.reviewAvailable, false);
   assert.equal("review" in active.payload, false);
+});
+
+test("teacher recovery uses the normal student pipeline and recalculates final-attempt review", async () => {
+  const h = mutationHarness();
+  const originalMaxAttempts = h.graph.maxAttempts;
+  const ordinary = [];
+  for (let index = 0; index < 3; index += 1) ordinary.push(await h.completed(1002));
+  assert.equal(ordinary[2].payload.reviewAvailable, true);
+
+  const granted = await h.teacherGrant();
+  assert.equal(granted.response.status, 201);
+  assert.deepEqual(Object.keys(granted.payload), ["attempt"]);
+  assert.equal(granted.payload.attempt.attemptNumber, 4);
+  assert.equal(granted.payload.attempt.status, "IN_PROGRESS");
+  assert.equal(h.graph.maxAttempts, originalMaxAttempts);
+  const hiddenDuringRecovery = await h.call(`/attempts/${ordinary[2].id}/result`);
+  assert.equal(hiddenDuringRecovery.payload.reviewAvailable, false);
+
+  const resumed = await h.start();
+  assert.equal(resumed.response.status, 200);
+  assert.equal(resumed.payload.attempt.resumed, true);
+  assert.equal(resumed.payload.attempt.attemptId, granted.payload.attempt.id);
+  assert.equal(resumed.payload.attempt.attemptsRemaining, 0);
+  assert.equal((await h.save(granted.payload.attempt.id, 1002)).response.status, 200);
+  const failedRecovery = await h.submit(granted.payload.attempt.id, "recovery_fail_key");
+  assert.equal(failedRecovery.response.status, 200);
+  assert.equal(failedRecovery.payload.result.passed, false);
+  assert.equal(failedRecovery.payload.reviewAvailable, true);
+
+  const concurrentGrants = await Promise.all([h.teacherGrant(), h.teacherGrant()]);
+  assert.deepEqual(concurrentGrants.map((result) => result.response.status).sort(), [201, 409]);
+  assert.equal(concurrentGrants.find((result) => result.response.status === 409).payload.code,
+    "ACTIVE_ATTEMPT_EXISTS");
+  const recovery = concurrentGrants.find((result) => result.response.status === 201).payload.attempt;
+  assert.equal(recovery.attemptNumber, 5);
+  assert.equal(h.store.attempts.filter((row) => row.status === "IN_PROGRESS").length, 1);
+  assert.equal((await h.save(recovery.id, 1001)).response.status, 200);
+  const passedRecovery = await h.submit(recovery.id, "recovery_pass_key");
+  assert.equal(passedRecovery.payload.result.passed, true);
+  assert.equal(passedRecovery.payload.officialGrade.attemptId, recovery.id);
+  assert.equal(passedRecovery.payload.reviewAvailable, true);
+  const retry = await h.submit(recovery.id, "recovery_pass_key");
+  assert.deepEqual(retry.payload, passedRecovery.payload);
+  assert.equal(h.graph.maxAttempts, originalMaxAttempts);
+});
+
+test("teacher recovery and ordinary student start serialize to at most one active attempt", async () => {
+  const h = mutationHarness();
+  for (let index = 0; index < 3; index += 1) await h.completed(1002);
+  const results = await Promise.all([h.teacherGrant(), h.start()]);
+  assert.equal(results.some((result) => result.response.status === 201), true);
+  assert.equal(h.store.attempts.filter((row) => row.status === "IN_PROGRESS").length, 1);
+  const student = results[1];
+  if (student.response.status === 200) assert.equal(student.payload.attempt.resumed, true);
+  else assert.equal(student.payload.code, "MAX_ATTEMPTS_REACHED");
 });
 
 test("concurrent same-key submissions persist one immutable result", async () => {
@@ -620,6 +735,9 @@ test("discovery returns unavailable assessment state without a graph", async () 
   stub(User, "findByPk", async () => activeUser(42));
   stub(models.ClassroomMembership, "findOne", async () => ({ id: 1 }));
   stub(models.LessonAssessment, "findOne", async () => null);
+  stub(lessonProgressionService, "getLessonProgressionState", async () => {
+    assert.fail("unavailable assessments must not become progression resources");
+  });
   stub(models.AssessmentAttempt, "findAll", async () => {
     assert.fail("attempts must not be queried without an assessment");
   });
@@ -640,6 +758,8 @@ test("discovery returns unavailable assessment state without a graph", async () 
       attemptsUsed: 0,
       hasSubmittedAttempt: false,
       diagnosticCompleted: false,
+      unlocked: false,
+      lockReason: null,
     },
   });
 });
@@ -666,6 +786,10 @@ test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without 
     passed: null,
     submittedAt: "2026-09-25T12:00:00.000Z",
   }]);
+  stub(lessonProgressionService, "getLessonProgressionState", async () => ({
+    curriculumPrerequisiteSatisfied: true,
+    preUnlocked: true,
+  }));
 
   const { response, payload } = await request(
     "/api/assessments/classrooms/7/lessons/arrays/PRE",
@@ -675,6 +799,8 @@ test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without 
   assert.equal(response.status, 200);
   assert.equal(payload.status.hasSubmittedAttempt, true);
   assert.equal(payload.status.diagnosticCompleted, true);
+  assert.equal(payload.status.unlocked, true);
+  assert.equal(payload.status.lockReason, null);
   assert.equal("completed" in payload.status, false);
   assert.equal("lessonCompleted" in payload.status, false);
   assert.equal("passed" in payload.status, false);
@@ -699,6 +825,14 @@ test("discovery never exposes questions choices or grading configuration", async
       { id: 31, attemptNumber: 2, status: "IN_PROGRESS" },
     ];
   });
+  stub(lessonProgressionService, "getLessonProgressionState", async () => ({
+    curriculumPrerequisiteSatisfied: true,
+    preRequired: false,
+    preCompleted: false,
+    gameCompleted: true,
+    postUnlocked: true,
+    postPassed: false,
+  }));
 
   const { response, payload } = await request(
     "/api/assessments/classrooms/7/lessons/arrays/post",
@@ -715,8 +849,102 @@ test("discovery never exposes questions choices or grading configuration", async
   assert.equal(payload.status.activeAttemptId, 31);
   assert.equal(payload.status.attemptsUsed, 1);
   assert.equal(payload.status.attemptsRemaining, 2);
+  assert.equal(payload.status.unlocked, true);
+  assert.equal(payload.status.lockReason, null);
   assert.deepEqual(payload.status.officialPost, { attemptNumber: 1, percentage: 70 });
   assertNoForbiddenKeys(payload);
+});
+
+test("discovery reports exact progression stage without exposing a graph or hidden numeric results", async () => {
+  stub(User, "findByPk", async () => activeUser(42));
+  stub(models.ClassroomMembership, "findOne", async () => ({
+    id: 1, classroomId: 7, studentId: 42, status: "active",
+  }));
+  let graph = assessment({ showScoreAfterSubmission: false });
+  let state = {
+    curriculumPrerequisiteSatisfied: true,
+    preRequired: false,
+    preCompleted: false,
+    gameCompleted: false,
+    postUnlocked: false,
+    postPassed: true,
+  };
+  let stateReads = 0;
+  stub(models.LessonAssessment, "findOne", async ({ where }) => (
+    graph && graph.isPublished === true
+      && graph.lessonKey === where.lessonKey && graph.type === where.type ? graph : null
+  ));
+  stub(models.AssessmentAttempt, "findAll", async () => [{
+    id: 30,
+    assessmentId: 12,
+    studentId: 42,
+    attemptNumber: 1,
+    status: "SUBMITTED",
+    pointsEarned: 2,
+    maxPoints: 2,
+    percentage: 100,
+    passed: true,
+    submittedAt: "2026-09-25T12:00:00.000Z",
+  }]);
+  stub(lessonProgressionService, "getLessonProgressionState", async (options) => {
+    stateReads += 1;
+    assert.equal(options.classroomId, 7);
+    assert.equal(options.studentId, 42);
+    assert.equal(options.lessonKey, graph.lessonKey);
+    assert.equal(options.authorizedMembership.classroomId, 7);
+    return state;
+  });
+
+  const lockedPost = await request(
+    "/api/assessments/classrooms/7/lessons/arrays/POST",
+    { authToken: token(42) },
+  );
+  assert.equal(lockedPost.response.status, 200);
+  assert.equal(lockedPost.payload.status.available, true);
+  assert.equal(lockedPost.payload.status.unlocked, false);
+  assert.equal(lockedPost.payload.status.lockReason, "GAME_INCOMPLETE");
+  assert.equal("questions" in lockedPost.payload.assessment, false);
+  for (const key of ["postPassed", "pointsEarned", "maxPoints", "percentage"]) {
+    assert.equal(key in lockedPost.payload.status, false);
+  }
+
+  graph = assessment({
+    id: 13,
+    lessonKey: "functions",
+    type: "PRE",
+    maxAttempts: 1,
+    showScoreAfterSubmission: false,
+  });
+  state = {
+    curriculumPrerequisiteSatisfied: false,
+    preUnlocked: false,
+  };
+  const lockedPre = await request(
+    "/api/assessments/classrooms/7/lessons/functions/PRE",
+    { authToken: token(42) },
+  );
+  assert.equal(lockedPre.payload.status.available, true);
+  assert.equal(lockedPre.payload.status.unlocked, false);
+  assert.equal(lockedPre.payload.status.lockReason, "LESSON_PREREQUISITE_REQUIRED");
+
+  state = { curriculumPrerequisiteSatisfied: true, preUnlocked: true };
+  const unlockedPre = await request(
+    "/api/assessments/classrooms/7/lessons/functions/PRE",
+    { authToken: token(42) },
+  );
+  assert.equal(unlockedPre.payload.status.unlocked, true);
+  assert.equal(unlockedPre.payload.status.lockReason, null);
+
+  graph = assessment({ id: 14, lessonKey: "functions", type: "PRE", isPublished: false });
+  const unavailableDraft = await request(
+    "/api/assessments/classrooms/7/lessons/functions/PRE",
+    { authToken: token(42) },
+  );
+  assert.equal(unavailableDraft.payload.status.available, false);
+  assert.equal(unavailableDraft.payload.status.unlocked, false);
+  assert.equal(unavailableDraft.payload.status.lockReason, null);
+  assert.equal(unavailableDraft.payload.assessment, null);
+  assert.equal(stateReads, 3);
 });
 
 test("published player graph is available only to an exact classroom member", async () => {
@@ -728,6 +956,9 @@ test("published player graph is available only to an exact classroom member", as
     membershipQueries.push(options.where);
     return isMember ? { id: 1 } : null;
   });
+  stub(lessonProgressionService, "assertAssessmentInteractionAllowed", async () => ({
+    allowed: true, reason: null,
+  }));
 
   const denied = await request("/api/assessments/12", { authToken: token(42) });
   assert.equal(denied.response.status, 403);
@@ -746,6 +977,182 @@ test("published player graph is available only to an exact classroom member", as
   ]);
   assertNoForbiddenKeys(allowed.payload);
 });
+
+test("player graph cannot bypass POST or PRE stage gates while standalone lessons remain compatible", async () => {
+  stub(User, "findByPk", async () => activeUser(42));
+  let graph = assessment();
+  let membershipChecked = false;
+  stub(models.LessonAssessment, "findByPk", async () => graph);
+  stub(models.ClassroomMembership, "findOne", async () => {
+    membershipChecked = true;
+    return { id: 1, classroomId: 7, studentId: 42, status: "active" };
+  });
+  stub(lessonProgressionService, "assertAssessmentInteractionAllowed", async ({
+    assessment: guarded,
+    authorizedMembership,
+  }) => {
+    assert.equal(membershipChecked, true);
+    assert.equal(authorizedMembership.classroomId, guarded.classroomId);
+    if (guarded.lessonKey === "arrays" && guarded.type === "POST") {
+      throw new lessonProgressionService.LessonProgressionError({
+        code: "POST_ASSESSMENT_LOCKED",
+        message: "private message",
+        lessonKey: "arrays",
+        nextAction: "PLAY_GAME",
+      });
+    }
+    if (guarded.lessonKey === "functions" && guarded.type === "PRE") {
+      throw new lessonProgressionService.LessonProgressionError({
+        code: "LESSON_PREREQUISITE_REQUIRED",
+        message: "private message",
+        lessonKey: "functions",
+        prerequisiteLessonKey: "arrays",
+        nextAction: "COMPLETE_PREREQUISITE_LESSON",
+      });
+    }
+    return { allowed: true, reason: null };
+  });
+
+  const postDenied = await request("/api/assessments/12", { authToken: token(42) });
+  assert.equal(postDenied.response.status, 403);
+  assert.deepEqual(postDenied.payload, {
+    code: "POST_ASSESSMENT_LOCKED",
+    message: "Complete the lesson game progression before opening the post-test.",
+    lessonKey: "arrays",
+    nextAction: "PLAY_GAME",
+  });
+  assert.equal("assessment" in postDenied.payload, false);
+
+  membershipChecked = false;
+  graph = assessment({ id: 13, lessonKey: "functions", type: "PRE" });
+  const preDenied = await request("/api/assessments/13", { authToken: token(42) });
+  assert.equal(preDenied.response.status, 403);
+  assert.equal(preDenied.payload.code, "LESSON_PREREQUISITE_REQUIRED");
+  assert.equal("assessment" in preDenied.payload, false);
+
+  for (const lessonKey of ["tutorial", "final"]) {
+    membershipChecked = false;
+    graph = assessment({ id: lessonKey === "tutorial" ? 14 : 15, lessonKey });
+    const allowed = await request(`/api/assessments/${graph.id}`, { authToken: token(42) });
+    assert.equal(allowed.response.status, 200);
+    assert.equal(allowed.payload.assessment.lessonKey, lessonKey);
+  }
+});
+
+test("attempt start cannot bypass POST or PRE stage gates and creates no attempt", async () => {
+  const scenarios = [
+    {
+      assessment: { type: "POST" },
+      error: new lessonProgressionService.LessonProgressionError({
+        code: "POST_ASSESSMENT_LOCKED",
+        message: "private message",
+        lessonKey: "arrays",
+        nextAction: "PLAY_GAME",
+      }),
+    },
+    {
+      assessment: {
+        type: "PRE",
+        lessonKey: "functions",
+        maxAttempts: 1,
+        passingPercentage: null,
+        gradeCalculation: "FIRST",
+        requirePassingForCompletion: false,
+        answerReviewPolicy: "NEVER",
+      },
+      error: new lessonProgressionService.LessonProgressionError({
+        code: "LESSON_PREREQUISITE_REQUIRED",
+        message: "private message",
+        lessonKey: "functions",
+        prerequisiteLessonKey: "arrays",
+        nextAction: "COMPLETE_PREREQUISITE_LESSON",
+      }),
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const h = mutationHarness(scenario.assessment, {
+      progressionGuard: async ({ authorizedMembership, transaction }) => {
+        assert.equal(authorizedMembership.studentId, 42);
+        assert.equal(transaction.LOCK.UPDATE, "UPDATE");
+        throw scenario.error;
+      },
+    });
+    const denied = await h.start();
+    assert.equal(denied.response.status, 403);
+    assert.equal(denied.payload.code, scenario.error.code);
+    assert.equal(h.store.attempts.length, 0);
+    assert.equal(h.store.siblingQueries.length, 0);
+  }
+});
+
+for (const scenario of [
+  { type: "POST", lessonKey: "arrays", code: "POST_ASSESSMENT_LOCKED" },
+  {
+    type: "PRE",
+    lessonKey: "functions",
+    maxAttempts: 1,
+    passingPercentage: null,
+    gradeCalculation: "FIRST",
+    requirePassingForCompletion: false,
+    answerReviewPolicy: "NEVER",
+    code: "LESSON_PREREQUISITE_REQUIRED",
+  },
+]) {
+  for (const interaction of ["get", "save", "submit"]) {
+    test(`${scenario.type} active-attempt ${interaction} route denies before unlock without mutation`, async () => {
+      let unlocked = false;
+      const h = mutationHarness(scenario, {
+        progressionGuard: async ({ assessment: guarded, authorizedMembership, transaction }) => {
+          assert.equal(guarded.type, scenario.type);
+          assert.equal(authorizedMembership.classroomId, 7);
+          assert.equal(authorizedMembership.studentId, 42);
+          assert.equal(transaction.LOCK.UPDATE, "UPDATE");
+          if (!unlocked) {
+            throw new lessonProgressionService.LessonProgressionError({
+              code: scenario.code,
+              message: "private progression details",
+              lessonKey: scenario.lessonKey,
+              prerequisiteLessonKey: scenario.type === "PRE" ? "arrays" : undefined,
+              nextAction: scenario.type === "PRE"
+                ? "COMPLETE_PREREQUISITE_LESSON"
+                : "PLAY_GAME",
+            });
+          }
+          return { allowed: true, reason: null };
+        },
+      });
+      const seeded = h.seedActive();
+      const beforeAttempt = structuredClone(seeded);
+      const invoke = () => {
+        if (interaction === "get") return h.call(`/attempts/${seeded.id}`);
+        if (interaction === "save") return h.save(seeded.id);
+        return h.submit(seeded.id, `${scenario.type.toLowerCase()}_locked_submit`);
+      };
+
+      const denied = await invoke();
+      assert.equal(denied.response.status, 403);
+      assert.equal(denied.payload.code, scenario.code);
+      assert.equal(JSON.stringify(denied.payload).includes("private progression details"), false);
+      assert.deepEqual(h.store.attempts[0], beforeAttempt);
+      assert.deepEqual(h.store.responses, []);
+      assert.equal(h.store.saves, 0);
+
+      unlocked = true;
+      const allowed = await invoke();
+      assert.equal(allowed.response.status, 200);
+      if (interaction === "get") {
+        assert.equal(allowed.payload.attempt.status, "IN_PROGRESS");
+      } else if (interaction === "save") {
+        assert.equal(allowed.payload.response.selectedChoiceId, 1001);
+        assert.equal(h.store.responses.length, 1);
+      } else {
+        assert.equal(allowed.payload.result.status, "SUBMITTED");
+        assert.equal(h.store.attempts[0].submissionKey, `${scenario.type.toLowerCase()}_locked_submit`);
+      }
+    });
+  }
+}
 
 test("unpublished and missing player graphs use safe 404 responses", async () => {
   stub(User, "findByPk", async () => activeUser(42));

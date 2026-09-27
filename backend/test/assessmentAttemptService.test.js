@@ -3,6 +3,10 @@ const test = require("node:test");
 
 const servicePath = require.resolve("../src/services/assessmentAttemptService");
 
+const allowAllProgression = Object.freeze({
+  assertAssessmentInteractionAllowed: async () => ({ allowed: true, reason: null }),
+});
+
 const clone = (value) => structuredClone(value);
 
 const makeGraph = ({
@@ -11,13 +15,15 @@ const makeGraph = ({
   type = "POST",
   maxAttempts = type === "PRE" ? 1 : 3,
   isPublished = true,
+  lessonKey = "arrays",
   shuffleQuestions = true,
   shuffleChoices = true,
   version = 1,
+  requirePassingForCompletion = type === "POST",
 } = {}) => ({
   id,
   classroomId,
-  lessonKey: "arrays",
+  lessonKey,
   type,
   title: `${type} assessment`,
   instructions: "Choose carefully",
@@ -26,7 +32,7 @@ const makeGraph = ({
   passingPercentage: type === "PRE" ? null : 75,
   maxAttempts,
   gradeCalculation: type === "PRE" ? "FIRST" : "HIGHEST",
-  requirePassingForCompletion: type === "POST",
+  requirePassingForCompletion,
   showScoreAfterSubmission: true,
   answerReviewPolicy: type === "PRE" ? "NEVER" : "AFTER_FINAL_ATTEMPT",
   shuffleQuestions,
@@ -62,13 +68,19 @@ const makeGraph = ({
   ],
 });
 
-const makeHarness = (assessmentOptions = {}) => {
+const makeHarness = (assessmentOptions = {}, {
+  progressionService = allowAllProgression,
+} = {}) => {
   const store = {
     assessments: [makeGraph(assessmentOptions)],
     attempts: [],
     responses: [],
     memberships: [{ classroomId: 7, studentId: 42, status: "active" }],
     failResponseSave: false,
+    failAttemptCreate: false,
+    assessmentReads: [],
+    operations: [],
+    attemptSetReads: [],
   };
   let attemptId = 1;
   let responseId = 1;
@@ -100,18 +112,30 @@ const makeHarness = (assessmentOptions = {}) => {
 
   const models = {
     LessonAssessment: {
-      findByPk: async (id) => row(store.assessments.find((item) => item.id === Number(id)), "assessments"),
+      findByPk: async (id, options = {}) => {
+        store.operations.push("assessment");
+        store.assessmentReads.push(options);
+        return row(store.assessments.find((item) => item.id === Number(id)), "assessments");
+      },
     },
     AssessmentQuestion: {},
     AssessmentChoice: {},
     AssessmentAttempt: {
       findByPk: async (id) => row(store.attempts.find((item) => item.id === Number(id)), "attempts"),
-      findOne: async ({ where }) => row(find(store.attempts, where), "attempts"),
-      findAll: async ({ where }) => store.attempts.filter((item) => matches(item, where)).map((item) => row(item, "attempts")),
+      findOne: async ({ where }) => {
+        store.operations.push("active-attempt");
+        return row(find(store.attempts, where), "attempts");
+      },
+      findAll: async (options) => {
+        store.operations.push("attempt-set");
+        store.attemptSetReads.push(options);
+        return store.attempts.filter((item) => matches(item, options.where)).map((item) => row(item, "attempts"));
+      },
       count: async ({ where }) => store.attempts.filter((item) => matches(item, where)).length,
       create: async (values) => {
         const created = { id: attemptId++, ...clone(values) };
         store.attempts.push(created);
+        if (store.failAttemptCreate) throw new Error("forced attempt persistence failure");
         return row(created, "attempts");
       },
     },
@@ -125,7 +149,10 @@ const makeHarness = (assessmentOptions = {}) => {
       },
     },
     ClassroomMembership: {
-      findOne: async ({ where }) => row(find(store.memberships, where), "memberships"),
+      findOne: async ({ where }) => {
+        store.operations.push("membership");
+        return row(find(store.memberships, where), "memberships");
+      },
     },
   };
 
@@ -161,11 +188,233 @@ const makeHarness = (assessmentOptions = {}) => {
     models,
     random: () => 0,
     now: () => new Date(clock += 1000),
+    progressionService,
   });
-  return { service, store };
+  return { service, store, sequelize };
 };
 
 const expectCode = async (promise, code) => assert.rejects(promise, (error) => error?.code === code);
+
+const seedActiveAttempt = (store) => {
+  const assessment = store.assessments[0];
+  const attempt = {
+    id: 91,
+    assessmentId: assessment.id,
+    classroomId: assessment.classroomId,
+    studentId: 42,
+    attemptNumber: 1,
+    status: "IN_PROGRESS",
+    assessmentVersion: assessment.version,
+    startedAt: new Date("2026-09-24T00:00:00.000Z"),
+    submittedAt: null,
+    questionOrder: [101, 102],
+    choiceOrder: { 101: [1001, 1002], 102: [1003, 1004] },
+  };
+  store.attempts.push(attempt);
+  return attempt;
+};
+
+const seedSubmittedAttempt = (store, overrides = {}) => {
+  const assessment = store.assessments[0];
+  const attemptNumber = overrides.attemptNumber ?? store.attempts.length + 1;
+  const attempt = {
+    id: overrides.id ?? 90 + attemptNumber,
+    assessmentId: assessment.id,
+    classroomId: assessment.classroomId,
+    studentId: 42,
+    attemptNumber,
+    status: "SUBMITTED",
+    assessmentVersion: assessment.version,
+    startedAt: new Date(`2026-09-${String(attemptNumber).padStart(2, "0")}T00:00:00.000Z`),
+    submittedAt: new Date(`2026-09-${String(attemptNumber).padStart(2, "0")}T00:10:00.000Z`),
+    percentage: 40,
+    passed: false,
+    questionOrder: [101, 102],
+    choiceOrder: { 101: [1001, 1002], 102: [1003, 1004] },
+    ...overrides,
+  };
+  store.attempts.push(attempt);
+  return attempt;
+};
+
+test("teacher recovery requires a caller transaction before touching persistence", async () => {
+  const h = makeHarness();
+  await expectCode(h.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42,
+  }), "TRANSACTION_REQUIRED");
+  assert.deepEqual(h.store.operations, []);
+});
+
+test("teacher recovery locks the exact assessment before membership and the single attempt-set read", async () => {
+  const h = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(h.store);
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  const created = await h.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+  });
+
+  assert.deepEqual(h.store.operations.slice(0, 3), ["assessment", "membership", "attempt-set"]);
+  assert.equal(h.store.assessmentReads[0].transaction, transaction);
+  assert.equal(h.store.assessmentReads[0].lock.level, "UPDATE");
+  assert.ok(h.store.assessmentReads[0].lock.of);
+  assert.equal(h.store.attemptSetReads.length, 1);
+  assert.deepEqual(h.store.attemptSetReads[0].where, { assessmentId: 10, studentId: 42 });
+  assert.equal(h.store.attemptSetReads[0].lock, "UPDATE");
+  assert.equal(created.attemptNumber, 2);
+
+  const substituted = makeHarness({ classroomId: 8, maxAttempts: 1 });
+  await expectCode(substituted.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+  }), "ASSESSMENT_NOT_FOUND");
+  assert.deepEqual(substituted.store.operations, ["assessment"]);
+});
+
+test("teacher recovery permits only published passing-required POST assessments", async () => {
+  for (const options of [
+    { type: "PRE", isPublished: true, requirePassingForCompletion: false },
+    { type: "POST", isPublished: false, requirePassingForCompletion: true },
+    { type: "POST", isPublished: true, requirePassingForCompletion: false },
+  ]) {
+    const h = makeHarness({ ...options, maxAttempts: 1 });
+    seedSubmittedAttempt(h.store);
+    await expectCode(h.service.createTeacherGrantedPostAttempt({
+      classroomId: 7, assessmentId: 10, studentId: 42,
+      transaction: { LOCK: { UPDATE: "UPDATE" } },
+    }), "POST_RECOVERY_NOT_ALLOWED");
+    assert.equal(h.store.attemptSetReads.length, 0);
+  }
+});
+
+test("teacher recovery requires exact active membership before reading attempts", async () => {
+  const h = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(h.store);
+  h.store.memberships[0].status = "removed";
+  await expectCode(h.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+  }), "NOT_ENROLLED");
+  assert.equal(h.store.attemptSetReads.length, 0);
+});
+
+test("teacher recovery preserves exhaustion official-pass and active-attempt error precedence", async () => {
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  const remaining = makeHarness({ maxAttempts: 2 });
+  seedSubmittedAttempt(remaining.store);
+  seedActiveAttempt(remaining.store).attemptNumber = 2;
+  await expectCode(remaining.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+  }), "POST_ATTEMPTS_NOT_EXHAUSTED");
+
+  const passed = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(passed.store, { passed: true, percentage: 100 });
+  seedActiveAttempt(passed.store).attemptNumber = 2;
+  await expectCode(passed.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+  }), "POST_ALREADY_PASSED");
+
+  const active = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(active.store);
+  seedActiveAttempt(active.store).attemptNumber = 2;
+  await expectCode(active.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+  }), "ACTIVE_ATTEMPT_EXISTS");
+});
+
+test("teacher recovery appends one normal ordered attempt without mutating history or maxAttempts", async () => {
+  const h = makeHarness({ maxAttempts: 2, version: 4 });
+  seedSubmittedAttempt(h.store, { id: 11, attemptNumber: 1 });
+  seedSubmittedAttempt(h.store, { id: 12, attemptNumber: 3 });
+  const before = clone(h.store.attempts);
+  const created = await h.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+  });
+
+  assert.deepEqual(h.store.attempts.slice(0, 2), before);
+  assert.equal(h.store.assessments[0].maxAttempts, 2);
+  assert.equal(h.store.attempts.length, 3);
+  assert.deepEqual(created, {
+    id: 1,
+    assessmentId: 10,
+    classroomId: 7,
+    studentId: 42,
+    attemptNumber: 4,
+    status: "IN_PROGRESS",
+    assessmentVersion: 4,
+    startedAt: new Date("2026-09-25T00:00:01.000Z"),
+    questionOrder: [102, 101],
+    choiceOrder: { 101: [1002, 1001], 102: [1004, 1003] },
+  });
+});
+
+for (const invalidGraph of ["empty", "no correct choice"]) {
+  test(`teacher recovery rejects a published ${invalidGraph} graph without poisoning student resume`, async () => {
+    const h = makeHarness({ maxAttempts: 1 });
+    seedSubmittedAttempt(h.store);
+    const before = clone(h.store.attempts);
+    const questions = clone(h.store.assessments[0].questions);
+    if (invalidGraph === "empty") h.store.assessments[0].questions = [];
+    else h.store.assessments[0].questions[0].choices.forEach((choice) => { choice.isCorrect = false; });
+
+    await expectCode(h.sequelize.transaction((transaction) => (
+      h.service.createTeacherGrantedPostAttempt({
+        classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+      })
+    )), "ASSESSMENT_INVALID");
+    assert.deepEqual(h.store.attempts, before);
+    assert.deepEqual(h.store.operations, ["assessment", "membership", "attempt-set"]);
+    assert.equal(h.store.assessmentReads[0].lock.level, "UPDATE");
+    await expectCode(h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
+      "ASSESSMENT_INVALID");
+    assert.deepEqual(h.store.attempts, before);
+
+    h.store.assessments[0].questions = questions;
+    await expectCode(h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
+      "MAX_ATTEMPTS");
+    const created = await h.sequelize.transaction((transaction) => (
+      h.service.createTeacherGrantedPostAttempt({
+        classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+      })
+    ));
+    const resumed = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+    assert.equal(resumed.resumed, true);
+    assert.equal(resumed.attempt.id, created.id);
+    assert.equal(resumed.assessment.questions.length, 2);
+    assert.equal(h.store.attempts.length, 2);
+  });
+}
+
+test("recovery retains policy membership and attempt-conflict precedence for invalid graphs", async () => {
+  for (const code of ["POST_RECOVERY_NOT_ALLOWED", "NOT_ENROLLED",
+    "POST_ATTEMPTS_NOT_EXHAUSTED", "POST_ALREADY_PASSED", "ACTIVE_ATTEMPT_EXISTS"]) {
+    const h = makeHarness({ maxAttempts: code === "POST_ATTEMPTS_NOT_EXHAUSTED" ? 2 : 1 });
+    h.store.assessments[0].questions = [];
+    seedSubmittedAttempt(h.store, code === "POST_ALREADY_PASSED" ? { passed: true, percentage: 100 } : {});
+    if (code === "POST_RECOVERY_NOT_ALLOWED") h.store.assessments[0].isPublished = false;
+    if (code === "NOT_ENROLLED") h.store.memberships[0].status = "removed";
+    if (code === "ACTIVE_ATTEMPT_EXISTS") seedActiveAttempt(h.store);
+    const before = clone(h.store.attempts);
+    await expectCode(h.service.createTeacherGrantedPostAttempt({
+      classroomId: 7, assessmentId: 10, studentId: 42,
+      transaction: { LOCK: { UPDATE: "UPDATE" } },
+    }), code);
+    assert.deepEqual(h.store.attempts, before);
+    assert.equal(h.store.operations[0], "assessment");
+  }
+});
+
+test("teacher recovery rolls back a failed create inside the caller transaction", async () => {
+  const h = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(h.store);
+  const before = clone(h.store.attempts);
+  h.store.failAttemptCreate = true;
+  await assert.rejects(h.sequelize.transaction((transaction) => (
+    h.service.createTeacherGrantedPostAttempt({
+      classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+    })
+  )), /forced attempt persistence failure/);
+  assert.deepEqual(h.store.attempts, before);
+});
 
 test("creates the first attempt with stable safe shuffled question and choice order", async () => {
   const { service, store } = makeHarness();
@@ -297,6 +546,135 @@ test("serializes duplicate starts into one active attempt", async () => {
   assert.equal(store.attempts.length, 1);
 });
 
+test("start checks progression after membership under the assessment lock and creates nothing on denial", async () => {
+  for (const scenario of [
+    { type: "POST", code: "POST_ASSESSMENT_LOCKED" },
+    { type: "PRE", lessonKey: "functions", code: "LESSON_PREREQUISITE_REQUIRED" },
+  ]) {
+    const calls = [];
+    const progressionService = {
+      assertAssessmentInteractionAllowed: async ({ assessment, studentId, authorizedMembership, transaction }) => {
+        calls.push("progression");
+        assert.equal(assessment.type, scenario.type);
+        assert.equal(studentId, 42);
+        assert.equal(authorizedMembership.classroomId, 7);
+        assert.equal(authorizedMembership.studentId, 42);
+        assert.equal(transaction.LOCK.UPDATE, "UPDATE");
+        const error = new Error("blocked");
+        error.code = scenario.code;
+        throw error;
+      },
+    };
+    const h = makeHarness(scenario, { progressionService });
+
+    await expectCode(
+      h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
+      scenario.code,
+    );
+
+    assert.deepEqual(calls, ["progression"]);
+    assert.deepEqual(h.store.operations, ["assessment", "membership"]);
+    assert.equal(h.store.assessmentReads.length, 1);
+    assert.equal(h.store.assessmentReads[0].lock.level, "UPDATE");
+    assert.ok(h.store.assessmentReads[0].lock.of);
+    assert.equal(h.store.attempts.length, 0);
+  }
+});
+
+for (const scenario of [
+  { type: "POST", lessonKey: "arrays", code: "POST_ASSESSMENT_LOCKED" },
+  { type: "PRE", lessonKey: "functions", code: "LESSON_PREREQUISITE_REQUIRED" },
+]) {
+  for (const interaction of ["get", "save", "submit"]) {
+    test(`${scenario.type} active ${interaction} rechecks progression and mutates only after unlock`, async () => {
+      let unlocked = false;
+      const guardCalls = [];
+      const progressionService = {
+        assertAssessmentInteractionAllowed: async ({
+          assessment, studentId, authorizedMembership, transaction,
+        }) => {
+          guardCalls.push(interaction);
+          assert.equal(assessment.type, scenario.type);
+          assert.equal(studentId, 42);
+          assert.equal(authorizedMembership.classroomId, 7);
+          assert.equal(authorizedMembership.studentId, 42);
+          assert.equal(authorizedMembership.status, "active");
+          assert.equal(transaction.LOCK.UPDATE, "UPDATE");
+          if (!unlocked) {
+            const error = new Error("blocked");
+            error.code = scenario.code;
+            throw error;
+          }
+          return { allowed: true, reason: null };
+        },
+      };
+      const h = makeHarness(scenario, { progressionService });
+      const attempt = seedActiveAttempt(h.store);
+      const beforeAttempt = clone(attempt);
+      const invoke = () => {
+        if (interaction === "get") {
+          return h.service.getActiveAttempt({ attemptId: attempt.id, studentId: 42 });
+        }
+        if (interaction === "save") {
+          return h.service.saveResponse({
+            attemptId: attempt.id,
+            studentId: 42,
+            questionId: 101,
+            selectedChoiceId: 1001,
+          });
+        }
+        return h.service.submitAttempt({
+          attemptId: attempt.id,
+          studentId: 42,
+          submissionKey: `${scenario.type.toLowerCase()}-active-submit`,
+        });
+      };
+
+      await expectCode(invoke(), scenario.code);
+      assert.deepEqual(h.store.attempts[0], beforeAttempt);
+      assert.deepEqual(h.store.responses, []);
+
+      unlocked = true;
+      const result = await invoke();
+      assert.deepEqual(guardCalls, [interaction, interaction]);
+      if (interaction === "get") {
+        assert.equal(result.attempt.status, "IN_PROGRESS");
+        assert.deepEqual(result.responses, []);
+      } else if (interaction === "save") {
+        assert.equal(result.selectedChoiceId, 1001);
+        assert.equal(h.store.responses.length, 1);
+      } else {
+        assert.equal(result.status, "SUBMITTED");
+        assert.equal(h.store.attempts[0].submissionKey, `${scenario.type.toLowerCase()}-active-submit`);
+        assert.equal(h.store.responses.length, 2);
+      }
+    });
+  }
+}
+
+test("start keeps tutorial and final assessments Phase C-compatible", async () => {
+  const finalAssessment = makeHarness(
+    { lessonKey: "final" },
+    { progressionService: allowAllProgression },
+  );
+  const started = await finalAssessment.service.startOrResumeAttempt({
+    assessmentId: 10,
+    studentId: 42,
+  });
+  assert.equal(started.attempt.status, "IN_PROGRESS");
+  assert.equal(finalAssessment.store.attempts.length, 1);
+
+  const tutorialAssessment = makeHarness(
+    { lessonKey: "tutorial" },
+    { progressionService: allowAllProgression },
+  );
+  await expectCode(
+    tutorialAssessment.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
+    "ASSESSMENT_INVALID",
+  );
+  assert.equal(tutorialAssessment.store.attempts.length, 0);
+});
+
 test("enforces PRE and POST submitted-attempt limits while allowing later POST attempts", async () => {
   const pre = makeHarness({ type: "PRE" });
   const firstPre = await pre.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
@@ -375,11 +753,27 @@ test("keeps PRE diagnostic passed null and submitted attempts immutable", async 
 });
 
 test("makes submission retries idempotent only for the same key", async () => {
-  const { service, store } = makeHarness();
+  let progressionAllowed = true;
+  let progressionCalls = 0;
+  const progressionService = {
+    assertAssessmentInteractionAllowed: async () => {
+      progressionCalls += 1;
+      if (!progressionAllowed) {
+        const error = new Error("locked after submission");
+        error.code = "POST_ASSESSMENT_LOCKED";
+        throw error;
+      }
+      return { allowed: true, reason: null };
+    },
+  };
+  const { service, store } = makeHarness({}, { progressionService });
   const { attempt } = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
   const first = await service.submitAttempt({ attemptId: attempt.id, studentId: 42, submissionKey: "same-submit-key" });
+  progressionAllowed = false;
+  const callsBeforeRetry = progressionCalls;
   const retry = await service.submitAttempt({ attemptId: attempt.id, studentId: 42, submissionKey: "same-submit-key" });
   assert.deepEqual(retry, first);
+  assert.equal(progressionCalls, callsBeforeRetry);
   assert.equal(store.responses.length, 2);
   await expectCode(service.submitAttempt({ attemptId: attempt.id, studentId: 42, submissionKey: "different-key" }), "ATTEMPT_SUBMITTED");
 });

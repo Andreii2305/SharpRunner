@@ -2,6 +2,8 @@ require("./classroomLessonPolicies.test");
 require("./securityRegression.test");
 require("./hintSystem.test");
 require("./levelTimingAndDeadline.test");
+require("./lessonProgressionService.test");
+require("./lessonProgressionRoutes.integration.test");
 require("./apiRoutes.integration.test");
 require("./practiceRunner.test");
 require("./practiceRunner.execution.test");

@@ -180,6 +180,24 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
     }
   });
 
+  router.post(
+    "/classrooms/:classroomId/assessments/:assessmentId/students/:studentId/additional-attempt",
+    async (req, res) => {
+      try {
+        assertNoBody(req);
+        const payload = await service.grantAdditionalPostAttempt({
+          classroomId: parsePositiveId(req.params.classroomId),
+          assessmentId: parsePositiveId(req.params.assessmentId),
+          studentId: parsePositiveId(req.params.studentId),
+          ...actor(req),
+        });
+        return res.status(201).json(payload);
+      } catch (error) {
+        return sendAssessmentError(res, error);
+      }
+    },
+  );
+
   router.delete("/classrooms/:classroomId/assessments/:assessmentId", async (req, res) => {
     try {
       assertNoBody(req);

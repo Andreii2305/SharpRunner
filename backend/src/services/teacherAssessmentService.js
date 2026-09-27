@@ -4,6 +4,7 @@ const defaultModels = require("../models");
 const defaultAuthorization = require("./assessmentAuthorizationService");
 const defaultPolicy = require("./assessmentPolicyService");
 const defaultSerialization = require("./assessmentSerializationService");
+const defaultAttemptService = require("./assessmentAttemptService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const { ASSESSMENT_TYPES, ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
@@ -121,6 +122,9 @@ const createTeacherAssessmentService = (dependencies = {}) => {
   const serialization = dependencies.serializers
     || dependencies.serialization
     || defaultSerialization;
+  const attemptService = dependencies.assessmentAttemptService
+    || dependencies.attemptService
+    || defaultAttemptService;
   const {
     LessonAssessment,
     AssessmentQuestion,
@@ -614,12 +618,35 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     await assessment.destroy({ transaction });
   });
 
+  const grantAdditionalPostAttempt = async ({
+    classroomId,
+    assessmentId,
+    studentId,
+    actorId,
+    actorRole,
+  }) => sequelize.transaction(async (transaction) => {
+    await authorization.requireManagedClassroom({
+      classroomId,
+      actorId,
+      actorRole,
+      transaction,
+    });
+    const attempt = await attemptService.createTeacherGrantedPostAttempt({
+      classroomId,
+      assessmentId,
+      studentId,
+      transaction,
+    });
+    return { attempt: serialization.serializeTeacherGrantedAttempt(attempt) };
+  });
+
   return {
     listAssessments,
     createAssessment,
     deleteAssessment,
     getAssessmentResults,
     getEditorAssessment,
+    grantAdditionalPostAttempt,
     publishAssessment,
     saveAssessmentGraph,
     unpublishAssessment,

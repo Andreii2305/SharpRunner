@@ -125,10 +125,30 @@ test("teacher editor serializer includes answer keys only after authorization", 
   assert.equal(results.results[0].isOfficial, true);
 });
 
+test("teacher recovery serializer exposes only the eight approved attempt fields", () => {
+  const output = serializers.serializeTeacherGrantedAttempt({
+    ...submittedAttempt({ status: "IN_PROGRESS", submittedAt: null }),
+    questionOrder: [101],
+    choiceOrder: { 101: [1001, 1002] },
+    questions: assessment().questions,
+  });
+  assert.deepEqual(Object.keys(output), [
+    "id", "assessmentId", "classroomId", "studentId", "attemptNumber",
+    "status", "assessmentVersion", "startedAt",
+  ]);
+  assert.equal(findForbiddenKey(output, new Set([
+    "questionOrder", "choiceOrder", "responses", "pointsEarned", "maxPoints",
+    "percentage", "correctCount", "questionCount", "passed", "submissionKey",
+    "questions", "choices", "isCorrect", "explanation",
+  ])), null);
+});
+
 test("discovery uses assessment-state names and never lesson completion names", () => {
   const output = serializers.serializeDiscoveryStatus({
     assessment: assessment({ type: "PRE", maxAttempts: 1 }),
     available: true,
+    unlocked: false,
+    lockReason: "LESSON_PREREQUISITE_REQUIRED",
     attemptStatus: "SUBMITTED",
     attemptsUsed: 1,
     attemptsRemaining: 0,
@@ -137,7 +157,50 @@ test("discovery uses assessment-state names and never lesson completion names", 
   });
   assert.equal(output.status.hasSubmittedAttempt, true);
   assert.equal(output.status.diagnosticCompleted, true);
+  assert.equal(output.status.unlocked, false);
+  assert.equal(output.status.lockReason, "LESSON_PREREQUISITE_REQUIRED");
   assert.equal(findForbiddenKey(output, new Set(["completed", "lessonCompleted"])), null);
+});
+
+test("discovery unlock fields are allowlisted without exposing progression graphs or hidden scores", () => {
+  const output = serializers.serializeDiscoveryStatus({
+    assessment: assessment({ showScoreAfterSubmission: false }),
+    available: true,
+    unlocked: true,
+    lockReason: null,
+    postPassed: true,
+    percentage: 100,
+    pointsEarned: 2,
+    progressionState: {
+      postPassed: true,
+      percentage: 100,
+      questions: assessment().questions,
+      passingPercentage: 75,
+    },
+  });
+
+  assert.equal(output.status.unlocked, true);
+  assert.equal(output.status.lockReason, null);
+  assert.equal(findForbiddenKey(output, new Set([
+    "questions", "choices", "postPassed", "percentage", "pointsEarned",
+    "passingPercentage", "progressionState",
+  ])), null);
+});
+
+test("unavailable discovery cannot become an unlocked progression resource", () => {
+  const output = serializers.serializeDiscoveryStatus({
+    assessment: null,
+    available: false,
+    unlocked: true,
+    lockReason: "GAME_INCOMPLETE",
+    lessonKey: "arrays",
+    type: "POST",
+  });
+
+  assert.equal(output.status.available, false);
+  assert.equal(output.status.unlocked, false);
+  assert.equal(output.status.lockReason, null);
+  assert.equal(output.assessment, null);
 });
 
 test("PRE student results omit passed", () => {
@@ -192,6 +255,19 @@ test("assessment errors translate Phase B and Sequelize conflicts without leakin
   assert.deepEqual({ status: invalid.status, code: invalid.code }, {
     status: 422, code: "ASSESSMENT_INVALID",
   });
+  for (const [code, message] of [
+    ["POST_RECOVERY_NOT_ALLOWED", "An additional POST attempt cannot be granted for this assessment"],
+    ["POST_ATTEMPTS_NOT_EXHAUSTED", "Ordinary POST attempts are not exhausted"],
+    ["POST_ALREADY_PASSED", "The student already has a passing POST result"],
+    ["ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt"],
+  ]) {
+    const recovery = errors.translateAssessmentError({ code, message: "private detail" });
+    assert.deepEqual({
+      status: recovery.status,
+      code: recovery.code,
+      message: recovery.message,
+    }, { status: 409, code, message });
+  }
   assert.equal(errors.translateAssessmentError({
     name: "SequelizeUniqueConstraintError",
     parent: { constraint: "assessment_attempts_submission_key" },
@@ -200,6 +276,20 @@ test("assessment errors translate Phase B and Sequelize conflicts without leakin
     name: "SequelizeUniqueConstraintError",
     errors: [{ path: "submissionKey" }],
   }).code, "SUBMISSION_CONFLICT");
+  const activeConflict = errors.translateAssessmentError({
+    name: "SequelizeUniqueConstraintError",
+    parent: { constraint: "assessment_attempts_one_in_progress" },
+    errors: [{ path: "assessmentId" }],
+  });
+  assert.deepEqual({
+    status: activeConflict.status,
+    code: activeConflict.code,
+    message: activeConflict.message,
+  }, {
+    status: 409,
+    code: "ACTIVE_ATTEMPT_EXISTS",
+    message: "The student already has an active assessment attempt",
+  });
   assert.equal(errors.translateAssessmentError({
     name: "SequelizeUniqueConstraintError",
     parent: { constraint: "lesson_assessments_classroom_lesson_type" },
@@ -225,5 +315,53 @@ test("assessment errors translate Phase B and Sequelize conflicts without leakin
   assert.equal(response.statusCode, 422);
   assert.deepEqual(response.body, {
     code: "ASSESSMENT_INVALID", message: "Assessment graph is invalid",
+  });
+});
+
+test("assessment progression errors expose only approved safe details", () => {
+  const response = {
+    statusCode: null,
+    body: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.body = body; return this; },
+  };
+  errors.sendAssessmentError(response, {
+    name: "LessonProgressionError",
+    code: "LESSON_PREREQUISITE_REQUIRED",
+    message: "private source message",
+    lessonKey: "functions",
+    prerequisiteLessonKey: "arrays",
+    nextAction: "COMPLETE_PREREQUISITE_LESSON",
+    details: {
+      answerKey: 1001,
+      percentage: 100,
+      sql: "SELECT private",
+    },
+  });
+
+  assert.equal(response.statusCode, 403);
+  assert.deepEqual(response.body, {
+    code: "LESSON_PREREQUISITE_REQUIRED",
+    message: "Complete the prerequisite lesson before opening this lesson.",
+    lessonKey: "functions",
+    prerequisiteLessonKey: "arrays",
+    nextAction: "COMPLETE_PREREQUISITE_LESSON",
+  });
+
+  const apiError = new errors.AssessmentApiError(409, "SAFE", "Safe", {
+    currentVersion: 4,
+    lessonKey: "arrays",
+    assessmentId: 31,
+    prerequisiteLessonKey: "tutorial",
+    nextAction: "TAKE_PRE",
+    arbitrary: "must-not-escape",
+    nested: { answerKey: 1001 },
+  });
+  assert.deepEqual(apiError.details, {
+    currentVersion: 4,
+    lessonKey: "arrays",
+    assessmentId: 31,
+    prerequisiteLessonKey: "tutorial",
+    nextAction: "TAKE_PRE",
   });
 });

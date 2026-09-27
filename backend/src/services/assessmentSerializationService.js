@@ -1,5 +1,10 @@
 const plain = (value) => value?.toJSON ? value.toJSON() : (value || {});
 const numberOrNull = (value) => value == null ? null : Number(value);
+const DISCOVERY_LOCK_REASONS = new Set([
+  "LESSON_PREREQUISITE_REQUIRED",
+  "PRE_ASSESSMENT_REQUIRED",
+  "GAME_INCOMPLETE",
+]);
 
 const serializePlayerAssessment = (assessmentInput) => {
   const assessment = plain(assessmentInput);
@@ -83,6 +88,12 @@ const serializeDiscoveryStatus = (input = {}) => {
     attemptsUsed: Number(input.attemptsUsed ?? 0),
     hasSubmittedAttempt: Boolean(input.hasSubmittedAttempt),
   };
+  status.unlocked = status.available && input.unlocked === true;
+  status.lockReason = status.available
+    && !status.unlocked
+    && DISCOVERY_LOCK_REASONS.has(input.lockReason)
+    ? input.lockReason
+    : null;
   if (type === "PRE") {
     status.diagnosticCompleted = status.hasSubmittedAttempt;
   }
@@ -283,6 +294,20 @@ const serializeTeacherResults = (input = {}) => {
   };
 };
 
+const serializeTeacherGrantedAttempt = (attemptInput) => {
+  const attempt = plain(attemptInput);
+  return {
+    id: attempt.id,
+    assessmentId: attempt.assessmentId,
+    classroomId: attempt.classroomId,
+    studentId: attempt.studentId,
+    attemptNumber: attempt.attemptNumber,
+    status: attempt.status,
+    assessmentVersion: attempt.assessmentVersion,
+    startedAt: attempt.startedAt,
+  };
+};
+
 module.exports = {
   serializeAllowedReview,
   serializeDiscoveryStatus,
@@ -290,6 +315,7 @@ module.exports = {
   serializePlayerAttempt,
   serializeStudentResult,
   serializeTeacherEditor,
+  serializeTeacherGrantedAttempt,
   serializeTeacherResults,
   serializeTeacherSummary,
 };

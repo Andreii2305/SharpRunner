@@ -1,11 +1,13 @@
 const defaultSequelize = require("../config/database");
 const defaultModels = require("../models");
+const defaultProgressionService = require("./lessonProgressionService");
 const {
   ATTEMPT_STATUSES,
 } = require("../constants/assessmentConfig");
 const {
   assertAssessmentStructureMutable: assertStructureMutablePolicy,
   calculateAssessmentScore,
+  selectOfficialPostAttempt,
   shapePlayerAssessment,
   validateAssessmentForPublish,
 } = require("./assessmentPolicyService");
@@ -108,6 +110,7 @@ const createAssessmentAttemptService = ({
   models = defaultModels,
   random = Math.random,
   now = () => new Date(),
+  progressionService = defaultProgressionService,
 } = {}) => {
   const {
     AssessmentAttempt,
@@ -202,10 +205,77 @@ const createAssessmentAttemptService = ({
     return { questionOrder, choiceOrder };
   };
 
+  const createTeacherGrantedPostAttempt = async ({
+    classroomId,
+    assessmentId,
+    studentId,
+    transaction,
+  }) => {
+    if (!transaction?.LOCK?.UPDATE) {
+      fail("TRANSACTION_REQUIRED", "A caller transaction is required");
+    }
+
+    const assessmentRow = await requireAssessment(assessmentId, transaction, true);
+    const assessment = plain(assessmentRow);
+    if (!sameId(assessment.classroomId, classroomId)) {
+      fail("ASSESSMENT_NOT_FOUND", "Assessment was not found");
+    }
+    if (assessment.isPublished !== true || assessment.type !== "POST"
+      || assessment.requirePassingForCompletion !== true) {
+      fail(
+        "POST_RECOVERY_NOT_ALLOWED",
+        "An additional POST attempt cannot be granted for this assessment",
+      );
+    }
+    await requireMembership(assessment, studentId, transaction);
+
+    const attempts = await AssessmentAttempt.findAll({
+      where: { assessmentId: assessment.id, studentId },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    const submittedCount = attempts.filter(
+      (attempt) => plain(attempt).status === ATTEMPT_STATUSES.SUBMITTED,
+    ).length;
+    if (submittedCount < Number(assessment.maxAttempts)) {
+      fail("POST_ATTEMPTS_NOT_EXHAUSTED", "Ordinary POST attempts are not exhausted");
+    }
+    if (selectOfficialPostAttempt(attempts)?.passed === true) {
+      fail("POST_ALREADY_PASSED", "The student already has a passing POST result");
+    }
+    if (attempts.some((attempt) => plain(attempt).status === ATTEMPT_STATUSES.IN_PROGRESS)) {
+      fail("ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt");
+    }
+
+    requirePublishedGraph(assessment);
+    const attemptNumber = attempts.reduce(
+      (maximum, attempt) => Math.max(maximum, Number(plain(attempt).attemptNumber)),
+      0,
+    ) + 1;
+    const order = buildOrder(assessment);
+    return AssessmentAttempt.create({
+      assessmentId: assessment.id,
+      classroomId: assessment.classroomId,
+      studentId,
+      attemptNumber,
+      status: ATTEMPT_STATUSES.IN_PROGRESS,
+      assessmentVersion: assessment.version,
+      startedAt: now(),
+      questionOrder: order.questionOrder,
+      choiceOrder: order.choiceOrder,
+    }, { transaction });
+  };
+
   const startOrResumeAttempt = ({ assessmentId, studentId }) => sequelize.transaction(async (transaction) => {
     const assessmentRow = await requireAssessment(assessmentId, transaction, true);
     const assessment = requirePublishedGraph(assessmentRow);
-    await requireMembership(assessment, studentId, transaction);
+    const membership = await requireMembership(assessment, studentId, transaction);
+    await progressionService.assertAssessmentInteractionAllowed({
+      assessment,
+      studentId,
+      authorizedMembership: membership,
+      transaction,
+    });
 
     const active = await AssessmentAttempt.findOne({
       where: { assessmentId: assessment.id, studentId, status: ATTEMPT_STATUSES.IN_PROGRESS },
@@ -267,7 +337,13 @@ const createAssessmentAttemptService = ({
     const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
     const assessment = requirePublishedGraph(assessmentRow);
     requireMatchingVersion(attempt, assessment);
-    await requireMembership(assessment, studentId, transaction);
+    const membership = await requireMembership(assessment, studentId, transaction);
+    await progressionService.assertAssessmentInteractionAllowed({
+      assessment,
+      studentId,
+      authorizedMembership: membership,
+      transaction,
+    });
     return {
       attempt: safeAttempt(attempt),
       assessment: orderedPlayerAssessment(assessment, attempt),
@@ -285,7 +361,13 @@ const createAssessmentAttemptService = ({
       const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
       const assessment = requirePublishedGraph(assessmentRow);
       requireMatchingVersion(attempt, assessment);
-      await requireMembership(assessment, studentId, transaction);
+      const membership = await requireMembership(assessment, studentId, transaction);
+      await progressionService.assertAssessmentInteractionAllowed({
+        assessment,
+        studentId,
+        authorizedMembership: membership,
+        transaction,
+      });
 
       if (!(attempt.questionOrder || []).some((id) => sameId(id, questionId))) {
         fail("QUESTION_NOT_PRESENTED", "Question was not presented in this attempt");
@@ -343,7 +425,13 @@ const createAssessmentAttemptService = ({
       const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
       const assessment = requirePublishedGraph(assessmentRow);
       requireMatchingVersion(attempt, assessment);
-      await requireMembership(assessment, studentId, transaction);
+      const membership = await requireMembership(assessment, studentId, transaction);
+      await progressionService.assertAssessmentInteractionAllowed({
+        assessment,
+        studentId,
+        authorizedMembership: membership,
+        transaction,
+      });
 
       const questionById = new Map(assessment.questions.map((question) => [String(question.id), question]));
       const presentedQuestions = (attempt.questionOrder || []).map((questionId) => {
@@ -433,6 +521,7 @@ const createAssessmentAttemptService = ({
 
   return {
     assertAssessmentStructureMutable,
+    createTeacherGrantedPostAttempt,
     getActiveAttempt,
     getAttemptResult,
     saveResponse,

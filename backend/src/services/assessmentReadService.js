@@ -2,6 +2,7 @@ const defaultModels = require("../models");
 const defaultAuthorizationService = require("./assessmentAuthorizationService");
 const defaultAttemptService = require("./assessmentAttemptService");
 const defaultSerializers = require("./assessmentSerializationService");
+const defaultProgressionService = require("./lessonProgressionService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const { ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
 const {
@@ -21,6 +22,7 @@ const createAssessmentReadService = ({
   models = defaultModels,
   authorizationService = defaultAuthorizationService,
   attemptService = defaultAttemptService,
+  progressionService = defaultProgressionService,
   serializers = defaultSerializers,
   selectors = { calculateLearningGain, selectFirstSubmittedPostAttempt, selectOfficialPostAttempt },
 } = {}) => {
@@ -33,7 +35,10 @@ const createAssessmentReadService = ({
   } = models;
 
   const discoverAssessment = async ({ classroomId, lessonKey, type, studentId }) => {
-    await authorizationService.requireActiveStudentMembership({ classroomId, studentId });
+    const membership = await authorizationService.requireActiveStudentMembership({
+      classroomId,
+      studentId,
+    });
     authorizationService.assertAcademicLessonKey(lessonKey);
 
     const assessmentRow = await LessonAssessment.findOne({
@@ -48,10 +53,22 @@ const createAssessmentReadService = ({
         attemptStatus: "NOT_AVAILABLE",
         attemptsUsed: 0,
         hasSubmittedAttempt: false,
+        unlocked: false,
+        lockReason: null,
       });
     }
 
     const assessment = plain(assessmentRow);
+    const progressionState = await progressionService.getLessonProgressionState({
+      classroomId,
+      studentId,
+      lessonKey,
+      authorizedMembership: membership,
+    });
+    const progressionDecision = defaultProgressionService.evaluateAssessmentInteraction({
+      assessment,
+      state: progressionState,
+    });
     const attempts = (await AssessmentAttempt.findAll({
       where: { assessmentId: assessment.id, studentId },
     })).map(plain);
@@ -67,6 +84,8 @@ const createAssessmentReadService = ({
     return serializers.serializeDiscoveryStatus({
       assessment,
       available: true,
+      unlocked: progressionDecision.allowed,
+      lockReason: progressionDecision.reason,
       lessonKey,
       type,
       attemptStatus: activeAttempt?.status ?? latestSubmitted?.status ?? "NOT_STARTED",
@@ -109,9 +128,14 @@ const createAssessmentReadService = ({
         "Assessment is not published",
       );
     }
-    await authorizationService.requireActiveStudentMembership({
+    const membership = await authorizationService.requireActiveStudentMembership({
       classroomId: assessment.classroomId,
       studentId,
+    });
+    await progressionService.assertAssessmentInteractionAllowed({
+      assessment,
+      studentId,
+      authorizedMembership: membership,
     });
     return { assessment: serializers.serializePlayerAssessment(assessment) };
   };

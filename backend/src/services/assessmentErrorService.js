@@ -4,11 +4,18 @@ class AssessmentApiError extends Error {
     this.name = "AssessmentApiError";
     this.status = status;
     this.code = code;
+    this.details = {};
     if (Number.isInteger(Number(details.currentVersion))) {
-      this.details = { currentVersion: Number(details.currentVersion) };
-    } else {
-      this.details = {};
+      this.details.currentVersion = Number(details.currentVersion);
     }
+    if (typeof details.lessonKey === "string") this.details.lessonKey = details.lessonKey;
+    if (Number.isSafeInteger(Number(details.assessmentId)) && Number(details.assessmentId) > 0) {
+      this.details.assessmentId = Number(details.assessmentId);
+    }
+    if (typeof details.prerequisiteLessonKey === "string") {
+      this.details.prerequisiteLessonKey = details.prerequisiteLessonKey;
+    }
+    if (typeof details.nextAction === "string") this.details.nextAction = details.nextAction;
   }
 }
 
@@ -30,10 +37,44 @@ const PHASE_B_ERRORS = Object.freeze({
   ASSESSMENT_IMMUTABLE: [409, "ASSESSMENT_LOCKED", "Assessment is locked"],
   ASSESSMENT_VERSION_MISMATCH: [409, "ASSESSMENT_VERSION_CONFLICT", "Assessment version conflict"],
   SUBMISSION_KEY_CONFLICT: [409, "SUBMISSION_CONFLICT", "Submission key conflict"],
+  TRANSACTION_REQUIRED: [500, "SERVER_ERROR", "Server error"],
+  POST_RECOVERY_NOT_ALLOWED: [409, "POST_RECOVERY_NOT_ALLOWED", "An additional POST attempt cannot be granted for this assessment"],
+  POST_ATTEMPTS_NOT_EXHAUSTED: [409, "POST_ATTEMPTS_NOT_EXHAUSTED", "Ordinary POST attempts are not exhausted"],
+  POST_ALREADY_PASSED: [409, "POST_ALREADY_PASSED", "The student already has a passing POST result"],
+  ACTIVE_ATTEMPT_EXISTS: [409, "ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt"],
+});
+
+const PROGRESSION_ERRORS = Object.freeze({
+  LESSON_PREREQUISITE_REQUIRED: [
+    403,
+    "LESSON_PREREQUISITE_REQUIRED",
+    "Complete the prerequisite lesson before opening this lesson.",
+  ],
+  PRE_ASSESSMENT_REQUIRED: [
+    403,
+    "PRE_ASSESSMENT_REQUIRED",
+    "Complete the required pre-test before opening this lesson.",
+  ],
+  POST_ASSESSMENT_LOCKED: [
+    403,
+    "POST_ASSESSMENT_LOCKED",
+    "Complete the lesson game progression before opening the post-test.",
+  ],
 });
 
 const translateAssessmentError = (source) => {
   if (source instanceof AssessmentApiError) return source;
+  const progression = source?.name === "LessonProgressionError"
+    ? PROGRESSION_ERRORS[source.code]
+    : null;
+  if (progression) {
+    return error(progression[0], progression[1], progression[2], {
+      lessonKey: source.lessonKey,
+      assessmentId: source.assessmentId,
+      prerequisiteLessonKey: source.prerequisiteLessonKey,
+      nextAction: source.nextAction,
+    });
+  }
   const mapped = PHASE_B_ERRORS[source?.code];
   if (mapped) return error(mapped[0], mapped[1], mapped[2], source.details);
   if (source?.name === "SequelizeUniqueConstraintError") {
@@ -49,6 +90,10 @@ const translateAssessmentError = (source) => {
     ].filter(Boolean).join(" ").toLowerCase();
     if (constraint.includes("submission_key") || constraint.includes("submissionkey")) {
       return error(409, "SUBMISSION_CONFLICT", "Submission key conflict");
+    }
+    if (constraint.includes("assessment_attempts_one_in_progress")
+      || constraint.includes("one_in_progress")) {
+      return error(409, "ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt");
     }
     return error(409, "ASSESSMENT_TYPE_EXISTS", "An assessment of this type already exists");
   }

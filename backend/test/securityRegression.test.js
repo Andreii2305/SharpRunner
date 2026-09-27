@@ -12,6 +12,11 @@ const LevelContentOverride = require("../src/models/LevelContentOverride");
 const { getClassroomLevelSettings } = require("../src/services/classroomLevelSettingsService");
 const assessmentSerializers = require("../src/services/assessmentSerializationService");
 const { createAssessmentRouter } = require("../src/routes/assessments");
+const { restrictionPayload } = require("../src/services/levelAccessService");
+const {
+  buildLessonProgressionStates,
+  LessonProgressionError,
+} = require("../src/services/lessonProgressionService");
 
 const {
   hasDangerousSignature,
@@ -59,6 +64,46 @@ const assertNoForbiddenAssessmentKeys = (value, label, forbidden) => {
     `${label} exposed a forbidden assessment key`,
   );
 };
+
+test("game access restrictions expose only safe lesson progression context", () => {
+  const preRestriction = restrictionPayload({
+    reason: "PRE_ASSESSMENT_REQUIRED",
+    effectiveDueAt: null,
+    lessonKey: "arrays",
+    assessmentId: 81,
+    nextAction: "TAKE_PRE",
+    passingThreshold: 75,
+    requirePassingForCompletion: true,
+    percentage: 0,
+    score: 0,
+  });
+  assert.deepEqual(preRestriction, {
+    code: "PRE_ASSESSMENT_REQUIRED",
+    effectiveDueAt: null,
+    message: "Complete the required pre-test before opening this lesson.",
+    lessonKey: "arrays",
+    assessmentId: 81,
+    nextAction: "TAKE_PRE",
+  });
+
+  const lessonRestriction = restrictionPayload({
+    reason: "LESSON_PREREQUISITE_REQUIRED",
+    effectiveDueAt: null,
+    lessonKey: "functions",
+    prerequisiteLessonKey: "arrays",
+    nextAction: "COMPLETE_PREREQUISITE_LESSON",
+    assessmentSettings: { maxAttempts: 3 },
+    finalScore: 100,
+  });
+  assert.deepEqual(lessonRestriction, {
+    code: "LESSON_PREREQUISITE_REQUIRED",
+    effectiveDueAt: null,
+    message: "Complete the prerequisite lesson before opening this lesson.",
+    lessonKey: "functions",
+    prerequisiteLessonKey: "arrays",
+    nextAction: "COMPLETE_PREREQUISITE_LESSON",
+  });
+});
 
 test("dangerous upload extensions and executable signatures are rejected", async () => {
   assert.equal(isDangerousFilename("homework.pdf.exe"), true);
@@ -249,6 +294,8 @@ test("student assessment serializers recursively strip answer keys from every pr
     discovery: assessmentSerializers.serializeDiscoveryStatus({
       assessment,
       available: true,
+      unlocked: false,
+      lockReason: "GAME_INCOMPLETE",
       attemptStatus: "SUBMITTED",
       attemptsUsed: 1,
       attemptsRemaining: 2,
@@ -288,6 +335,52 @@ test("student assessment serializers recursively strip answer keys from every pr
   }
   assert.equal(fixtures.preNever.reviewAvailable, false);
   assert.equal(fixtures.postBeforeFinalAttempt.reviewAvailable, false);
+  assert.equal(fixtures.discovery.status.unlocked, false);
+  assert.equal(fixtures.discovery.status.lockReason, "GAME_INCOMPLETE");
+});
+
+test("hidden-score progression may expose postPassed without numeric result fields", () => {
+  const assessmentId = 812;
+  const completedRows = PLAYABLE_LEVEL_KEYS
+    .filter((levelKey) => levelKey.startsWith("tutorial-") || levelKey.startsWith("arrays-"))
+    .map((levelKey) => ({ levelKey, isCompleted: true }));
+  const state = buildLessonProgressionStates({
+    publishedAssessments: [{
+      id: assessmentId,
+      classroomId: 7,
+      lessonKey: "arrays",
+      type: "POST",
+      isRequired: true,
+      isPublished: true,
+      maxAttempts: 3,
+      requirePassingForCompletion: true,
+      showScoreAfterSubmission: false,
+      passingPercentage: 75,
+    }],
+    attempts: [{
+      id: 901,
+      assessmentId,
+      classroomId: 7,
+      studentId: 42,
+      attemptNumber: 1,
+      status: "SUBMITTED",
+      passed: true,
+      percentage: 100,
+      pointsEarned: 2,
+      maxPoints: 2,
+    }],
+    progressRows: completedRows,
+  }).get("arrays");
+
+  assert.equal(state.postPassed, true);
+  assertNoForbiddenAssessmentKeys(state, "hidden-score progression", new Set([
+    "percentage",
+    "pointsEarned",
+    "maxPoints",
+    "correctCount",
+    "questionCount",
+    "passingPercentage",
+  ]));
 });
 
 test("student assessment HTTP boundary strips autosave grading data and rejects malicious fields", async () => {
@@ -388,6 +481,91 @@ test("student assessment HTTP boundary strips autosave grading data and rejects 
         message: "Invalid request",
       });
       assertNoForbiddenAssessmentKeys(rejected.payload, requestPath, gradingKeys);
+    }
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    User.findByPk = originalFindByPk;
+    if (previousSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previousSecret;
+  }
+});
+
+test("active assessment gate denials expose only safe progression context", async () => {
+  const previousSecret = process.env.JWT_SECRET;
+  const originalFindByPk = User.findByPk;
+  process.env.JWT_SECRET = "security-active-assessment-gate-secret";
+  User.findByPk = async () => ({
+    id: 42,
+    role: "student",
+    status: "active",
+    tokenVersion: 0,
+    termsVersionAccepted: TERMS_VERSION,
+    privacyVersionAcknowledged: PRIVACY_POLICY_VERSION,
+  });
+  const denied = async () => {
+    throw new LessonProgressionError({
+      code: "POST_ASSESSMENT_LOCKED",
+      message: "database row and grading secret",
+      lessonKey: "arrays",
+      assessmentId: 12,
+      nextAction: "PLAY_GAME",
+    });
+  };
+  const unexpected = async () => assert.fail("denied interaction reached result loading");
+  const router = createAssessmentRouter({
+    readService: {
+      startOrResumeAttempt: unexpected,
+      getStudentResult: unexpected,
+      discoverAssessment: unexpected,
+      getActiveAttempt: denied,
+      getPlayerAssessment: unexpected,
+    },
+    attemptService: { saveResponse: denied, submitAttempt: denied },
+  });
+  const app = express();
+  app.use(express.json());
+  app.use("/api/assessments", router);
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const authToken = jwt.sign(
+    { id: 42, role: "student", tokenVersion: 0 },
+    process.env.JWT_SECRET,
+    { expiresIn: "5m" },
+  );
+  const cases = [
+    ["/attempts/44", { method: "GET" }],
+    ["/attempts/44/responses/101", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ selectedChoiceId: 1001 }),
+    }],
+    ["/attempts/44/submit", {
+      method: "POST",
+      headers: { "Idempotency-Key": "security_gate_key" },
+    }],
+  ];
+
+  try {
+    for (const [requestPath, options] of cases) {
+      const response = await fetch(`${baseUrl}/api/assessments${requestPath}`, {
+        ...options,
+        headers: { Authorization: `Bearer ${authToken}`, ...options.headers },
+      });
+      const payload = await response.json();
+      assert.equal(response.status, 403);
+      assert.deepEqual(payload, {
+        code: "POST_ASSESSMENT_LOCKED",
+        message: "Complete the lesson game progression before opening the post-test.",
+        lessonKey: "arrays",
+        assessmentId: 12,
+        nextAction: "PLAY_GAME",
+      });
+      assert.equal(JSON.stringify(payload).includes("grading secret"), false);
+      assertNoForbiddenAssessmentKeys(payload, requestPath);
     }
   } finally {
     await new Promise((resolve, reject) => {

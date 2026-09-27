@@ -10,9 +10,12 @@ const toNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const getClassroomLevelSettings = async (classroomId) => {
+const getClassroomLevelSettings = async (classroomId, { transaction } = {}) => {
   const rows = classroomId
-    ? await LevelContentOverride.findAll({ where: { classroomId } })
+    ? await LevelContentOverride.findAll({
+        where: { classroomId },
+        ...(transaction ? { transaction } : {}),
+      })
     : [];
   const overrides = new Map(rows.map((row) => [row.levelKey, row]));
 

@@ -6,6 +6,7 @@ const {
   ASSESSMENT_TYPES,
   ATTEMPT_STATUSES,
   GRADE_CALCULATIONS,
+  OBJECTIVE_KEY_PATTERN,
   QUESTION_TYPES,
 } = require("../constants/assessmentConfig");
 
@@ -29,6 +30,16 @@ const pointUnits = (value) => {
     throw new TypeError(`Question points support at most ${ASSESSMENT_LIMITS.pointPrecision} decimal places`);
   }
   return units;
+};
+
+const validateObjectiveKey = (value) => {
+  if (value == null || value === "") return null;
+  const normalized = String(value);
+  if (normalized.length > ASSESSMENT_LIMITS.objectiveKeyLength
+    || !OBJECTIVE_KEY_PATTERN.test(normalized)) {
+    throw new TypeError("Objective key must use lowercase kebab-case");
+  }
+  return normalized;
 };
 
 const normalizeAssessmentConfiguration = (input = {}) => {
@@ -76,7 +87,7 @@ const validateAssessmentConfiguration = (input = {}) => {
   return assessment;
 };
 
-const validateQuestion = (questionInput) => {
+const validateQuestionPersistence = (questionInput) => {
   const question = plain(questionInput) || {};
   if (!QUESTION_TYPE_SET.has(question.questionType)) {
     throw new TypeError("Question type must be MULTIPLE_CHOICE or TRUE_FALSE");
@@ -84,19 +95,38 @@ const validateQuestion = (questionInput) => {
   if (!String(question.questionText || "").trim()) {
     throw new TypeError("Question text is required");
   }
-  const units = pointUnits(question.points);
-  const choices = (question.choices || []).map(plain);
-  if (question.questionType === QUESTION_TYPES.TRUE_FALSE && choices.length !== 2) {
-    throw new TypeError("TRUE_FALSE must have exactly two choices");
+  if (String(question.questionText).length > ASSESSMENT_LIMITS.questionTextLength) {
+    throw new TypeError(`Question text cannot exceed ${ASSESSMENT_LIMITS.questionTextLength} characters`);
   }
-  if (choices.length < 2 || choices.length > ASSESSMENT_LIMITS.maxChoicesPerQuestion) {
-    throw new TypeError("A question must have valid choices");
+  const units = pointUnits(question.points);
+  validateObjectiveKey(question.objectiveKey);
+  if (question.choices != null && !Array.isArray(question.choices)) {
+    throw new TypeError("Question choices must be an array");
+  }
+  const choices = (question.choices || []).map(plain);
+  if (choices.length > ASSESSMENT_LIMITS.maxChoicesPerQuestion) {
+    throw new TypeError("A question cannot exceed the maximum choices");
   }
   if (choices.some((choice) => !String(choice.choiceText || "").trim())) {
     throw new TypeError("Choice text is required for every choice");
   }
   if (choices.some((choice) => String(choice.choiceText).length > ASSESSMENT_LIMITS.choiceTextLength)) {
     throw new TypeError(`Choice text cannot exceed ${ASSESSMENT_LIMITS.choiceTextLength} characters`);
+  }
+  if (choices.some((choice) => Object.hasOwn(choice, "isCorrect")
+    && typeof choice.isCorrect !== "boolean")) {
+    throw new TypeError("Choice correctness must be a boolean");
+  }
+  return { question, choices, pointUnits: units };
+};
+
+const validateQuestion = (questionInput) => {
+  const { question, choices, pointUnits: units } = validateQuestionPersistence(questionInput);
+  if (question.questionType === QUESTION_TYPES.TRUE_FALSE && choices.length !== 2) {
+    throw new TypeError("TRUE_FALSE must have exactly two choices");
+  }
+  if (choices.length < 2 || choices.length > ASSESSMENT_LIMITS.maxChoicesPerQuestion) {
+    throw new TypeError("A question must have valid choices");
   }
   const choiceIds = choices.map((choice) => String(choice.id));
   if (new Set(choiceIds).size !== choiceIds.length) {
@@ -111,6 +141,28 @@ const validateQuestion = (questionInput) => {
     }
   }
   return { question, choices, pointUnits: units };
+};
+
+const validateAssessmentDraft = ({ assessment: input, questions: questionInputs = [] }) => {
+  const assessment = validateAssessmentConfiguration(input);
+  if (!String(assessment.title || "").trim()) {
+    throw new TypeError("Assessment title is required");
+  }
+  if (String(assessment.title).length > ASSESSMENT_LIMITS.titleLength) {
+    throw new TypeError(`Assessment title cannot exceed ${ASSESSMENT_LIMITS.titleLength} characters`);
+  }
+  if (assessment.instructions != null
+    && String(assessment.instructions).length > ASSESSMENT_LIMITS.instructionsLength) {
+    throw new TypeError(`Assessment instructions cannot exceed ${ASSESSMENT_LIMITS.instructionsLength} characters`);
+  }
+  if (!Array.isArray(questionInputs)) {
+    throw new TypeError("Assessment questions must be an array");
+  }
+  if (questionInputs.length > ASSESSMENT_LIMITS.maxQuestions) {
+    throw new TypeError(`An assessment cannot exceed ${ASSESSMENT_LIMITS.maxQuestions} questions`);
+  }
+  const questions = questionInputs.map(validateQuestionPersistence);
+  return { assessment, questionCount: questions.length };
 };
 
 const validateAssessmentForPublish = ({ assessment: input, questions: questionInputs = [] }) => {
@@ -259,5 +311,8 @@ module.exports = {
   selectOfficialPostAttempt,
   shapePlayerAssessment,
   validateAssessmentConfiguration,
+  validateAssessmentDraft,
   validateAssessmentForPublish,
+  validateObjectiveKey,
+  OBJECTIVE_KEY_PATTERN,
 };

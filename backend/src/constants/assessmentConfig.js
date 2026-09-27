@@ -13,6 +13,7 @@ const ANSWER_REVIEW_POLICIES = Object.freeze({
   AFTER_SUBMISSION: "AFTER_SUBMISSION",
   AFTER_FINAL_ATTEMPT: "AFTER_FINAL_ATTEMPT",
 });
+const OBJECTIVE_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 // Tutorial/prologue is intentionally excluded from the academic assessment set.
 const ACADEMIC_LESSON_KEYS = Object.freeze([
@@ -71,5 +72,6 @@ module.exports = {
   ASSESSMENT_TYPES,
   ATTEMPT_STATUSES,
   GRADE_CALCULATIONS,
+  OBJECTIVE_KEY_PATTERN,
   QUESTION_TYPES,
 };

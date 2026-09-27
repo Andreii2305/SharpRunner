@@ -123,8 +123,71 @@ test("publishability validates MCQ and TRUE_FALSE answer graphs", () => {
   }), /choice text is required/i);
   assert.throws(() => policy.validateAssessmentForPublish({
     assessment: { lessonKey: "arrays", type: "POST" },
-    questions: [trueFalse({ choices: [{ id: 1, isCorrect: true }] })],
+    questions: [trueFalse({ choices: [{ id: 1, choiceText: "True", isCorrect: true }] })],
   }), /exactly two choices/);
+  assert.throws(() => policy.validateAssessmentForPublish({
+    assessment: { lessonKey: "arrays", type: "POST" },
+    questions: [trueFalse({ choices: [
+      { id: 1, choiceText: "Yes", isCorrect: true },
+      { id: 2, choiceText: "No", isCorrect: false },
+    ] })],
+  }), /true and false/i);
+});
+
+test("draft validation permits incomplete graphs but enforces persistence-safe fields", () => {
+  assert.doesNotThrow(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [],
+  }));
+  assert.doesNotThrow(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [{
+      questionText: "Work in progress",
+      questionType: "MULTIPLE_CHOICE",
+      points: 1,
+      objectiveKey: "array-declaration",
+      choices: [{ choiceText: "Only choice", isCorrect: false }],
+    }],
+  }));
+  assert.throws(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: " " },
+    questions: [],
+  }), /title/i);
+  assert.throws(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [{
+      questionText: "Valid question",
+      questionType: "MULTIPLE_CHOICE",
+      points: 1,
+      choices: [{ choiceText: "Valid choice", isCorrect: "false" }],
+    }],
+  }), /correct/i);
+  assert.doesNotThrow(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [{
+      questionText: "Valid question",
+      questionType: "MULTIPLE_CHOICE",
+      points: 1,
+      choices: [{ choiceText: "Incomplete choice" }],
+    }],
+  }));
+  assert.throws(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [{
+      questionText: "Valid question",
+      questionType: "MULTIPLE_CHOICE",
+      points: 1,
+      choices: [{ choiceText: "Invalid choice", isCorrect: null }],
+    }],
+  }), /correct/i);
+});
+
+test("objective keys use the minimal lowercase kebab-case contract", () => {
+  assert.equal(policy.validateObjectiveKey(null), null);
+  assert.equal(policy.validateObjectiveKey("array-declaration-2"), "array-declaration-2");
+  for (const value of ["Array", "array key", "array_key", "-array", "array-", "array--key"]) {
+    assert.throws(() => policy.validateObjectiveKey(value), /objective key/i);
+  }
 });
 
 test("weighted scoring is server-derived and PRE never receives pass-fail status", () => {

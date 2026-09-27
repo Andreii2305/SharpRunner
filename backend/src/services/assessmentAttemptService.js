@@ -78,6 +78,14 @@ const safeSubmittedResult = (attemptInput) => {
   };
 };
 
+const safeSavedResponses = (rows = []) => rows.map((rowInput) => {
+  const row = plain(rowInput);
+  return {
+    questionId: row.questionId,
+    selectedChoiceId: row.selectedChoiceId ?? null,
+  };
+});
+
 const orderedPlayerAssessment = (assessmentInput, attemptInput) => {
   const safe = shapePlayerAssessment(assessmentInput);
   const attempt = plain(attemptInput);
@@ -178,6 +186,10 @@ const createAssessmentAttemptService = ({
     }
   };
 
+  const loadSafeResponses = async (attemptId, transaction) => safeSavedResponses(
+    await AssessmentResponse.findAll({ where: { attemptId }, transaction }),
+  );
+
   const buildOrder = (assessment) => {
     const questions = sortedByDisplayOrder(assessment.questions);
     const questionOrder = assessment.shuffleQuestions
@@ -206,6 +218,7 @@ const createAssessmentAttemptService = ({
         attempt: safeAttempt(active),
         assessment: orderedPlayerAssessment(assessment, active),
         resumed: true,
+        responses: await loadSafeResponses(active.id, transaction),
       };
     }
 
@@ -242,6 +255,24 @@ const createAssessmentAttemptService = ({
       attempt: safeAttempt(created),
       assessment: orderedPlayerAssessment(assessment, created),
       resumed: false,
+      responses: [],
+    };
+  });
+
+  const getActiveAttempt = ({ attemptId, studentId }) => sequelize.transaction(async (transaction) => {
+    const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
+    if (attempt.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
+      fail("ATTEMPT_SUBMITTED", "Submitted assessment attempts cannot be changed");
+    }
+    const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
+    const assessment = requirePublishedGraph(assessmentRow);
+    requireMatchingVersion(attempt, assessment);
+    await requireMembership(assessment, studentId, transaction);
+    return {
+      attempt: safeAttempt(attempt),
+      assessment: orderedPlayerAssessment(assessment, attempt),
+      resumed: true,
+      responses: await loadSafeResponses(attempt.id, transaction),
     };
   });
 
@@ -402,6 +433,7 @@ const createAssessmentAttemptService = ({
 
   return {
     assertAssessmentStructureMutable,
+    getActiveAttempt,
     getAttemptResult,
     saveResponse,
     startOrResumeAttempt,

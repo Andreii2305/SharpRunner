@@ -3,12 +3,15 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const express = require("express");
 const jwt = require("jsonwebtoken");
 const User = require("../src/models/User");
 const authMiddleware = require("../src/middleware/authMiddleware");
 const models = require("../src/models");
 const LevelContentOverride = require("../src/models/LevelContentOverride");
 const { getClassroomLevelSettings } = require("../src/services/classroomLevelSettingsService");
+const assessmentSerializers = require("../src/services/assessmentSerializationService");
+const { createAssessmentRouter } = require("../src/routes/assessments");
 
 const {
   hasDangerousSignature,
@@ -21,6 +24,41 @@ const {
   getDefaultValidatorConfig,
   validateLevelCode,
 } = require("../src/services/levelCodeValidationService");
+
+const ASSESSMENT_FORBIDDEN_KEYS = new Set([
+  "answerReviewPolicy",
+  "choiceOrder",
+  "correctChoiceId",
+  "createdBy",
+  "explanation",
+  "gradeCalculation",
+  "isCorrect",
+  "passingPercentage",
+  "passingPercentageApplied",
+  "pointsAwarded",
+  "questionOrder",
+  "studentId",
+  "submissionKey",
+]);
+
+const findForbiddenAssessmentPath = (value, forbidden = ASSESSMENT_FORBIDDEN_KEYS, trail = []) => {
+  if (!value || typeof value !== "object") return null;
+  for (const [key, nested] of Object.entries(value)) {
+    const nextTrail = [...trail, key];
+    if (forbidden.has(key)) return nextTrail.join(".");
+    const found = findForbiddenAssessmentPath(nested, forbidden, nextTrail);
+    if (found) return found;
+  }
+  return null;
+};
+
+const assertNoForbiddenAssessmentKeys = (value, label, forbidden) => {
+  assert.equal(
+    findForbiddenAssessmentPath(value, forbidden),
+    null,
+    `${label} exposed a forbidden assessment key`,
+  );
+};
 
 test("dangerous upload extensions and executable signatures are rejected", async () => {
   assert.equal(isDangerousFilename("homework.pdf.exe"), true);
@@ -131,5 +169,232 @@ test("classroom settings preserve trusted teacher validator overrides", async ()
     assert.deepEqual(settings[0].validatorConfig, validatorConfig);
   } finally {
     LevelContentOverride.findAll = originalFindAll;
+  }
+});
+
+test("student assessment serializers recursively strip answer keys from every pre-review fixture", () => {
+  const assessment = {
+    id: 12,
+    classroomId: 7,
+    lessonKey: "arrays",
+    type: "POST",
+    title: "Arrays post-test",
+    instructions: "Choose one answer.",
+    isRequired: true,
+    isPublished: true,
+    maxAttempts: 3,
+    showScoreAfterSubmission: true,
+    passingPercentage: 75,
+    gradeCalculation: "HIGHEST",
+    answerReviewPolicy: "AFTER_FINAL_ATTEMPT",
+    createdBy: 5,
+    version: 3,
+    questions: [{
+      id: 101,
+      questionText: "Which declaration is valid?",
+      questionType: "MULTIPLE_CHOICE",
+      displayOrder: 0,
+      points: 2,
+      explanation: "Arrays use brackets.",
+      objectiveKey: "array-declaration",
+      choices: [
+        { id: 1001, choiceText: "int[] values", displayOrder: 0, isCorrect: true },
+        { id: 1002, choiceText: "int values[]()", displayOrder: 1, isCorrect: false },
+      ],
+    }],
+    nestedAssociation: {
+      correctChoiceId: 1001,
+      submissionKey: "must-not-escape",
+    },
+  };
+  const attempt = {
+    id: 44,
+    assessmentId: 12,
+    classroomId: 7,
+    studentId: 42,
+    attemptNumber: 1,
+    status: "SUBMITTED",
+    assessmentVersion: 3,
+    startedAt: "2026-09-25T12:00:00.000Z",
+    submittedAt: "2026-09-25T12:10:00.000Z",
+    pointsEarned: 2,
+    maxPoints: 2,
+    percentage: 100,
+    passed: true,
+    passingPercentageApplied: 75,
+    submissionKey: "must-not-escape",
+  };
+  const response = {
+    questionId: 101,
+    selectedChoiceId: 1001,
+    isCorrect: true,
+    pointsAwarded: 2,
+  };
+  const playerAttempt = (resumed) => assessmentSerializers.serializePlayerAttempt({
+    assessment,
+    attempt: { ...attempt, status: "IN_PROGRESS", submittedAt: null, resumed },
+    responses: resumed ? [response] : [],
+    attemptsUsed: resumed ? 1 : 0,
+    maxAttempts: 3,
+  });
+  const preAssessment = {
+    ...assessment,
+    type: "PRE",
+    maxAttempts: 1,
+    passingPercentage: null,
+    gradeCalculation: "FIRST",
+    answerReviewPolicy: "NEVER",
+  };
+  const fixtures = {
+    discovery: assessmentSerializers.serializeDiscoveryStatus({
+      assessment,
+      available: true,
+      attemptStatus: "SUBMITTED",
+      attemptsUsed: 1,
+      attemptsRemaining: 2,
+      hasSubmittedAttempt: true,
+      latestSubmitted: attempt,
+      officialPost: attempt,
+    }),
+    playerGraph: { assessment: assessmentSerializers.serializePlayerAssessment(assessment) },
+    start: playerAttempt(false),
+    resume: playerAttempt(true),
+    activeAttempt: playerAttempt(true),
+    preNever: {
+      ...assessmentSerializers.serializeStudentResult({ assessment: preAssessment, attempt }),
+      ...assessmentSerializers.serializeAllowedReview({
+        reviewAvailable: false,
+        questions: assessment.questions,
+        responses: [response],
+      }),
+    },
+    postBeforeFinalAttempt: {
+      ...assessmentSerializers.serializeStudentResult({
+        assessment,
+        attempt,
+        officialGrade: attempt,
+        firstPost: attempt,
+      }),
+      ...assessmentSerializers.serializeAllowedReview({
+        reviewAvailable: false,
+        questions: assessment.questions,
+        responses: [response],
+      }),
+    },
+  };
+
+  for (const [label, fixture] of Object.entries(fixtures)) {
+    assertNoForbiddenAssessmentKeys(fixture, label);
+  }
+  assert.equal(fixtures.preNever.reviewAvailable, false);
+  assert.equal(fixtures.postBeforeFinalAttempt.reviewAvailable, false);
+});
+
+test("student assessment HTTP boundary strips autosave grading data and rejects malicious fields", async () => {
+  const previousSecret = process.env.JWT_SECRET;
+  const originalFindByPk = User.findByPk;
+  process.env.JWT_SECRET = "security-assessment-boundary-secret";
+  User.findByPk = async () => ({
+    id: 42,
+    role: "student",
+    status: "active",
+    tokenVersion: 0,
+    termsVersionAccepted: TERMS_VERSION,
+    privacyVersionAcknowledged: PRIVACY_POLICY_VERSION,
+  });
+  const unexpected = async () => assert.fail("rejected malicious body reached a domain service");
+  const router = createAssessmentRouter({
+    readService: {
+      startOrResumeAttempt: unexpected,
+      getStudentResult: unexpected,
+      discoverAssessment: unexpected,
+      getActiveAttempt: unexpected,
+      getPlayerAssessment: unexpected,
+    },
+    attemptService: {
+      saveResponse: async () => ({
+        attemptId: 44,
+        questionId: 101,
+        selectedChoiceId: 1001,
+        isCorrect: true,
+        pointsAwarded: 2,
+        correctChoiceId: 1001,
+        explanation: "must not escape",
+      }),
+      submitAttempt: unexpected,
+    },
+  });
+  const app = express();
+  app.use(express.json());
+  app.use("/api/assessments", router);
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  const authToken = jwt.sign(
+    { id: 42, role: "student", tokenVersion: 0 },
+    process.env.JWT_SECRET,
+    { expiresIn: "5m" },
+  );
+  const request = async (requestPath, { method, body, headers = {} }) => {
+    const result = await fetch(`${baseUrl}${requestPath}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+    return { status: result.status, payload: await result.json() };
+  };
+
+  try {
+    const autosave = await request("/api/assessments/attempts/44/responses/101", {
+      method: "PUT",
+      body: { selectedChoiceId: 1001 },
+    });
+    assert.equal(autosave.status, 200);
+    assert.deepEqual(autosave.payload, {
+      response: { attemptId: 44, questionId: 101, selectedChoiceId: 1001 },
+    });
+    assertNoForbiddenAssessmentKeys(autosave.payload, "autosave");
+
+    const maliciousCases = [
+      ["/api/assessments/12/attempts", "POST", { isCorrect: true }],
+      ["/api/assessments/12/attempts", "POST", { classroomId: 8 }],
+      ["/api/assessments/attempts/44/responses/101", "PUT", {
+        selectedChoiceId: 1001,
+        correctChoiceId: 1001,
+      }],
+      ["/api/assessments/attempts/44/submit", "POST", { percentage: 100 }],
+    ];
+    const gradingKeys = new Set([
+      ...ASSESSMENT_FORBIDDEN_KEYS,
+      "classroomId",
+      "passed",
+      "percentage",
+      "pointsEarned",
+    ]);
+    for (const [requestPath, method, body] of maliciousCases) {
+      const rejected = await request(requestPath, {
+        method,
+        body,
+        headers: { "Idempotency-Key": "security_key_123" },
+      });
+      assert.equal(rejected.status, 400);
+      assert.deepEqual(rejected.payload, {
+        code: "INVALID_REQUEST",
+        message: "Invalid request",
+      });
+      assertNoForbiddenAssessmentKeys(rejected.payload, requestPath, gradingKeys);
+    }
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    User.findByPk = originalFindByPk;
+    if (previousSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previousSecret;
   }
 });

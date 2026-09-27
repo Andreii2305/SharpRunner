@@ -63,9 +63,11 @@ app.get("/api/health", async (_req, res) => {
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/progress", require("./routes/progress"));
+app.use("/api/assessments", require("./routes/assessments"));
 app.use("/api/lesson-content", require("./routes/lessonContent"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/teacher", require("./routes/teacher"));
+app.use("/api/teacher", require("./routes/teacherAssessments"));
 app.use("/api/teacher/lesson-library", require("./routes/lessonLibrary"));
 app.use("/api/classrooms", require("./routes/classrooms"));
 app.use("/api/notifications", require("./routes/notifications"));
@@ -77,8 +79,16 @@ app.use((_req, res) => {
 });
 
 app.use((error, _req, res, next) => {
-  console.error("Unhandled request error", error);
   if (res.headersSent) return next(error);
+  if (error instanceof SyntaxError
+    && error.status === 400
+    && error.type === "entity.parse.failed") {
+    return res.status(400).json({
+      code: "INVALID_REQUEST",
+      message: "Malformed JSON request body",
+    });
+  }
+  console.error("Unhandled request error", error);
   res.status(500).json({ message: "Server error" });
 });
 

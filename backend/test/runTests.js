@@ -12,3 +12,6 @@ require("./learningAnalyticsEvents.test");
 require("./assessmentPolicyService.test");
 require("./assessmentMigration.test");
 require("./assessmentAttemptService.test");
+require("./assessmentSerialization.test");
+require("./assessmentRoutes.integration.test");
+require("./teacherAssessmentRoutes.integration.test");

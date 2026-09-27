@@ -185,6 +185,101 @@ test("creates the first attempt with stable safe shuffled question and choice or
   assert.equal(store.attempts.length, 1);
 });
 
+test("new attempts include an empty safe response list", async () => {
+  const { service } = makeHarness();
+  const started = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+
+  assert.deepEqual(started.responses, []);
+});
+
+test("resumed attempts recover selected choices without grading fields", async () => {
+  const { service } = makeHarness();
+  const started = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 101,
+    selectedChoiceId: 1001,
+  });
+
+  const resumed = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+
+  assert.deepEqual(resumed.responses, [
+    { questionId: 101, selectedChoiceId: 1001 },
+  ]);
+  assert.equal(JSON.stringify(resumed).includes("isCorrect"), false);
+  assert.equal(JSON.stringify(resumed).includes("pointsAwarded"), false);
+  assert.equal(JSON.stringify(resumed).includes("explanation"), false);
+});
+
+test("active attempt retrieval preserves persisted order and selections", async () => {
+  const { service } = makeHarness();
+  const started = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 102,
+    selectedChoiceId: 1004,
+  });
+  await service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 101,
+    selectedChoiceId: null,
+  });
+
+  const active = await service.getActiveAttempt({ attemptId: started.attempt.id, studentId: 42 });
+
+  assert.equal(active.resumed, true);
+  assert.deepEqual(active.attempt.questionOrder, started.attempt.questionOrder);
+  assert.deepEqual(active.responses, [
+    { questionId: 102, selectedChoiceId: 1004 },
+    { questionId: 101, selectedChoiceId: null },
+  ]);
+  assert.equal(JSON.stringify(active).includes("isCorrect"), false);
+  assert.equal(JSON.stringify(active).includes("pointsAwarded"), false);
+  assert.equal(JSON.stringify(active).includes("explanation"), false);
+});
+
+test("active attempt retrieval rejects foreign ownership and inactive membership", async () => {
+  const owned = makeHarness();
+  const { attempt } = await owned.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await expectCode(
+    owned.service.getActiveAttempt({ attemptId: attempt.id, studentId: 99 }),
+    "ATTEMPT_FORBIDDEN",
+  );
+
+  const inactive = makeHarness();
+  const started = await inactive.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  inactive.store.memberships[0].status = "removed";
+  await expectCode(
+    inactive.service.getActiveAttempt({ attemptId: started.attempt.id, studentId: 42 }),
+    "NOT_ENROLLED",
+  );
+});
+
+test("active attempt retrieval rejects submitted and version-mismatched attempts", async () => {
+  const submitted = makeHarness();
+  const finished = await submitted.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await submitted.service.submitAttempt({
+    attemptId: finished.attempt.id,
+    studentId: 42,
+    submissionKey: "active-submit-key",
+  });
+  await expectCode(
+    submitted.service.getActiveAttempt({ attemptId: finished.attempt.id, studentId: 42 }),
+    "ATTEMPT_SUBMITTED",
+  );
+
+  const stale = makeHarness();
+  const started = await stale.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  stale.store.assessments[0].version = 2;
+  await expectCode(
+    stale.service.getActiveAttempt({ attemptId: started.attempt.id, studentId: 42 }),
+    "ASSESSMENT_VERSION_MISMATCH",
+  );
+});
+
 test("persists deterministic display order when shuffling is disabled", async () => {
   const { service } = makeHarness({ shuffleQuestions: false, shuffleChoices: false });
   const { attempt } = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });

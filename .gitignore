@@ -19,10 +19,15 @@ frontend/dist/
 .env
 .claude/settings.local.json
 
-#AI Tool
+# Local AI / agent workflow artifacts
 .codex/
 .claude/
+.superpowers/
+docs/superpowers/plans/
 
+# Generated test/build artifacts
+coverage/
+backend/practice-template/bin/
 
 #temp images
 tmp_*.png

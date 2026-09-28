@@ -8,6 +8,7 @@ import CheckIcon from "@mui/icons-material/Check";
 import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { FiArrowRight, FiPaperclip } from "react-icons/fi";
+import { withClassroomIdQuery } from "../../pages/student/builtInModuleContentState.js";
 
 const DEFAULT_LESSON_META = [
   {
@@ -310,6 +311,7 @@ function ClassroomModuleGroup({ module, lessons, navigate }) {
 function LessonSection() {
   const navigate = useNavigate();
   const [progressLessons, setProgressLessons] = useState([]);
+  const [classroomId, setClassroomId] = useState(null);
   const [lessonSeed, setLessonSeed] = useState([]);
   const [classroomLessons, setClassroomLessons] = useState([]);
 
@@ -332,9 +334,12 @@ function LessonSection() {
 
       if (progressResult.status === "fulfilled") {
         setProgressLessons(progressResult.value.data?.lessons ?? []);
+        const nextClassroomId = Number(progressResult.value.data?.classroomId);
+        setClassroomId(Number.isSafeInteger(nextClassroomId) && nextClassroomId > 0 ? nextClassroomId : null);
       } else {
         console.error("Failed to load lesson progress", progressResult.reason);
         setProgressLessons([]);
+        setClassroomId(null);
       }
 
       if (lessonResult.status === "fulfilled") {
@@ -366,7 +371,7 @@ function LessonSection() {
 
   const handlePlay = (lesson) => {
     if (lesson?.route) {
-      navigate(lesson.route);
+      navigate(withClassroomIdQuery(lesson.route, classroomId));
     }
   };
 

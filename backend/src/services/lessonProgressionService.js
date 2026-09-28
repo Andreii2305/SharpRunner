@@ -463,8 +463,30 @@ const createLessonProgressionService = ({
     return { ...decision, state };
   };
 
+  const assertModuleAccessAllowed = async ({
+    classroomId,
+    studentId,
+    lessonKey,
+    authorizedMembership = null,
+    transaction = null,
+  }) => {
+    const state = await getLessonProgressionState({
+      classroomId,
+      studentId,
+      lessonKey,
+      authorizedMembership,
+      transaction,
+    });
+    if (state.moduleUnlocked) return state;
+    const reason = state.curriculumPrerequisiteSatisfied
+      ? PROGRESSION_DENIAL_REASONS.PRE_ASSESSMENT_REQUIRED
+      : PROGRESSION_DENIAL_REASONS.LESSON_PREREQUISITE_REQUIRED;
+    throw progressionDenial({ reason, state });
+  };
+
   return {
     assertAssessmentInteractionAllowed,
+    assertModuleAccessAllowed,
     getLessonProgressionState,
     getLessonProgressionStates,
   };

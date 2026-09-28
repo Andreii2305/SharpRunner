@@ -1,10 +1,7 @@
 const router = require("express").Router();
 const { Op } = require("sequelize");
 const authMiddleware = require("../middleware/authMiddleware");
-const {
-  getLessonContentSeed,
-  getLessonSeedByKey,
-} = require("../services/lessonContentService");
+const { getLessonContentSeed } = require("../services/lessonContentService");
 const ClassroomLesson = require("../models/ClassroomLesson");
 const ClassroomLessonAttachment = require("../models/ClassroomLessonAttachment");
 const ClassroomLessonProgress = require("../models/ClassroomLessonProgress");
@@ -335,15 +332,6 @@ router.get("/submission-files/:fileId", authMiddleware, async (req, res) => {
     res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);
     return res.send(data);
   } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
-});
-
-router.get("/:lessonKey", authMiddleware, (req, res) => {
-  const lesson = getLessonSeedByKey(req.params.lessonKey);
-  if (!lesson) {
-    return res.status(404).json({ message: "Lesson not found" });
-  }
-
-  return res.json(lesson);
 });
 
 module.exports = router;

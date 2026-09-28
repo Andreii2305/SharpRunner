@@ -4,6 +4,8 @@ require("./hintSystem.test");
 require("./levelTimingAndDeadline.test");
 require("./lessonProgressionService.test");
 require("./lessonProgressionRoutes.integration.test");
+require("./builtInLessonContentService.test");
+require("./builtInLessonContentRoutes.integration.test");
 require("./apiRoutes.integration.test");
 require("./practiceRunner.test");
 require("./practiceRunner.execution.test");

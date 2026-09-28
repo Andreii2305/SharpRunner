@@ -1475,6 +1475,160 @@ test("teacher analytics CSV routes enforce teacher-owned classroom and student s
   });
 });
 
+test("legacy built-in catalogue exposes only allowlisted navigation metadata", async () => {
+  const teacher = activeUser({ id: 701, role: "teacher" });
+
+  await withStubs([[User, "findByPk", async () => teacher]], async () => {
+    const { response, payload } = await apiRequest("/api/lesson-content", {
+      token: authToken(teacher.id, "teacher"),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      Object.keys(payload).sort(),
+      ["classroomLessons", "lessonCount", "lessons", "updatedAt", "version"],
+    );
+    assert.equal(payload.lessonCount, 5);
+    assert.deepEqual(payload.classroomLessons, []);
+    assert.deepEqual(
+      payload.lessons.map((lesson) => lesson.lessonKey),
+      ["tutorial", "arrays", "functions", "functions-with-arrays", "final"],
+    );
+    assert.deepEqual(
+      payload.lessons.map((lesson) => lesson.displayOrder),
+      [0, 1, 2, 3, 4],
+    );
+
+    const allowedLessonKeys = [
+      "description",
+      "displayOrder",
+      "lessonKey",
+      "lessonTitle",
+      "theme",
+    ];
+    for (const lesson of payload.lessons) {
+      assert.deepEqual(Object.keys(lesson).sort(), allowedLessonKeys);
+      for (const value of Object.values(lesson)) {
+        assert.equal(value !== null && typeof value === "object", false);
+      }
+      assert.equal(typeof lesson.lessonKey, "string");
+      assert.equal(typeof lesson.lessonTitle, "string");
+      assert.equal(typeof lesson.theme, "string");
+      assert.equal(typeof lesson.description, "string");
+    }
+  });
+});
+
+test("legacy per-key built-in detail route is absent for unauthenticated callers", async () => {
+  const { response, payload } = await apiRequest("/api/lesson-content/arrays");
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(payload, { message: "API route not found" });
+});
+
+test("legacy per-key built-in detail route is absent for authenticated callers", async () => {
+  const student = activeUser({ id: 702, role: "student" });
+
+  await withStubs([[User, "findByPk", async () => student]], async () => {
+    const { response, payload } = await apiRequest("/api/lesson-content/arrays", {
+      token: authToken(student.id, "student"),
+    });
+
+    assert.equal(response.status, 404);
+    assert.deepEqual(payload, { message: "API route not found" });
+  });
+});
+
+test("catalogue hardening preserves the student classroomLessons projection", async () => {
+  const student = activeUser({ id: 703, role: "student" });
+  const classroomLesson = {
+    id: 901,
+    title: "Teacher-authored arrays extension",
+    description: "A separate classroom lesson",
+    contentType: "lesson",
+    moduleId: null,
+    externalUrl: null,
+    dueAt: null,
+    allowSubmissions: false,
+    assignedStudentIds: [],
+    createdAt: "2026-09-28T00:00:00.000Z",
+    attachments: [{ id: 902, originalName: "notes.pdf", mimeType: "application/pdf", sizeBytes: 512 }],
+    toJSON() {
+      const { toJSON, ...payload } = this;
+      return payload;
+    },
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 90, studentId: student.id, status: "active" })],
+    [ClassroomLesson, "findAll", async () => [classroomLesson]],
+    [ClassroomLessonPlacement, "findAll", async () => []],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/lesson-content", {
+      token: authToken(student.id, "student"),
+    });
+
+    assert.equal(response.status, 200);
+    const { toJSON, ...expectedLesson } = classroomLesson;
+    assert.deepEqual(payload.classroomLessons, [expectedLesson]);
+  });
+});
+
+test("teacher-created lesson detail keeps its route shape and authorization", async () => {
+  const teacher = activeUser({ id: 704, role: "teacher" });
+  const lesson = {
+    id: 903,
+    classroomId: null,
+    teacherId: teacher.id,
+    lessonNumber: 1,
+    title: "Teacher-created lesson",
+    description: "Not part of the built-in catalogue",
+    contentType: "lesson",
+    moduleId: null,
+    externalUrl: null,
+    dueAt: null,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    allowSubmissions: false,
+    maxFileSizeMb: 5,
+    assignedStudentIds: [],
+    attachments: [],
+    toJSON() {
+      const { toJSON, ...payload } = this;
+      return payload;
+    },
+  };
+
+  const unauthenticated = await apiRequest(`/api/lesson-content/classroom-lessons/${lesson.id}`);
+  assert.equal(unauthenticated.response.status, 401);
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [ClassroomLesson, "findByPk", async () => lesson],
+  ], async () => {
+    const { response, payload } = await apiRequest(
+      `/api/lesson-content/classroom-lessons/${lesson.id}`,
+      { token: authToken(teacher.id, "teacher") },
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(Object.keys(payload).sort(), [
+      "context",
+      "lesson",
+      "progress",
+      "submission",
+      "uploadPolicy",
+    ]);
+    assert.equal(payload.lesson.id, lesson.id);
+    assert.equal(payload.lesson.title, lesson.title);
+    assert.deepEqual(payload.context, { classroom: null, module: null });
+    assert.equal(payload.progress, null);
+    assert.equal(payload.submission, null);
+  });
+});
+
 test("teacher lesson library is role-protected and returns reusable lesson metadata", async () => {
   const teacher = activeUser({ id: 71, role: "teacher" });
   const student = activeUser({ id: 72, role: "student" });
@@ -2125,6 +2279,68 @@ test("forgot-password rate limiting does not disclose account existence", async 
   });
   assert.equal(limited.response.status, 429);
   assert.equal(limited.payload.message, expected);
+});
+
+test("protected built-in lesson content route is registered without colliding with classroom routes", async () => {
+  const user = activeUser({ id: 42, role: "student" });
+  let exactMembershipReads = 0;
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [ClassroomMembership, "findOne", async () => {
+      exactMembershipReads += 1;
+      return {
+        id: 301,
+        classroomId: 7,
+        studentId: 42,
+        status: "active",
+        classroom: { id: 7, isActive: true },
+      };
+    }],
+    [ClassroomMembership, "findAll", async () => []],
+    [LessonAssessment, "findAll", async () => []],
+    [AssessmentAttempt, "findAll", async () => assert.fail("tutorial must not query attempts")],
+    [UserProgress, "findAll", async () => []],
+    [LevelContentOverride, "findAll", async () => []],
+  ], async () => {
+    const authorized = await apiRequest(
+      "/api/classrooms/7/built-in-lessons/tutorial/content",
+      { token: authToken(42) },
+    );
+    assert.equal(authorized.response.status, 200);
+    assert.deepEqual(Object.keys(authorized.payload), ["schemaVersion", "contentRevision", "lesson"]);
+    assert.equal(authorized.payload.lesson.lessonKey, "tutorial");
+    assert.equal(authorized.response.headers.get("cache-control"), "private, no-store, max-age=0");
+    assert.match(authorized.response.headers.get("vary"), /Authorization/i);
+    assert.equal(exactMembershipReads, 1);
+
+    const invalidClassroom = await apiRequest(
+      "/api/classrooms/0/built-in-lessons/tutorial/content",
+      { token: authToken(42) },
+    );
+    assert.equal(invalidClassroom.response.status, 400);
+    assert.equal(invalidClassroom.payload.code, "INVALID_CLASSROOM_ID");
+
+    const invalidLesson = await apiRequest(
+      "/api/classrooms/7/built-in-lessons/Arrays/content",
+      { token: authToken(42) },
+    );
+    assert.equal(invalidLesson.response.status, 400);
+    assert.equal(invalidLesson.payload.code, "INVALID_LESSON_KEY");
+
+    const traversal = await apiRequest(
+      "/api/classrooms/7/built-in-lessons/..%2Ftutorial/content",
+      { token: authToken(42) },
+    );
+    assert.equal(traversal.response.status, 400);
+    assert.equal(traversal.payload.code, "INVALID_LESSON_KEY");
+    assert.equal(exactMembershipReads, 1, "invalid paths must not reach membership or content access");
+
+    const existingClassroomRoute = await apiRequest("/api/classrooms/me", {
+      token: authToken(42),
+    });
+    assert.equal(existingClassroomRoute.response.status, 200);
+    assert.equal(existingClassroomRoute.payload.hasActiveMembership, false);
+  });
 });
 
 test("reset-password is single-use, bcrypt-hashes the password, and revokes an existing JWT", async () => {

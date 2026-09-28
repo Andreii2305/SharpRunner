@@ -897,3 +897,144 @@ test("assessment guard permits unlocked published PRE and unpublished assessment
   assert.equal(unpublishedDecision.reason, null);
   assert.equal(unpublishedDecision.state.lessonKey, "functions");
 });
+
+test("module access helper allows every canonical unlocked module state through the existing loader", async () => {
+  const membership = { classroomId: 7, studentId: 42, status: "active" };
+  const tutorialProgress = playableRows("tutorial", 5);
+  const cases = [
+    {
+      name: "tutorial",
+      lessonKey: "tutorial",
+    },
+    {
+      name: "absent PRE",
+      lessonKey: "arrays",
+      progressRows: tutorialProgress,
+    },
+    {
+      name: "optional PRE",
+      lessonKey: "arrays",
+      publishedAssessments: [assessment({ classroomId: 7, isRequired: false })],
+      progressRows: tutorialProgress,
+    },
+    {
+      name: "draft or unpublished PRE",
+      lessonKey: "arrays",
+      publishedAssessments: [assessment({ classroomId: 7, isPublished: false })],
+      progressRows: tutorialProgress,
+    },
+    {
+      name: "submitted required PRE",
+      lessonKey: "arrays",
+      publishedAssessments: [assessment({ classroomId: 7 })],
+      attempts: [attempt({ classroomId: 7, studentId: 42 })],
+      progressRows: tutorialProgress,
+    },
+    {
+      name: "final after canonical prerequisite",
+      lessonKey: "final",
+      progressRows: [
+        ...tutorialProgress,
+        ...playableRows("arrays", 8),
+        ...playableRows("functions", 11),
+        ...playableRows("functions-with-arrays", 4),
+      ],
+    },
+  ];
+
+  for (const fixture of cases) {
+    const { name, lessonKey, ...loaderFixture } = fixture;
+    const { calls, service } = createLoaderHarness(loaderFixture);
+    const transaction = { id: `${name}-transaction` };
+    const state = await service.assertModuleAccessAllowed({
+      classroomId: 7,
+      studentId: 42,
+      lessonKey,
+      authorizedMembership: membership,
+      transaction,
+    });
+
+    assert.equal(state.lessonKey, lessonKey, name);
+    assert.equal(state.moduleUnlocked, true, name);
+    assert.equal(calls.authorization.length, 0, `${name} must reuse exact membership`);
+    assert.equal(calls.assessments.length, 1, `${name} must load state once`);
+    assert.equal(calls.progress.length, 1, `${name} must load state once`);
+    assert.equal(calls.settings.length, 1, `${name} must load state once`);
+    assert.equal(calls.settings[0].options.transaction, transaction, name);
+  }
+});
+
+test("module access helper preserves canonical prerequisite and required PRE denials", async () => {
+  const membership = { classroomId: 7, studentId: 42, status: "active" };
+  const prerequisiteHarness = createLoaderHarness({
+    progressRows: playableRows("tutorial", 5),
+  });
+  await assert.rejects(
+    prerequisiteHarness.service.assertModuleAccessAllowed({
+      classroomId: 7,
+      studentId: 42,
+      lessonKey: "functions",
+      authorizedMembership: membership,
+    }),
+    (error) => {
+      assert.equal(error.name, "LessonProgressionError");
+      assert.equal(error.code, "LESSON_PREREQUISITE_REQUIRED");
+      assert.equal(error.lessonKey, "functions");
+      assert.equal(error.prerequisiteLessonKey, "arrays");
+      assert.equal(error.nextAction, "COMPLETE_PREREQUISITE_LESSON");
+      return true;
+    },
+  );
+
+  const preHarness = createLoaderHarness({
+    publishedAssessments: [assessment({ id: 808, classroomId: 7 })],
+    progressRows: playableRows("tutorial", 5),
+  });
+  await assert.rejects(
+    preHarness.service.assertModuleAccessAllowed({
+      classroomId: 7,
+      studentId: 42,
+      lessonKey: "arrays",
+      authorizedMembership: membership,
+    }),
+    (error) => {
+      assert.equal(error.name, "LessonProgressionError");
+      assert.equal(error.code, "PRE_ASSESSMENT_REQUIRED");
+      assert.equal(error.lessonKey, "arrays");
+      assert.equal(error.assessmentId, 808);
+      assert.equal(error.nextAction, "TAKE_PRE");
+      return true;
+    },
+  );
+});
+
+test("module access helper leaves game POST replay and assessment interaction state authoritative", async () => {
+  const requiredPost = assessment({
+    id: 909,
+    classroomId: 7,
+    type: "POST",
+    maxAttempts: 3,
+    requirePassingForCompletion: true,
+  });
+  const { service } = createLoaderHarness({
+    publishedAssessments: [requiredPost],
+    progressRows: playableRows("tutorial", 5),
+  });
+  const membership = { classroomId: 7, studentId: 42, status: "active" };
+  const state = await service.assertModuleAccessAllowed({
+    classroomId: 7,
+    studentId: 42,
+    lessonKey: "arrays",
+    authorizedMembership: membership,
+  });
+
+  assert.equal(state.moduleUnlocked, true);
+  assert.equal(state.gameUnlocked, true);
+  assert.equal(state.gameCompleted, false);
+  assert.equal(state.postUnlocked, false);
+  assert.equal(state.nextAction, "PLAY_GAME");
+  assert.deepEqual(progression.evaluateAssessmentInteraction({ assessment: requiredPost, state }), {
+    allowed: false,
+    reason: "GAME_INCOMPLETE",
+  });
+});

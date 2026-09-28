@@ -3,6 +3,7 @@ const ClassroomMembership = require("../models/ClassroomMembership");
 const Classroom = require("../models/Classroom");
 const User = require("../models/User");
 const UserProgress = require("../models/UserProgress");
+const { AssessmentApiError } = require("./assessmentErrorService");
 
 const formatDisplayName = (user) => {
   if (!user) {
@@ -65,6 +66,29 @@ const findPrimaryActiveMembership = async (studentId, { includeTeacher = false }
       ["updatedAt", "DESC"],
     ],
   });
+
+const requireExactActiveMembership = async ({ studentId, classroomId, transaction = null }) => {
+  const membership = await ClassroomMembership.findOne({
+    where: {
+      studentId,
+      classroomId,
+      status: "active",
+    },
+    attributes: ["id", "classroomId", "studentId", "status", "joinedAt", "updatedAt"],
+    include: [{
+      model: Classroom,
+      as: "classroom",
+      required: true,
+      where: { isActive: true },
+      attributes: ["id", "isActive"],
+    }],
+    ...(transaction ? { transaction } : {}),
+  });
+  if (!membership) {
+    throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+  }
+  return membership;
+};
 
 const buildClassroomLeaderboard = async ({
   classroomId,
@@ -205,5 +229,6 @@ const buildClassroomLeaderboard = async ({
 module.exports = {
   formatDisplayName,
   findPrimaryActiveMembership,
+  requireExactActiveMembership,
   buildClassroomLeaderboard,
 };

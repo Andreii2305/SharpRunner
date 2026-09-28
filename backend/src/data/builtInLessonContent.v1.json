@@ -1,0 +1,2121 @@
+{
+  "schemaVersion": 1,
+  "contentRevision": "2026-09-28.1",
+  "lessons": [
+    {
+      "title": "C# Foundations",
+      "eyebrow": "Tutorial · First Compile Trial",
+      "description": "Build the small set of C# skills used in SharpRunner's five onboarding trials.",
+      "objectives": [
+        "Identify the basic parts of a small C# program.",
+        "Declare int, string, double, and bool variables.",
+        "Assign and update values.",
+        "Display values with Console.WriteLine.",
+        "Use variables in a simple calculation."
+      ],
+      "sections": [
+        {
+          "id": "welcome",
+          "title": "Welcome to C#",
+          "blocks": [
+            {
+              "type": "heading",
+              "text": "What is C#?"
+            },
+            {
+              "type": "paragraph",
+              "text": "C# (pronounced C-sharp) is a programming language used to give a computer precise instructions. Developers use it for web services, desktop and mobile apps, cloud systems, and games. A C# program is written as source code, then a compiler checks that code and translates it into instructions the .NET runtime can execute."
+            },
+            {
+              "type": "heading",
+              "text": "Why types matter"
+            },
+            {
+              "type": "paragraph",
+              "text": "C# is strongly typed: every value has a type, and that type controls which operations make sense. Types help the compiler catch mistakes before a program runs—for example, trying to store the word \"five\" in a whole-number variable."
+            },
+            {
+              "type": "note",
+              "label": "How to study",
+              "text": "Read each example, predict what it displays, and then compare your prediction with the output.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "The Awakening introduces the editor and compile flow before later trials ask for text and number values."
+            }
+          ]
+        },
+        {
+          "id": "program",
+          "title": "What is a C# program?",
+          "blocks": [
+            {
+              "type": "heading",
+              "text": "Programs and statements"
+            },
+            {
+              "type": "paragraph",
+              "text": "A program is an ordered set of instructions. The computer follows those instructions from top to bottom unless a condition, loop, or method call changes the flow. One complete instruction is usually called a statement."
+            },
+            {
+              "type": "paragraph",
+              "text": "In the traditional program style below, execution begins in Main. A semicolon ends most statements, parentheses hold information for a method call, and braces group statements into a body."
+            },
+            {
+              "type": "code",
+              "value": "using System;\n\nclass Program\n{\n    static void Main()\n    {\n        Console.WriteLine(\"Hello, Malumay!\");\n    }\n}",
+              "output": "Hello, Malumay!",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "list",
+              "items": [
+                "using System; makes common .NET names available.",
+                "class Program groups this program's code.",
+                "static void Main() is the starting method in this program style.",
+                "Console.WriteLine(...) displays one line.",
+                "The semicolon finishes the display statement."
+              ]
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "C# is case-sensitive. Console.WriteLine is correct; console.writeline is not.",
+              "tone": "warning"
+            }
+          ]
+        },
+        {
+          "id": "variables",
+          "title": "Variables and values",
+          "blocks": [
+            {
+              "type": "heading",
+              "text": "Declare and assign"
+            },
+            {
+              "type": "paragraph",
+              "text": "A variable is a named storage place for a value your program may need again. Declaration introduces its type and name; assignment uses = to place a value in it. A useful name such as lanterns explains the value better than a vague name such as x."
+            },
+            {
+              "type": "code",
+              "value": "int lanterns = 5;",
+              "output": null,
+              "title": "Anatomy of a variable statement",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "items": [
+                "int → the data type",
+                "lanterns → the variable name",
+                "= → the assignment operator",
+                "5 → the value being stored",
+                "; → the end of the statement"
+              ]
+            },
+            {
+              "type": "code",
+              "value": "int lanterns = 5;\nConsole.WriteLine(lanterns);",
+              "output": "5",
+              "title": "A whole-number variable",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Why is the output 5?",
+              "text": "The first statement stores 5 in lanterns. Console.WriteLine then reads the current value of lanterns and displays it.",
+              "tone": "note"
+            },
+            {
+              "type": "code",
+              "value": "int coins = 8;\ncoins = 10;\nConsole.WriteLine(coins);",
+              "output": "10",
+              "title": "Updating a value",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Remember",
+              "text": "Use = to assign a value. The variable name goes on the left and the new value goes on the right.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "The Coin Keeper checks that you can represent a required whole-number value."
+            }
+          ]
+        },
+        {
+          "id": "types",
+          "title": "Common data types",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Choose a type that matches the kind of information you need to store. This matters because C# treats text, whole numbers, decimal numbers, and true/false facts differently."
+            },
+            {
+              "type": "list",
+              "items": [
+                "int stores whole numbers, such as 12.",
+                "double stores numbers with a decimal part, such as 2.5.",
+                "string stores text inside double quotes.",
+                "bool stores either true or false."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "int coins = 12;\nstring guideName = \"Kai\";\ndouble potionLiters = 2.5;\nbool gateOpen = false;\n\nConsole.WriteLine(guideName);",
+              "output": "Kai",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "string spirit = \"Kapre\";\nbool isFriendly = true;\nConsole.WriteLine(spirit);\nConsole.WriteLine(isFriendly);",
+              "output": "Kapre\nTrue",
+              "title": "Text and true/false values",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "int lanterns = 6;\ndouble fuel = 2.5;\nConsole.WriteLine(lanterns);\nConsole.WriteLine(fuel);",
+              "output": "6\n2.5",
+              "title": "Whole and decimal numbers",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "Text needs double quotes: string name = \"Kai\";. A decimal value belongs in a suitable type such as double, not int.",
+              "tone": "warning"
+            },
+            {
+              "type": "connection",
+              "text": "What Is Your Name? and Voices of the Village use text; Potion Measure uses a decimal value."
+            }
+          ]
+        },
+        {
+          "id": "output",
+          "title": "Output with Console.WriteLine",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Console.WriteLine displays a value and then moves to a new line. It can display literal text, a variable, or an expression."
+            },
+            {
+              "type": "code",
+              "value": "string place = \"Barangay Malumay\";\nConsole.WriteLine(\"Journey begins\");\nConsole.WriteLine(place);",
+              "output": "Journey begins\nBarangay Malumay",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "int charms = 3;\nConsole.WriteLine($\"Charms found: {charms}\");",
+              "output": "Charms found: 3",
+              "title": "Insert a value into text",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Remember",
+              "text": "Console.WriteLine displays a value. It does not store that value for later.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "arithmetic",
+          "title": "Simple arithmetic",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "An expression combines values and operators to produce a new value. Numeric variables can use + for addition, - for subtraction, * for multiplication, and / for division. C# evaluates the expression on the right before assigning its result."
+            },
+            {
+              "type": "code",
+              "value": "int blueLanterns = 3;\nint redLanterns = 2;\nint totalLanterns = blueLanterns + redLanterns;\nConsole.WriteLine(totalLanterns);",
+              "output": "5",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Why is the output 5?",
+              "text": "blueLanterns contributes 3 and redLanterns contributes 2. The expression 3 + 2 becomes 5 before that result is stored in totalLanterns.",
+              "tone": "note"
+            },
+            {
+              "type": "code",
+              "value": "double dose = 1.5;\ndouble twoDoses = dose * 2;\nConsole.WriteLine(twoDoses);",
+              "output": "3",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "practice",
+              "id": "tutorial-arithmetic",
+              "prompt": "Complete the expression so the program adds shells and stones, then run it.",
+              "starterCode": "int shells = 4;\nint stones = 6;\nint total = 0; // Replace 0 with an expression\nConsole.WriteLine(total);",
+              "solution": "int shells = 4;\nint stones = 6;\nint total = shells + stones;\nConsole.WriteLine(total);",
+              "expectedOutput": "10"
+            }
+          ]
+        },
+        {
+          "id": "mistakes",
+          "title": "Common beginner mistakes",
+          "blocks": [
+            {
+              "type": "list",
+              "items": [
+                "Using the wrong capitalization in a name.",
+                "Forgetting a semicolon after a statement.",
+                "Using a variable before declaring it.",
+                "Putting text in an int variable.",
+                "Using a comma instead of a decimal point in a numeric literal."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "int lanterns = \"five\";",
+              "output": null,
+              "title": "This does not compile",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Why it fails",
+              "text": "\"five\" is text, but lanterns was declared as an int. Use int lanterns = 5; or string lanterns = \"five\".",
+              "tone": "warning"
+            }
+          ]
+        },
+        {
+          "id": "practice",
+          "title": "Practice and quick check",
+          "blocks": [
+            {
+              "type": "practice",
+              "id": "tutorial-types",
+              "prompt": "Declare an int named lanternCount with value 5, then display the village and the count.",
+              "starterCode": "string village = \"Malumay\";\n// Add lanternCount here\nConsole.WriteLine(village);",
+              "solution": "string village = \"Malumay\";\nint lanternCount = 5;\nConsole.WriteLine(village);\nConsole.WriteLine(lanternCount);",
+              "expectedOutput": "Malumay\n5"
+            },
+            {
+              "type": "check",
+              "id": "tutorial-type",
+              "prompt": "Which type is suitable for the value 3.75?",
+              "options": [
+                "int",
+                "double",
+                "bool"
+              ],
+              "answer": 1,
+              "feedback": "double can represent a number with a decimal part."
+            },
+            {
+              "type": "check",
+              "id": "tutorial-output",
+              "prompt": "What does Console.WriteLine(lanterns); do?",
+              "options": [
+                "Stores a new value",
+                "Displays the current value",
+                "Changes the variable type"
+              ],
+              "answer": 1,
+              "feedback": "Console.WriteLine displays the value; assignment changes stored data."
+            }
+          ]
+        },
+        {
+          "id": "summary",
+          "title": "Summary",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "You can now read a small C# program, choose basic types, assign values, display output, and calculate a result."
+            },
+            {
+              "type": "list",
+              "items": [
+                "A variable has a type, name, and value.",
+                "int is for whole numbers; double can hold decimals.",
+                "string holds text; bool holds true or false.",
+                "Console.WriteLine displays output.",
+                "The expression on the right of = is evaluated before assignment."
+              ]
+            },
+            {
+              "type": "connection",
+              "text": "These skills prepare you for all five First Compile Trial levels without revealing their required answers."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "title": "Microsoft Learn. Built-in types and literals",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/types/built-in-types"
+        },
+        {
+          "title": "Microsoft Learn. The C# type system",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/fundamentals/types/"
+        },
+        {
+          "title": "Microsoft Learn. Write your first C# code",
+          "url": "https://learn.microsoft.com/en-us/training/modules/csharp-write-first/"
+        },
+        {
+          "title": "CodeChum. C# Programming learning modules/course materials used for SharpRunner curriculum alignment. Access may require enrolled student credentials."
+        }
+      ],
+      "lessonKey": "tutorial",
+      "game": {
+        "title": "First Compile Trial",
+        "route": "/Map"
+      }
+    },
+    {
+      "title": "Arrays",
+      "eyebrow": "Built-in curriculum · Barangay Malumay",
+      "description": "Store, access, change, and traverse related values in one- and two-dimensional arrays.",
+      "objectives": [
+        "Declare and initialize a one-dimensional array.",
+        "Access and modify elements by zero-based index.",
+        "Use Length and safe index bounds.",
+        "Traverse an array with for and foreach.",
+        "Declare and access a basic rectangular two-dimensional array."
+      ],
+      "sections": [
+        {
+          "id": "introduction",
+          "title": "Introduction to arrays",
+          "blocks": [
+            {
+              "type": "heading",
+              "text": "What is an array?"
+            },
+            {
+              "type": "paragraph",
+              "text": "An array groups a fixed number of related values of the same type under one variable name. Each stored value is an element, and each element has a numbered position called an index."
+            },
+            {
+              "type": "heading",
+              "text": "Why does it exist?"
+            },
+            {
+              "type": "paragraph",
+              "text": "Imagine tracking many lantern powers. Separate variables—lantern1, lantern2, lantern3—force you to repeat nearly identical code and make it difficult to process an unknown number of values. One array keeps the relationship clear and lets a loop visit the whole group."
+            },
+            {
+              "type": "code",
+              "value": "int lantern1 = 10;\nint lantern2 = 20;\nint lantern3 = 30;",
+              "output": null,
+              "title": "Without an array",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "value": "int[] lanterns = { 10, 20, 30 };",
+              "output": null,
+              "title": "Three integers in one array",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "value": "string[] spirits = { \"Aswang\", \"Tikbalang\", \"Kapre\" };",
+              "output": null,
+              "title": "Three strings in another array",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Why use arrays?",
+              "text": "Without an array, processing ten related values could require ten variables and ten statements. An array lets one loop process them consistently.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "The Lanterns of Malumay and stolen-supplies levels begin with correctly declared arrays."
+            }
+          ]
+        },
+        {
+          "id": "declare",
+          "title": "Declaring and initializing",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "The square brackets after a type mean 'array of this type.' An initializer between braces supplies the elements in order."
+            },
+            {
+              "type": "code",
+              "value": "int[] powers = { 10, 20, 30 };\nstring[] paths = { \"north\", \"east\" };",
+              "output": null,
+              "title": "C# example",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "items": [
+                "int is the element type.",
+                "[] says the variable holds an array.",
+                "powers is the array variable name.",
+                "{ 10, 20, 30 } lists the initial elements in order.",
+                "The semicolon ends the declaration statement."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "int[] emptySlots = new int[4];\nConsole.WriteLine(emptySlots.Length);",
+              "output": "4",
+              "title": "Create space first",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Remember",
+              "text": "Every element must be compatible with the array's element type. An int[] cannot contain a string.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "The first two array validators check element type, array size, order, and values."
+            }
+          ]
+        },
+        {
+          "id": "indexing",
+          "title": "Zero-based indexing",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "C# array indexes start at 0. Therefore, the first element is index 0, the second is index 1, and the third is index 2."
+            },
+            {
+              "type": "diagram",
+              "headers": [
+                "",
+                "10",
+                "20",
+                "30",
+                "40"
+              ],
+              "rows": [
+                [
+                  "Index",
+                  "0",
+                  "1",
+                  "2",
+                  "3"
+                ]
+              ],
+              "caption": "Each value sits directly above its index."
+            },
+            {
+              "type": "code",
+              "value": "int[] powers = { 10, 20, 30 };\nConsole.WriteLine(powers[1]);",
+              "output": "20",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Why is the output 20?",
+              "text": "powers[1] asks for the element at index 1. Index 1 is the second position because array indexing begins at 0.",
+              "tone": "note"
+            },
+            {
+              "type": "code",
+              "value": "string[] spirits = { \"Aswang\", \"Tikbalang\", \"Kapre\" };\nConsole.WriteLine(spirits[2]);",
+              "output": "Kapre",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "check",
+              "id": "arrays-index",
+              "prompt": "Which index selects 30 from { 10, 20, 30, 40 }?",
+              "options": [
+                "1",
+                "2",
+                "3"
+              ],
+              "answer": 1,
+              "feedback": "30 is the third element, so its zero-based index is 2."
+            },
+            {
+              "type": "connection",
+              "text": "The Road of Santelmo and Midnight Inventory require reading a specific string by index."
+            }
+          ]
+        },
+        {
+          "id": "changing",
+          "title": "Changing array values",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Use an index on the left of = to replace one element. The other elements remain unchanged."
+            },
+            {
+              "type": "code",
+              "value": "int[] charms = { 5, 10, 15 };\ncharms[1] = 25;\nConsole.WriteLine(charms[1]);",
+              "output": "25",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "string[] signs = { \"safe\", \"blocked\" };\nsigns[0] = \"open\";\nConsole.WriteLine(signs[0]);",
+              "output": "open",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "practice",
+              "id": "arrays-change",
+              "prompt": "Change the last value to 6, then display it.",
+              "starterCode": "int[] runes = { 2, 4, 0 };\n// Change index 2 here\nConsole.WriteLine(runes[2]);",
+              "solution": "int[] runes = { 2, 4, 0 };\nrunes[2] = 6;\nConsole.WriteLine(runes[2]);",
+              "expectedOutput": "6"
+            }
+          ]
+        },
+        {
+          "id": "length",
+          "title": "Length and valid bounds",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Length is the number of elements. Because indexes begin at 0, the last valid index is Length - 1."
+            },
+            {
+              "type": "code",
+              "value": "int[] charms = { 5, 10, 15, 20 };\nConsole.WriteLine(charms.Length);",
+              "output": "4",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "int lastIndex = charms.Length - 1;\nConsole.WriteLine(charms[lastIndex]);",
+              "output": "20",
+              "title": "Access the last element safely",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "charms[charms.Length] is outside the array. For four elements, Length is 4 but valid indexes are 0 through 3.",
+              "tone": "warning"
+            }
+          ]
+        },
+        {
+          "id": "for-loop",
+          "title": "Traversing with for",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A for loop is useful when you need the index. It starts at 0, continues while the index is less than Length, and increases the index after each pass."
+            },
+            {
+              "type": "code",
+              "value": "int[] powers = { 10, 20, 30 };\n\nfor (int i = 0; i < powers.Length; i++)\n{\n    Console.WriteLine(powers[i]);\n}",
+              "output": "10\n20\n30",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "list",
+              "items": [
+                "int i = 0 creates the first valid index.",
+                "i < powers.Length prevents an out-of-range access.",
+                "i++ adds 1 after each pass.",
+                "powers[i] reads the current element."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "string[] tags = { \"old\", \"new\" };\nfor (int i = 0; i < tags.Length; i++)\n{\n    Console.WriteLine($\"{i}: {tags[i]}\");\n}",
+              "output": "0: old\n1: new",
+              "title": "Use both index and value",
+              "runnable": true
+            },
+            {
+              "type": "connection",
+              "text": "Kapre's Name Tags and The Cursed Jars require complete traversal rather than checking only one element."
+            }
+          ]
+        },
+        {
+          "id": "foreach",
+          "title": "Traversing with foreach",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "foreach gives you each element directly. It is clear when you need every value but do not need to know or change its index."
+            },
+            {
+              "type": "code",
+              "value": "int[] powers = { 10, 20, 30 };\n\nforeach (int power in powers)\n{\n    Console.WriteLine(power);\n}",
+              "output": "10\n20\n30",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "string[] clues = { \"moon\", \"river\" };\nforeach (string clue in clues)\n{\n    Console.WriteLine(clue);\n}",
+              "output": "moon\nriver",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "for or foreach?",
+              "text": "Use for when the index matters or you must update by position. Use foreach for straightforward read-only traversal. Neither is always better.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "two-dimensional",
+          "title": "Two-dimensional arrays",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A rectangular two-dimensional array represents rows and columns. Access it with two indexes: row first, column second."
+            },
+            {
+              "type": "code",
+              "value": "int[,] ward = {\n    { 1, 0, 1 },\n    { 0, 1, 0 }\n};\n\nConsole.WriteLine(ward[0, 2]);",
+              "output": "1",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "diagram",
+              "headers": [
+                "",
+                "Col 0",
+                "Col 1",
+                "Col 2"
+              ],
+              "rows": [
+                [
+                  "Row 0",
+                  "1",
+                  "0",
+                  "1"
+                ],
+                [
+                  "Row 1",
+                  "0",
+                  "1",
+                  "0"
+                ]
+              ],
+              "caption": "ward[0, 2] means row 0, column 2."
+            },
+            {
+              "type": "code",
+              "value": "for (int row = 0; row < ward.GetLength(0); row++)\n{\n    for (int col = 0; col < ward.GetLength(1); col++)\n    {\n        Console.WriteLine(ward[row, col]);\n    }\n}",
+              "output": "1\n0\n1\n0\n1\n0",
+              "title": "Visit every grid cell",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Remember",
+              "text": "GetLength(0) is the row count. GetLength(1) is the column count.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "Warding Tile Grid and Tikbalang's Branching Path use rectangular int[,] patterns."
+            }
+          ]
+        },
+        {
+          "id": "mistakes",
+          "title": "Common array mistakes",
+          "blocks": [
+            {
+              "type": "code",
+              "value": "int[] values = { 10, 20, 30 };\nConsole.WriteLine(values[3]);",
+              "output": null,
+              "title": "Invalid index",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "This fails at run time because the three valid indexes are 0, 1, and 2."
+            },
+            {
+              "type": "list",
+              "items": [
+                "Forgetting that indexing starts at 0.",
+                "Confusing Length with the last index.",
+                "Using <= Length in a loop condition.",
+                "Mixing incompatible element types.",
+                "Checking one element when the task requires full traversal.",
+                "Using one index for a two-dimensional array."
+              ]
+            },
+            {
+              "type": "check",
+              "id": "arrays-bound",
+              "prompt": "Which loop condition safely visits every element?",
+              "options": [
+                "i <= values.Length",
+                "i < values.Length",
+                "i < values.Length - 1"
+              ],
+              "answer": 1,
+              "feedback": "i < Length reaches the last valid index and then stops."
+            }
+          ]
+        },
+        {
+          "id": "practice",
+          "title": "Practice and quick assessment",
+          "blocks": [
+            {
+              "type": "practice",
+              "id": "arrays-loop",
+              "prompt": "Complete the loop body so it displays all three values.",
+              "starterCode": "int[] values = { 4, 8, 12 };\nfor (int i = 0; i < values.Length; i++)\n{\n    // Display the current element\n}",
+              "solution": "int[] values = { 4, 8, 12 };\nfor (int i = 0; i < values.Length; i++)\n{\n    Console.WriteLine(values[i]);\n}",
+              "expectedOutput": "4\n8\n12"
+            },
+            {
+              "type": "practice",
+              "id": "arrays-grid",
+              "prompt": "Display the value at row 1, column 0 in this 2x2 grid.",
+              "starterCode": "int[,] map = {\n    { 1, 2 },\n    { 3, 4 }\n};\n// Display one cell",
+              "solution": "int[,] map = {\n    { 1, 2 },\n    { 3, 4 }\n};\nConsole.WriteLine(map[1, 0]);",
+              "expectedOutput": "3"
+            },
+            {
+              "type": "check",
+              "id": "arrays-length",
+              "prompt": "For an array with Length 5, what is the last valid index?",
+              "options": [
+                "5",
+                "4",
+                "6"
+              ],
+              "answer": 1,
+              "feedback": "The last index is always Length - 1, so 5 - 1 is 4."
+            },
+            {
+              "type": "check",
+              "id": "arrays-row-column",
+              "prompt": "In grid[1, 2], which index identifies the row?",
+              "options": [
+                "1",
+                "2",
+                "Neither"
+              ],
+              "answer": 0,
+              "feedback": "Rectangular arrays use row first, then column."
+            }
+          ]
+        },
+        {
+          "id": "summary",
+          "title": "Summary",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Arrays group same-type values. Zero-based indexes select elements, Length reports the element count, loops traverse collections, and two-dimensional arrays organize row-and-column data."
+            },
+            {
+              "type": "list",
+              "items": [
+                "Declare a one-dimensional array with T[].",
+                "The first index is 0; the last is Length - 1.",
+                "Use for when an index matters and foreach when reading each value directly.",
+                "Use int[,] for a rectangular integer grid.",
+                "Use row first and column second."
+              ]
+            },
+            {
+              "type": "connection",
+              "text": "You are prepared for all eight Arrays levels: exact 1D arrays, indexed string access, 2D patterns, and full string-array traversal."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "title": "Microsoft Learn. Arrays (C# reference)",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/arrays"
+        },
+        {
+          "title": "Microsoft Learn. Arrays (C# language specification)",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/arrays"
+        },
+        {
+          "title": "Microsoft Learn. Iteration statements",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/statements/iteration-statements"
+        },
+        {
+          "title": "CodeChum. C# Programming learning modules/course materials used for SharpRunner curriculum alignment. Access may require enrolled student credentials."
+        }
+      ],
+      "lessonKey": "arrays",
+      "game": {
+        "title": "Arrays Adventure",
+        "route": "/Map"
+      }
+    },
+    {
+      "title": "Functions and Methods",
+      "eyebrow": "Built-in curriculum · Kapre's Trail",
+      "description": "Define, call, and combine C# methods with parameters, return values, and safe recursion.",
+      "objectives": [
+        "Define and call a void method.",
+        "Distinguish a method definition from a method call.",
+        "Distinguish parameters from arguments.",
+        "Return and store a value from a method.",
+        "Trace a recursive method with a base case."
+      ],
+      "sections": [
+        {
+          "id": "what-is-method",
+          "title": "What is a method?",
+          "blocks": [
+            {
+              "type": "heading",
+              "text": "What is a method?"
+            },
+            {
+              "type": "paragraph",
+              "text": "A method is a named group of statements that performs one task. In C#, reusable functions defined inside a class or other type are commonly called methods. A clear method name describes the action or result, such as RingBell or CalculatePower."
+            },
+            {
+              "type": "heading",
+              "text": "Why methods matter"
+            },
+            {
+              "type": "paragraph",
+              "text": "Methods let you solve a larger problem as smaller named jobs. You can call the same job more than once, change it in one place, and test it separately. They are useful whenever an action repeats or a calculation deserves a clear name."
+            },
+            {
+              "type": "code",
+              "value": "static void RingBell()\n{\n    Console.WriteLine(\"Ding!\");\n}",
+              "output": null,
+              "title": "A method definition",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "items": [
+                "static lets this example call the method from the program's static entry point.",
+                "void says the method does not send a value back.",
+                "RingBell is the method name.",
+                "() is the parameter list; it is empty here.",
+                "{ } contains the method body.",
+                "Console.WriteLine is the statement that runs after a call."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "RingBell();",
+              "output": "Ding!",
+              "title": "A method call",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Create versus call",
+              "text": "Creating the method defines its behavior. Calling the method makes that behavior run.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "The First Ritual validator requires both a method definition and a call."
+            }
+          ]
+        },
+        {
+          "id": "why-methods",
+          "title": "Why use methods?",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Methods divide a larger program into smaller jobs. They reduce repeated code, make intent easier to read, and let the same behavior run from more than one place."
+            },
+            {
+              "type": "code",
+              "value": "static void ShowWarning()\n{\n    Console.WriteLine(\"Spirit nearby!\");\n}\n\nShowWarning();\nShowWarning();",
+              "output": "Spirit nearby!\nSpirit nearby!",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Why are there two output lines?",
+              "text": "The method is declared once but called twice. Each call starts the body and displays one line.",
+              "tone": "note"
+            },
+            {
+              "type": "code",
+              "value": "static void LightTorch()\n{\n    Console.WriteLine(\"Torch lit\");\n}\n\nLightTorch();",
+              "output": "Torch lit",
+              "title": "One named action",
+              "runnable": true
+            },
+            {
+              "type": "connection",
+              "text": "Bell of Dawn focuses on calling prepared behavior, while the next shrine levels ask you to define and call it."
+            }
+          ]
+        },
+        {
+          "id": "void-methods",
+          "title": "void methods",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "The word void means the method does not send a result value back to its caller. It can still display output or perform another action."
+            },
+            {
+              "type": "code",
+              "value": "static void OpenGate()\n{\n    Console.WriteLine(\"Gate opened\");\n}\n\nOpenGate();",
+              "output": "Gate opened",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "static void SoundGong()\n{\n    Console.WriteLine(\"Gong!\");\n}\n\nSoundGong();\nSoundGong();",
+              "output": "Gong!\nGong!",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "Writing a correct definition but never calling it means its body never runs.",
+              "tone": "warning"
+            },
+            {
+              "type": "connection",
+              "text": "Light the Warding Flame and Seal the Cursed Shrine use no-parameter void methods."
+            }
+          ]
+        },
+        {
+          "id": "parameters",
+          "title": "Parameters and arguments",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A parameter is a named input in a method definition. An argument is the actual value supplied by a call."
+            },
+            {
+              "type": "code",
+              "value": "static void ThrowSalt(int amount)\n{\n    Console.WriteLine($\"Threw {amount} salt.\");\n}\n\nThrowSalt(5);",
+              "output": "Threw 5 salt.",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "diagram",
+              "headers": [
+                "Method call",
+                "Parameter",
+                "Received value"
+              ],
+              "rows": [
+                [
+                  "ThrowSalt(5)",
+                  "amount",
+                  "5"
+                ]
+              ],
+              "caption": "The argument 5 flows into the parameter amount."
+            },
+            {
+              "type": "list",
+              "items": [
+                "amount is the parameter: a name used by the method body.",
+                "5 is the argument: the actual value supplied by this call.",
+                "During this call, amount contains 5."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "static void MarkPath(string direction, int steps)\n{\n    Console.WriteLine($\"{direction}: {steps}\");\n}\n\nMarkPath(\"east\", 3);",
+              "output": "east: 3",
+              "title": "Two parameters",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Remember",
+              "text": "Argument order and types must match the parameter list.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "Shrine Offering and Salt Against the Aswang focus on a parameterized void method and its call."
+            }
+          ]
+        },
+        {
+          "id": "return-values",
+          "title": "Return values",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A non-void method promises to send a value of its declared return type back to the caller. The return keyword supplies that value, and the caller can store it."
+            },
+            {
+              "type": "code",
+              "value": "static int GetPower()\n{\n    return 50;\n}\n\nint power = GetPower();\nConsole.WriteLine(power);",
+              "output": "50",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "list",
+              "items": [
+                "int before GetPower is the promised return type.",
+                "return 50; ends the method and sends 50 to its caller.",
+                "GetPower() calls the method.",
+                "The returned 50 is stored in power before it is displayed."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "static string FindPath()\n{\n    return \"north\";\n}\n\nstring path = FindPath();\nConsole.WriteLine(path);",
+              "output": "north",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Display is not return",
+              "text": "Console.WriteLine(50) displays 50. return 50 sends 50 back to the caller so the program can store or calculate with it.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "Oracle Stone returns an int, while Diwata's Safe Path returns a string."
+            }
+          ]
+        },
+        {
+          "id": "parameters-return",
+          "title": "Parameters with return values",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A method can receive inputs, calculate with them, and return one result. This keeps the calculation reusable for different arguments."
+            },
+            {
+              "type": "code",
+              "value": "static int AddPower(int basePower, int bonus)\n{\n    return basePower + bonus;\n}\n\nint total = AddPower(30, 20);\nConsole.WriteLine(total);",
+              "output": "50",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "static int Double(int value)\n{\n    return value * 2;\n}\n\nConsole.WriteLine(Double(7));",
+              "output": "14",
+              "title": "Same pattern, different calculation",
+              "runnable": true
+            },
+            {
+              "type": "practice",
+              "id": "methods-total",
+              "prompt": "Complete TotalCoins, call it with 3 and 4, and display the result.",
+              "starterCode": "static int TotalCoins(int first, int second)\n{\n    return 0; // Replace this value\n}\n\nConsole.WriteLine(TotalCoins(3, 4));",
+              "solution": "static int TotalCoins(int first, int second)\n{\n    return first + second;\n}\n\nConsole.WriteLine(TotalCoins(3, 4));",
+              "expectedOutput": "7"
+            },
+            {
+              "type": "connection",
+              "text": "Anting-Anting Power and Healing Ritual validate int parameters, calculation, return, call, and stored result."
+            }
+          ]
+        },
+        {
+          "id": "scope",
+          "title": "Basic variable scope",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A variable declared inside a method is local to that method. Another method cannot use it directly. Values cross a method boundary through parameters and return values."
+            },
+            {
+              "type": "code",
+              "value": "static int MakeCharm(int strength)\n{\n    int doubled = strength * 2;\n    return doubled;\n}\n\nint result = MakeCharm(6);",
+              "output": null,
+              "title": "C# example",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "doubled exists only inside MakeCharm. Main uses the returned result instead.",
+              "tone": "warning"
+            }
+          ]
+        },
+        {
+          "id": "recursion",
+          "title": "Recursion and the base case",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A recursive method calls itself. Each call should move toward a base case: a condition that stops further calls."
+            },
+            {
+              "type": "code",
+              "value": "static void BuildStep(int step)\n{\n    if (step == 0)\n        return;\n\n    Console.WriteLine(step);\n    BuildStep(step - 1);\n}\n\nBuildStep(3);",
+              "output": "3\n2\n1",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "diagram",
+              "headers": [
+                "Call",
+                "Next"
+              ],
+              "rows": [
+                [
+                  "BuildStep(3)",
+                  "BuildStep(2)"
+                ],
+                [
+                  "BuildStep(2)",
+                  "BuildStep(1)"
+                ],
+                [
+                  "BuildStep(1)",
+                  "BuildStep(0)"
+                ],
+                [
+                  "BuildStep(0)",
+                  "STOP"
+                ]
+              ],
+              "caption": "The value becomes smaller until the base case stops recursion."
+            },
+            {
+              "type": "list",
+              "items": [
+                "The method calls itself.",
+                "step - 1 makes the problem smaller.",
+                "step == 0 is the base case.",
+                "return stops that call before another recursive call."
+              ]
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "Without a reachable base case, calls keep accumulating until the program fails with a stack overflow.",
+              "tone": "warning"
+            },
+            {
+              "type": "connection",
+              "text": "Endless Bamboo Stairs validates a countdown-style recursive method and a safe base case."
+            }
+          ]
+        },
+        {
+          "id": "mistakes",
+          "title": "Common method mistakes",
+          "blocks": [
+            {
+              "type": "list",
+              "items": [
+                "Defining a method but never calling it.",
+                "Calling a method with the wrong argument type or order.",
+                "Declaring a non-void return type but not returning a value.",
+                "Trying to use a local variable outside its method.",
+                "Printing a result when the caller needs it returned.",
+                "Writing recursion without a reachable base case."
+              ]
+            },
+            {
+              "type": "code",
+              "value": "static int GetScore()\n{\n    Console.WriteLine(10);\n}",
+              "output": null,
+              "title": "Missing return value",
+              "runnable": false
+            },
+            {
+              "type": "paragraph",
+              "text": "This displays 10 but does not satisfy the promise to return an int. The body needs return 10;."
+            }
+          ]
+        },
+        {
+          "id": "practice",
+          "title": "Practice and assessment",
+          "blocks": [
+            {
+              "type": "practice",
+              "id": "methods-void",
+              "prompt": "Complete and call LightLantern so it displays Lit.",
+              "starterCode": "static void LightLantern()\n{\n    // Display Lit\n}\n\n// Call the method",
+              "solution": "static void LightLantern()\n{\n    Console.WriteLine(\"Lit\");\n}\n\nLightLantern();",
+              "expectedOutput": "Lit"
+            },
+            {
+              "type": "practice",
+              "id": "methods-multiply",
+              "prompt": "Complete Multiply and display the product of 4 and 5.",
+              "starterCode": "static int Multiply(int first, int second)\n{\n    return 0;\n}\n\nConsole.WriteLine(Multiply(4, 5));",
+              "solution": "static int Multiply(int first, int second)\n{\n    return first * second;\n}\n\nConsole.WriteLine(Multiply(4, 5));",
+              "expectedOutput": "20"
+            },
+            {
+              "type": "check",
+              "id": "methods-create-call",
+              "prompt": "Which line makes RingBell run?",
+              "options": [
+                "void RingBell()",
+                "RingBell();",
+                "return RingBell;"
+              ],
+              "answer": 1,
+              "feedback": "A method call uses its name followed by parentheses."
+            },
+            {
+              "type": "check",
+              "id": "methods-parameter",
+              "prompt": "In ThrowSalt(5), what is 5?",
+              "options": [
+                "A parameter",
+                "An argument",
+                "A return type"
+              ],
+              "answer": 1,
+              "feedback": "The call supplies the argument 5 to the method's parameter."
+            },
+            {
+              "type": "check",
+              "id": "methods-recursion",
+              "prompt": "What must stop a recursive method?",
+              "options": [
+                "A base case",
+                "A string",
+                "A second class"
+              ],
+              "answer": 0,
+              "feedback": "A reachable base case prevents endless recursive calls."
+            }
+          ]
+        },
+        {
+          "id": "summary",
+          "title": "Summary",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Methods name reusable behavior. Parameters receive inputs, arguments supply them, return sends a result to the caller, and recursion repeats through self-calls until a base case."
+            },
+            {
+              "type": "list",
+              "items": [
+                "Definition creates behavior; a call runs it.",
+                "void means no result value is returned.",
+                "Parameters appear in the definition; arguments appear in the call.",
+                "A returned value can be stored by the caller.",
+                "Safe recursion must progress toward a base case."
+              ]
+            },
+            {
+              "type": "connection",
+              "text": "You are prepared for the 11 playable method levels, from simple void calls through int/string returns, parameters, calculated results, and recursive stairs."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "title": "Microsoft Learn. Overview of methods",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/methods"
+        },
+        {
+          "title": "Microsoft Learn. Methods (C# Programming Guide)",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/classes-and-structs/methods"
+        },
+        {
+          "title": "Microsoft Learn. Method parameters and modifiers",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/method-parameters"
+        },
+        {
+          "title": "CodeChum. C# Programming learning modules/course materials used for SharpRunner curriculum alignment. Access may require enrolled student credentials."
+        }
+      ],
+      "lessonKey": "functions",
+      "game": {
+        "title": "Functions Adventure",
+        "route": "/Map"
+      }
+    },
+    {
+      "title": "Functions with Arrays",
+      "eyebrow": "Built-in curriculum · Tikbalang Crossing",
+      "description": "Combine earlier skills by passing arrays to methods, traversing them, and returning useful results.",
+      "objectives": [
+        "Pass a one-dimensional array to a method.",
+        "Traverse an array inside a method.",
+        "Count matching values and return the result.",
+        "Explain how element changes can affect the supplied array.",
+        "Pass and process a rectangular two-dimensional array."
+      ],
+      "sections": [
+        {
+          "id": "review",
+          "title": "Review: arrays plus methods",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Arrays group same-type values; methods group reusable behavior. Combining them lets one method process any compatible array supplied by its caller."
+            },
+            {
+              "type": "code",
+              "value": "int[] powers = { 10, 20, 30 };",
+              "output": null,
+              "title": "Array data",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "value": "static void ShowNumber(int number)\n{\n    Console.WriteLine(number);\n}",
+              "output": null,
+              "title": "Method behavior",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Integration goal",
+              "text": "This module assumes you know indexing, loops, parameters, calls, and return values. It focuses on connecting those ideas.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "passing-1d",
+          "title": "Passing a 1D array",
+          "blocks": [
+            {
+              "type": "heading",
+              "text": "From caller to method"
+            },
+            {
+              "type": "paragraph",
+              "text": "An int[] parameter can receive a complete one-dimensional integer array. The call passes the array variable name without brackets because it is passing the whole array, not selecting one element."
+            },
+            {
+              "type": "code",
+              "value": "static void ShowCharms(int[] charms)\n{\n    foreach (int charm in charms)\n    {\n        Console.WriteLine(charm);\n    }\n}\n\nint[] powers = { 10, 20, 30 };\nShowCharms(powers);",
+              "output": "10\n20\n30",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "diagram",
+              "headers": [
+                "Step",
+                "Data"
+              ],
+              "rows": [
+                [
+                  "Array",
+                  "powers"
+                ],
+                [
+                  "Passed to method",
+                  "ShowCharms(powers)"
+                ],
+                [
+                  "Method loops",
+                  "each charm"
+                ],
+                [
+                  "Result",
+                  "each value displayed"
+                ]
+              ],
+              "caption": "One argument carries the whole array."
+            },
+            {
+              "type": "note",
+              "label": "Why is the output 10, 20, 30?",
+              "text": "powers refers to all three values. ShowCharms receives that array as charms, and foreach visits each element in its original order.",
+              "tone": "note"
+            },
+            {
+              "type": "code",
+              "value": "static void ShowClues(string[] clues)\n{\n    foreach (string clue in clues)\n        Console.WriteLine(clue);\n}\n\nstring[] trail = { \"river\", \"tree\" };\nShowClues(trail);",
+              "output": "river\ntree",
+              "title": "A different element type",
+              "runnable": true
+            },
+            {
+              "type": "connection",
+              "text": "Process the Lantern Line requires one int[] argument and complete traversal inside a void method."
+            }
+          ]
+        },
+        {
+          "id": "looping",
+          "title": "Looping inside a method",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "The loop belongs inside the method when traversal is part of the method's job. Use Length so it works for different array sizes."
+            },
+            {
+              "type": "code",
+              "value": "static void ShowIndexed(int[] values)\n{\n    for (int i = 0; i < values.Length; i++)\n    {\n        Console.WriteLine($\"{i}: {values[i]}\");\n    }\n}\n\nShowIndexed(new int[] { 4, 8 });",
+              "output": "0: 4\n1: 8",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Common mistake",
+              "text": "Checking values[0] processes only the first element. A traversal task requires every valid index.",
+              "tone": "warning"
+            }
+          ]
+        },
+        {
+          "id": "return-result",
+          "title": "Returning a processed result",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A processing method can build one result while it traverses and return that result after the loop."
+            },
+            {
+              "type": "code",
+              "value": "static int CountStrongCharms(int[] charms)\n{\n    int count = 0;\n\n    foreach (int charm in charms)\n    {\n        if (charm >= 50)\n        {\n            count++;\n        }\n    }\n\n    return count;\n}\n\nint[] values = { 20, 50, 80 };\nint strong = CountStrongCharms(values);\nConsole.WriteLine(strong);",
+              "output": "2",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "static int CountStrongCharms(int[] charms)\n{\n    int count = 0;\n    foreach (int charm in charms)\n        if (charm >= 50) count++;\n    return count;\n}\n\nint[] secondSet = { 60, 10, 55, 5 };\nConsole.WriteLine(CountStrongCharms(secondSet));",
+              "output": "2",
+              "title": "Same method, different values",
+              "runnable": true
+            },
+            {
+              "type": "list",
+              "items": [
+                "count begins at 0 before traversal.",
+                "foreach checks every value.",
+                "The condition is true for 50 and 80 in the first example.",
+                "count++ adds one for each match.",
+                "return runs after the loop and sends the final count to the caller."
+              ]
+            },
+            {
+              "type": "note",
+              "label": "Pattern",
+              "text": "Initialize the counter before the loop, test each element, increment only for a match, and return after traversal.",
+              "tone": "note"
+            },
+            {
+              "type": "connection",
+              "text": "Count the Cursed Charms validates this structure with a parallel condition and data set."
+            }
+          ]
+        },
+        {
+          "id": "modifying",
+          "title": "Modifying elements in a method",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Arrays are reference types. A method receives a copy of the reference by default; both references point to the same array object. Changing an element through the parameter is visible to the caller."
+            },
+            {
+              "type": "code",
+              "value": "static void BoostFirst(int[] values)\n{\n    values[0] = values[0] + 10;\n}\n\nint[] powers = { 5, 8 };\nBoostFirst(powers);\nConsole.WriteLine(powers[0]);",
+              "output": "15",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "static void ClearLast(int[] values)\n{\n    values[values.Length - 1] = 0;\n}\n\nint[] marks = { 3, 6, 9 };\nClearLast(marks);\nConsole.WriteLine(marks[2]);",
+              "output": "0",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Be deliberate",
+              "text": "Element changes persist. If a method should only inspect data, avoid assigning to array elements.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "passing-2d",
+          "title": "Passing a 2D array",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A rectangular grid uses a T[,] parameter. One array argument carries every row and column into the method."
+            },
+            {
+              "type": "code",
+              "value": "static void ShowGrid(int[,] grid)\n{\n    for (int row = 0; row < grid.GetLength(0); row++)\n    {\n        for (int col = 0; col < grid.GetLength(1); col++)\n        {\n            Console.WriteLine(grid[row, col]);\n        }\n    }\n}\n\nint[,] ward = { { 1, 0 }, { 0, 1 } };\nShowGrid(ward);",
+              "output": "1\n0\n0\n1",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "list",
+              "items": [
+                "int[,] declares a rectangular integer array.",
+                "GetLength(0) gives rows.",
+                "GetLength(1) gives columns.",
+                "grid[row, col] reads the current cell."
+              ]
+            },
+            {
+              "type": "connection",
+              "text": "Restore the Warding Grid requires an int[,] parameter and one call with the prepared grid."
+            }
+          ]
+        },
+        {
+          "id": "return-2d",
+          "title": "Returning a result from a grid",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Use nested loops to inspect every cell. Keep the accumulator outside both loops so it is not reset while traversal continues."
+            },
+            {
+              "type": "code",
+              "value": "static int CountOpenCells(int[,] map)\n{\n    int open = 0;\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            if (map[row, col] == 1) open++;\n        }\n    }\n    return open;\n}\n\nint[,] map = { { 1, 0, 1 }, { 0, 1, 0 } };\nConsole.WriteLine(CountOpenCells(map));",
+              "output": "3",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "int[,] smallMap = { { 1, 1 }, { 1, 0 } };\nConsole.WriteLine(CountOpenCells(smallMap));",
+              "output": "3",
+              "title": "Reuse with a second grid",
+              "runnable": false
+            },
+            {
+              "type": "connection",
+              "text": "Ancient Cemetery of the Forgotten Spirits requires safe nested traversal, matching-value counting, and a returned result."
+            }
+          ]
+        },
+        {
+          "id": "mistakes",
+          "title": "Common integration mistakes",
+          "blocks": [
+            {
+              "type": "list",
+              "items": [
+                "Writing int instead of int[] or int[,] in the parameter.",
+                "Passing one element when the method expects the whole array.",
+                "Looping outside the method when processing belongs inside it.",
+                "Returning the counter before traversal finishes.",
+                "Resetting the counter inside a loop.",
+                "Using Length instead of GetLength for row and column bounds.",
+                "Forgetting that element assignments can change the caller's array."
+              ]
+            },
+            {
+              "type": "check",
+              "id": "fa-whole-array",
+              "prompt": "Which call passes the complete array powers?",
+              "options": [
+                "ShowCharms(powers);",
+                "ShowCharms(powers[0]);",
+                "ShowCharms(int);"
+              ],
+              "answer": 0,
+              "feedback": "Use the array variable name to pass the complete array."
+            }
+          ]
+        },
+        {
+          "id": "practice",
+          "title": "Practice and assessment",
+          "blocks": [
+            {
+              "type": "practice",
+              "id": "fa-sum",
+              "prompt": "Complete SumValues so it returns the total, then run the supplied call.",
+              "starterCode": "static int SumValues(int[] values)\n{\n    int total = 0;\n    foreach (int value in values)\n    {\n        // Add value to total\n    }\n    return total;\n}\n\nConsole.WriteLine(SumValues(new int[] { 3, 4, 5 }));",
+              "solution": "static int SumValues(int[] values)\n{\n    int total = 0;\n    foreach (int value in values)\n    {\n        total += value;\n    }\n    return total;\n}\n\nConsole.WriteLine(SumValues(new int[] { 3, 4, 5 }));",
+              "expectedOutput": "12"
+            },
+            {
+              "type": "practice",
+              "id": "fa-grid",
+              "prompt": "Complete ShowMap so its nested loops display every cell.",
+              "starterCode": "static void ShowMap(int[,] map)\n{\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            // Display the current cell\n        }\n    }\n}\n\nShowMap(new int[,] { { 1, 2 }, { 3, 4 } });",
+              "solution": "static void ShowMap(int[,] map)\n{\n    for (int row = 0; row < map.GetLength(0); row++)\n    {\n        for (int col = 0; col < map.GetLength(1); col++)\n        {\n            Console.WriteLine(map[row, col]);\n        }\n    }\n}\n\nShowMap(new int[,] { { 1, 2 }, { 3, 4 } });",
+              "expectedOutput": "1\n2\n3\n4"
+            },
+            {
+              "type": "check",
+              "id": "fa-counter",
+              "prompt": "Where should a counter usually be initialized?",
+              "options": [
+                "Before the traversal loops",
+                "Inside the innermost loop",
+                "After return"
+              ],
+              "answer": 0,
+              "feedback": "Initialize it before traversal so earlier matches are preserved."
+            },
+            {
+              "type": "check",
+              "id": "fa-grid-bounds",
+              "prompt": "What gives the number of columns in grid?",
+              "options": [
+                "grid.Length",
+                "grid.GetLength(0)",
+                "grid.GetLength(1)"
+              ],
+              "answer": 2,
+              "feedback": "Dimension 1 is the column dimension."
+            }
+          ]
+        },
+        {
+          "id": "summary",
+          "title": "Summary",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "An array parameter lets a method process an entire collection. Loops visit the data, accumulators build results, return sends a result back, and nested loops handle rectangular grids."
+            },
+            {
+              "type": "list",
+              "items": [
+                "Use T[] for a 1D array parameter and T[,] for a rectangular grid.",
+                "Pass the array variable name in the call.",
+                "Return only after traversal is complete.",
+                "Use GetLength(0) and GetLength(1) for grid bounds.",
+                "Element changes made through a parameter affect the shared array object."
+              ]
+            },
+            {
+              "type": "connection",
+              "text": "You are prepared for all four functions-with-arrays levels: 1D void processing, 1D returned counting, 2D void processing, and 2D returned counting."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "title": "Microsoft Learn. Arrays (C# reference)",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/arrays"
+        },
+        {
+          "title": "Microsoft Learn. Overview of methods",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/methods"
+        },
+        {
+          "title": "Microsoft Learn. Methods (C# Programming Guide)",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/classes-and-structs/methods"
+        },
+        {
+          "title": "CodeChum. C# Programming learning modules/course materials used for SharpRunner curriculum alignment. Access may require enrolled student credentials."
+        }
+      ],
+      "lessonKey": "functions-with-arrays",
+      "game": {
+        "title": "Functions-with-Arrays Adventure",
+        "route": "/Map"
+      }
+    },
+    {
+      "title": "Final Review",
+      "eyebrow": "Built-in curriculum · Bakunawa Eclipse",
+      "description": "Review the complete journey and check your readiness for the Last Compile without introducing new syntax.",
+      "objectives": [
+        "Recall the core syntax from every earlier module.",
+        "Choose a safe traversal for 1D and 2D arrays.",
+        "Distinguish parameters, arguments, and return values.",
+        "Recognize a safe recursive base case.",
+        "Plan a multi-part program one phase at a time."
+      ],
+      "sections": [
+        {
+          "id": "overview",
+          "title": "Final journey overview",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Bakunawa Eclipse combines skills you have already practiced. No substantial new syntax is introduced here. Read one phase at a time, identify its inputs and expected result, and fix the earliest incomplete phase first."
+            },
+            {
+              "type": "list",
+              "items": [
+                "Variables store the program's current data.",
+                "Arrays organize related values.",
+                "Loops visit array elements.",
+                "Methods name reusable operations.",
+                "Parameters carry inputs and return carries a result back.",
+                "Recursion repeats self-calls until a base case."
+              ]
+            },
+            {
+              "type": "note",
+              "label": "Readiness, not an exam",
+              "text": "The checks in this module are formative. Retry anything you miss and revisit the matching section.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "variables-review",
+          "title": "Variables review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A declaration gives a variable a type and name. Assignment stores a compatible value."
+            },
+            {
+              "type": "code",
+              "value": "int seals = 4;\nstring phaseName = \"Moon ward\";\nbool repaired = false;\nConsole.WriteLine(seals);",
+              "output": "4",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "code",
+              "value": "int basePower = 20;\nint bonus = 5;\nint total = basePower + bonus;",
+              "output": null,
+              "title": "Calculate, then store",
+              "runnable": false
+            },
+            {
+              "type": "check",
+              "id": "final-types",
+              "prompt": "Which type stores true or false?",
+              "options": [
+                "string",
+                "bool",
+                "double"
+              ],
+              "answer": 1,
+              "feedback": "bool represents the two logical values true and false."
+            }
+          ]
+        },
+        {
+          "id": "arrays-indexing",
+          "title": "Arrays and indexing review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A one-dimensional array uses one zero-based index. Length gives its element count, so Length - 1 is the final valid index."
+            },
+            {
+              "type": "code",
+              "value": "int[] symbols = { 1, 0, 1 };\nConsole.WriteLine(symbols[1]);\nConsole.WriteLine(symbols.Length);",
+              "output": "0\n3",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Check the bound",
+              "text": "A loop should use index < symbols.Length, not index <= symbols.Length.",
+              "tone": "note"
+            },
+            {
+              "type": "check",
+              "id": "final-first-index",
+              "prompt": "What is the first array index?",
+              "options": [
+                "0",
+                "1",
+                "-1"
+              ],
+              "answer": 0,
+              "feedback": "C# arrays use zero-based indexing."
+            }
+          ]
+        },
+        {
+          "id": "loops-review",
+          "title": "Loop review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Use a loop to visit every element. Place a counter before the loop so its value survives across iterations."
+            },
+            {
+              "type": "code",
+              "value": "static int CountZeros(int[] values)\n{\n    int count = 0;\n    for (int i = 0; i < values.Length; i++)\n    {\n        if (values[i] == 0) count++;\n    }\n    return count;\n}",
+              "output": null,
+              "title": "C# example",
+              "runnable": false
+            },
+            {
+              "type": "code",
+              "value": "foreach (int value in values)\n{\n    Console.WriteLine(value);\n}",
+              "output": null,
+              "title": "Read each value directly",
+              "runnable": false
+            },
+            {
+              "type": "check",
+              "id": "final-length",
+              "prompt": "What does .Length return for a 1D array?",
+              "options": [
+                "Its final index",
+                "Its number of elements",
+                "Its largest value"
+              ],
+              "answer": 1,
+              "feedback": "Length is the element count; the final index is Length - 1."
+            }
+          ]
+        },
+        {
+          "id": "methods-review",
+          "title": "Methods and calls review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A definition describes behavior. A call runs it. void means no result value is returned."
+            },
+            {
+              "type": "code",
+              "value": "static void Repair(int index)\n{\n    Console.WriteLine($\"Repairing {index}\");\n}\n\nRepair(2);",
+              "output": "Repairing 2",
+              "title": "C# example",
+              "runnable": true
+            },
+            {
+              "type": "note",
+              "label": "Create and call",
+              "text": "Both parts matter: the method must exist, and the program must call it where the action is needed.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "parameters-return",
+          "title": "Parameters and return values review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "Parameters are names in a definition; arguments are values in a call. return sends a value to the caller instead of merely displaying it."
+            },
+            {
+              "type": "code",
+              "value": "static int CalculateWard(int basePower, int bonus)\n{\n    return basePower + bonus;\n}\n\nint ward = CalculateWard(30, 10);",
+              "output": null,
+              "title": "C# example",
+              "runnable": false
+            },
+            {
+              "type": "check",
+              "id": "final-parameter",
+              "prompt": "In CalculateWard(30, 10), what are 30 and 10?",
+              "options": [
+                "Parameters",
+                "Arguments",
+                "Return types"
+              ],
+              "answer": 1,
+              "feedback": "Values supplied by a call are arguments."
+            },
+            {
+              "type": "check",
+              "id": "final-return",
+              "prompt": "Which keyword sends a value back?",
+              "options": [
+                "void",
+                "static",
+                "return"
+              ],
+              "answer": 2,
+              "feedback": "return supplies the method's result to its caller."
+            }
+          ]
+        },
+        {
+          "id": "grid-review",
+          "title": "Arrays plus methods review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A method that receives int[,] can process a rectangular grid. Nested loops cover both dimensions."
+            },
+            {
+              "type": "code",
+              "value": "static int CountCells(int[,] grid)\n{\n    int visited = 0;\n    for (int row = 0; row < grid.GetLength(0); row++)\n    {\n        for (int col = 0; col < grid.GetLength(1); col++)\n        {\n            int current = grid[row, col];\n            visited++;\n        }\n    }\n    return visited;\n}",
+              "output": null,
+              "title": "C# example",
+              "runnable": false
+            },
+            {
+              "type": "note",
+              "label": "Trace it",
+              "text": "For a 2 by 3 grid, the outer loop selects 2 rows and the inner loop visits 3 columns per row: 6 cell visits.",
+              "tone": "note"
+            }
+          ]
+        },
+        {
+          "id": "recursion-review",
+          "title": "Recursion review",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "A recursive call must move toward a reachable base case."
+            },
+            {
+              "type": "code",
+              "value": "static void ResolvePhase(int phase)\n{\n    if (phase == 0) return;\n    Console.WriteLine(phase);\n    ResolvePhase(phase - 1);\n}",
+              "output": null,
+              "title": "C# example",
+              "runnable": false
+            },
+            {
+              "type": "list",
+              "items": [
+                "The base case stops at 0.",
+                "phase - 1 makes the input smaller.",
+                "The recursive call uses the same method name."
+              ]
+            },
+            {
+              "type": "check",
+              "id": "final-recursion",
+              "prompt": "What must recursion contain to stop safely?",
+              "options": [
+                "A base case",
+                "A 2D array",
+                "Two return values"
+              ],
+              "answer": 0,
+              "feedback": "A reachable base case stops further self-calls."
+            }
+          ]
+        },
+        {
+          "id": "readiness",
+          "title": "Final readiness check",
+          "blocks": [
+            {
+              "type": "practice",
+              "id": "final-mini",
+              "prompt": "Complete this mini review: count values equal to 1 and display the returned result.",
+              "starterCode": "static int CountOnes(int[] values)\n{\n    int count = 0;\n    foreach (int value in values)\n    {\n        // Increase count when value is 1\n    }\n    return count;\n}\n\nConsole.WriteLine(CountOnes(new int[] { 1, 0, 1 }));",
+              "solution": "static int CountOnes(int[] values)\n{\n    int count = 0;\n    foreach (int value in values)\n    {\n        if (value == 1) count++;\n    }\n    return count;\n}\n\nConsole.WriteLine(CountOnes(new int[] { 1, 0, 1 }));",
+              "expectedOutput": "2"
+            },
+            {
+              "type": "check",
+              "id": "final-traversal",
+              "prompt": "Which can visit every 1D array element?",
+              "options": [
+                "A safe for loop or foreach",
+                "One fixed index",
+                "A method name alone"
+              ],
+              "answer": 0,
+              "feedback": "Both a safe for loop and foreach can traverse every 1D element."
+            },
+            {
+              "type": "check",
+              "id": "final-grid",
+              "prompt": "Which pair gives row and column counts?",
+              "options": [
+                "Length and Length - 1",
+                "GetLength(0) and GetLength(1)",
+                "row[0] and col[1]"
+              ],
+              "answer": 1,
+              "feedback": "For rectangular arrays, dimensions 0 and 1 are rows and columns."
+            }
+          ]
+        },
+        {
+          "id": "summary",
+          "title": "Summary",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "text": "You have reviewed variables, arrays, safe traversal, methods, parameters, return values, rectangular grids, and recursion. Approach the finale phase by phase and use the compiler feedback to locate the earliest incomplete requirement."
+            },
+            {
+              "type": "list",
+              "items": [
+                "Indexes begin at 0.",
+                "Length is a count, not the last index.",
+                "Complete traversal uses safe loop bounds.",
+                "Arguments flow into parameters.",
+                "return sends a result back.",
+                "Recursion needs a reachable base case.",
+                "Two-dimensional arrays need row and column traversal."
+              ]
+            },
+            {
+              "type": "connection",
+              "text": "The Last Compile combines 1D counting, a parameterized repair action, a returned calculation, complete 2D traversal, and countdown recursion."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "title": "Microsoft Learn. C# documentation",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/"
+        },
+        {
+          "title": "Microsoft Learn. Arrays (C# reference)",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/arrays"
+        },
+        {
+          "title": "Microsoft Learn. Overview of methods",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/methods"
+        },
+        {
+          "title": "Microsoft Learn. Iteration statements",
+          "url": "https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/statements/iteration-statements"
+        },
+        {
+          "title": "CodeChum. C# Programming learning modules/course materials used for SharpRunner curriculum alignment. Access may require enrolled student credentials."
+        }
+      ],
+      "lessonKey": "final",
+      "game": {
+        "title": "Bakunawa Eclipse",
+        "route": "/Map"
+      }
+    }
+  ]
+}

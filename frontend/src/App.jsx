@@ -216,8 +216,22 @@ function App() {
         />
 
         {/* ── Auth / misc ── */}
-        <Route path="/lesson" element={<LessonSection />} />
-        <Route path="/lesson/built-in/:moduleId" element={<BuiltInModulePage />} />
+        <Route
+          path="/lesson"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <LessonSection />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/lesson/built-in/:moduleId"
+          element={
+            <ProtectedRoute requireClassMembership>
+              <BuiltInModulePage />
+            </ProtectedRoute>
+          }
+        />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/developer" element={<DeveloperPage />} />

@@ -32,6 +32,7 @@ const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPa
 const TeacherLessonLibraryPage = lazy(() => import("./pages/teacher/TeacherLessonLibraryPage.jsx"));
 const TeacherLessonBuilderPage = lazy(() => import("./pages/teacher/TeacherLessonBuilderPage.jsx"));
 const BuiltInModulePage = lazy(() => import("./pages/student/BuiltInModulePage.jsx"));
+const AssessmentPage = lazy(() => import("./pages/student/assessment/AssessmentPage.jsx"));
 const LegalCenterPage = lazy(() => import("./pages/legal/LegalCenterPage.jsx"));
 const PrivacyPolicyPage = lazy(() => import("./pages/legal/LegalDocumentPage.jsx").then((module) => ({ default: module.PrivacyPolicyPage })));
 const TermsPage = lazy(() => import("./pages/legal/LegalDocumentPage.jsx").then((module) => ({ default: module.TermsPage })));
@@ -105,6 +106,14 @@ function App() {
           element={
             <ProtectedRoute requireClassMembership>
               <LessonMapPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/classrooms/:classroomId/lessons/:lessonKey/assessment/:type"
+          element={
+            <ProtectedRoute allowedRoles={["student"]} requireClassMembership>
+              <AssessmentPage />
             </ProtectedRoute>
           }
         />

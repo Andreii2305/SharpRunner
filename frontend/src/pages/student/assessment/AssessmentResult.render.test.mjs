@@ -1,0 +1,215 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
+
+const vite = await createServer({
+  server: { middlewareMode: true },
+  appType: "custom",
+  optimizeDeps: { noDiscovery: true },
+});
+const { default: AssessmentResult } = await vite.ssrLoadModule(
+  "/src/pages/student/assessment/AssessmentResult.jsx",
+);
+test.after(async () => { await vite.close(); });
+
+const route = { classroomId: 47, lessonKey: "arrays", type: "POST" };
+const progression = (lesson = {}, summary = {}) => ({
+  classroomId: 47,
+  lessons: [{
+    lessonKey: "arrays",
+    moduleUnlocked: true,
+    postPassingRequired: true,
+    postPassed: false,
+    postCompleted: true,
+    postAttemptsRemaining: 2,
+    postAttemptsExhausted: false,
+    lessonCompleted: false,
+    nextAction: "RETRY_POST",
+    ...lesson,
+  }],
+  summary: { nextAction: "RETRY_POST", nextActionLessonKey: "arrays", ...summary },
+});
+const envelope = (result = {}, extra = {}) => ({
+  result: {
+    attemptId: 312,
+    type: "POST",
+    status: "SUBMITTED",
+    attemptNumber: 2,
+    submittedAt: "2026-09-29T01:00:00.000Z",
+    scoreVisible: true,
+    pointsEarned: 7,
+    maxPoints: 10,
+    percentage: 70,
+    passed: false,
+    ...result,
+  },
+  attempts: { used: 2, max: 3, remaining: 1 },
+  reviewAvailable: false,
+  ...extra,
+});
+const renderResult = (overrides = {}) => renderToStaticMarkup(React.createElement(
+  AssessmentResult,
+  {
+    envelope: envelope(),
+    progression: progression(),
+    route,
+    questions: null,
+    retakeStatus: "idle",
+    onRetake() {},
+    onRetryProgression() {},
+    ...overrides,
+  },
+));
+
+test("PRE result is diagnostic and neutral with optional authoritative baseline score", () => {
+  const html = renderResult({
+    route: { ...route, type: "PRE" },
+    envelope: envelope({
+      type: "PRE",
+      diagnosticCompleted: true,
+      passed: undefined,
+      percentage: 45,
+      pointsEarned: 4.5,
+      maxPoints: 10,
+    }, { attempts: { used: 1, max: 1, remaining: 0 } }),
+    progression: progression({ moduleUnlocked: true }),
+  });
+  assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Diagnostic complete<[\/]h1>/);
+  assert.match(html, /Diagnostic complete/);
+  assert.match(html, /Baseline score/);
+  assert.match(html, /45%/);
+  assert.match(html, /Continue to module/);
+  assert.doesNotMatch(html, /failed|did not pass|Retake|XP|reward/i);
+});
+
+test("hidden-score POST shows authoritative pass status but no numeric or comparison fields", () => {
+  const html = renderResult({
+    envelope: envelope({
+      scoreVisible: false,
+      passed: true,
+      pointsEarned: undefined,
+      maxPoints: undefined,
+      percentage: undefined,
+    }, {
+      officialGrade: undefined,
+      firstPost: undefined,
+      prePercentage: undefined,
+      learningGain: undefined,
+    }),
+    progression: progression({ postPassed: true }),
+  });
+  assert.match(html, /Post-test complete/);
+  assert.match(html, /passed/i);
+  assert.doesNotMatch(html, /Latest attempt score|Official grade|Baseline score|Learning gain|points|%/i);
+});
+
+test("POST result labels latest and official-best separately and renders supplied learning gain", () => {
+  const html = renderResult({
+    envelope: envelope({}, {
+      officialGrade: { attemptId: 301, attemptNumber: 1, percentage: 90 },
+      firstPost: { attemptId: 301, attemptNumber: 1, percentage: 90 },
+      prePercentage: 40,
+      learningGain: {
+        value: 50,
+        unit: "percentage_points",
+        label: "Learning gain from PRE to first POST",
+        firstPostPercentage: 90,
+        prePercentage: 40,
+      },
+    }),
+  });
+  assert.match(html, /Latest attempt score[^<]*70%/);
+  assert.match(html, /Official grade \(best\)[^<]*90%/);
+  assert.match(html, /Learning-gain comparison attempt[^<]*90%/);
+  assert.match(html, /Learning gain from PRE to first POST[^<]*50 percentage points/);
+});
+
+test("POST retry, exhaustion, and passing-not-required actions use progression authority", () => {
+  assert.match(renderResult(), /Retake Post-Test/);
+  assert.match(renderResult({ externalSyncStatus: "checking" }), /<button[^>]*disabled=""[^>]*>Checking for updates<[\/]button>/);
+  assert.doesNotMatch(renderResult({
+    progression: progression({ postAttemptsRemaining: 0, postAttemptsExhausted: true }),
+  }), /Retake Post-Test/);
+  assert.match(renderResult({
+    progression: progression({ postAttemptsRemaining: 0, postAttemptsExhausted: true }),
+  }), /No attempts remain/);
+  assert.match(renderResult({
+    progression: progression({ postPassingRequired: false, lessonCompleted: true }, { nextAction: "LESSON_COMPLETE" }),
+  }), /Assessment complete/);
+});
+
+test("answer review renders only returned policy fields and explanations as escaped text", () => {
+  const html = renderResult({
+    envelope: envelope({}, {
+      reviewAvailable: true,
+      review: [{
+        questionId: 101,
+        selectedChoiceId: null,
+        correctChoiceId: 1001,
+        isCorrect: false,
+        pointsAwarded: 0,
+        explanation: "Use <brackets>, never scripts.",
+      }],
+    }),
+  });
+  assert.match(html, /Answer review/);
+  assert.match(html, /Question 1/);
+  assert.match(html, /Unanswered/);
+  assert.match(html, /Incorrect/);
+  assert.match(html, /Use &lt;brackets&gt;, never scripts\./);
+  assert.doesNotMatch(html, /1001|correctChoiceId|selectedChoiceId/);
+
+  const restricted = renderResult({ envelope: envelope({}, { reviewAvailable: false }) });
+  assert.doesNotMatch(restricted, /Answer review|Correct|Incorrect|Explanation/);
+});
+
+test("answer review follows the cached shuffled attempt order and resolves safe choice labels", () => {
+  const html = renderResult({
+    questions: [{
+      id: 102,
+      questionText: "Second server question shown first",
+      choices: [
+        { id: 2001, choiceText: "Selected second answer" },
+        { id: 2002, choiceText: "Correct second answer" },
+      ],
+    }, {
+      id: 101,
+      questionText: "First server question shown second",
+      choices: [
+        { id: 1001, choiceText: "Correct first answer" },
+        { id: 1002, choiceText: "Selected first answer" },
+      ],
+    }],
+    envelope: envelope({}, {
+      reviewAvailable: true,
+      review: [{
+        questionId: 101,
+        selectedChoiceId: 1002,
+        correctChoiceId: 1001,
+        isCorrect: false,
+      }, {
+        questionId: 102,
+        selectedChoiceId: 2001,
+        correctChoiceId: 2002,
+        isCorrect: false,
+      }],
+    }),
+  });
+
+  assert.ok(html.indexOf("Second server question shown first") < html.indexOf("First server question shown second"));
+  assert.match(html, /Question 1[\s\S]*Second server question shown first/);
+  assert.match(html, /Your answer: Selected second answer/);
+  assert.match(html, /Correct answer: Correct second answer/);
+  assert.doesNotMatch(html, /2001|2002|correctChoiceId|selectedChoiceId/);
+});
+
+test("result source does not grade, reconstruct hidden answers, or inject HTML", async () => {
+  const source = await readFile(new URL("AssessmentResult.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
+  assert.doesNotMatch(source, /reduce\s*\([^)]*(?:points|isCorrect)|filter\s*\([^)]*isCorrect/);
+  assert.doesNotMatch(source, /maxAttempts\s*-|attemptNumber\s*-/);
+  assert.match(source, /headingRef\.current\?\.focus/);
+});

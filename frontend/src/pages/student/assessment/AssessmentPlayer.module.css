@@ -1,0 +1,223 @@
+.page {
+  box-sizing: border-box;
+  width: min(100% - 2rem, 52rem);
+  margin: 2rem auto;
+  padding: clamp(1rem, 3vw, 2rem);
+  color: #172033;
+  overflow-wrap: anywhere;
+}
+
+.header,
+.question,
+.saveArea,
+.awareness,
+.reviewCard,
+.resultCard {
+  background: #fff;
+  border: 1px solid #d8dfeb;
+  border-radius: 0.75rem;
+  padding: clamp(1rem, 3vw, 1.5rem);
+}
+
+.header,
+.question,
+.saveArea {
+  margin-bottom: 1rem;
+}
+
+.eyebrow {
+  color: #315a9b;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.progressRow,
+.navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.question:focus-visible,
+.choice:focus-within,
+.page button:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.questionText {
+  max-width: 100%;
+  padding: 0;
+  font-size: clamp(1.15rem, 3vw, 1.45rem);
+  font-weight: 700;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.choiceHelp {
+  color: #4b5563;
+}
+
+.choices {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.choice {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #bcc8d8;
+  border-radius: 0.6rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.choice input {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  flex: 0 0 auto;
+}
+
+.saveArea {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.saveStatus,
+.awareness p {
+  margin: 0;
+}
+
+.awareness {
+  margin-bottom: 1rem;
+}
+
+.navigation button,
+.secondaryButton,
+.linkButton,
+.reviewActions button,
+.resultActions button,
+.resultActions a,
+.dialogActions button {
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.summaryList,
+.scoreList,
+.reviewResults,
+.resultActions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.summaryList > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid #d8dfeb;
+  padding-block: 0.5rem;
+}
+
+.summaryList dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.reviewActions,
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 65%);
+}
+
+.dialogPanel {
+  box-sizing: border-box;
+  width: min(100%, 32rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: clamp(1rem, 4vw, 2rem);
+  box-shadow: 0 1rem 3rem rgb(15 23 42 / 25%);
+}
+
+.reviewResults ol {
+  display: grid;
+  gap: 0.75rem;
+  padding-left: 1.5rem;
+}
+
+.reviewResults li {
+  border: 1px solid #d8dfeb;
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+}
+
+.resultActions {
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  margin-top: 1.5rem;
+}
+
+.resultActions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #315a9b;
+  color: #173f7a;
+  text-align: center;
+  text-decoration: none;
+}
+
+.navigation button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.linkButton {
+  margin-top: 0.5rem;
+  border: 0;
+  background: transparent;
+  color: #2457a7;
+  text-decoration: underline;
+}
+
+@media (max-width: 36rem) {
+  .page {
+    width: 100%;
+    margin: 0;
+    padding: 0.75rem;
+  }
+
+  .navigation button {
+    flex: 1 1 8rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page * {
+    scroll-behavior: auto;
+  }
+}

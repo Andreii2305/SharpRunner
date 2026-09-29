@@ -157,12 +157,13 @@ test("discovery uses assessment-state names and never lesson completion names", 
   });
   assert.equal(output.status.hasSubmittedAttempt, true);
   assert.equal(output.status.diagnosticCompleted, true);
+  assert.equal(output.status.latestSubmittedAttemptId, 40);
   assert.equal(output.status.unlocked, false);
   assert.equal(output.status.lockReason, "LESSON_PREREQUISITE_REQUIRED");
   assert.equal(findForbiddenKey(output, new Set(["completed", "lessonCompleted"])), null);
 });
 
-test("discovery unlock fields are allowlisted without exposing progression graphs or hidden scores", () => {
+test("discovery exposes a submitted attempt ID without hidden scores or answer keys", () => {
   const output = serializers.serializeDiscoveryStatus({
     assessment: assessment({ showScoreAfterSubmission: false }),
     available: true,
@@ -171,6 +172,14 @@ test("discovery unlock fields are allowlisted without exposing progression graph
     postPassed: true,
     percentage: 100,
     pointsEarned: 2,
+    latestSubmitted: submittedAttempt({
+      answerKey: "private",
+      correctAnswer: 1001,
+      correctChoiceId: 1001,
+      isCorrect: true,
+      pointsAwarded: 2,
+      explanation: "private",
+    }),
     progressionState: {
       postPassed: true,
       percentage: 100,
@@ -181,9 +190,11 @@ test("discovery unlock fields are allowlisted without exposing progression graph
 
   assert.equal(output.status.unlocked, true);
   assert.equal(output.status.lockReason, null);
+  assert.equal(output.status.latestSubmittedAttemptId, 40);
   assert.equal(findForbiddenKey(output, new Set([
-    "questions", "choices", "postPassed", "percentage", "pointsEarned",
-    "passingPercentage", "progressionState",
+    "questions", "choices", "postPassed", "percentage", "pointsEarned", "maxPoints",
+    "passingPercentage", "progressionState", "isCorrect", "correctChoiceId",
+    "pointsAwarded", "correctAnswer", "answerKey", "explanation", "latestSubmitted",
   ])), null);
 });
 
@@ -200,6 +211,7 @@ test("unavailable discovery cannot become an unlocked progression resource", () 
   assert.equal(output.status.available, false);
   assert.equal(output.status.unlocked, false);
   assert.equal(output.status.lockReason, null);
+  assert.equal(output.status.latestSubmittedAttemptId, null);
   assert.equal(output.assessment, null);
 });
 

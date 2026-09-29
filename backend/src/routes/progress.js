@@ -13,8 +13,13 @@ const {
 const { StudentLevelExtension } = require("../models");
 const {
   findPrimaryActiveMembership,
+  requireExactActiveMembership,
   buildClassroomLeaderboard,
 } = require("../services/studentClassService");
+const {
+  AssessmentApiError,
+  sendAssessmentError,
+} = require("../services/assessmentErrorService");
 const {
   PLAYABLE_LEVEL_KEYS,
 } = require("../constants/progressDefaults");
@@ -159,18 +164,31 @@ const parseProgressValue = (value) => {
   };
 };
 
+const parseOptionalClassroomId = (value) => {
+  if (value === undefined) return null;
+  if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value)) {
+    throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+  }
+  const classroomId = Number(value);
+  if (!Number.isSafeInteger(classroomId)) {
+    throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+  }
+  return classroomId;
+};
+
 router.use(authMiddleware, requireActiveClassMembership);
 
-const buildProgressPayloadForUser = async (userId) => {
+const buildProgressPayloadForUser = async (userId, authorizedMembership) => {
   const rows = await ensureProgressRowsForUser(userId);
   const currentUser = await User.findByPk(userId, { attributes: ["xpTotal"] });
   let classRank = null;
   let classSize = null;
 
-  const primaryMembership = await findPrimaryActiveMembership(userId);
-  if (primaryMembership) {
+  const selectedMembership = authorizedMembership
+    ?? await findPrimaryActiveMembership(userId);
+  if (selectedMembership) {
     const leaderboardData = await buildClassroomLeaderboard({
-      classroomId: primaryMembership.classroomId,
+      classroomId: selectedMembership.classroomId,
       currentUserId: userId,
       limit: null,
     });
@@ -179,14 +197,14 @@ const buildProgressPayloadForUser = async (userId) => {
   }
 
   const levelSettings = await getClassroomLevelSettings(
-    primaryMembership?.classroomId,
+    selectedMembership?.classroomId,
   );
   // Keep the batched map available for level access as well as summary consumers.
-  const lessonProgressionByKey = primaryMembership
+  const lessonProgressionByKey = selectedMembership
     ? await getLessonProgressionStates({
-        classroomId: primaryMembership.classroomId,
+        classroomId: selectedMembership.classroomId,
         studentId: userId,
-        authorizedMembership: primaryMembership,
+        authorizedMembership: selectedMembership,
         progressRows: rows,
         levelSettings,
       })
@@ -202,13 +220,13 @@ const buildProgressPayloadForUser = async (userId) => {
     xpTotal: currentUser?.xpTotal ?? 0,
     lessonProgressionByKey,
   });
-  payload.classroomId = primaryMembership?.classroomId ?? null;
+  payload.classroomId = selectedMembership?.classroomId ?? null;
   const settingsByKey = new Map(
     enabledSettings.map((setting) => [setting.levelKey, setting]),
   );
-  const extensionRows = primaryMembership && enabledSettings.some((setting) => setting.dueAt)
+  const extensionRows = selectedMembership && enabledSettings.some((setting) => setting.dueAt)
     ? await StudentLevelExtension.findAll({
-        where: { classroomId: primaryMembership.classroomId, studentId: userId },
+        where: { classroomId: selectedMembership.classroomId, studentId: userId },
       })
     : [];
   const extensionByKey = new Map(extensionRows.map((row) => [row.levelKey, row]));
@@ -256,8 +274,13 @@ const buildProgressPayloadForUser = async (userId) => {
 
 router.get("/me", async (req, res) => {
   try {
-    return res.json(await buildProgressPayloadForUser(req.userId));
+    const classroomId = parseOptionalClassroomId(req.query.classroomId);
+    const authorizedMembership = classroomId == null
+      ? undefined
+      : await requireExactActiveMembership({ studentId: req.userId, classroomId });
+    return res.json(await buildProgressPayloadForUser(req.userId, authorizedMembership));
   } catch (error) {
+    if (error instanceof AssessmentApiError) return sendAssessmentError(res, error);
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }

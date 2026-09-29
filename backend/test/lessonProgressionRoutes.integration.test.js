@@ -77,8 +77,8 @@ const assertNoProgressionLeaks = (value, path = "progression") => {
   }
 };
 
-const assertCanonicalProgressionEnvelope = (payload) => {
-  assert.equal(payload.classroomId, 9);
+const assertCanonicalProgressionEnvelope = (payload, classroomId = 9) => {
+  assert.equal(payload.classroomId, classroomId);
   assert.deepEqual(
     Object.keys(payload).sort(),
     ["classroomId", "lessons", "levels", "summary"],
@@ -420,6 +420,151 @@ const withProgressRoute = async (callback) => {
   }
 };
 
+const withMultipleClassroomProgressRoutes = async (callback) => {
+  stateCalls.length = 0;
+  const rows = progressRows();
+  const primaryMembership = {
+    id: 3,
+    classroomId: 9,
+    studentId: 7,
+    status: "active",
+    classroom: { id: 9, isActive: true },
+  };
+  const secondMembership = {
+    id: 5,
+    classroomId: 12,
+    studentId: 7,
+    status: "active",
+    classroom: { id: 12, isActive: true },
+  };
+  const membershipRows = [
+    primaryMembership,
+    secondMembership,
+    {
+      id: 6,
+      classroomId: 31,
+      studentId: 7,
+      status: "inactive",
+      classroom: { id: 31, isActive: true },
+    },
+    {
+      id: 7,
+      classroomId: 32,
+      studentId: 7,
+      status: "active",
+      classroom: { id: 32, isActive: false },
+    },
+  ];
+  const assessmentsByClassroom = new Map([
+    [9, [
+      pendingPost,
+      {
+        id: 91,
+        classroomId: 9,
+        lessonKey: "arrays",
+        type: "PRE",
+        isPublished: true,
+        isRequired: true,
+        maxAttempts: 1,
+      },
+    ]],
+    [12, [{
+      id: 191,
+      classroomId: 12,
+      lessonKey: "arrays",
+      type: "PRE",
+      isPublished: true,
+      isRequired: true,
+      maxAttempts: 1,
+    }]],
+  ]);
+  const queries = {
+    assessments: [],
+    attempts: [],
+    progress: [],
+    settings: [],
+    memberships: [],
+  };
+  const stubs = [
+    [User, "findByPk", async () => ({
+      id: 7,
+      role: "student",
+      status: "active",
+      xpTotal: 75,
+      termsVersionAccepted: TERMS_VERSION,
+      privacyVersionAcknowledged: PRIVACY_POLICY_VERSION,
+    })],
+    [ClassroomMembership, "findOne", async (options) => {
+      queries.memberships.push(options);
+      if (!options.include) return secondMembership;
+      if (options.where.classroomId == null) return primaryMembership;
+      return membershipRows.find((row) => (
+        row.studentId === options.where.studentId
+        && row.classroomId === options.where.classroomId
+        && row.status === options.where.status
+        && row.classroom.isActive === options.include[0].where.isActive
+      )) ?? null;
+    }],
+    [ClassroomMembership, "findAll", async () => []],
+    [UserProgress, "findAll", async (options) => {
+      queries.progress.push(options);
+      return rows;
+    }],
+    [UserProgress, "bulkCreate", async () => assert.fail("all default rows already exist")],
+    [LevelContentOverride, "findAll", async (options) => {
+      queries.settings.push(options);
+      return [];
+    }],
+    [LessonAssessment, "findAll", async (options) => {
+      queries.assessments.push(options);
+      return assessmentsByClassroom.get(options.where.classroomId) ?? [];
+    }],
+    [AssessmentAttempt, "findAll", async (options) => {
+      queries.attempts.push(options);
+      return options.where.classroomId === 9 ? [{
+        id: 101,
+        classroomId: 9,
+        studentId: 7,
+        assessmentId: 91,
+        status: "SUBMITTED",
+        submittedAt: "2026-09-27T00:00:00Z",
+        attemptNumber: 1,
+      }] : [];
+    }],
+  ];
+  const originals = stubs.map(([target, key]) => [target, key, target[key]]);
+  for (const [target, key, replacement] of stubs) target[key] = replacement;
+  try {
+    const authToken = jwt.sign(
+      { id: 7, role: "student" },
+      process.env.JWT_SECRET,
+      { expiresIn: "5m" },
+    );
+    const request = async (path) => {
+      const before = Object.fromEntries(
+        Object.entries(queries).map(([key, calls]) => [key, calls.length]),
+      );
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const payload = await response.json();
+      const queryDelta = Object.fromEntries(
+        Object.entries(queries).map(([key, calls]) => [key, calls.length - before[key]]),
+      );
+      return { response, payload, queryDelta };
+    };
+    await callback({
+      primaryMembership,
+      queries,
+      request,
+      rows,
+      secondMembership,
+    });
+  } finally {
+    for (const [target, key, original] of originals) target[key] = original;
+  }
+};
+
 test("progress me reports selected classroom and an allowlisted canonical progression envelope", async () => {
   await withProgressRoute(async ({ payload }) => {
     const arrays = payload.lessons.find((lesson) => lesson.lessonKey === "arrays");
@@ -468,5 +613,93 @@ test("progress me batches one state map instead of querying assessments per leve
     assert.equal(queries.attempts[0].where.classroomId, 9);
     assert.equal(queries.attempts[0].where.studentId, 7);
     assert.deepEqual(queries.attempts[0].where.assessmentId[Op.in], [92, 91]);
+  });
+});
+
+test("progress me preserves primary selection and honors either exact active classroom", async () => {
+  await withMultipleClassroomProgressRoutes(async ({
+    primaryMembership,
+    request,
+    secondMembership,
+  }) => {
+    const primary = await request("/api/progress/me");
+    const explicitPrimary = await request("/api/progress/me?classroomId=9");
+    const explicitSecond = await request("/api/progress/me?classroomId=12");
+
+    for (const result of [primary, explicitPrimary, explicitSecond]) {
+      assert.equal(result.response.status, 200);
+      assert.deepEqual(Object.keys(result.payload).sort(), [
+        "classroomId", "lessons", "levels", "summary",
+      ]);
+    }
+    assert.equal(primary.payload.classroomId, 9);
+    assert.equal(explicitPrimary.payload.classroomId, 9);
+    assert.equal(explicitSecond.payload.classroomId, 12);
+    assert.equal(
+      explicitPrimary.payload.lessons.find(({ lessonKey }) => lessonKey === "arrays").preCompleted,
+      true,
+    );
+    const secondArrays = explicitSecond.payload.lessons.find(
+      ({ lessonKey }) => lessonKey === "arrays",
+    );
+    assert.equal(secondArrays.preAssessmentId, 191);
+    assert.equal(secondArrays.preCompleted, false);
+    assert.equal(secondArrays.moduleUnlocked, false);
+    assert.equal(secondArrays.nextAction, "TAKE_PRE");
+    assert.equal(explicitSecond.payload.summary.nextActionLessonKey, "arrays");
+    assertCanonicalProgressionEnvelope(explicitSecond.payload, 12);
+
+    assert.equal(stateCalls.length, 3);
+    assert.equal(stateCalls[0].authorizedMembership, primaryMembership);
+    assert.equal(stateCalls[1].authorizedMembership, primaryMembership);
+    assert.equal(stateCalls[2].authorizedMembership, secondMembership);
+  });
+});
+
+test("explicit classroom progress denies non-member former-member and inactive-classroom targets", async () => {
+  await withMultipleClassroomProgressRoutes(async ({ request }) => {
+    for (const classroomId of [30, 31, 32]) {
+      const result = await request(`/api/progress/me?classroomId=${classroomId}`);
+      assert.equal(result.response.status, 403);
+      assert.deepEqual(result.payload, { code: "FORBIDDEN", message: "Forbidden" });
+      assert.deepEqual(result.queryDelta, {
+        assessments: 0,
+        attempts: 0,
+        progress: 0,
+        settings: 0,
+        memberships: 2,
+      });
+    }
+    assert.equal(stateCalls.length, 0);
+  });
+});
+
+test("explicit classroom progress rejects malformed IDs and remains query-bounded", async () => {
+  await withMultipleClassroomProgressRoutes(async ({ request }) => {
+    for (const classroomId of ["0", "-1", "abc", "1.5", "9007199254740992", "9&classroomId=12"]) {
+      const result = await request(`/api/progress/me?classroomId=${classroomId}`);
+      assert.equal(result.response.status, 400);
+      assert.deepEqual(result.payload, { code: "INVALID_REQUEST", message: "Invalid request" });
+      assert.deepEqual(result.queryDelta, {
+        assessments: 0,
+        attempts: 0,
+        progress: 0,
+        settings: 0,
+        memberships: 1,
+      });
+    }
+
+    const primary = await request("/api/progress/me");
+    const exact = await request("/api/progress/me?classroomId=12");
+    assert.equal(primary.response.status, 200);
+    assert.equal(exact.response.status, 200);
+    assert.deepEqual(primary.queryDelta, {
+      assessments: 1,
+      attempts: 1,
+      progress: 2,
+      settings: 1,
+      memberships: 2,
+    });
+    assert.deepEqual(exact.queryDelta, primary.queryDelta);
   });
 });

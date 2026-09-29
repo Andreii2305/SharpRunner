@@ -87,6 +87,9 @@ const serializeDiscoveryStatus = (input = {}) => {
     attemptStatus: input.attemptStatus ?? "NOT_AVAILABLE",
     attemptsUsed: Number(input.attemptsUsed ?? 0),
     hasSubmittedAttempt: Boolean(input.hasSubmittedAttempt),
+    latestSubmittedAttemptId: input.latestSubmitted
+      ? plain(input.latestSubmitted).id
+      : null,
   };
   status.unlocked = status.available && input.unlocked === true;
   status.lockReason = status.available

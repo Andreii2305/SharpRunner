@@ -101,6 +101,14 @@ const mutationHarness = (overrides = {}, {
   };
   stub(User, "findByPk", async (id) => activeUser(Number(id), Number(id) === 5 ? "teacher" : "student"));
   stub(lessonProgressionService, "assertAssessmentInteractionAllowed", progressionGuard);
+  stub(lessonProgressionService, "getLessonProgressionState", async () => ({
+    curriculumPrerequisiteSatisfied: true,
+    preRequired: false,
+    preCompleted: false,
+    gameCompleted: true,
+    postUnlocked: true,
+    postPassed: false,
+  }));
   stub(sequelize, "transaction", (callback) => {
     const pending = tail.then(() => callback({ LOCK: { UPDATE: "UPDATE" } }));
     tail = pending.catch(() => {});
@@ -661,6 +669,18 @@ const assertNoForbiddenKeys = (value) => {
   }
 };
 
+const assertNoKeys = (value, keys, path = "payload") => {
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => assertNoKeys(child, keys, `${path}[${index}]`));
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    assert.equal(keys.has(key), false, `${path}.${key} must not be exposed`);
+    assertNoKeys(child, keys, `${path}.${key}`);
+  }
+};
+
 before(async () => {
   server = await new Promise((resolve) => {
     const listener = productionApp.listen(0, "127.0.0.1", () => resolve(listener));
@@ -720,6 +740,9 @@ test("discovery requires membership in the exact classroom", async () => {
   stub(models.LessonAssessment, "findOne", async () => {
     assert.fail("assessment lookup ran before classroom authorization");
   });
+  stub(models.AssessmentAttempt, "findAll", async () => {
+    assert.fail("attempt lookup ran before classroom authorization");
+  });
 
   const { response, payload } = await request(
     "/api/assessments/classrooms/7/lessons/tutorial/POST",
@@ -757,11 +780,39 @@ test("discovery returns unavailable assessment state without a graph", async () 
       attemptStatus: "NOT_AVAILABLE",
       attemptsUsed: 0,
       hasSubmittedAttempt: false,
+      latestSubmittedAttemptId: null,
       diagnosticCompleted: false,
       unlocked: false,
       lockReason: null,
     },
   });
+});
+
+test("discovery returns a null submitted attempt ID while only an active attempt exists", async () => {
+  stub(User, "findByPk", async () => activeUser(42));
+  stub(models.ClassroomMembership, "findOne", async () => ({
+    id: 1, classroomId: 7, studentId: 42, status: "active",
+  }));
+  stub(models.LessonAssessment, "findOne", async () => assessment());
+  stub(models.AssessmentAttempt, "findAll", async ({ where }) => {
+    assert.deepEqual(where, { assessmentId: 12, studentId: 42 });
+    return [{ id: 31, attemptNumber: 1, status: "IN_PROGRESS" }];
+  });
+  stub(lessonProgressionService, "getLessonProgressionState", async () => ({
+    curriculumPrerequisiteSatisfied: true,
+    gameCompleted: true,
+    postUnlocked: true,
+  }));
+
+  const { response, payload } = await request(
+    "/api/assessments/classrooms/7/lessons/arrays/POST",
+    { authToken: token(42) },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.status.activeAttemptId, 31);
+  assert.equal(payload.status.hasSubmittedAttempt, false);
+  assert.equal(payload.status.latestSubmittedAttemptId, null);
 });
 
 test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without lesson completion fields", async () => {
@@ -799,6 +850,7 @@ test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without 
   assert.equal(response.status, 200);
   assert.equal(payload.status.hasSubmittedAttempt, true);
   assert.equal(payload.status.diagnosticCompleted, true);
+  assert.equal(payload.status.latestSubmittedAttemptId, 20);
   assert.equal(payload.status.unlocked, true);
   assert.equal(payload.status.lockReason, null);
   assert.equal("completed" in payload.status, false);
@@ -822,7 +874,15 @@ test("discovery never exposes questions choices or grading configuration", async
         passed: false,
         submittedAt: "2026-09-25T12:00:00.000Z",
       },
-      { id: 31, attemptNumber: 2, status: "IN_PROGRESS" },
+      {
+        id: 32,
+        attemptNumber: 3,
+        status: "SUBMITTED",
+        percentage: 80,
+        passed: true,
+        submittedAt: "2026-09-26T12:00:00.000Z",
+      },
+      { id: 31, attemptNumber: 4, status: "IN_PROGRESS" },
     ];
   });
   stub(lessonProgressionService, "getLessonProgressionState", async () => ({
@@ -847,11 +907,12 @@ test("discovery never exposes questions choices or grading configuration", async
   assert.equal("choices" in payload.assessment, false);
   assert.equal(payload.status.attemptStatus, "IN_PROGRESS");
   assert.equal(payload.status.activeAttemptId, 31);
-  assert.equal(payload.status.attemptsUsed, 1);
-  assert.equal(payload.status.attemptsRemaining, 2);
+  assert.equal(payload.status.latestSubmittedAttemptId, 32);
+  assert.equal(payload.status.attemptsUsed, 2);
+  assert.equal(payload.status.attemptsRemaining, 1);
   assert.equal(payload.status.unlocked, true);
   assert.equal(payload.status.lockReason, null);
-  assert.deepEqual(payload.status.officialPost, { attemptNumber: 1, percentage: 70 });
+  assert.deepEqual(payload.status.officialPost, { attemptNumber: 3, percentage: 80 });
   assertNoForbiddenKeys(payload);
 });
 
@@ -903,10 +964,16 @@ test("discovery reports exact progression stage without exposing a graph or hidd
   assert.equal(lockedPost.payload.status.available, true);
   assert.equal(lockedPost.payload.status.unlocked, false);
   assert.equal(lockedPost.payload.status.lockReason, "GAME_INCOMPLETE");
+  assert.equal(lockedPost.payload.status.latestSubmittedAttemptId, 30);
   assert.equal("questions" in lockedPost.payload.assessment, false);
   for (const key of ["postPassed", "pointsEarned", "maxPoints", "percentage"]) {
     assert.equal(key in lockedPost.payload.status, false);
   }
+  assertNoKeys(lockedPost.payload, new Set([
+    "isCorrect", "correctChoiceId", "pointsAwarded", "correctAnswer", "answerKey",
+    "explanation", "pointsEarned", "maxPoints", "percentage", "passingPercentage",
+    "latestSubmitted", "officialPost",
+  ]));
 
   graph = assessment({
     id: 13,
@@ -945,6 +1012,57 @@ test("discovery reports exact progression stage without exposing a graph or hidd
   assert.equal(unavailableDraft.payload.status.lockReason, null);
   assert.equal(unavailableDraft.payload.assessment, null);
   assert.equal(stateReads, 3);
+});
+
+test("discovery submitted-attempt ID supports authorized result revisit without weakening policy", async () => {
+  const h = mutationHarness({
+    showScoreAfterSubmission: false,
+    answerReviewPolicy: "AFTER_SUBMISSION",
+  });
+  const submitted = await h.completed();
+  const discovery = await h.call("/classrooms/7/lessons/arrays/POST");
+
+  assert.equal(discovery.response.status, 200);
+  assert.equal(discovery.payload.status.latestSubmittedAttemptId, submitted.id);
+  assertNoKeys(discovery.payload, new Set([
+    "isCorrect", "correctChoiceId", "pointsAwarded", "correctAnswer", "answerKey",
+    "explanation", "pointsEarned", "maxPoints", "percentage", "passingPercentage",
+    "latestSubmitted", "officialPost",
+  ]));
+
+  const revisited = await h.call(
+    `/attempts/${discovery.payload.status.latestSubmittedAttemptId}/result`,
+  );
+  assert.equal(revisited.response.status, 200);
+  assert.equal(revisited.payload.result.attemptId, submitted.id);
+  assert.equal(revisited.payload.result.scoreVisible, false);
+  assert.equal(revisited.payload.result.passed, true);
+  assert.equal(revisited.payload.reviewAvailable, true);
+  assert.deepEqual(revisited.payload.review, [{
+    questionId: 101,
+    selectedChoiceId: 1001,
+    correctChoiceId: 1001,
+    isCorrect: true,
+    pointsAwarded: 2,
+    explanation: "Arrays use brackets.",
+  }]);
+  for (const key of ["pointsEarned", "maxPoints", "percentage"]) {
+    assert.equal(key in revisited.payload.result, false);
+  }
+  for (const key of ["officialGrade", "firstPost", "prePercentage", "learningGain"]) {
+    assert.equal(key in revisited.payload, false);
+  }
+
+  const foreign = await h.call(`/attempts/${submitted.id}/result`, {
+    authToken: token(99),
+  });
+  assert.equal(foreign.response.status, 403);
+  assert.deepEqual(foreign.payload, { code: "FORBIDDEN", message: "Forbidden" });
+
+  h.store.memberships.splice(0);
+  const formerMember = await h.call(`/attempts/${submitted.id}/result`);
+  assert.equal(formerMember.response.status, 403);
+  assert.deepEqual(formerMember.payload, { code: "FORBIDDEN", message: "Forbidden" });
 });
 
 test("published player graph is available only to an exact classroom member", async () => {

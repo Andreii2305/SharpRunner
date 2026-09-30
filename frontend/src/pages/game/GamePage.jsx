@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Editor from "@monaco-editor/react";
 import { FiCrosshair, FiRefreshCw, FiSmartphone, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
@@ -37,6 +37,9 @@ import { getGameTutorialSteps } from "./tutorial/gameTutorialSteps.js";
 import { shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
 import { finishGameTutorialSession, shouldDismissPortraitPrompt } from "./tutorial/gameTutorialFlow.js";
 import { readGameAuthHeaders, readGameDraft, removeGameDraft } from "./gamePageStorage.js";
+import { getProgress } from "../../services/studentAssessmentService.js";
+import { buildMapHref, withExactClassroom } from "../../utils/lessonProgressionNavigation.js";
+import { createGameCompletionAction } from "./gameCompletionNavigation.js";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -125,6 +128,8 @@ const formatPhilippineDeadline = (value) => value
 
 function GamePage({ levelConfig }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const routedClassroomIdParam = searchParams.get("classroomId");
   const toast = useToast();
   const [tutorialUserId] = useState(getTutorialUserId);
   const [tutorialRequested, setTutorialRequested] = useState(
@@ -693,6 +698,20 @@ function GamePage({ levelConfig }) {
               progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp,
             );
 
+            const routedClassroomId = Number(routedClassroomIdParam);
+            let authoritativeProgress = progressPayload;
+            if (Number.isSafeInteger(routedClassroomId) && routedClassroomId > 0) {
+              try {
+                authoritativeProgress = await getProgress({ classroomId: routedClassroomId });
+              } catch {
+                authoritativeProgress = null;
+              }
+            }
+            const lessonAction = createGameCompletionAction({
+              progress: authoritativeProgress,
+              levelConfig,
+            });
+
             setGradeModal({
               score: savedScore,
               grade: completedLevel?.grade ?? "B",
@@ -706,6 +725,9 @@ function GamePage({ levelConfig }) {
               xpEarned: progressPayload.xpAward?.amount ?? 0,
               totalXp: progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? 0,
               xpBreakdown: progressPayload.xpAward?.breakdown ?? [],
+              lessonAction,
+              classroomId: authoritativeProgress?.classroomId
+                ?? (Number.isSafeInteger(routedClassroomId) && routedClassroomId > 0 ? routedClassroomId : null),
             });
           })();
         }
@@ -740,7 +762,7 @@ function GamePage({ levelConfig }) {
       gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
       clearNextLevelTimer();
     };
-  }, [clearNextLevelTimer, code, currentXp, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
+  }, [clearNextLevelTimer, code, currentXp, levelConfig, markLevelAsCompleted, mergedLevelConfig, routedClassroomIdParam, syncHintState]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -1675,17 +1697,33 @@ function GamePage({ levelConfig }) {
               <button
                 ref={gradeButtonRef}
                 type="button"
+                disabled={gradeModal.lessonAction?.disabled === true}
                 className={`${styles.gradeContinueBtn} ${styles[`gradeContinueBtn${gradeModal.grade}`]}`}
                 onClick={() => {
                   setGradeModal(null);
+                  if (gradeModal.lessonAction?.disabled) return;
+                  if (gradeModal.lessonAction?.href && !gradeModal.lessonAction.disabled) {
+                    navigate(gradeModal.lessonAction.href);
+                    return;
+                  }
                   const nextConfig = getLevelConfigByProgressKey(gradeModal.nextLevelKey);
                   navigate(
-                    nextConfig ? getLevelRoute(nextConfig.levelNumber) : "/Map",
+                    withExactClassroom(
+                      nextConfig ? getLevelRoute(nextConfig.levelNumber) : "/Map",
+                      gradeModal.classroomId,
+                    ),
                   );
                 }}
               >
-                {gradeModal.isFinalLevel ? "Return to Map" : "Continue"}
+                {gradeModal.lessonAction?.label ?? (gradeModal.isFinalLevel ? "Return to Map" : "Continue")}
               </button>
+              {gradeModal.lessonAction && <button
+                type="button"
+                className={styles.gradeExitBtn}
+                onClick={() => { setGradeModal(null); navigate(buildMapHref(gradeModal.classroomId)); }}
+              >
+                Return to Lesson Map
+              </button>}
               <button
                 type="button"
                 className={styles.gradeExitBtn}

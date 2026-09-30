@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import LessonMap from "../../Components/LessonMap/LessonMap.jsx";
 import TiledCurriculumMap from "../../Components/TiledCurriculumMap/TiledCurriculumMap.jsx";
 import { getLevelConfig } from "../game/levels/levelConfigs.js";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import LessonProgressionPanel from "../../Components/LessonProgression/LessonProgressionPanel.jsx";
+import { fetchPrimaryClassroomId } from "../../services/builtInLessonContentService.js";
+import { getProgress } from "../../services/studentAssessmentService.js";
+import {
+  createLessonProgressionViewModel,
+  loadExactProgress,
+  withExactClassroom,
+} from "../../utils/lessonProgressionNavigation.js";
 import styles from "./LessonMapPage.module.css";
 import { LESSON_ONE_MAP_CONFIG } from "./lessonOneMapConfig";
 
@@ -55,6 +61,8 @@ const getInitialRegion = () => {
 
 function LessonMapPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedClassroomId = searchParams.get("classroomId");
   const [progressData, setProgressData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedRegion, setSelectedRegion] = useState(getInitialRegion);
@@ -63,21 +71,28 @@ function LessonMapPage() {
     let isMounted = true;
     const fetchProgress = async () => {
       try {
-        const response = await axios.get(buildApiUrl("/api/progress/me"), {
-          headers: getAuthHeaders(),
+        const response = await loadExactProgress({
+          requestedClassroomId,
+          getProgress,
+          resolvePrimary: fetchPrimaryClassroomId,
+          signal: controller.signal,
         });
-        if (isMounted) setProgressData(response.data);
+        if (isMounted) setProgressData(response);
       } catch {
         if (isMounted) setProgressData(null);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     };
+    const controller = new AbortController();
     fetchProgress();
     return () => {
       isMounted = false;
+      controller.abort();
     };
-  }, []);
+  }, [requestedClassroomId]);
+
+  const classroomId = progressData?.classroomId;
 
   const progressByKey = useMemo(
     () => new Map((progressData?.levels ?? []).map((row) => [row.levelKey, row])),
@@ -90,12 +105,12 @@ function LessonMapPage() {
       return {
         ...node,
         status: getNodeStatus(row),
-        route: `/tutorial/level/${node.levelNumber}`,
+        route: withExactClassroom(`/tutorial/level/${node.levelNumber}`, classroomId),
         finalScore: row?.finalScore ?? null,
         ...getDeadlineProps(row),
       };
     });
-  }, [progressByKey]);
+  }, [classroomId, progressByKey]);
 
   const arrayNodes = useMemo(() => {
     const rows = Array.from({ length: ARRAYS_LEVEL_COUNT }, (_, index) =>
@@ -109,7 +124,7 @@ function LessonMapPage() {
         levelNumber,
         title: config?.title ?? `Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Arrays",
-        route: `/array/level/${index + 1}`,
+        route: withExactClassroom(`/array/level/${index + 1}`, classroomId),
         status: getNodeStatus(row),
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
@@ -117,7 +132,7 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [progressByKey]);
+  }, [classroomId, progressByKey]);
 
   const arraysAvailable = arrayNodes.some((node) => node.status !== "locked");
 
@@ -134,7 +149,7 @@ function LessonMapPage() {
         displayLevelNumber: config?.mapLevelLabel ?? levelNumber,
         title: config?.title ?? `Functions ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions and Methods",
-        route: `/function/level/${index + 1}`,
+        route: withExactClassroom(`/function/level/${index + 1}`, classroomId),
         status: getNodeStatus(row),
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
@@ -142,7 +157,7 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [progressByKey]);
+  }, [classroomId, progressByKey]);
 
   const functionsAvailable = functionNodes.some((node) => node.status !== "locked");
 
@@ -161,7 +176,7 @@ function LessonMapPage() {
         levelNumber,
         title: config?.title ?? `Functions with Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions with Arrays",
-        route: `/function-with-array/level/${index + 1}`,
+        route: withExactClassroom(`/function-with-array/level/${index + 1}`, classroomId),
         status: getNodeStatus(row),
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
@@ -169,7 +184,7 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [progressByKey]);
+  }, [classroomId, progressByKey]);
   const functionsArraysAvailable = functionsArraysNodes.some(
     (node) => node.status !== "locked",
   );
@@ -186,6 +201,8 @@ function LessonMapPage() {
         ? "functions"
         : "tutorial";
   const activeRegion = selectedRegion ?? inferredRegion;
+  const activeLessonKey = activeRegion === "functions-arrays" ? "functions-with-arrays" : activeRegion;
+  const activeLesson = progressData?.lessons?.find((item) => item.lessonKey === activeLessonKey) ?? null;
   const selectRegion = (region) => {
     setSelectedRegion(region);
     try {
@@ -236,6 +253,11 @@ function LessonMapPage() {
       "/tutorial/level/1"
     );
   }, [activeRegion, arrayNodes, functionNodes, functionsArraysNodes, mapNodes]);
+  const progressionModel = activeLesson ? createLessonProgressionViewModel({
+    lesson: activeLesson,
+    classroomId,
+    gameHref: continueRoute,
+  }) : null;
 
   const mapMarkerToLevel = useCallback(
     (markerLevelNumber) => ARRAYS_ROUTE_START + markerLevelNumber - 1,
@@ -365,6 +387,13 @@ function LessonMapPage() {
           </button>
           </div>
         </nav>
+
+        {progressionModel && <div className={styles.progressionPanel}>
+          <LessonProgressionPanel
+            title={`${activeLessonKey === "functions-with-arrays" ? "Methods + Arrays" : activeLessonKey} journey`}
+            model={progressionModel}
+          />
+        </div>}
 
         {activeRegion === "tutorial" ? (
           <LessonMap

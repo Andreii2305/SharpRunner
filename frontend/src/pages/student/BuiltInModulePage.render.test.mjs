@@ -289,6 +289,43 @@ test("authorized DTO renders all block types as text with stable IDs and safe li
   assert.doesNotMatch(missingGameHtml, /data-game-route/);
 });
 
+test("authorized module uses the authoritative progression action, not local reading completion", () => {
+  const content = {
+    lesson: {
+      lessonKey: "arrays", title: "Arrays", eyebrow: "Arrays", description: "Learn arrays",
+      objectives: [], sections: [{ id: "one", title: "One", blocks: [] }], references: [],
+      game: { title: "Barangay", route: "/Map" },
+    },
+  };
+  const html = renderState(
+    { status: "ready", requestKey: "ready", content, error: null },
+    { progressionModel: {
+      lessonKey: "arrays", lessonCompleted: false,
+      steps: [{ id: "game", label: "Game Levels", state: "current" }],
+      action: { label: "Play Level", href: "/array/level/1?classroomId=7", disabled: false },
+    } },
+  );
+  assert.match(html, /Play Level/);
+  assert.match(html, /href="\/array\/level\/1\?classroomId=7"/);
+  assert.doesNotMatch(html, /Lesson Complete/);
+});
+
+test("live module mode does not fall back to a local game action without progression", () => {
+  const content = {
+    lesson: {
+      lessonKey: "arrays", title: "Arrays", eyebrow: "Arrays", description: "Learn arrays",
+      objectives: [], sections: [{ id: "one", title: "One", blocks: [] }], references: [],
+      game: { title: "Barangay", route: "/Map" },
+    },
+  };
+  const html = renderState(
+    { status: "ready", requestKey: "ready", content, error: null },
+    { progressionRequired: true },
+  );
+  assert.doesNotMatch(html, /Start Adventure/);
+  assert.doesNotMatch(html, /data-game-route/);
+});
+
 test("application routes require active class membership and navigation propagates classroom identity", async () => {
   const appSource = await readFile(new URL("../../App.jsx", import.meta.url), "utf8");
   assert.match(appSource, /path="\/lesson"[\s\S]{0,180}<ProtectedRoute requireClassMembership>/);

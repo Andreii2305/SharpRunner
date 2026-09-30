@@ -3,11 +3,14 @@ import { FiArrowLeft, FiArrowRight, FiCheck, FiCheckCircle, FiChevronDown, FiCli
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import PracticeCompiler from "../../Components/PracticeCompiler/PracticeCompiler.jsx";
+import LessonProgressionPanel from "../../Components/LessonProgression/LessonProgressionPanel.jsx";
 import { calculateModulePercent, readModuleProgress, writeModuleProgress } from "../../builtInModules/progress.js";
 import {
   fetchBuiltInLessonContent,
   fetchPrimaryClassroomId,
 } from "../../services/builtInLessonContentService.js";
+import { getProgress } from "../../services/studentAssessmentService.js";
+import { createLessonProgressionViewModel, withExactClassroom } from "../../utils/lessonProgressionNavigation.js";
 import {
   builtInModuleContentReducer,
   classifyBuiltInLessonContentError,
@@ -96,7 +99,7 @@ const safeReferenceUrl = (value) => {
   }
 };
 
-function AuthorizedModuleContent({ lesson, onNavigateGame }) {
+function AuthorizedModuleContent({ lesson, onNavigateGame, progressionModel, progressionRequired }) {
   const [progress, setProgress] = useState(() => readModuleProgress(lesson.lessonKey));
   const initialSection = lesson.sections.findIndex(({ id }) => id === progress.lastSectionId);
   const [sectionIndex, setSectionIndex] = useState(initialSection >= 0 ? initialSection : 0);
@@ -153,7 +156,9 @@ function AuthorizedModuleContent({ lesson, onNavigateGame }) {
         </div>
         {sectionIndex === lesson.sections.length - 1 && <>
           {!allChecksDone && <p className={styles.completionNote}>Complete each quick check to mark the module complete. You may retry any check.</p>}
-          {hasGameDestination && <section className={styles.cta}><div><span>Ready to apply what you learned?</span><h2>Next: SharpRunner {game.title}</h2><p>Your learning progress is separate from game score and does not add a new gameplay lock.</p></div><button type="button" data-game-route={game.route} onClick={() => onNavigateGame(game.route)}><FiPlay /> Start Adventure</button></section>}
+          {progressionModel
+            ? <LessonProgressionPanel title={`${lesson.title} journey`} model={progressionModel} />
+            : !progressionRequired && hasGameDestination && <section className={styles.cta}><div><span>Ready to apply what you learned?</span><h2>Next: SharpRunner {game.title}</h2><p>Your learning progress is separate from game score and does not add a new gameplay lock.</p></div><button type="button" data-game-route={game.route} onClick={() => onNavigateGame(game.route)}><FiPlay /> Start Adventure</button></section>}
           <footer className={styles.references}><h2>References</h2><ol>{lesson.references.map((reference) => {
             const url = safeReferenceUrl(reference.url);
             return <li key={reference.title}>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{reference.title} <FiExternalLink aria-hidden="true" /></a> : reference.title}</li>;
@@ -184,10 +189,10 @@ function ContentStatus({
   </main>;
 }
 
-export function BuiltInModuleContentView({ state, onRetry, onNavigateGame }) {
+export function BuiltInModuleContentView({ state, onRetry, onNavigateGame, progressionModel = null, progressionRequired = false }) {
   if (state.status === "ready" && state.content?.lesson) {
     const lesson = state.content.lesson;
-    return <AuthorizedModuleContent key={lesson.lessonKey} lesson={lesson} onNavigateGame={onNavigateGame} />;
+    return <AuthorizedModuleContent key={lesson.lessonKey} lesson={lesson} onNavigateGame={onNavigateGame} progressionModel={progressionModel} progressionRequired={progressionRequired} />;
   }
 
   if (state.status === "error") {
@@ -209,6 +214,7 @@ function BuiltInModulePage() {
   const navigate = useNavigate();
   const [state, dispatch] = useReducer(builtInModuleContentReducer, initialBuiltInModuleContentState);
   const [retryGeneration, setRetryGeneration] = useState(0);
+  const [progressionModel, setProgressionModel] = useState(null);
   const requestGeneration = useRef(0);
   const hasExplicitClassroomId = searchParams.has("classroomId");
   const explicitClassroomId = searchParams.get("classroomId");
@@ -218,6 +224,7 @@ function BuiltInModulePage() {
     const controller = new AbortController();
     const requestKey = `${requestContext}:${++requestGeneration.current}`;
     dispatch({ type: "BEGIN_REQUEST", requestKey });
+    setProgressionModel(null);
 
     const loadContent = async () => {
       try {
@@ -237,6 +244,24 @@ function BuiltInModulePage() {
           signal: controller.signal,
         });
         dispatch({ type: "REQUEST_SUCCEEDED", requestKey, content });
+        try {
+          const progression = await getProgress({ classroomId, signal: controller.signal });
+          const lessonProgression = progression.lessons?.find((item) => item.lessonKey === moduleId);
+          const gameHref = withExactClassroom(
+            content.lesson?.game?.route ?? "/Map",
+            classroomId,
+          );
+          if (lessonProgression) {
+            const model = createLessonProgressionViewModel({ lesson: lessonProgression, classroomId, gameHref });
+            setProgressionModel(model.action.kind === "module"
+              ? { ...model, action: { kind: "game", label: "Play Level", href: gameHref, disabled: !lessonProgression.gameUnlocked } }
+              : model);
+          } else {
+            setProgressionModel(null);
+          }
+        } catch {
+          setProgressionModel(null);
+        }
       } catch (error) {
         dispatch({
           type: "REQUEST_FAILED",
@@ -256,6 +281,8 @@ function BuiltInModulePage() {
     <Sidebar />
     <BuiltInModuleContentView
       state={visibleState}
+      progressionModel={progressionModel}
+      progressionRequired
       onRetry={retry}
       onNavigateGame={(route) => navigate(route)}
     />

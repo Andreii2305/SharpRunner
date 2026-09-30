@@ -1,18 +1,21 @@
-.panel { width: 100%; box-sizing: border-box; padding: 1rem; border: 1px solid rgba(112, 76, 182, .3); border-radius: 16px; background: rgba(255,255,255,.96); color: #251941; }
-.headingRow { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.headingRow h2 { margin: .15rem 0 0; font-size: 1.25rem; }
-.eyebrow { color: #6544a6; font-size: .75rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.completeBadge { padding: .4rem .65rem; border-radius: 999px; background: #e5f8ec; color: #17643a; font-weight: 800; }
-.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: .65rem; margin: 1rem 0; padding: 0; list-style: none; }
-.steps li { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .15rem .5rem; min-width: 0; padding: .65rem; border-radius: 10px; background: #f4f0fb; }
-.steps small { grid-column: 2; color: #655b75; }
-.marker { width: .75rem; height: .75rem; border-radius: 50%; background: #9a90aa; }
-.steps li[data-state="completed"] .marker, .steps li[data-state="complete"] .marker { background: #248b54; }
-.steps li[data-state="current"] .marker, .steps li[data-state="available"] .marker { background: #7650c5; }
-.steps li[data-state="blocked"] .marker { background: #a93c3c; }
-.action, .blockedAction { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; padding: .7rem 1rem; border-radius: 10px; font-weight: 800; }
+.panel { display: grid; grid-template-columns: minmax(140px, auto) minmax(0, 1fr) auto; align-items: center; gap: .75rem 1rem; width: 100%; box-sizing: border-box; padding: .55rem .75rem; border: 2px solid #8b6f3f; border-radius: 9px; background: #f4e2ab; color: #2a1810; box-shadow: 2px 2px 0 rgba(26, 15, 8, .18); }
+.headingRow { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.headingRow h2 { margin: .05rem 0 0; font: 700 1rem/1.15 Georgia, serif; overflow-wrap: anywhere; }
+.eyebrow { color: #7650a9; font-size: .62rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.completeBadge { padding: .3rem .5rem; border-radius: 999px; background: #e5f8ec; color: #17643a; font-size: .75rem; font-weight: 800; white-space: nowrap; }
+.steps { display: flex; align-items: center; gap: .35rem; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.steps li { position: relative; display: grid; grid-template-columns: auto auto; align-items: center; gap: .1rem .35rem; min-width: 0; padding: .25rem .5rem; border-radius: 7px; }
+.steps li:not(:last-child)::after { content: "→"; position: absolute; right: -.35rem; color: #8b6f3f; }
+.steps small { grid-column: 2; color: #66543d; font-size: .65rem; }
+.marker { grid-row: 1 / span 2; color: #756b5b; font-size: .9rem; font-weight: 900; }
+.steps li[data-state="completed"] .marker, .steps li[data-state="complete"] .marker { color: #17643a; }
+.steps li[data-state="current"] { background: rgba(118, 80, 197, .12); }
+.steps li[data-state="current"] .marker, .steps li[data-state="available"] .marker { color: #6740b5; }
+.steps li[data-state="blocked"] .marker { color: #8a2f2f; }
+.action, .blockedAction { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; margin: 0; padding: .55rem .8rem; border-radius: 8px; font-size: .78rem; font-weight: 800; white-space: nowrap; }
 .action { background: #6740b5; color: #fff; text-decoration: none; }
 .action:hover { background: #513092; }
 .action:focus-visible { outline: 3px solid #f1b83c; outline-offset: 3px; }
-.blockedAction { margin: 0; background: #f4e8e8; color: #762d2d; }
-@media (max-width: 600px) { .headingRow { align-items: flex-start; flex-direction: column; } .steps { grid-template-columns: 1fr; } .action, .blockedAction { width: 100%; } }
+.blockedAction { background: #f4e8e8; color: #762d2d; }
+@media (max-width: 900px) { .panel { grid-template-columns: minmax(140px, auto) minmax(0, 1fr); } .action, .blockedAction { grid-column: 1 / -1; justify-self: start; } }
+@media (max-width: 600px) { .panel { grid-template-columns: 1fr; padding: .6rem; } .headingRow { justify-content: space-between; } .steps { align-items: stretch; flex-direction: column; gap: .15rem; } .steps li { grid-template-columns: auto 1fr auto; width: 100%; box-sizing: border-box; } .steps li:not(:last-child)::after { content: "↓"; right: auto; bottom: -.45rem; left: .8rem; } .steps small { grid-column: 3; grid-row: 1; align-self: center; } .marker { grid-row: 1; } .action, .blockedAction { grid-column: 1; width: 100%; } }

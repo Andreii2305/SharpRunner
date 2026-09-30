@@ -275,6 +275,7 @@ function LessonMapPage() {
   const tiledRegion =
     activeRegion === "functions-arrays"
       ? {
+          progressionTitle: "Functions with Arrays",
           mapUrl: FUNCTIONS_ARRAYS_MAP_URL,
           nodes: functionsArraysNodes,
           markerToLevel: functionsArraysMarkerToLevel,
@@ -297,6 +298,7 @@ function LessonMapPage() {
         }
       : activeRegion === "functions"
       ? {
+          progressionTitle: "Functions & Methods",
           mapUrl: FUNCTIONS_MAP_URL,
           nodes: functionNodes,
           markerToLevel: functionMarkerToLevel,
@@ -318,6 +320,7 @@ function LessonMapPage() {
           ],
         }
       : {
+          progressionTitle: "Arrays",
           mapUrl: ARRAYS_MAP_URL,
           nodes: arrayNodes,
           markerToLevel: mapMarkerToLevel,
@@ -390,8 +393,9 @@ function LessonMapPage() {
 
         {progressionModel && <div className={styles.progressionPanel}>
           <LessonProgressionPanel
-            title={`${activeLessonKey === "functions-with-arrays" ? "Methods + Arrays" : activeLessonKey} journey`}
+            title={activeRegion === "tutorial" ? LESSON_ONE_MAP_CONFIG.lessonTitle : tiledRegion.progressionTitle}
             model={progressionModel}
+            showAction={progressionModel.action.kind !== "game"}
           />
         </div>}
 
@@ -448,7 +452,7 @@ function LessonMapPage() {
                   type="button"
                   className={styles.continueButton}
                   onClick={() => navigate(continueRoute)}
-                  disabled={!tiledRegion.unlocked || isLoading}
+                  disabled={!tiledRegion.unlocked || isLoading || progressionModel?.action.kind !== "game"}
                 >
                   Continue
                 </button>

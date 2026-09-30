@@ -82,7 +82,7 @@ test("completed PRE leads to module before game starts and then to the current g
     classroomId: 7,
     gameHref: "/array/level/1?classroomId=7",
   });
-  assert.equal(moduleModel.action.label, "Continue to Module");
+  assert.equal(moduleModel.action.label, "Open Module");
   assert.equal(moduleModel.action.href, "/lesson/built-in/arrays?classroomId=7");
   assert.equal(moduleModel.steps.find(({ id }) => id === "module").state, "current");
 
@@ -97,7 +97,7 @@ test("completed PRE leads to module before game starts and then to the current g
     classroomId: 7,
     gameHref: "/array/level/4?classroomId=7",
   });
-  assert.equal(gameModel.action.label, "Continue Lesson");
+  assert.equal(gameModel.action.label, "Continue Game");
   assert.equal(gameModel.action.href, "/array/level/4?classroomId=7");
 });
 

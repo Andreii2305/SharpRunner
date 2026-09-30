@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -10,24 +11,46 @@ const { default: LessonProgressionPanel } = await vite.ssrLoadModule(
 );
 test.after(async () => vite.close());
 
-test("renders named steps, text states, and an exact-classroom semantic action", () => {
+test("renders a compact ordered status strip with an exact-classroom semantic action", () => {
   const html = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
-    title: "Arrays journey",
+    title: "Arrays",
     model: {
       steps: [
         { key: "pre", label: "Pre-Test", state: "completed" },
-        { key: "module", label: "Module / Lesson", state: "current" },
+        { key: "module", label: "Module", state: "current" },
         { key: "game", label: "Game Levels", state: "locked" },
       ],
-      action: { label: "Continue to Module", href: "/lesson/built-in/arrays?classroomId=7", disabled: false },
+      action: { label: "Open Module", href: "/lesson/built-in/arrays?classroomId=7", disabled: false },
     },
   }));
   assert.match(html, /<section[^>]+aria-labelledby=/);
+  assert.match(html, /<ol/);
+  assert.match(html, /Arrays/);
   assert.match(html, /Pre-Test/);
   assert.match(html, /Completed/);
   assert.match(html, /Current/);
   assert.match(html, /Locked/);
-  assert.match(html, /<a[^>]+href="\/lesson\/built-in\/arrays\?classroomId=7"[^>]*>Continue to Module<\/a>/);
+  assert.match(html, /<a[^>]+href="\/lesson\/built-in\/arrays\?classroomId=7"[^>]*>Open Module<\/a>/);
+});
+
+test("suppresses a redundant game action while preserving progression status", () => {
+  const html = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
+    title: "Functions & Methods",
+    showAction: false,
+    model: {
+      steps: [
+        { key: "module", label: "Module", state: "complete" },
+        { key: "game", label: "Game Levels", state: "current" },
+        { key: "post", label: "Post-Test", state: "locked" },
+      ],
+      action: { kind: "game", label: "Continue Game", href: "/function/level/9?classroomId=7", disabled: false },
+    },
+  }));
+
+  assert.match(html, /Functions &amp; Methods/);
+  assert.match(html, /Game Levels/);
+  assert.doesNotMatch(html, /Continue Game/);
+  assert.doesNotMatch(html, /<a/);
 });
 
 test("renders exhausted POST as status text without a bypass link", () => {
@@ -40,4 +63,18 @@ test("renders exhausted POST as status text without a bypass link", () => {
   assert.match(html, /Post-Test attempts exhausted/);
   assert.match(html, /role="status"/);
   assert.doesNotMatch(html, /<a/);
+});
+
+test("map uses canonical lesson titles, contextual actions, and compact responsive styling", async () => {
+  const pageSource = await readFile(new URL("../../pages/map/LessonMapPage.jsx", import.meta.url), "utf8");
+  const panelCss = await readFile(new URL("./LessonProgressionPanel.module.css", import.meta.url), "utf8");
+  const mapCss = await readFile(new URL("../../pages/map/LessonMapPage.module.css", import.meta.url), "utf8");
+
+  assert.match(pageSource, /progressionTitle: "Functions & Methods"/);
+  assert.match(pageSource, /progressionTitle: "Functions with Arrays"/);
+  assert.match(pageSource, /showAction=\{progressionModel\.action\.kind !== "game"\}/);
+  assert.doesNotMatch(pageSource, /\} journey`/);
+  assert.match(panelCss, /grid-template-columns:\s*minmax\(140px, auto\) minmax\(0, 1fr\) auto/);
+  assert.match(panelCss, /@media \(max-width: 600px\)/);
+  assert.doesNotMatch(mapCss, /max-height:\s*260px/);
 });

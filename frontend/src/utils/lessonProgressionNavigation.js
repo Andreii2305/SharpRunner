@@ -53,7 +53,7 @@ const stepState = (lesson) => {
 
   steps.push(step(
     "module",
-    "Module / Lesson",
+    "Module",
     !lesson.moduleUnlocked
       ? "locked"
       : lesson.gameStarted || lesson.gameCompleted
@@ -99,14 +99,14 @@ const actionFor = ({ lesson, classroomId, gameHref }) => {
       if (lesson.moduleUnlocked && !lesson.gameStarted) {
         return {
           kind: "module",
-          label: "Continue to Module",
+          label: "Open Module",
           href: buildModuleHref(classroomId, lesson.lessonKey),
           disabled: false,
         };
       }
       return {
         kind: "game",
-        label: lesson.gameStarted ? "Continue Lesson" : "Play Level",
+        label: "Continue Game",
         href: gameHref ?? buildMapHref(classroomId),
         disabled: !lesson.gameUnlocked,
       };

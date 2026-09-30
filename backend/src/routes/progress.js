@@ -178,6 +178,20 @@ const parseOptionalClassroomId = (value) => {
 
 router.use(authMiddleware, requireActiveClassMembership);
 
+router.use("/level/:levelKey", async (req, res, next) => {
+  try {
+    const classroomId = parseOptionalClassroomId(req.query.classroomId);
+    req.levelMembership = classroomId == null
+      ? await findPrimaryActiveMembership(req.userId)
+      : await requireExactActiveMembership({ studentId: req.userId, classroomId });
+    return next();
+  } catch (error) {
+    if (error instanceof AssessmentApiError) return sendAssessmentError(res, error);
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
 const buildProgressPayloadForUser = async (userId, authorizedMembership) => {
   const rows = await ensureProgressRowsForUser(userId);
   const currentUser = await User.findByPk(userId, { attributes: ["xpTotal"] });
@@ -297,7 +311,7 @@ router.post("/level/:levelKey/start", async (req, res) => {
 
     const sessionAction = readActionId(req.body?.sessionId);
     if (sessionAction.error) return res.status(400).json({ message: sessionAction.error });
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const access = await getStudentLevelAccess({
       userId: req.userId,
       levelKey,
@@ -382,7 +396,7 @@ router.post("/level/:levelKey/heartbeat", async (req, res) => {
     if (syncAction.error) return res.status(400).json({ message: syncAction.error });
 
     const now = new Date();
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const analyticsContext = {
       studentId: req.userId,
       classroomId: membership?.classroomId ?? null,
@@ -445,7 +459,7 @@ router.post("/level/:levelKey/end", async (req, res) => {
     }
     const syncAction = readActionId(req.body?.syncId);
     if (syncAction.error) return res.status(400).json({ message: syncAction.error });
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const access = await getStudentLevelAccess({ userId: req.userId, levelKey, membership });
     const result = await pauseProgressSession(levelRow, {
       stopAt: access.reason === "DEADLINE_PASSED" ? access.effectiveDueAt : null,
@@ -474,7 +488,7 @@ router.post("/level/:levelKey/attempt", async (req, res) => {
     if (actionId.error) return res.status(400).json({ message: actionId.error });
 
     await ensureProgressRowsForUser(req.userId);
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
@@ -610,7 +624,7 @@ router.post("/level/:levelKey/hint-use", async (req, res) => {
       return res.status(404).json({ message: "Unknown level key" });
     }
     await ensureProgressRowsForUser(req.userId);
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey, membership);
     if (accessRestriction) return sendLevelRestrictionResponse(res, accessRestriction);
 
@@ -693,7 +707,7 @@ router.post("/level/:levelKey/detailed-hint-purchase", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const accessRestriction = await findLevelAccessRestriction(req.userId, levelKey, membership);
     if (accessRestriction) return sendLevelRestrictionResponse(res, accessRestriction);
 
@@ -757,7 +771,7 @@ router.put("/level/:levelKey", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
-    const membership = await findPrimaryActiveMembership(req.userId);
+    const membership = req.levelMembership;
     const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
@@ -925,7 +939,7 @@ router.put("/level/:levelKey", async (req, res) => {
     if (!mutation) return res.status(404).json({ message: "Progress row not found" });
     const { xpAward } = mutation;
 
-    const payload = await buildProgressPayloadForUser(req.userId);
+    const payload = await buildProgressPayloadForUser(req.userId, membership);
     payload.xpAward = xpAward;
     return res.json(payload);
   } catch (error) {
@@ -942,15 +956,16 @@ router.get("/level/:levelKey/content", async (req, res) => {
     }
 
     await ensureProgressRowsForUser(req.userId);
+    const primaryMembership = req.levelMembership;
     const accessRestriction = await findLevelAccessRestriction(
       req.userId,
       levelKey,
+      primaryMembership,
     );
     if (accessRestriction) {
       return sendLevelRestrictionResponse(res, accessRestriction);
     }
 
-    const primaryMembership = await findPrimaryActiveMembership(req.userId);
     if (!primaryMembership) {
       return res.json({ override: null });
     }

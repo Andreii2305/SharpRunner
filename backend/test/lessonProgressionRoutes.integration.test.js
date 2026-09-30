@@ -540,12 +540,13 @@ const withMultipleClassroomProgressRoutes = async (callback) => {
       process.env.JWT_SECRET,
       { expiresIn: "5m" },
     );
-    const request = async (path) => {
+    const request = async (path, init = {}) => {
       const before = Object.fromEntries(
         Object.entries(queries).map(([key, calls]) => [key, calls.length]),
       );
       const response = await fetch(`${baseUrl}${path}`, {
-        headers: { Authorization: `Bearer ${authToken}` },
+        ...init,
+        headers: { ...init.headers, Authorization: `Bearer ${authToken}` },
       });
       const payload = await response.json();
       const queryDelta = Object.fromEntries(
@@ -701,5 +702,18 @@ test("explicit classroom progress rejects malformed IDs and remains query-bounde
       memberships: 2,
     });
     assert.deepEqual(exact.queryDelta, primary.queryDelta);
+  });
+});
+
+test("explicit classroom level access cannot fall back to a different primary classroom", async () => {
+  await withMultipleClassroomProgressRoutes(async ({ request, rows }) => {
+    rows.find((row) => row.levelKey === "arrays-level-1").isCompleted = false;
+    const result = await request(
+      "/api/progress/level/arrays-level-1/start?classroomId=12",
+      { method: "POST", body: JSON.stringify({ sessionId: "phase-j-exact-classroom" }), headers: { "Content-Type": "application/json" } },
+    );
+
+    assert.equal(result.response.status, 403);
+    assert.equal(result.payload.code, "PRE_ASSESSMENT_REQUIRED");
   });
 });

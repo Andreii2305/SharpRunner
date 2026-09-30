@@ -4,6 +4,12 @@ const ALLOWED_COMPLETION_ACTIONS = new Set([
   "TAKE_POST", "RESUME_POST", "RETRY_POST", "POST_RECOVERY_REQUIRED", "LESSON_COMPLETE",
 ]);
 
+export const buildExactClassroomProgressUrl = (path, classroomId) => (
+  classroomId == null
+    ? path
+    : `${path}${path.includes("?") ? "&" : "?"}classroomId=${encodeURIComponent(String(classroomId))}`
+);
+
 export const createGameCompletionAction = ({ progress, levelConfig }) => {
   if (!progress || !levelConfig?.lessonKey || levelConfig.lessonKey === "final") return null;
   const lesson = progress.lessons?.find((item) => item.lessonKey === levelConfig.lessonKey);

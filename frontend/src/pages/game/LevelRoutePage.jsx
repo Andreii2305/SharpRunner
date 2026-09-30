@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Button from "../../Components/Button/Button.jsx";
 import GamePage from "./GamePage.jsx";
 import styles from "./LevelRoutePage.module.css";
@@ -13,6 +13,7 @@ import {
 } from "./levels/levelConfigs";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { bgmManager } from "./audio/bgmManager";
+import { buildExactClassroomProgressUrl } from "./gameCompletionNavigation.js";
 
 const AVAILABLE_ROUTES = getAvailableLessonRoutes();
 const formatDeadline = (value) => new Intl.DateTimeFormat("en-PH", {
@@ -27,6 +28,8 @@ const formatDeadline = (value) => new Intl.DateTimeFormat("en-PH", {
 function LevelRoutePage() {
   const navigate = useNavigate();
   const { lessonSlug, levelNumber } = useParams();
+  const [searchParams] = useSearchParams();
+  const classroomId = searchParams.get("classroomId");
   const parsedLevelNumber = Number(levelNumber);
   const levelConfig = lessonSlug
     ? getLevelConfigByRoute(lessonSlug, parsedLevelNumber)
@@ -53,7 +56,7 @@ function LevelRoutePage() {
 
     setAccessCheck({ levelKey, status: "loading" });
     axios
-      .get(buildApiUrl("/api/progress/me"), { headers: getAuthHeaders() })
+      .get(buildApiUrl(buildExactClassroomProgressUrl("/api/progress/me", classroomId)), { headers: getAuthHeaders() })
       .then((response) => {
         if (!isMounted) return;
         const level = response.data?.levels?.find((row) => row.levelKey === levelKey);
@@ -80,7 +83,7 @@ function LevelRoutePage() {
     return () => {
       isMounted = false;
     };
-  }, [checkVersion, lessonSlug, levelConfig]);
+  }, [checkVersion, classroomId, lessonSlug, levelConfig]);
 
   const accessStatus =
     accessCheck.levelKey === levelConfig?.progressKey

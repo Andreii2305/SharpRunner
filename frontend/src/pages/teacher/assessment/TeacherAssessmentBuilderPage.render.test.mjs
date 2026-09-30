@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.jsx", import.meta.url), "utf8");
+const styles = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.module.css", import.meta.url), "utf8");
 
 test("builder exposes labelled settings, question controls, preview, and lifecycle confirmations", () => {
   for (const marker of ["Assessment builder", "Passing percentage", "Maximum attempts", "Answer review policy", "Add question", "Move question up", "Move choice down", "Preview", "Publish assessment?", "Delete assessment?"]) {
@@ -24,4 +25,12 @@ test("attempt locks disable writes and direct route identity drives requests", (
   assert.match(source, /classroomId/);
   assert.match(source, /lessonKey/);
   assert.match(source, /assessmentId/);
+});
+
+test("desktop builder keeps scope and assessment selectors compact above the editor", () => {
+  assert.match(styles, /\.main\s*\{[^}]*padding:\s*18px\s+clamp\(18px,\s*3vw,\s*44px\)\s+48px/s);
+  assert.match(styles, /\.pageHeader\s*\{[^}]*margin-bottom:\s*14px/s);
+  assert.match(styles, /\.selectorCard\s*\{[^}]*padding:\s*16px\s+18px/s);
+  assert.match(styles, /\.slotGrid\s+article\s*\{[^}]*display:\s*grid[^}]*grid-template-areas:\s*"heading action"\s*"summary action"/s);
+  assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.slotGrid\s+article\s*\{[^}]*grid-template-areas:\s*"heading"\s*"summary"\s*"action"/);
 });

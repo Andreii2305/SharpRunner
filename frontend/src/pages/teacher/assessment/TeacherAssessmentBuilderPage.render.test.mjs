@@ -34,3 +34,9 @@ test("desktop builder keeps scope and assessment selectors compact above the edi
   assert.match(styles, /\.slotGrid\s+article\s*\{[^}]*display:\s*grid[^}]*grid-template-areas:\s*"heading action"\s*"summary action"/s);
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.slotGrid\s+article\s*\{[^}]*grid-template-areas:\s*"heading"\s*"summary"\s*"action"/);
 });
+
+test("page shell keeps the builder beside the full-height sidebar instead of below it", () => {
+  assert.match(styles, /\.root\s*\{[^}]*display:\s*flex[^}]*align-items:\s*flex-start/s);
+  assert.match(styles, /\.main\s*\{[^}]*flex:\s*1[^}]*margin-left:\s*0/s);
+  assert.doesNotMatch(styles, /@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.main\s*\{[^}]*margin-left/s);
+});

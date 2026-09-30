@@ -1,4 +1,5 @@
 require("./classroomLessonPolicies.test");
+require("./levelCodeValidationService.test");
 require("./securityRegression.test");
 require("./hintSystem.test");
 require("./levelTimingAndDeadline.test");

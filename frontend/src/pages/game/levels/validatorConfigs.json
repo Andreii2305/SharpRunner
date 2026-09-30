@@ -1,0 +1,222 @@
+{
+  "tutorial-level-1": {
+    "type": "singleInteger",
+    "variableName": "steps",
+    "minValue": 1,
+    "maxValue": 40,
+    "unexpectedVariableMessage": "Unexpected variable. Only \"steps\" is allowed in Level 1.",
+    "successMessage": "Code accepted. Executing walk steps..."
+  },
+  "tutorial-level-2": {
+    "type": "exactGoal",
+    "goals": [
+      { "name": "myName", "allowedTypes": ["string"], "requiredValue": "\"Kai\"" }
+    ],
+    "unexpectedVariableMessage": "Unexpected variable. Only \"myName\" is allowed in Level 2.",
+    "strictCountMessage": "Only this declaration is accepted: string myName = \"Kai\";",
+    "successMessage": "Code accepted. Introducing \"Kai\" to the NPC..."
+  },
+  "tutorial-level-3": {
+    "type": "multiString",
+    "variableNames": ["voice1", "voice2", "voice3"],
+    "unexpectedVariableMessage": "Unexpected variable. Only \"voice1\", \"voice2\", and \"voice3\" are allowed in Level 3.",
+    "successMessage": "All voices declared. Unfreezing villagers..."
+  },
+  "tutorial-level-4": {
+    "type": "singleInteger",
+    "variableName": "coins",
+    "minValue": 20,
+    "maxValue": 20,
+    "unexpectedVariableMessage": "Unexpected variable. Only \"coins\" is allowed in Level 4.",
+    "successMessage": "Code accepted. Paying toll..."
+  },
+  "tutorial-level-5": {
+    "type": "exactGoal",
+    "goals": [
+      { "name": "measurement", "allowedTypes": ["double", "float"], "requiredValue": "4.5" }
+    ],
+    "unexpectedVariableMessage": "Unexpected variable. Only \"measurement\" is allowed in Level 5.",
+    "strictCountMessage": "Only this declaration is accepted: double measurement = 4.5;",
+    "successMessage": "Code accepted. Shattering seal..."
+  },
+  "arrays-level-1": {
+    "type": "exactIntegerArray",
+    "variableName": "lanterns",
+    "expectedValues": [1, 2, 3, 4],
+    "unexpectedVariableMessage": "Unexpected array. Only \"lanterns\" is allowed in Arrays Level 1.",
+    "successMessage": "Code accepted. Lighting the lantern row..."
+  },
+  "arrays-level-2": {
+    "type": "exactStringArray",
+    "variableName": "supplies",
+    "expectedValues": ["rice", "salt", "candle"],
+    "unexpectedVariableMessage": "Unexpected array. Only \"supplies\" is allowed in Arrays Level 2.",
+    "successMessage": "Code accepted. Opening the supply crates..."
+  },
+  "arrays-level-3": {
+    "type": "stringArrayAccess",
+    "arrayName": "flames",
+    "arrayValues": ["normal", "normal", "boss", "normal"],
+    "targetVariableName": "attack",
+    "expectedIndex": 2,
+    "unexpectedVariableMessage": "Use only string[] flames and string attack in Arrays Level 3.",
+    "successMessage": "Code accepted. Kai attacks the boss fire..."
+  },
+  "arrays-level-4": {
+    "type": "stringArrayAccess",
+    "arrayName": "inventory",
+    "arrayValues": ["candle", "key", "map"],
+    "targetVariableName": "selectedItem",
+    "expectedIndex": 1,
+    "unexpectedVariableMessage": "Use only string[] inventory and string selectedItem in Arrays Level 4.",
+    "successMessage": "Code accepted. Kai selects the inventory key..."
+  },
+  "arrays-level-5": {
+    "type": "exactInteger2DArray",
+    "variableName": "ward",
+    "expectedRows": [[1, 0, 1], [0, 1, 0], [1, 0, 1]],
+    "unexpectedVariableMessage": "Unexpected array. Only \"ward\" is allowed in Arrays Level 5.",
+    "successMessage": "Code accepted. Restoring the warding grid..."
+  },
+  "arrays-level-6": {
+    "type": "exactInteger2DArray",
+    "variableName": "pathMap",
+    "expectedRows": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    "unexpectedVariableMessage": "Unexpected array. Only \"pathMap\" is allowed in Arrays Level 6.",
+    "successMessage": "Code accepted. Restoring the safe route..."
+  },
+  "arrays-level-7": {
+    "type": "stringArrayTraversal",
+    "arrayName": "names",
+    "expectedValues": ["Lina", "Tomas", "Mira", "Niko"],
+    "methodName": "CheckName",
+    "unexpectedVariableMessage": "Unexpected array. Only \"names\" is allowed in Arrays Level 7.",
+    "successMessage": "Code accepted. Checking every hanging name..."
+  },
+  "arrays-level-8": {
+    "type": "stringArrayTraversal",
+    "arrayName": "jars",
+    "expectedValues": ["blue", "green", "purple", "orange"],
+    "methodName": "ScanJar",
+    "successMessage": "Code accepted. Inspecting every jar seal..."
+  },
+  "functions-level-1": {
+    "type": "voidMethodDefinitionCall",
+    "methodName": "StartRitual",
+    "successMessage": "Code accepted. Starting the ritual..."
+  },
+  "functions-level-2": {
+    "type": "predefinedVoidMethodCall",
+    "methodName": "RingBell",
+    "successMessage": "Code accepted. Ringing the Bell of Dawn..."
+  },
+  "functions-level-3": {
+    "type": "voidMethodDefinitionCall",
+    "methodName": "LightFlame",
+    "successMessage": "Code accepted. Lighting the warding flame..."
+  },
+  "functions-level-4": {
+    "type": "voidMethodDefinitionCall",
+    "methodName": "SealShrine",
+    "successMessage": "Code accepted. Sealing the cursed shrine..."
+  },
+  "functions-level-5": {
+    "type": "intReturnMethod",
+    "methodName": "GetCode",
+    "returnValue": 7,
+    "variableName": "code",
+    "successMessage": "Code accepted. Reading the oracle stone..."
+  },
+  "functions-level-6": {
+    "type": "stringReturnMethod",
+    "methodName": "GetSafePath",
+    "returnValue": "up",
+    "variableName": "path",
+    "successMessage": "Code accepted. Choosing the safe path..."
+  },
+  "functions-level-7": {
+    "type": "voidMethodParameterCall",
+    "methodName": "PlaceOffering",
+    "parameterType": "string",
+    "parameterName": "item",
+    "expectedArgument": "\"rice\"",
+    "wrongArgumentMessage": "The shrine asks for rice. Call PlaceOffering(\"rice\");",
+    "successMessage": "Code accepted. Placing the shrine offering..."
+  },
+  "functions-level-8": {
+    "type": "predefinedVoidMethodArgument",
+    "methodName": "ThrowSalt",
+    "expectedArgument": "5",
+    "wrongArgumentMessage": "The aswang is at marker 5. Call ThrowSalt(5);",
+    "successMessage": "Code accepted. Throwing measured salt..."
+  },
+  "functions-level-9": {
+    "type": "intParameterReturnMethod",
+    "methodName": "CalculatePower",
+    "parameters": [{ "type": "int", "name": "basePower" }, { "type": "int", "name": "bonus" }],
+    "returnExpression": "basePower + bonus",
+    "variableName": "power",
+    "expectedArguments": [5, 3],
+    "successMessage": "Code accepted. Charging the anting-anting..."
+  },
+  "functions-level-10": {
+    "type": "intParameterReturnMethod",
+    "methodName": "Heal",
+    "parameters": [{ "type": "int", "name": "herb" }, { "type": "int", "name": "water" }],
+    "returnExpression": "herb * water",
+    "variableName": "healing",
+    "expectedArguments": [5, 2],
+    "expectedResult": 10,
+    "successMessage": "Code accepted. Restoring the Diwata..."
+  },
+  "functions-level-11": {
+    "type": "recursiveStairMethod",
+    "methodName": "BuildStairs",
+    "parameterName": "step",
+    "actionMethodName": "CreateStep",
+    "expectedArgument": 5,
+    "successMessage": "Code accepted. Unwinding the bamboo stair ritual..."
+  },
+  "functions-with-arrays-level-1": {
+    "type": "voidMethodIntegerArrayParameter",
+    "methodName": "LightLanterns",
+    "parameterName": "lanterns",
+    "arrayName": "lanterns",
+    "expectedValues": [1, 1, 1],
+    "successMessage": "Code accepted. Sending the array through the lantern line..."
+  },
+  "functions-with-arrays-level-2": {
+    "type": "cursedCharmCountMethod",
+    "methodName": "CountCursed",
+    "parameterName": "charms",
+    "arrayName": "charms",
+    "counterName": "count",
+    "resultName": "cursedCount",
+    "expectedValues": [1, 0, 1, 1, 0, 1],
+    "targetValue": 0,
+    "successMessage": "Code accepted. Inspecting every charm..."
+  },
+  "functions-with-arrays-level-3": {
+    "type": "voidMethodInteger2DArrayParameter",
+    "methodName": "RestoreGrid",
+    "parameterName": "grid",
+    "arrayName": "grid",
+    "expectedRows": [[1, 0], [0, 1]],
+    "mismatchMessage": "The selection does not match the shrine. Use 1 for blue runes and 0 for every other rune, reading each row left to right.",
+    "successMessage": "Code accepted. Restoring the warding grid..."
+  },
+  "functions-with-arrays-level-4": {
+    "type": "blessedGraveCount2DMethod",
+    "methodName": "CountBlessedGraves",
+    "parameterName": "graves",
+    "arrayName": "graves",
+    "counterName": "blessed",
+    "resultName": "blessed",
+    "expectedRows": [[1, 0, 1, 1], [0, 1, 0, 1], [1, 1, 0, 0]],
+    "targetValue": 1,
+    "successMessage": "Code accepted. Inspecting every grave..."
+  },
+  "final-level-1": {
+    "type": "bakunawaFinale"
+  }
+}

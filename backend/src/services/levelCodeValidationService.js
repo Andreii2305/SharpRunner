@@ -1,69 +1,32 @@
 const fs = require("fs");
 const path = require("path");
-const vm = require("vm");
 const { pathToFileURL } = require("url");
 const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const {
   classifyValidationFailure,
 } = require("./failureClassificationService");
 const { compilePracticeCode } = require("./practiceRunnerService");
+const { parseValidatorConfigs } = require("./validatorConfigLoader");
 
 const frontendLevelsDirectory = path.resolve(
   __dirname,
   "../../../frontend/src/pages/game/levels",
 );
-const levelConfigPath = path.join(frontendLevelsDirectory, "levelConfigs.js");
+const validatorConfigsPath = path.join(frontendLevelsDirectory, "validatorConfigs.json");
 const validatorsPath = path.join(frontendLevelsDirectory, "validators.js");
 const MAX_SOURCE_LENGTH = 100_000;
 
-const findObjectEnd = (source, start) => {
-  let depth = 0;
-  let quote = null;
-  let escaped = false;
-  for (let index = start; index < source.length; index += 1) {
-    const character = source[index];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (character === quote) quote = null;
-      continue;
-    }
-    if (character === '"' || character === "'" || character === "`") {
-      quote = character;
-      continue;
-    }
-    if (character === "{") depth += 1;
-    if (character !== "}") continue;
-    depth -= 1;
-    if (depth === 0) return index + 1;
-  }
-  throw new Error("Unterminated validator configuration");
-};
-
 const loadDefaultValidatorConfigs = () => {
-  const source = fs.readFileSync(levelConfigPath, "utf8");
-  const marker = /validatorConfig\s*:\s*{/g;
-  const configs = [];
-  let match;
-  while ((match = marker.exec(source)) !== null) {
-    const objectStart = source.indexOf("{", match.index);
-    const objectEnd = findObjectEnd(source, objectStart);
-    const literal = source.slice(objectStart, objectEnd);
-    configs.push(vm.runInNewContext(`(${literal})`, Object.create(null), {
-      timeout: 100,
-    }));
-    marker.lastIndex = objectEnd;
-  }
-
-  if (configs.length !== PLAYABLE_LEVEL_KEYS.length) {
-    throw new Error(
-      `Expected ${PLAYABLE_LEVEL_KEYS.length} validator configs, found ${configs.length}`,
-    );
-  }
-  return new Map(PLAYABLE_LEVEL_KEYS.map((levelKey, index) => [levelKey, configs[index]]));
+  return parseValidatorConfigs(
+    fs.readFileSync(validatorConfigsPath, "utf8"),
+    {
+      sourceName: validatorConfigsPath,
+      playableLevelKeys: PLAYABLE_LEVEL_KEYS,
+      factoryTypes: new Set(Object.keys(FACTORIES)),
+    },
+  );
 };
 
-const defaultConfigs = loadDefaultValidatorConfigs();
 let validatorsPromise;
 const getValidators = () => {
   validatorsPromise ??= import(pathToFileURL(validatorsPath).href);
@@ -95,6 +58,8 @@ const FACTORIES = {
   blessedGraveCount2DMethod: "createBlessedGraveCount2DMethodValidator",
   bakunawaFinale: "createBakunawaFinaleValidator",
 };
+
+const defaultConfigs = loadDefaultValidatorConfigs();
 
 const toFailureContract = ({ failureCode, category, metadata }) => ({
   code: failureCode,

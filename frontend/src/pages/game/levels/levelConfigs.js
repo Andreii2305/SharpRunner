@@ -27,6 +27,7 @@ import FunctionsArraysCountCursedCharmsScene from "../scenes/FunctionsArraysCoun
 import FunctionsArraysRestoreWardingGridScene from "../scenes/FunctionsArraysRestoreWardingGridScene";
 import FunctionsArraysAncientCemeteryScene from "../scenes/FunctionsArraysAncientCemeteryScene";
 import FunctionsArraysBakunawaEclipseScene from "../scenes/FunctionsArraysBakunawaEclipseScene";
+import validatorConfigs from "./validatorConfigs.json";
 import {
   createExactIntegerArrayDeclarationValidator,
   createExactInteger2DArrayDeclarationValidator,
@@ -58,6 +59,12 @@ const FUNCTIONS_ARRAYS_LESSON_KEY = "functions-with-arrays";
 const FINAL_LESSON_KEY = "final";
 const GAME_ASSET_BASE = `${import.meta.env.BASE_URL}game/assets`;
 const DIALOGUE_ASSET_BASE = `${GAME_ASSET_BASE}/ui/dialogue`;
+
+const getValidatorFactoryConfig = (levelKey) => {
+  const factoryConfig = { ...validatorConfigs[levelKey] };
+  delete factoryConfig.type;
+  return factoryConfig;
+};
 
 const LEVEL_CONFIG_BY_NUMBER = {
   1: {
@@ -154,23 +161,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "singleInteger",
-      variableName: "steps",
-      minValue: 1,
-      maxValue: 40,
-      unexpectedVariableMessage: 'Unexpected variable. Only "steps" is allowed in Level 1.',
-      successMessage: "Code accepted. Executing walk steps...",
-    },
-    validateCode: createSingleIntegerDeclarationValidator({
-      variableName: "steps",
-      minValue: 1,
-      maxValue: 40,
-      unexpectedVariableMessage:
-        'Unexpected variable. Only "steps" is allowed in Level 1.',
-      successMessage:
-        "Code accepted. Executing walk steps...",
-    }),
+    validatorConfig: validatorConfigs["tutorial-level-1"],
+    validateCode: createSingleIntegerDeclarationValidator(getValidatorFactoryConfig("tutorial-level-1")),
   },
   2: {
     levelNumber: 2,
@@ -260,27 +252,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "exactGoal",
-      goals: [{ name: "myName", allowedTypes: ["string"], requiredValue: '"Kai"' }],
-      unexpectedVariableMessage: 'Unexpected variable. Only "myName" is allowed in Level 2.',
-      strictCountMessage: 'Only this declaration is accepted: string myName = "Kai";',
-      successMessage: 'Code accepted. Introducing "Kai" to the NPC...',
-    },
-    validateCode: createExactGoalDeclarationValidator({
-      goals: [
-        {
-          name: "myName",
-          allowedTypes: ["string"],
-          requiredValue: '"Kai"',
-        },
-      ],
-      unexpectedVariableMessage:
-        'Unexpected variable. Only "myName" is allowed in Level 2.',
-      strictCountMessage:
-        'Only this declaration is accepted: string myName = "Kai";',
-      successMessage: 'Code accepted. Introducing "Kai" to the NPC...',
-    }),
+    validatorConfig: validatorConfigs["tutorial-level-2"],
+    validateCode: createExactGoalDeclarationValidator(getValidatorFactoryConfig("tutorial-level-2")),
   },
   3: {
     levelNumber: 3,
@@ -350,19 +323,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
       portraitAlt: "King Kai portrait",
       intro: [],
     },
-    validatorConfig: {
-      type: "multiString",
-      variableNames: ["voice1", "voice2", "voice3"],
-      unexpectedVariableMessage:
-        'Unexpected variable. Only "voice1", "voice2", and "voice3" are allowed in Level 3.',
-      successMessage: "All voices declared. Unfreezing villagers...",
-    },
-    validateCode: createMultiStringDeclarationValidator({
-      variableNames: ["voice1", "voice2", "voice3"],
-      unexpectedVariableMessage:
-        'Unexpected variable. Only "voice1", "voice2", and "voice3" are allowed in Level 3.',
-      successMessage: "All voices declared. Unfreezing villagers...",
-    }),
+    validatorConfig: validatorConfigs["tutorial-level-3"],
+    validateCode: createMultiStringDeclarationValidator(getValidatorFactoryConfig("tutorial-level-3")),
   },
   4: {
     levelNumber: 4,
@@ -449,21 +411,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "singleInteger",
-      variableName: "coins",
-      minValue: 20,
-      maxValue: 20,
-      unexpectedVariableMessage: 'Unexpected variable. Only "coins" is allowed in Level 4.',
-      successMessage: "Code accepted. Paying toll...",
-    },
-    validateCode: createSingleIntegerDeclarationValidator({
-      variableName: "coins",
-      minValue: 20,
-      maxValue: 20,
-      unexpectedVariableMessage: 'Unexpected variable. Only "coins" is allowed in Level 4.',
-      successMessage: "Code accepted. Paying toll...",
-    }),
+    validatorConfig: validatorConfigs["tutorial-level-4"],
+    validateCode: createSingleIntegerDeclarationValidator(getValidatorFactoryConfig("tutorial-level-4")),
   },
   5: {
     levelNumber: 5,
@@ -550,19 +499,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "exactGoal",
-      goals: [{ name: "measurement", allowedTypes: ["double", "float"], requiredValue: "4.5" }],
-      unexpectedVariableMessage: 'Unexpected variable. Only "measurement" is allowed in Level 5.',
-      strictCountMessage: 'Only this declaration is accepted: double measurement = 4.5;',
-      successMessage: "Code accepted. Shattering seal...",
-    },
-    validateCode: createExactGoalDeclarationValidator({
-      goals: [{ name: "measurement", allowedTypes: ["double", "float"], requiredValue: "4.5" }],
-      unexpectedVariableMessage: 'Unexpected variable. Only "measurement" is allowed in Level 5.',
-      strictCountMessage: 'Only this declaration is accepted: double measurement = 4.5;',
-      successMessage: "Code accepted. Shattering seal...",
-    }),
+    validatorConfig: validatorConfigs["tutorial-level-5"],
+    validateCode: createExactGoalDeclarationValidator(getValidatorFactoryConfig("tutorial-level-5")),
   },
   6: {
     levelNumber: 6,
@@ -687,21 +625,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "exactIntegerArray",
-      variableName: "lanterns",
-      expectedValues: [1, 2, 3, 4],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "lanterns" is allowed in Arrays Level 1.',
-      successMessage: "Code accepted. Lighting the lantern row...",
-    },
-    validateCode: createExactIntegerArrayDeclarationValidator({
-      variableName: "lanterns",
-      expectedValues: [1, 2, 3, 4],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "lanterns" is allowed in Arrays Level 1.',
-      successMessage: "Code accepted. Lighting the lantern row...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-1"],
+    validateCode: createExactIntegerArrayDeclarationValidator(getValidatorFactoryConfig("arrays-level-1")),
   },
   7: {
     levelNumber: 7,
@@ -827,21 +752,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "exactStringArray",
-      variableName: "supplies",
-      expectedValues: ["rice", "salt", "candle"],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "supplies" is allowed in Arrays Level 2.',
-      successMessage: "Code accepted. Opening the supply crates...",
-    },
-    validateCode: createExactStringArrayDeclarationValidator({
-      variableName: "supplies",
-      expectedValues: ["rice", "salt", "candle"],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "supplies" is allowed in Arrays Level 2.',
-      successMessage: "Code accepted. Opening the supply crates...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-2"],
+    validateCode: createExactStringArrayDeclarationValidator(getValidatorFactoryConfig("arrays-level-2")),
   },
   8: {
     levelNumber: 8,
@@ -966,25 +878,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "stringArrayAccess",
-      arrayName: "flames",
-      arrayValues: ["normal", "normal", "boss", "normal"],
-      targetVariableName: "attack",
-      expectedIndex: 2,
-      unexpectedVariableMessage:
-        'Use only string[] flames and string attack in Arrays Level 3.',
-      successMessage: "Code accepted. Kai attacks the boss fire...",
-    },
-    validateCode: createStringArrayAccessValidator({
-      arrayName: "flames",
-      arrayValues: ["normal", "normal", "boss", "normal"],
-      targetVariableName: "attack",
-      expectedIndex: 2,
-      unexpectedVariableMessage:
-        'Use only string[] flames and string attack in Arrays Level 3.',
-      successMessage: "Code accepted. Kai attacks the boss fire...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-3"],
+    validateCode: createStringArrayAccessValidator(getValidatorFactoryConfig("arrays-level-3")),
   },
   9: {
     levelNumber: 9,
@@ -1102,25 +997,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "stringArrayAccess",
-      arrayName: "inventory",
-      arrayValues: ["candle", "key", "map"],
-      targetVariableName: "selectedItem",
-      expectedIndex: 1,
-      unexpectedVariableMessage:
-        'Use only string[] inventory and string selectedItem in Arrays Level 4.',
-      successMessage: "Code accepted. Kai selects the inventory key...",
-    },
-    validateCode: createStringArrayAccessValidator({
-      arrayName: "inventory",
-      arrayValues: ["candle", "key", "map"],
-      targetVariableName: "selectedItem",
-      expectedIndex: 1,
-      unexpectedVariableMessage:
-        'Use only string[] inventory and string selectedItem in Arrays Level 4.',
-      successMessage: "Code accepted. Kai selects the inventory key...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-4"],
+    validateCode: createStringArrayAccessValidator(getValidatorFactoryConfig("arrays-level-4")),
   },
   10: {
     levelNumber: 10,
@@ -1228,29 +1106,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "exactInteger2DArray",
-      variableName: "ward",
-      expectedRows: [
-        [1, 0, 1],
-        [0, 1, 0],
-        [1, 0, 1],
-      ],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "ward" is allowed in Arrays Level 5.',
-      successMessage: "Code accepted. Restoring the warding grid...",
-    },
-    validateCode: createExactInteger2DArrayDeclarationValidator({
-      variableName: "ward",
-      expectedRows: [
-        [1, 0, 1],
-        [0, 1, 0],
-        [1, 0, 1],
-      ],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "ward" is allowed in Arrays Level 5.',
-      successMessage: "Code accepted. Restoring the warding grid...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-5"],
+    validateCode: createExactInteger2DArrayDeclarationValidator(getValidatorFactoryConfig("arrays-level-5")),
   },
   11: {
     levelNumber: 11,
@@ -1349,29 +1206,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "exactInteger2DArray",
-      variableName: "pathMap",
-      expectedRows: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "pathMap" is allowed in Arrays Level 6.',
-      successMessage: "Code accepted. Restoring the safe route...",
-    },
-    validateCode: createExactInteger2DArrayDeclarationValidator({
-      variableName: "pathMap",
-      expectedRows: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      unexpectedVariableMessage:
-        'Unexpected array. Only "pathMap" is allowed in Arrays Level 6.',
-      successMessage: "Code accepted. Restoring the safe route...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-6"],
+    validateCode: createExactInteger2DArrayDeclarationValidator(getValidatorFactoryConfig("arrays-level-6")),
   },
   12: {
     levelNumber: 12,
@@ -1490,23 +1326,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "stringArrayTraversal",
-      arrayName: "names",
-      expectedValues: ["Lina", "Tomas", "Mira", "Niko"],
-      methodName: "CheckName",
-      unexpectedVariableMessage:
-        'Unexpected array. Only "names" is allowed in Arrays Level 7.',
-      successMessage: "Code accepted. Checking every hanging name...",
-    },
-    validateCode: createStringArrayTraversalValidator({
-      arrayName: "names",
-      expectedValues: ["Lina", "Tomas", "Mira", "Niko"],
-      methodName: "CheckName",
-      unexpectedVariableMessage:
-        'Unexpected array. Only "names" is allowed in Arrays Level 7.',
-      successMessage: "Code accepted. Checking every hanging name...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-7"],
+    validateCode: createStringArrayTraversalValidator(getValidatorFactoryConfig("arrays-level-7")),
   },
   13: {
     levelNumber: 13,
@@ -1611,19 +1432,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "stringArrayTraversal",
-      arrayName: "jars",
-      expectedValues: ["blue", "green", "purple", "orange"],
-      methodName: "ScanJar",
-      successMessage: "Code accepted. Inspecting every jar seal...",
-    },
-    validateCode: createStringArrayTraversalValidator({
-      arrayName: "jars",
-      expectedValues: ["blue", "green", "purple", "orange"],
-      methodName: "ScanJar",
-      successMessage: "Code accepted. Inspecting every jar seal...",
-    }),
+    validatorConfig: validatorConfigs["arrays-level-8"],
+    validateCode: createStringArrayTraversalValidator(getValidatorFactoryConfig("arrays-level-8")),
   },
   14: {
     levelNumber: 14,
@@ -1735,15 +1545,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "voidMethodDefinitionCall",
-      methodName: "StartRitual",
-      successMessage: "Code accepted. Starting the ritual...",
-    },
-    validateCode: createVoidMethodDefinitionCallValidator({
-      methodName: "StartRitual",
-      successMessage: "Code accepted. Starting the ritual...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-1"],
+    validateCode: createVoidMethodDefinitionCallValidator(getValidatorFactoryConfig("functions-level-1")),
   },
   15: {
     levelNumber: 15,
@@ -1857,15 +1660,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "predefinedVoidMethodCall",
-      methodName: "RingBell",
-      successMessage: "Code accepted. Ringing the Bell of Dawn...",
-    },
-    validateCode: createPredefinedVoidMethodCallValidator({
-      methodName: "RingBell",
-      successMessage: "Code accepted. Ringing the Bell of Dawn...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-2"],
+    validateCode: createPredefinedVoidMethodCallValidator(getValidatorFactoryConfig("functions-level-2")),
   },
   16: {
     levelNumber: 16,
@@ -1979,15 +1775,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "voidMethodDefinitionCall",
-      methodName: "LightFlame",
-      successMessage: "Code accepted. Lighting the warding flame...",
-    },
-    validateCode: createVoidMethodDefinitionCallValidator({
-      methodName: "LightFlame",
-      successMessage: "Code accepted. Lighting the warding flame...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-3"],
+    validateCode: createVoidMethodDefinitionCallValidator(getValidatorFactoryConfig("functions-level-3")),
   },
   17: {
     levelNumber: 17,
@@ -2110,15 +1899,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "voidMethodDefinitionCall",
-      methodName: "SealShrine",
-      successMessage: "Code accepted. Sealing the cursed shrine...",
-    },
-    validateCode: createVoidMethodDefinitionCallValidator({
-      methodName: "SealShrine",
-      successMessage: "Code accepted. Sealing the cursed shrine...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-4"],
+    validateCode: createVoidMethodDefinitionCallValidator(getValidatorFactoryConfig("functions-level-4")),
   },
   18: {
     levelNumber: 18,
@@ -2232,19 +2014,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "intReturnMethod",
-      methodName: "GetCode",
-      returnValue: 7,
-      variableName: "code",
-      successMessage: "Code accepted. Reading the oracle stone...",
-    },
-    validateCode: createIntReturnMethodValidator({
-      methodName: "GetCode",
-      returnValue: 7,
-      variableName: "code",
-      successMessage: "Code accepted. Reading the oracle stone...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-5"],
+    validateCode: createIntReturnMethodValidator(getValidatorFactoryConfig("functions-level-5")),
   },
   19: {
     levelNumber: 19,
@@ -2353,19 +2124,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "stringReturnMethod",
-      methodName: "GetSafePath",
-      returnValue: "up",
-      variableName: "path",
-      successMessage: "Code accepted. Choosing the safe path...",
-    },
-    validateCode: createStringReturnMethodValidator({
-      methodName: "GetSafePath",
-      returnValue: "up",
-      variableName: "path",
-      successMessage: "Code accepted. Choosing the safe path...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-6"],
+    validateCode: createStringReturnMethodValidator(getValidatorFactoryConfig("functions-level-6")),
   },
   20: {
     levelNumber: 20,
@@ -2479,23 +2239,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "voidMethodParameterCall",
-      methodName: "PlaceOffering",
-      parameterType: "string",
-      parameterName: "item",
-      expectedArgument: '"rice"',
-      wrongArgumentMessage: 'The shrine asks for rice. Call PlaceOffering("rice");',
-      successMessage: "Code accepted. Placing the shrine offering...",
-    },
-    validateCode: createVoidMethodParameterCallValidator({
-      methodName: "PlaceOffering",
-      parameterType: "string",
-      parameterName: "item",
-      expectedArgument: '"rice"',
-      wrongArgumentMessage: 'The shrine asks for rice. Call PlaceOffering("rice");',
-      successMessage: "Code accepted. Placing the shrine offering...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-7"],
+    validateCode: createVoidMethodParameterCallValidator(getValidatorFactoryConfig("functions-level-7")),
   },
   21: {
     levelNumber: 21,
@@ -2608,19 +2353,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "predefinedVoidMethodArgument",
-      methodName: "ThrowSalt",
-      expectedArgument: "5",
-      wrongArgumentMessage: "The aswang is at marker 5. Call ThrowSalt(5);",
-      successMessage: "Code accepted. Throwing measured salt...",
-    },
-    validateCode: createPredefinedVoidMethodArgumentValidator({
-      methodName: "ThrowSalt",
-      expectedArgument: "5",
-      wrongArgumentMessage: "The aswang is at marker 5. Call ThrowSalt(5);",
-      successMessage: "Code accepted. Throwing measured salt...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-8"],
+    validateCode: createPredefinedVoidMethodArgumentValidator(getValidatorFactoryConfig("functions-level-8")),
   },
   22: {
     levelNumber: 22,
@@ -2729,29 +2463,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "intParameterReturnMethod",
-      methodName: "CalculatePower",
-      parameters: [
-        { type: "int", name: "basePower" },
-        { type: "int", name: "bonus" },
-      ],
-      returnExpression: "basePower + bonus",
-      variableName: "power",
-      expectedArguments: [5, 3],
-      successMessage: "Code accepted. Charging the anting-anting...",
-    },
-    validateCode: createIntParameterReturnMethodValidator({
-      methodName: "CalculatePower",
-      parameters: [
-        { type: "int", name: "basePower" },
-        { type: "int", name: "bonus" },
-      ],
-      returnExpression: "basePower + bonus",
-      variableName: "power",
-      expectedArguments: [5, 3],
-      successMessage: "Code accepted. Charging the anting-anting...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-9"],
+    validateCode: createIntParameterReturnMethodValidator(getValidatorFactoryConfig("functions-level-9")),
   },
   23: {
     levelNumber: 23,
@@ -2837,31 +2550,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "intParameterReturnMethod",
-      methodName: "Heal",
-      parameters: [
-        { type: "int", name: "herb" },
-        { type: "int", name: "water" },
-      ],
-      returnExpression: "herb * water",
-      variableName: "healing",
-      expectedArguments: [5, 2],
-      expectedResult: 10,
-      successMessage: "Code accepted. Restoring the Diwata...",
-    },
-    validateCode: createIntParameterReturnMethodValidator({
-      methodName: "Heal",
-      parameters: [
-        { type: "int", name: "herb" },
-        { type: "int", name: "water" },
-      ],
-      returnExpression: "herb * water",
-      variableName: "healing",
-      expectedArguments: [5, 2],
-      expectedResult: 10,
-      successMessage: "Code accepted. Restoring the Diwata...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-10"],
+    validateCode: createIntParameterReturnMethodValidator(getValidatorFactoryConfig("functions-level-10")),
   },
   24: {
     levelNumber: 24,
@@ -2971,21 +2661,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "recursiveStairMethod",
-      methodName: "BuildStairs",
-      parameterName: "step",
-      actionMethodName: "CreateStep",
-      expectedArgument: 5,
-      successMessage: "Code accepted. Unwinding the bamboo stair ritual...",
-    },
-    validateCode: createRecursiveStairMethodValidator({
-      methodName: "BuildStairs",
-      parameterName: "step",
-      actionMethodName: "CreateStep",
-      expectedArgument: 5,
-      successMessage: "Code accepted. Unwinding the bamboo stair ritual...",
-    }),
+    validatorConfig: validatorConfigs["functions-level-11"],
+    validateCode: createRecursiveStairMethodValidator(getValidatorFactoryConfig("functions-level-11")),
   },
   26: {
     levelNumber: 26,
@@ -3084,21 +2761,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "voidMethodIntegerArrayParameter",
-      methodName: "LightLanterns",
-      parameterName: "lanterns",
-      arrayName: "lanterns",
-      expectedValues: [1, 1, 1],
-      successMessage: "Code accepted. Sending the array through the lantern line...",
-    },
-    validateCode: createVoidMethodIntegerArrayParameterValidator({
-      methodName: "LightLanterns",
-      parameterName: "lanterns",
-      arrayName: "lanterns",
-      expectedValues: [1, 1, 1],
-      successMessage: "Code accepted. Sending the array through the lantern line...",
-    }),
+    validatorConfig: validatorConfigs["functions-with-arrays-level-1"],
+    validateCode: createVoidMethodIntegerArrayParameterValidator(getValidatorFactoryConfig("functions-with-arrays-level-1")),
   },
   27: {
     levelNumber: 27,
@@ -3200,27 +2864,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "cursedCharmCountMethod",
-      methodName: "CountCursed",
-      parameterName: "charms",
-      arrayName: "charms",
-      counterName: "count",
-      resultName: "cursedCount",
-      expectedValues: [1, 0, 1, 1, 0, 1],
-      targetValue: 0,
-      successMessage: "Code accepted. Inspecting every charm...",
-    },
-    validateCode: createCursedCharmCountMethodValidator({
-      methodName: "CountCursed",
-      parameterName: "charms",
-      arrayName: "charms",
-      counterName: "count",
-      resultName: "cursedCount",
-      expectedValues: [1, 0, 1, 1, 0, 1],
-      targetValue: 0,
-      successMessage: "Code accepted. Inspecting every charm...",
-    }),
+    validatorConfig: validatorConfigs["functions-with-arrays-level-2"],
+    validateCode: createCursedCharmCountMethodValidator(getValidatorFactoryConfig("functions-with-arrays-level-2")),
   },
   28: {
     levelNumber: 28,
@@ -3317,31 +2962,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "voidMethodInteger2DArrayParameter",
-      methodName: "RestoreGrid",
-      parameterName: "grid",
-      arrayName: "grid",
-      expectedRows: [
-        [1, 0],
-        [0, 1],
-      ],
-      mismatchMessage:
-        "The selection does not match the shrine. Use 1 for blue runes and 0 for every other rune, reading each row left to right.",
-      successMessage: "Code accepted. Restoring the warding grid...",
-    },
-    validateCode: createVoidMethodInteger2DArrayParameterValidator({
-      methodName: "RestoreGrid",
-      parameterName: "grid",
-      arrayName: "grid",
-      expectedRows: [
-        [1, 0],
-        [0, 1],
-      ],
-      mismatchMessage:
-        "The selection does not match the shrine. Use 1 for blue runes and 0 for every other rune, reading each row left to right.",
-      successMessage: "Code accepted. Restoring the warding grid...",
-    }),
+    validatorConfig: validatorConfigs["functions-with-arrays-level-3"],
+    validateCode: createVoidMethodInteger2DArrayParameterValidator(getValidatorFactoryConfig("functions-with-arrays-level-3")),
   },
   29: {
     levelNumber: 29,
@@ -3475,35 +3097,8 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "blessedGraveCount2DMethod",
-      methodName: "CountBlessedGraves",
-      parameterName: "graves",
-      arrayName: "graves",
-      counterName: "blessed",
-      resultName: "blessed",
-      expectedRows: [
-        [1, 0, 1, 1],
-        [0, 1, 0, 1],
-        [1, 1, 0, 0],
-      ],
-      targetValue: 1,
-      successMessage: "Code accepted. Inspecting every grave...",
-    },
-    validateCode: createBlessedGraveCount2DMethodValidator({
-      methodName: "CountBlessedGraves",
-      parameterName: "graves",
-      arrayName: "graves",
-      counterName: "blessed",
-      resultName: "blessed",
-      expectedRows: [
-        [1, 0, 1, 1],
-        [0, 1, 0, 1],
-        [1, 1, 0, 0],
-      ],
-      targetValue: 1,
-      successMessage: "Code accepted. Inspecting every grave...",
-    }),
+    validatorConfig: validatorConfigs["functions-with-arrays-level-4"],
+    validateCode: createBlessedGraveCount2DMethodValidator(getValidatorFactoryConfig("functions-with-arrays-level-4")),
   },
   30: {
     levelNumber: 30,
@@ -3607,9 +3202,7 @@ const LEVEL_CONFIG_BY_NUMBER = {
         },
       ],
     },
-    validatorConfig: {
-      type: "bakunawaFinale",
-    },
+    validatorConfig: validatorConfigs["final-level-1"],
     validateCode: createBakunawaFinaleValidator({
       successMessage: "The last compile succeeded. Breaking the eclipse...",
     }),

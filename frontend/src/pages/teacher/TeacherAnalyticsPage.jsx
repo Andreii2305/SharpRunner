@@ -10,6 +10,7 @@ import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherAnalyticsPage.module.css";
 import TeacherAnalyticsReport from "./TeacherAnalyticsReport.jsx";
+import TeacherAssessmentAnalyticsPanel from "./assessment/TeacherAssessmentAnalyticsPanel.jsx";
 import {
   buildAnalyticsQuery,
   createLatestRequestGuard,
@@ -393,6 +394,7 @@ function TeacherAnalyticsPage() {
         <button type="button" className={styles.btnOutline} disabled={!reportAvailable} onClick={printReport}><FiPrinter aria-hidden="true" /> Print report</button>
       </div></header>
       <div className={`${styles.body} ${pgStyles.analyticsBody}`} aria-busy={isLoading}>
+        <TeacherAssessmentAnalyticsPanel />
         <section className={`${styles.card} ${pgStyles.filters}`} aria-label="Analytics filters">
           <label>Classroom<select value={filters.classroomId} onChange={(event) => setFilters((current) => ({ ...current, classroomId: event.target.value, studentId: "all", lessonId: "all" }))}><option value="all">All active classrooms</option>{(data.filters?.classrooms || []).map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name} · {classroom.section}</option>)}</select></label>
           <label>Student<select value={filters.studentId} onChange={(event) => setFilters((current) => ({ ...current, studentId: event.target.value }))}><option value="all">All students</option>{(data.filters?.students || []).map((student) => <option key={student.id} value={student.id}>{student.name} (@{student.username})</option>)}</select></label>

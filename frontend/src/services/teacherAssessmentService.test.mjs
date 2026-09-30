@@ -39,8 +39,16 @@ test("teacher assessment service uses versioned save and explicit lifecycle endp
   assert.equal(calls[3][1].endsWith("/classrooms/7/assessments/8"), true);
 });
 
+test("teacher assessment results request preserves exact classroom and assessment identity", async () => {
+  calls.length = 0;
+  await service.getTeacherAssessmentResults({ classroomId: 47, assessmentId: 91 });
+  assert.match(calls[0][1], /classrooms\/47\/assessments\/91\/results$/);
+  assert.equal(calls[0].at(-1)?.headers?.Authorization, "Bearer teacher-token");
+});
+
 test("safe teacher errors never expose transport internals", () => {
   const error = { message: "secret stack", stack: "ORM password", config: { headers: { Authorization: "token" } }, response: { status: 409, data: { error: { code: "VERSION_CONFLICT", message: "Version conflict" } } } };
   assert.deepEqual(service.normalizeTeacherAssessmentError(error), { code: "VERSION_CONFLICT", message: "This assessment changed elsewhere. Reload it before continuing.", status: 409 });
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_PUBLISHED" } } }).message, "Unpublish this assessment before deleting it.");
+  assert.deepEqual(service.normalizeTeacherAssessmentError({ response: { status: 403, data: { message: "SQL secret" } } }), { code: "REQUEST_FAILED", message: "You do not have permission to manage this classroom.", status: 403 });
 });

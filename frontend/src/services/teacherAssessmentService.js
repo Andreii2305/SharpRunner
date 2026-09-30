@@ -31,6 +31,14 @@ export const loadTeacherAssessment = async ({ classroomId, assessmentId, signal 
   return response.data;
 };
 
+export const getTeacherAssessmentResults = async ({ classroomId, assessmentId, signal }) => {
+  const response = await axios.get(
+    buildApiUrl(`${base(classroomId)}/${segment(assessmentId)}/results`),
+    config(signal),
+  );
+  return response.data;
+};
+
 export const saveTeacherAssessment = async ({ classroomId, assessmentId, graph, signal }) => {
   const response = await axios.put(
     buildApiUrl(`${base(classroomId)}/${segment(assessmentId)}`),

@@ -11,6 +11,7 @@ import LogoutOutlinedIcon from "@mui/icons-material/LogoutOutlined";
 import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import PolicyOutlinedIcon from "@mui/icons-material/PolicyOutlined";
+import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { clearToken, getUser } from "../../utils/auth";
 
@@ -26,6 +27,7 @@ const TEACHER_NAV = [
   { to: "/teacher", Icon: DashboardOutlinedIcon, label: "Overview" },
   { to: "/teacher/classes", Icon: ClassOutlinedIcon, label: "Classes" },
   { to: "/teacher/lessons", Icon: LibraryBooksOutlinedIcon, label: "Lessons" },
+  { to: "/teacher/assessments", Icon: QuizOutlinedIcon, label: "Assessments" },
   { to: "/teacher/students", Icon: PeopleOutlinedIcon, label: "Students" },
   { to: "/teacher/analytics", Icon: BarChartOutlinedIcon, label: "Analytics" },
   {

@@ -1,0 +1,41 @@
+.root { min-height: 100vh; background: #f2f6fa; color: #243b53; font-family: "Segoe UI", system-ui, sans-serif; }
+.main { box-sizing: border-box; min-width: 0; min-height: 100vh; margin-left: 240px; padding: 28px clamp(18px, 4vw, 52px) 64px; }
+.pageHeader, .sectionHeading, .headerActions, .publishActions, .questionCard > header, .slotGrid article > div, .previewDialog header { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.pageHeader { margin-bottom: 22px; align-items: flex-start; }
+.pageHeader h1 { margin: 3px 0; color: #173f5f; font-size: clamp(28px, 4vw, 38px); }
+.pageHeader p, .pageHeader span, .selectorCard > p { margin: 0; color: #66788a; }
+button, input, textarea, select { font: inherit; }
+button { min-height: 40px; border: 1px solid #b8c6d4; border-radius: 8px; background: white; color: #264b68; padding: 8px 14px; font-weight: 700; cursor: pointer; }
+button:hover:not(:disabled) { border-color: #24739b; background: #f2f9fc; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid #76c5ea; outline-offset: 2px; }
+button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
+.primaryButton { border-color: #176d93; background: #176d93; color: white; }
+.dangerButton, .dangerIcon { color: #a72b2b; }
+.selectorCard, .editorCard, .questionCard, .publishCard, .emptyState { border: 1px solid #d8e1e9; border-radius: 14px; background: white; box-shadow: 0 5px 18px rgba(36, 59, 83, .06); }
+.selectorCard, .editorCard, .publishCard { padding: 22px; margin-bottom: 18px; }
+.selectorCard h2, .editorCard h2, .publishCard h2, .questionsSection h2 { margin: 0 0 12px; color: #193f5f; }
+.selectorCard > div, .settingsGrid, .fieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #365269; font-weight: 700; }
+label small { color: #74869a; font-weight: 500; }
+input, textarea, select { box-sizing: border-box; width: 100%; border: 1px solid #bfcbd6; border-radius: 8px; background: white; color: #243b53; padding: 10px 11px; }
+textarea { min-height: 82px; resize: vertical; }
+.wide { grid-column: 1 / -1; }
+.slotGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 18px 0; }
+.slotGrid article { border: 1px solid #cbd8e2; border-radius: 12px; background: white; padding: 18px; }
+.slotGrid article.activeSlot { border-color: #2788b2; box-shadow: 0 0 0 2px #d7f1fc; }
+.slotGrid article p { color: #64778a; }
+.status { display: inline-flex; border-radius: 999px; padding: 4px 9px; background: #edf2f7; color: #53677a; font-size: 13px; font-weight: 800; }
+.statusPublished { background: #d9f5e8; color: #146046; }.statusLocked { background: #fff0d8; color: #8b5312; }.statusDraft { background: #e5f1ff; color: #235b91; }
+.saveState { font-weight: 800; }.errorBanner, .lockBanner { display: flex; gap: 8px; flex-direction: column; border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+.errorBanner { border: 1px solid #efb6b6; background: #fff1f1; color: #8c2525; }.lockBanner { border: 1px solid #e8c887; background: #fff9e9; color: #6d4a12; }
+.sectionHeading > div > span, .previewDialog header span { color: #287a9f; font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.toggleGroup, .choiceFieldset { border: 1px solid #d6e0e8; border-radius: 10px; padding: 14px; }
+.toggleGroup { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.toggleGroup label { flex-direction: row; align-items: center; font-weight: 600; }.toggleGroup input, .choiceRow > input { width: auto; }
+.questionsSection { margin-top: 24px; }.questionCard { margin-top: 15px; padding: 20px; }.questionCard > header { border-bottom: 1px solid #e3eaf0; padding-bottom: 12px; margin-bottom: 16px; }.questionCard > header > div { display: flex; align-items: center; gap: 9px; }.iconActions { display: flex; gap: 6px; }.iconActions button, .choiceRow > button { width: 40px; padding: 6px; }
+.choiceFieldset { margin-top: 16px; }.choiceFieldset legend { padding: 0 6px; font-weight: 800; }.choiceRow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: end; gap: 8px; margin-bottom: 10px; }.choiceRow > input { align-self: center; width: 18px; height: 18px; }
+.secondaryButton { margin-top: 8px; }.emptyState { margin: 18px 0; padding: 34px; text-align: center; }.emptyState h2, .emptyState h3 { color: #244c69; }.emptyState p, .loading { color: #6d7f90; }
+.publishCard { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 20px; margin-top: 22px; }.publishCard ul { color: #8c3b28; }.publishActions { flex-wrap: wrap; justify-content: flex-end; }
+.backdrop { position: fixed; inset: 0; z-index: 1400; display: grid; place-items: center; padding: 18px; background: rgba(13, 32, 48, .62); }.previewDialog { width: min(760px, 100%); max-height: 88vh; overflow: auto; border-radius: 14px; background: white; padding: 22px; }.previewDialog h2 { margin: 3px 0; }.previewDialog header button { font-size: 24px; }.previewDialog article { border-top: 1px solid #dde5ec; padding: 15px 0; }.previewDialog article h3 small { color: #718399; font-weight: 600; }.previewDialog li { display: flex; justify-content: space-between; gap: 12px; margin: 7px 0; border: 1px solid #d9e2e9; border-radius: 8px; padding: 9px; }.correctPreview { border-color: #55a984 !important; background: #effaf5; }.correctPreview strong { display: inline-flex; align-items: center; gap: 5px; color: #17664a; }.previewDialog footer { display: flex; justify-content: flex-end; }
+@media (max-width: 900px) { .main { margin-left: 72px; }.pageHeader, .publishCard { align-items: stretch; flex-direction: column; }.publishCard { display: flex; }.headerActions { justify-content: flex-start; flex-wrap: wrap; }.selectorCard > div, .settingsGrid, .fieldGrid { grid-template-columns: 1fr; }.wide { grid-column: auto; } }
+@media (max-width: 640px) { .main { margin-left: 0; padding: 18px 13px 92px; }.slotGrid { grid-template-columns: 1fr; }.choiceRow { grid-template-columns: auto minmax(0, 1fr) auto auto; }.choiceRow > button:last-child { grid-column: 2 / -1; width: 100%; }.toggleGroup { grid-template-columns: 1fr; }.publishActions { justify-content: stretch; flex-direction: column; }.publishActions button { width: 100%; } }

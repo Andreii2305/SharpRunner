@@ -4,7 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiAward, FiBarChart2, FiBookOpen, FiCalendar,
-  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMoreVertical, FiMove, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX,
+  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMoreVertical, FiMove, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX, FiClipboard,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
@@ -535,6 +535,7 @@ function TeacherClassDetailPage() {
             <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget("rotate")} disabled={classroom?.isActive === false}><FiCopy /> New code</button>
             <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget(classroom?.isActive === false ? "reactivate" : "archive")}>{classroom?.isActive === false ? <FiCheckCircle /> : <FiEyeOff />} {classroom?.isActive === false ? "Reactivate" : "Archive"}</button>
             <button className={styles.btnOutline} type="button" onClick={() => navigate(`/teacher/classrooms/${classroomId}/levels`)}><FiSettings /> Edit levels</button>
+            <button className={styles.btnOutline} type="button" onClick={() => navigate(`/teacher/assessments?classroomId=${encodeURIComponent(classroomId)}`)}><FiClipboard /> Assessments</button>
           </div>
         </header>
 

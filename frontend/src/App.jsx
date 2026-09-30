@@ -31,6 +31,7 @@ const TeacherLevelEditorPage = lazy(() => import("./pages/teacher/TeacherLevelEd
 const TeacherSettingsPage = lazy(() => import("./pages/teacher/TeacherSettingsPage.jsx"));
 const TeacherLessonLibraryPage = lazy(() => import("./pages/teacher/TeacherLessonLibraryPage.jsx"));
 const TeacherLessonBuilderPage = lazy(() => import("./pages/teacher/TeacherLessonBuilderPage.jsx"));
+const TeacherAssessmentBuilderPage = lazy(() => import("./pages/teacher/assessment/TeacherAssessmentBuilderPage.jsx"));
 const BuiltInModulePage = lazy(() => import("./pages/student/BuiltInModulePage.jsx"));
 const AssessmentPage = lazy(() => import("./pages/student/assessment/AssessmentPage.jsx"));
 const LegalCenterPage = lazy(() => import("./pages/legal/LegalCenterPage.jsx"));
@@ -212,6 +213,10 @@ function App() {
               <TeacherSettingsPage />
             </TeacherRoute>
           }
+        />
+        <Route
+          path="/teacher/assessments"
+          element={<TeacherRoute><TeacherAssessmentBuilderPage /></TeacherRoute>}
         />
 
         {/* ── Admin ── */}

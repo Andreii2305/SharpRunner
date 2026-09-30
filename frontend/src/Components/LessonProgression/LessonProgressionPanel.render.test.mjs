@@ -77,4 +77,12 @@ test("map uses canonical lesson titles, contextual actions, and compact responsi
   assert.match(panelCss, /grid-template-columns:\s*minmax\(140px, auto\) minmax\(0, 1fr\) auto/);
   assert.match(panelCss, /@media \(max-width: 600px\)/);
   assert.doesNotMatch(mapCss, /max-height:\s*260px/);
+  assert.match(
+    mapCss,
+    /\.lessonMapContent\s*>\s*\*:not\(\.regionTabs\):not\(\.progressionPanel\)/,
+  );
+  assert.match(
+    mapCss,
+    /\.lessonMapContent\s*>\s*\.progressionPanel\s*\{[^}]*flex:\s*0\s+0\s+auto/s,
+  );
 });

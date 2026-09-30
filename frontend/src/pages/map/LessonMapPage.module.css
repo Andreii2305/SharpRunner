@@ -20,7 +20,7 @@
   flex-direction: column;
 }
 
-.progressionPanel { flex: none; padding: 6px 0; }
+.progressionPanel { padding: 6px 0; }
 
 .regionTabs {
   display: flex;
@@ -269,9 +269,14 @@
 .legendLocked { background: #453225; }
 
 /* The LessonMap root fills this container */
-.lessonMapContent > *:not(.regionTabs) {
+.lessonMapContent > *:not(.regionTabs):not(.progressionPanel) {
   flex: 1;
   min-height: 0;
+}
+
+.lessonMapContent > .progressionPanel {
+  flex: 0 0 auto;
+  min-height: auto;
 }
 
 @media (max-width: 1024px) {

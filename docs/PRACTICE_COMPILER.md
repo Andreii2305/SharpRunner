@@ -192,3 +192,70 @@ project evaluation. Only trusted framework metadata and the compiler process are
 persistent; syntax trees, compilations, diagnostics, and output directories are
 new per job. Student execution remains out-of-process, so an infinite loop can
 be killed without freezing the compiler host.
+
+## Secure coding-assessment execution foundation (K2A)
+
+Coding-assessment execution is a separate capability from the practice compiler.
+It is disabled by default and does not make `PRACTICE_RUNNER_MODE=direct` an
+authoritative sandbox. The current Render runner remains direct-mode and sets
+`CODING_ASSESSMENT_EXECUTION_ENABLED=false`; therefore it reports HTTP 503 from
+the authenticated `/capabilities/assessment-coding` endpoint and fails closed.
+
+The main API is only permitted to use the authenticated remote runner path. A
+process may launch local secure jobs only when all of these are true:
+
+- `CODING_ASSESSMENT_EXECUTION_ENABLED=true`;
+- `CODING_ASSESSMENT_EXECUTION_ROLE=runner`;
+- `CODING_ASSESSMENT_EXECUTION_MODE=docker`;
+- the Docker daemon is reachable and
+  `CODING_ASSESSMENT_SANDBOX_IMAGE` exists (default:
+  `sharprunner-coding-sandbox:latest`).
+
+Build that image from the repository root with:
+
+```sh
+docker build -f backend/Dockerfile.coding-sandbox -t sharprunner-coding-sandbox:latest .
+```
+
+Every compile and invocation container is started without a shell and with no
+network, a read-only root, a non-root UID/GID, all Linux capabilities dropped,
+`no-new-privileges`, hard memory/swap, CPU and PID limits, bounded tmpfs mounts,
+bounded output, and a wall-clock deadline. Only an isolated source/artifact job
+directory is mounted. Execution receives compiled artifacts read-only. The
+process environment is rebuilt with `/usr/bin/env -i`; runner tokens, database
+credentials, API secrets, and deployment variables are not inherited. Timeout,
+cancellation, and output overflow force-remove the named container, terminating
+its entire process tree. Job files and containers are removed in `finally` paths.
+
+The internal `POST /execute-method` protocol accepts only student source, a
+structured method contract, and typed inputs. It rejects expected outputs,
+hidden-test metadata, points, scores, and pass thresholds. The V1 type allowlist
+is `bool`, `int`, `long` (limited to JSON-safe integers), `string`, and
+one-dimensional arrays of those types. Floating-point and decimal contracts are
+deferred until K2B defines explicit comparison semantics. The trusted image—not
+a student or teacher—provides the
+reflection host that requires an exact public static signature. Compilation is
+performed once, and each input runs in a fresh container so mutable static state
+cannot cross test cases.
+
+Default hard ceilings are 16 KiB source, 20 seconds compile time, 2 seconds per
+invocation, 30 seconds total, 256 MiB memory and swap, 0.5 CPU, 64 PIDs/threads,
+64 MiB per tmpfs, 32 KiB combined output, 50 diagnostics, 16 MiB compiled
+artifacts, and 10 invocations. Results are limited to `COMPILE_ERROR`,
+`SIGNATURE_ERROR`, `SUCCESS`, `RUNTIME_ERROR`, `TIMEOUT`, `OUTPUT_LIMIT`,
+`RESOURCE_LIMIT`, `POLICY_REJECTION`, and `INFRASTRUCTURE_ERROR`; messages are
+bounded and do not include internal paths, stack traces, environment values,
+container identifiers, or credentials.
+
+Run the focused protocol and security suite with:
+
+```sh
+npm --prefix backend run test:secure-coding-runner
+```
+
+Kernel-containment cases run only when Docker and the sandbox image are present;
+otherwise they are reported as skipped. Enabling the gate without a Docker
+daemon and image still reports the capability unavailable. A production host
+must provide a Docker-compatible per-job runtime (or an equivalently isolated
+execution service) outside Render's current direct-mode service before K2B may
+enable authoritative grading.

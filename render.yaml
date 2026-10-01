@@ -66,6 +66,9 @@ services:
         value: "3000"
       - key: PRACTICE_RUNNER_OUTPUT_LIMIT
         value: "32768"
+      # The API may only use a remote runner that confirms a real sandbox.
+      - key: CODING_ASSESSMENT_EXECUTION_ENABLED
+        value: "false"
 
   - type: web
     name: sharprunner-practice-runner
@@ -93,3 +96,10 @@ services:
         value: "32768"
       - key: PRACTICE_RUNNER_MAX_CONCURRENT
         value: "1"
+      - key: CODING_ASSESSMENT_EXECUTION_ROLE
+        value: runner
+      # Render direct mode cannot create the required per-job isolation.
+      - key: CODING_ASSESSMENT_EXECUTION_ENABLED
+        value: "false"
+      - key: CODING_ASSESSMENT_EXECUTION_MODE
+        value: disabled

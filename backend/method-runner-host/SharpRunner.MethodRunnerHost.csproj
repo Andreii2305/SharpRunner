@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <MethodRunnerTargetFramework Condition="'$(MethodRunnerTargetFramework)' == ''">net$([System.Text.RegularExpressions.Regex]::Match('$(NETCoreSdkVersion)', '^\d+').Value).0</MethodRunnerTargetFramework>
+    <TargetFramework>$(MethodRunnerTargetFramework)</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <NuGetAudit>false</NuGetAudit>
+    <RestoreIgnoreFailedSources>true</RestoreIgnoreFailedSources>
+  </PropertyGroup>
+</Project>

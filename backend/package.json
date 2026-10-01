@@ -10,8 +10,9 @@
     "start": "node src/server.js",
     "start:practice-runner": "node src/practiceRunnerServer.js",
     "benchmark:practice-runner": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node scripts/benchmarkPracticeRunner.js",
-    "test": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node test/runTests.js",
-    "test:practice-runner": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node test/practiceRunner.execution.test.js"
+    "test": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && dotnet build method-runner-host/SharpRunner.MethodRunnerHost.csproj --configuration Release --nologo && node test/runTests.js",
+    "test:practice-runner": "dotnet build compiler-host/SharpRunner.CompilerHost.csproj --configuration Release --nologo && node test/practiceRunner.execution.test.js",
+    "test:secure-coding-runner": "dotnet build method-runner-host/SharpRunner.MethodRunnerHost.csproj --configuration Release --nologo && node --test --test-concurrency=1 test/secureCodingExecution.test.js test/secureCodingDockerSandbox.test.js test/methodRunnerHost.execution.test.js test/secureCodingSandbox.security.test.js"
   },
   "keywords": [],
   "author": "",

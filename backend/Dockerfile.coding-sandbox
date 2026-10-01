@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS build
+
+WORKDIR /src
+COPY backend/method-runner-host/SharpRunner.MethodRunnerHost.csproj ./method-runner-host/
+COPY backend/method-runner-host/Program.cs ./method-runner-host/
+RUN dotnet publish ./method-runner-host/SharpRunner.MethodRunnerHost.csproj \
+      --configuration Release \
+      --output /out/method-runner-host \
+      --nologo \
+      -p:MethodRunnerTargetFramework=net8.0 \
+      -p:RestoreIgnoreFailedSources=true
+
+# The SDK is intentionally retained because compilation also occurs inside a
+# disposable, resource-limited container. This image contains no application
+# source, credentials, package feeds, or network configuration.
+FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim
+COPY --from=build /out/method-runner-host /opt/sharprunner/method-runner-host
+RUN chmod -R a+rX /opt/sharprunner/method-runner-host
+
+LABEL org.opencontainers.image.title="SharpRunner coding sandbox" \
+      org.opencontainers.image.description="Untrusted C# compile and method-invocation image; must be launched with the runner's mandatory isolation flags"

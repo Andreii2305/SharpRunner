@@ -5,11 +5,22 @@ const {
   getPracticeRunnerDiagnostic,
   runPracticeCode,
 } = require("./services/practiceRunnerService");
+const {
+  getSecureCodingExecutionCapability,
+  runSecureMethodExecution,
+} = require("./services/secureCodingExecutionService");
+const { EXECUTION_CATEGORIES } = require("./services/secureCodingExecutionContract");
 
 // This process is the remote sandbox receiver, never a client of itself.
 delete process.env.PRACTICE_RUNNER_URL;
 
-const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TOKEN } = {}) => {
+const createPracticeRunnerApp = ({
+  serviceToken = process.env.PRACTICE_RUNNER_TOKEN,
+  secureExecution = {
+    getCapability: getSecureCodingExecutionCapability,
+    execute: runSecureMethodExecution,
+  },
+} = {}) => {
   const normalizedToken = String(serviceToken || "").trim();
   if (normalizedToken.length < 32) throw new Error("PRACTICE_RUNNER_TOKEN must be set to at least 32 characters");
 
@@ -49,6 +60,36 @@ const createPracticeRunnerApp = ({ serviceToken = process.env.PRACTICE_RUNNER_TO
   });
   app.get("/ready", sendReadiness);
   app.get("/health/auth", sendReadiness);
+
+  app.get("/capabilities/assessment-coding", async (_req, res) => {
+    const capability = await secureExecution.getCapability();
+    return res.status(capability.available ? 200 : 503).json(capability);
+  });
+
+  app.post("/execute-method", async (req, res) => {
+    if (activeRuns >= maxConcurrentRuns) {
+      res.set("Retry-After", "5");
+      return res.status(429).json({ category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR, code: "RUNNER_BUSY", message: "Secure coding execution is temporarily unavailable." });
+    }
+    activeRuns += 1;
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    req.once("aborted", cancel);
+    try {
+      const result = await secureExecution.execute(req.body, { signal: controller.signal });
+      const status = result.code === "SECURE_EXECUTION_UNAVAILABLE" ? 503
+        : result.category === EXECUTION_CATEGORIES.POLICY_REJECTION ? 400
+          : result.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR ? 503
+            : 200;
+      return res.status(status).json(result);
+    } catch (error) {
+      console.error("Secure method execution failed", error);
+      return res.status(503).json({ category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR, code: "SECURE_EXECUTION_UNAVAILABLE", message: "Secure coding execution is unavailable." });
+    } finally {
+      req.off("aborted", cancel);
+      activeRuns -= 1;
+    }
+  });
 
   app.post("/compile", async (req, res) => {
     if (activeRuns >= maxConcurrentRuns) {

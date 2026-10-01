@@ -78,22 +78,34 @@ const createAssessmentRouter = ({
 
   router.put("/attempts/:attemptId/responses/:questionId", async (req, res) => {
     try {
-      const body = validateMutationBody(req, ["selectedChoiceId"]);
-      if (body.selectedChoiceId !== null
+      const keys = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+        ? Object.keys(req.body) : [];
+      if (keys.length !== 1 || !["selectedChoiceId", "sourceCode"].includes(keys[0])) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const body = validateMutationBody(req, keys);
+      if (Object.hasOwn(body, "selectedChoiceId") && body.selectedChoiceId !== null
         && (typeof body.selectedChoiceId !== "number"
           || !Number.isSafeInteger(body.selectedChoiceId) || body.selectedChoiceId <= 0)) {
         throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      if (Object.hasOwn(body, "sourceCode") && typeof body.sourceCode !== "string") {
+        throw new AssessmentApiError(400, "INVALID_CODING_RESPONSE", "Invalid coding response");
       }
       const saved = await attemptService.saveResponse({
         attemptId: parsePositiveId(req.params.attemptId),
         questionId: parsePositiveId(req.params.questionId),
         studentId: req.userId,
-        selectedChoiceId: body.selectedChoiceId,
+        ...(Object.hasOwn(body, "selectedChoiceId")
+          ? { selectedChoiceId: body.selectedChoiceId }
+          : { sourceCode: body.sourceCode }),
       });
       return res.status(200).json({ response: {
         attemptId: saved.attemptId,
         questionId: saved.questionId,
-        selectedChoiceId: saved.selectedChoiceId,
+        ...(Object.hasOwn(saved, "sourceCode")
+          ? { sourceCode: saved.sourceCode }
+          : { selectedChoiceId: saved.selectedChoiceId }),
       } });
     } catch (error) {
       return sendAssessmentError(res, error);

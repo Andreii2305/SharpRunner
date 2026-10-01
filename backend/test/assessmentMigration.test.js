@@ -10,6 +10,10 @@ const migrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20260925000000_lesson_assessments.sql",
 );
+const codingMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261001000000_coding_assessments.sql",
+);
 
 test("assessment models keep results normalized and out of level progress", () => {
   for (const name of [
@@ -18,6 +22,7 @@ test("assessment models keep results normalized and out of level progress", () =
     "AssessmentChoice",
     "AssessmentAttempt",
     "AssessmentResponse",
+    "AssessmentCodingTestCase",
   ]) {
     assert.ok(models[name], `${name} must be registered`);
   }
@@ -32,6 +37,8 @@ test("assessment models keep results normalized and out of level progress", () =
     AssessmentQuestion: [
       "assessmentId", "questionText", "questionType", "displayOrder", "points",
       "explanation", "objectiveKey",
+      "starterCode", "codingTypeName", "codingMethodName", "codingParameterTypes",
+      "codingReturnType",
     ],
     AssessmentChoice: ["questionId", "choiceText", "displayOrder", "isCorrect"],
     AssessmentAttempt: [
@@ -41,7 +48,10 @@ test("assessment models keep results normalized and out of level progress", () =
       "passingPercentageApplied", "questionOrder", "choiceOrder", "submissionKey",
     ],
     AssessmentResponse: [
-      "attemptId", "questionId", "selectedChoiceId", "isCorrect", "pointsAwarded",
+      "attemptId", "questionId", "selectedChoiceId", "sourceCode", "isCorrect", "pointsAwarded",
+    ],
+    AssessmentCodingTestCase: [
+      "questionId", "displayOrder", "visibility", "input", "expectedOutput", "weight",
     ],
   };
   for (const [name, fields] of Object.entries(expectedFields)) {
@@ -62,6 +72,7 @@ test("assessment associations preserve submitted history", () => {
   assert.equal(models.AssessmentQuestion.associations.responses.options.onDelete, "RESTRICT");
   assert.equal(models.AssessmentChoice.associations.responses.options.onDelete, "RESTRICT");
   assert.equal(models.AssessmentAttempt.associations.responses.options.onDelete, "RESTRICT");
+  assert.equal(models.AssessmentQuestion.associations.codingTestCases.options.onDelete, "CASCADE");
   assert.equal(models.User.associations.assessmentAttempts.options.onDelete, "RESTRICT");
   assert.equal(models.Classroom.associations.assessments.options.onDelete, "RESTRICT");
 });
@@ -159,4 +170,23 @@ test("assessment migration is explicitly registered after the previous migration
   const assessmentIndex = names.indexOf("20260925000000_lesson_assessments");
   assert.notEqual(assessmentIndex, -1);
   assert.equal(names[assessmentIndex - 1], "20260922000000_hint_purchase_event_cost");
+});
+
+test("coding assessment migration is additive, protected, and registered after the base assessment schema", () => {
+  const sql = fs.readFileSync(codingMigrationPath, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "sourceCode" TEXT/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "starterCode" TEXT/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS "AssessmentCodingTestCases"/);
+  assert.match(sql, /REFERENCES "AssessmentQuestions"\("id"\) ON DELETE CASCADE/);
+  assert.match(sql, /'MULTIPLE_CHOICE', 'TRUE_FALSE', 'CODING'/);
+  assert.match(sql, /assessment_coding_test_visibility_valid/);
+  assert.match(sql, /assessment_coding_test_weight_positive/);
+  assert.match(sql, /assessment_response_answer_shape_valid/);
+  assert.match(sql, /assessment_response_source_size_valid/);
+  assert.match(sql, /octet_length\("sourceCode"\) <= 16384/);
+  assert.match(sql, /assessment_coding_tests_question_order/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261001000000_coding_assessments");
+  assert.equal(names.at(-2), "20260925000000_lesson_assessments");
 });

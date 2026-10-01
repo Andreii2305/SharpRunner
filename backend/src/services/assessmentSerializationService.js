@@ -23,6 +23,19 @@ const serializePlayerAssessment = (assessmentInput) => {
         questionType: question.questionType,
         points: numberOrNull(question.points),
         objectiveKey: question.objectiveKey ?? null,
+        ...(question.questionType === "CODING" ? {
+          starterCode: question.starterCode,
+          methodContract: {
+            typeName: question.codingTypeName,
+            methodName: question.codingMethodName,
+            parameterTypes: [...(question.codingParameterTypes || [])],
+            returnType: question.codingReturnType,
+          },
+          codingExamples: (question.codingTestCases || [])
+            .map(plain)
+            .filter((testCase) => testCase.visibility === "PUBLIC")
+            .map((testCase) => ({ input: testCase.input, expectedOutput: testCase.expectedOutput })),
+        } : {}),
         choices: (question.choices || []).map((choiceInput) => {
           const choice = plain(choiceInput);
           return {
@@ -57,6 +70,7 @@ const serializePlayerAttempt = ({ assessment, attempt, responses = [], attemptsU
     return {
       questionId: response.questionId,
       selectedChoiceId: response.selectedChoiceId ?? null,
+      ...(response.sourceCode != null ? { sourceCode: response.sourceCode } : {}),
     };
   }),
   attemptsUsed: Number(attemptsUsed),
@@ -187,10 +201,15 @@ const serializeAllowedReview = (input = {}) => {
         questionId: question.id,
         questionText: question.questionText,
         selectedChoiceId,
-        correctChoiceId: correctChoice?.id ?? null,
-        isCorrect: correctChoice ? String(selectedChoiceId) === String(correctChoice.id) : false,
-        pointsAwarded: numberOrNull(response?.pointsAwarded),
-        explanation: question.explanation ?? null,
+        ...(question.questionType === "CODING" ? { sourceCode: response?.sourceCode ?? "" } : {}),
+        ...(input.scoreVisible !== false ? {
+          correctChoiceId: correctChoice?.id ?? null,
+          isCorrect: question.questionType === "CODING"
+            ? response?.isCorrect === true
+            : Boolean(correctChoice && String(selectedChoiceId) === String(correctChoice.id)),
+          pointsAwarded: numberOrNull(response?.pointsAwarded),
+          explanation: question.explanation ?? null,
+        } : {}),
       };
     }),
   };
@@ -247,6 +266,26 @@ const serializeTeacherEditor = (assessmentInput, metadata = {}) => {
         points: numberOrNull(question.points),
         explanation: question.explanation ?? null,
         objectiveKey: question.objectiveKey ?? null,
+        ...(question.questionType === "CODING" ? {
+          starterCode: question.starterCode ?? null,
+          methodContract: {
+            typeName: question.codingTypeName ?? null,
+            methodName: question.codingMethodName ?? null,
+            parameterTypes: question.codingParameterTypes ?? null,
+            returnType: question.codingReturnType ?? null,
+          },
+          codingTestCases: (question.codingTestCases || []).map((testInput) => {
+            const testCase = plain(testInput);
+            return {
+              id: testCase.id,
+              displayOrder: testCase.displayOrder,
+              visibility: testCase.visibility,
+              input: testCase.input,
+              expectedOutput: testCase.expectedOutput,
+              weight: Number(testCase.weight),
+            };
+          }),
+        } : {}),
         choices: (question.choices || []).map((choiceInput) => {
           const choice = plain(choiceInput);
           return {

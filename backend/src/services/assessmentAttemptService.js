@@ -1,6 +1,9 @@
 const defaultSequelize = require("../config/database");
 const defaultModels = require("../models");
 const defaultProgressionService = require("./lessonProgressionService");
+const defaultSecureCodingExecution = require("./secureCodingExecutionService");
+const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
+const { gradeCodingQuestion, isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
 const {
   ATTEMPT_STATUSES,
 } = require("../constants/assessmentConfig");
@@ -85,6 +88,7 @@ const safeSavedResponses = (rows = []) => rows.map((rowInput) => {
   return {
     questionId: row.questionId,
     selectedChoiceId: row.selectedChoiceId ?? null,
+    ...(row.sourceCode != null ? { sourceCode: row.sourceCode } : {}),
   };
 });
 
@@ -111,10 +115,13 @@ const createAssessmentAttemptService = ({
   random = Math.random,
   now = () => new Date(),
   progressionService = defaultProgressionService,
+  secureCodingExecution = defaultSecureCodingExecution,
+  environment = process.env,
 } = {}) => {
   const {
     AssessmentAttempt,
     AssessmentChoice,
+    AssessmentCodingTestCase,
     AssessmentQuestion,
     AssessmentResponse,
     ClassroomMembership,
@@ -124,7 +131,10 @@ const createAssessmentAttemptService = ({
   const assessmentInclude = [{
     model: AssessmentQuestion,
     as: "questions",
-    include: [{ model: AssessmentChoice, as: "choices" }],
+    include: [
+      { model: AssessmentChoice, as: "choices" },
+      { model: AssessmentCodingTestCase, as: "codingTestCases" },
+    ],
   }];
 
   const loadAssessment = async (assessmentId, transaction, lock = false) => LessonAssessment.findByPk(
@@ -146,6 +156,10 @@ const createAssessmentAttemptService = ({
     const assessment = plain(assessmentInput);
     if (!assessment.isPublished) {
       fail("ASSESSMENT_UNAVAILABLE", "Assessment is not published");
+    }
+    if (assessment.questions?.some((question) => question.questionType === "CODING")
+      && !isCodingAssessmentPlayerEnabled(environment)) {
+      fail("CODING_PLAYER_UNAVAILABLE", "Coding assessment player is unavailable");
     }
     try {
       validateAssessmentForPublish({ assessment, questions: assessment.questions });
@@ -352,7 +366,7 @@ const createAssessmentAttemptService = ({
     };
   });
 
-  const saveResponse = ({ attemptId, studentId, questionId, selectedChoiceId = null }) => sequelize.transaction(
+  const saveResponse = ({ attemptId, studentId, questionId, selectedChoiceId, sourceCode }) => sequelize.transaction(
     async (transaction) => {
       const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
       if (attempt.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
@@ -374,6 +388,17 @@ const createAssessmentAttemptService = ({
       }
       const question = assessment.questions.find((candidate) => sameId(candidate.id, questionId));
       if (!question) fail("QUESTION_NOT_PRESENTED", "Question does not belong to this assessment");
+      const isCoding = question.questionType === "CODING";
+      if (isCoding) {
+        if (selectedChoiceId !== undefined || typeof sourceCode !== "string") {
+          fail("INVALID_CODING_RESPONSE", "CODING responses require sourceCode only");
+        }
+        if (Buffer.byteLength(sourceCode, "utf8") > MAX_SOURCE_BYTES) {
+          fail("CODING_SOURCE_TOO_LARGE", "Coding response exceeds the source limit");
+        }
+      } else if (sourceCode !== undefined || selectedChoiceId === undefined) {
+        fail("INVALID_RESPONSE", "Choice responses require selectedChoiceId only");
+      }
       if (selectedChoiceId != null
         && !question.choices.some((choice) => sameId(choice.id, selectedChoiceId))) {
         fail("CHOICE_NOT_IN_QUESTION", "Selected choice does not belong to the question");
@@ -386,6 +411,7 @@ const createAssessmentAttemptService = ({
       });
       if (response) {
         response.selectedChoiceId = selectedChoiceId;
+        response.sourceCode = isCoding ? sourceCode : null;
         response.isCorrect = false;
         response.pointsAwarded = 0;
         await response.save({ transaction });
@@ -394,11 +420,16 @@ const createAssessmentAttemptService = ({
           attemptId: attempt.id,
           questionId: question.id,
           selectedChoiceId,
+          sourceCode: isCoding ? sourceCode : null,
           isCorrect: false,
           pointsAwarded: 0,
         }, { transaction });
       }
-      return { attemptId: attempt.id, questionId: question.id, selectedChoiceId };
+      return {
+        attemptId: attempt.id,
+        questionId: question.id,
+        ...(isCoding ? { sourceCode } : { selectedChoiceId }),
+      };
     },
   );
 
@@ -458,22 +489,50 @@ const createAssessmentAttemptService = ({
           && !question.choices.some((choice) => sameId(choice.id, response.selectedChoiceId))) {
           fail("INVALID_RESPONSE", "Stored choice does not belong to its question");
         }
+        if (question.questionType === "CODING") {
+          if (response.selectedChoiceId != null || typeof response.sourceCode !== "string"
+            || Buffer.byteLength(response.sourceCode, "utf8") > MAX_SOURCE_BYTES) {
+            fail("INVALID_CODING_RESPONSE", "Stored coding response is invalid");
+          }
+        } else if (response.sourceCode != null) {
+          fail("INVALID_RESPONSE", "Stored choice response is invalid");
+        }
         responseByQuestion.set(String(response.questionId), response);
+      }
+
+      const authoritativeResponses = [];
+      for (const question of presentedQuestions) {
+        const saved = responseByQuestion.get(String(question.id));
+        if (question.questionType === "CODING") {
+          const graded = await gradeCodingQuestion({
+            question,
+            sourceCode: saved?.sourceCode ?? "",
+            execute: (request) => secureCodingExecution.runSecureMethodExecution(request),
+          });
+          authoritativeResponses.push({
+            questionId: question.id,
+            sourceCode: saved?.sourceCode ?? "",
+            ...graded,
+          });
+        } else {
+          authoritativeResponses.push({
+            questionId: question.id,
+            selectedChoiceId: saved?.selectedChoiceId ?? null,
+          });
+        }
       }
 
       const score = calculateAssessmentScore({
         assessment,
         questions: presentedQuestions,
-        responses: presentedQuestions.map((question) => ({
-          questionId: question.id,
-          selectedChoiceId: responseByQuestion.get(String(question.id))?.selectedChoiceId ?? null,
-        })),
+        responses: authoritativeResponses,
       });
 
       for (const graded of score.responses) {
         let response = responseByQuestion.get(String(graded.questionId));
         if (response) {
           response.selectedChoiceId = graded.selectedChoiceId;
+          response.sourceCode = graded.sourceCode ?? null;
           response.isCorrect = graded.isCorrect;
           response.pointsAwarded = graded.pointsAwarded;
           await response.save({ transaction });

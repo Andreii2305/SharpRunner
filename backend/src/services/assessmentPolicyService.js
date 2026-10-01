@@ -9,6 +9,8 @@ const {
   OBJECTIVE_KEY_PATTERN,
   QUESTION_TYPES,
 } = require("../constants/assessmentConfig");
+const { validateCodingQuestion } = require("./codingAssessmentService");
+const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
 
 const values = (object) => new Set(Object.values(object));
 const ASSESSMENT_TYPE_SET = values(ASSESSMENT_TYPES);
@@ -90,7 +92,7 @@ const validateAssessmentConfiguration = (input = {}) => {
 const validateQuestionPersistence = (questionInput) => {
   const question = plain(questionInput) || {};
   if (!QUESTION_TYPE_SET.has(question.questionType)) {
-    throw new TypeError("Question type must be MULTIPLE_CHOICE or TRUE_FALSE");
+    throw new TypeError("Question type must be MULTIPLE_CHOICE, TRUE_FALSE, or CODING");
   }
   if (!String(question.questionText || "").trim()) {
     throw new TypeError("Question text is required");
@@ -104,6 +106,55 @@ const validateQuestionPersistence = (questionInput) => {
     throw new TypeError("Question choices must be an array");
   }
   const choices = (question.choices || []).map(plain);
+  if (question.questionType === QUESTION_TYPES.CODING) {
+    if (choices.length) throw new TypeError("CODING questions cannot have choices");
+    for (const field of ["starterCode", "codingTypeName", "codingMethodName", "codingReturnType"]) {
+      if (question[field] != null && typeof question[field] !== "string") {
+        throw new TypeError("CODING configuration is invalid");
+      }
+    }
+    if (question.codingParameterTypes != null && !Array.isArray(question.codingParameterTypes)) {
+      throw new TypeError("CODING parameter types must be an array");
+    }
+    if (question.codingTestCases != null && !Array.isArray(question.codingTestCases)) {
+      throw new TypeError("CODING test cases must be an array");
+    }
+    if (typeof question.starterCode === "string"
+      && Buffer.byteLength(question.starterCode, "utf8") > MAX_SOURCE_BYTES) {
+      throw new TypeError("CODING starter source is too large");
+    }
+    const testCases = question.codingTestCases || [];
+    if (testCases.length > 10) throw new TypeError("CODING cannot exceed 10 grading tests");
+    if (Buffer.byteLength(JSON.stringify(testCases), "utf8") > 32 * 1024) {
+      throw new TypeError("CODING grading tests are too large");
+    }
+    testCases.forEach((testCase) => {
+      if (!testCase || typeof testCase !== "object" || Array.isArray(testCase)
+        || !["PUBLIC", "HIDDEN"].includes(testCase.visibility)
+        || !Array.isArray(testCase.input)
+        || !Object.hasOwn(testCase, "expectedOutput")
+        || !Number.isFinite(Number(testCase.weight)) || Number(testCase.weight) <= 0) {
+        throw new TypeError("CODING test case is invalid");
+      }
+    });
+    const completeContract = typeof question.starterCode === "string"
+      && typeof question.codingTypeName === "string"
+      && typeof question.codingMethodName === "string"
+      && Array.isArray(question.codingParameterTypes)
+      && typeof question.codingReturnType === "string"
+      && testCases.length > 0;
+    if (completeContract) validateCodingQuestion(question, { publish: false });
+    return { question, choices, pointUnits: units };
+  }
+  for (const field of [
+    "starterCode", "codingTypeName", "codingMethodName", "codingParameterTypes",
+    "codingReturnType", "methodContract", "codingTestCases",
+  ]) {
+    const value = question[field];
+    if (value != null && !(field === "codingTestCases" && Array.isArray(value) && value.length === 0)) {
+      throw new TypeError("Coding configuration is only valid for CODING questions");
+    }
+  }
   if (choices.length > ASSESSMENT_LIMITS.maxChoicesPerQuestion) {
     throw new TypeError("A question cannot exceed the maximum choices");
   }
@@ -122,6 +173,10 @@ const validateQuestionPersistence = (questionInput) => {
 
 const validateQuestion = (questionInput) => {
   const { question, choices, pointUnits: units } = validateQuestionPersistence(questionInput);
+  if (question.questionType === QUESTION_TYPES.CODING) {
+    validateCodingQuestion(question, { publish: true });
+    return { question, choices, pointUnits: units };
+  }
   if (question.questionType === QUESTION_TYPES.TRUE_FALSE && choices.length !== 2) {
     throw new TypeError("TRUE_FALSE must have exactly two choices");
   }
@@ -197,6 +252,19 @@ const calculateAssessmentScore = ({ assessment: input, questions: questionInputs
   const gradedResponses = questions.map(({ question, choices, pointUnits: units }) => {
     maxUnits += units;
     const response = responseByQuestion.get(String(question.id));
+    if (question.questionType === QUESTION_TYPES.CODING) {
+      const awardedUnits = Math.max(0, Math.min(units, Math.round(Number(response?.pointsAwarded || 0) * POINT_SCALE)));
+      const isCorrect = response?.isCorrect === true && awardedUnits === units;
+      earnedUnits += awardedUnits;
+      if (isCorrect) correctCount += 1;
+      return {
+        questionId: question.id,
+        selectedChoiceId: null,
+        sourceCode: response?.sourceCode ?? "",
+        isCorrect,
+        pointsAwarded: awardedUnits / POINT_SCALE,
+      };
+    }
     const selectedChoiceId = response?.selectedChoiceId ?? null;
     const selected = choices.find((choice) => String(choice.id) === String(selectedChoiceId));
     const isCorrect = Boolean(selected?.isCorrect);
@@ -282,6 +350,19 @@ const shapePlayerAssessment = (assessmentInput) => {
         displayOrder: question.displayOrder,
         points: Number(question.points),
         objectiveKey: question.objectiveKey ?? null,
+        ...(question.questionType === QUESTION_TYPES.CODING ? {
+          starterCode: question.starterCode,
+          methodContract: {
+            typeName: question.codingTypeName,
+            methodName: question.codingMethodName,
+            parameterTypes: [...(question.codingParameterTypes || [])],
+            returnType: question.codingReturnType,
+          },
+          codingExamples: (question.codingTestCases || [])
+            .map(plain)
+            .filter((testCase) => testCase.visibility === "PUBLIC")
+            .map((testCase) => ({ input: testCase.input, expectedOutput: testCase.expectedOutput })),
+        } : {}),
         choices: (question.choices || []).map((choiceInput) => {
           const choice = plain(choiceInput);
           return {

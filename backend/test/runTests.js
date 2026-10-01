@@ -14,6 +14,7 @@ require("./secureCodingExecution.test");
 require("./secureCodingDockerSandbox.test");
 require("./methodRunnerHost.execution.test");
 require("./secureCodingSandbox.security.test");
+require("./codingAssessmentDomain.test");
 require("./lessonBuilderService.test");
 require("./teacherAnalytics.test");
 require("./teacherAnalyticsExport.test");

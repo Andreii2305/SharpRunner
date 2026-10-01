@@ -8,6 +8,7 @@ const defaultAttemptService = require("./assessmentAttemptService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const { ASSESSMENT_TYPES, ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
+const { isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
 
 const CREATE_FIELDS = new Set([
   "lessonKey",
@@ -44,9 +45,14 @@ const QUESTION_FIELDS = new Set([
   "explanation",
   "objectiveKey",
   "choices",
+  "starterCode",
+  "methodContract",
+  "codingTestCases",
 ]);
 
 const CHOICE_FIELDS = new Set(["choiceText", "isCorrect"]);
+const METHOD_CONTRACT_FIELDS = new Set(["typeName", "methodName", "parameterTypes", "returnType"]);
+const CODING_TEST_FIELDS = new Set(["visibility", "input", "expectedOutput", "weight"]);
 const SAVE_FIELDS = new Set(["version", "settings", "questions"]);
 const BOOLEAN_SETTINGS = ["isRequired", "requirePassingForCompletion",
   "showScoreAfterSubmission", "shuffleQuestions", "shuffleChoices"];
@@ -125,10 +131,12 @@ const createTeacherAssessmentService = (dependencies = {}) => {
   const attemptService = dependencies.assessmentAttemptService
     || dependencies.attemptService
     || defaultAttemptService;
+  const environment = dependencies.environment || process.env;
   const {
     LessonAssessment,
     AssessmentQuestion,
     AssessmentChoice,
+    AssessmentCodingTestCase,
     AssessmentAttempt,
     ClassroomMembership,
     UserProgress,
@@ -140,13 +148,22 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     include: [{
       model: AssessmentQuestion,
       as: "questions",
-      include: [{ model: AssessmentChoice, as: "choices" }],
+      include: [
+        { model: AssessmentChoice, as: "choices" },
+        { model: AssessmentCodingTestCase, as: "codingTestCases" },
+      ],
     }],
     order: [
       [{ model: AssessmentQuestion, as: "questions" }, "displayOrder", "ASC"],
       [
         { model: AssessmentQuestion, as: "questions" },
         { model: AssessmentChoice, as: "choices" },
+        "displayOrder",
+        "ASC",
+      ],
+      [
+        { model: AssessmentQuestion, as: "questions" },
+        { model: AssessmentCodingTestCase, as: "codingTestCases" },
         "displayOrder",
         "ASC",
       ],
@@ -320,7 +337,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       rejectUnknownFields(question, QUESTION_FIELDS);
       validateInputTypes(question, {
         strings: ["questionText", "questionType"],
-        nullableStrings: ["explanation", "objectiveKey"],
+        nullableStrings: ["explanation", "objectiveKey", "starterCode"],
         numbers: ["points"],
         code: "INVALID_QUESTION",
       });
@@ -332,6 +349,28 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         validateInputTypes(choice, {
           strings: ["choiceText"], booleans: ["isCorrect"], code: "INVALID_CHOICE",
         });
+      }
+      if (question.methodContract !== undefined) {
+        rejectUnknownFields(question.methodContract, METHOD_CONTRACT_FIELDS);
+        validateInputTypes(question.methodContract, {
+          strings: ["typeName", "methodName", "returnType"], code: "INVALID_QUESTION",
+        });
+        if (!Array.isArray(question.methodContract.parameterTypes)
+          || question.methodContract.parameterTypes.some((type) => typeof type !== "string")) {
+          throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
+        }
+      }
+      if (question.codingTestCases !== undefined && !Array.isArray(question.codingTestCases)) {
+        throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
+      }
+      for (const testCase of question.codingTestCases || []) {
+        rejectUnknownFields(testCase, CODING_TEST_FIELDS);
+        validateInputTypes(testCase, {
+          strings: ["visibility"], numbers: ["weight"], code: "INVALID_QUESTION",
+        });
+        if (!Array.isArray(testCase.input) || !Object.hasOwn(testCase, "expectedOutput")) {
+          throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
+        }
       }
     }
   };
@@ -444,18 +483,29 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     validateSaveInput(input);
     validateSettingTypes(input.settings, assessment.type);
 
+    const normalizedQuestions = input.questions.map((question) => ({
+      ...question,
+      codingTypeName: question.methodContract?.typeName ?? null,
+      codingMethodName: question.methodContract?.methodName ?? null,
+      codingParameterTypes: question.methodContract?.parameterTypes ?? null,
+      codingReturnType: question.methodContract?.returnType ?? null,
+      codingTestCases: (question.codingTestCases || []).map((testCase, displayOrder) => ({
+        ...testCase,
+        displayOrder,
+      })),
+    }));
     let normalized;
     try {
       normalized = policy.normalizeAssessmentConfiguration({
         ...plain(assessment),
         ...input.settings,
       });
-      policy.validateAssessmentDraft({ assessment: normalized, questions: input.questions });
+      policy.validateAssessmentDraft({ assessment: normalized, questions: normalizedQuestions });
     } catch (error) {
       throw mapValidationError(error);
     }
     if (assessment.isPublished) {
-      const validationQuestions = input.questions.map((question, questionIndex) => ({
+      const validationQuestions = normalizedQuestions.map((question, questionIndex) => ({
         ...question,
         id: `validation-question-${questionIndex}`,
         choices: (question.choices || []).map((choice, choiceIndex) => ({
@@ -484,8 +534,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     }
     await AssessmentQuestion.destroy({ where: { assessmentId }, transaction });
 
-    for (let questionIndex = 0; questionIndex < input.questions.length; questionIndex += 1) {
-      const question = input.questions[questionIndex];
+    for (let questionIndex = 0; questionIndex < normalizedQuestions.length; questionIndex += 1) {
+      const question = normalizedQuestions[questionIndex];
       const createdQuestion = await AssessmentQuestion.create({
         assessmentId,
         questionText: String(question.questionText).trim(),
@@ -494,6 +544,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         points: Number(question.points),
         explanation: question.explanation ?? null,
         objectiveKey: question.objectiveKey || null,
+        starterCode: question.questionType === "CODING" ? question.starterCode : null,
+        codingTypeName: question.questionType === "CODING" ? question.codingTypeName : null,
+        codingMethodName: question.questionType === "CODING" ? question.codingMethodName : null,
+        codingParameterTypes: question.questionType === "CODING" ? question.codingParameterTypes : null,
+        codingReturnType: question.questionType === "CODING" ? question.codingReturnType : null,
       }, { transaction });
       for (let choiceIndex = 0; choiceIndex < (question.choices || []).length; choiceIndex += 1) {
         const choice = question.choices[choiceIndex];
@@ -502,6 +557,17 @@ const createTeacherAssessmentService = (dependencies = {}) => {
           choiceText: String(choice.choiceText).trim(),
           displayOrder: choiceIndex,
           isCorrect: choice.isCorrect ?? false,
+        }, { transaction });
+      }
+      for (let testIndex = 0; testIndex < (question.codingTestCases || []).length; testIndex += 1) {
+        const testCase = question.codingTestCases[testIndex];
+        await AssessmentCodingTestCase.create({
+          questionId: createdQuestion.id,
+          displayOrder: testIndex,
+          visibility: testCase.visibility,
+          input: testCase.input,
+          expectedOutput: testCase.expectedOutput,
+          weight: Number(testCase.weight),
         }, { transaction });
       }
     }
@@ -542,6 +608,14 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     const currentVersion = assertVersion(assessment, version);
     await assertNoAttempts(assessmentId, transaction);
     const graph = await loadGraph(assessmentId, transaction);
+    if (plain(graph).questions?.some((question) => question.questionType === "CODING")
+      && !isCodingAssessmentPlayerEnabled(environment)) {
+      throw new AssessmentApiError(
+        409,
+        "CODING_PLAYER_UNAVAILABLE",
+        "Coding assessments cannot be published until the coding player is available",
+      );
+    }
     try {
       policy.validateAssessmentForPublish({
         assessment: plain(graph),

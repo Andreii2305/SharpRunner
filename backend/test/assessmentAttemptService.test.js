@@ -70,6 +70,8 @@ const makeGraph = ({
 
 const makeHarness = (assessmentOptions = {}, {
   progressionService = allowAllProgression,
+  secureCodingExecution = { runSecureMethodExecution: async () => ({ category: "INFRASTRUCTURE_ERROR" }) },
+  environment = { CODING_ASSESSMENT_PLAYER_ENABLED: "true" },
 } = {}) => {
   const store = {
     assessments: [makeGraph(assessmentOptions)],
@@ -120,6 +122,7 @@ const makeHarness = (assessmentOptions = {}, {
     },
     AssessmentQuestion: {},
     AssessmentChoice: {},
+    AssessmentCodingTestCase: {},
     AssessmentAttempt: {
       findByPk: async (id) => row(store.attempts.find((item) => item.id === Number(id)), "attempts"),
       findOne: async ({ where }) => {
@@ -189,8 +192,33 @@ const makeHarness = (assessmentOptions = {}, {
     random: () => 0,
     now: () => new Date(clock += 1000),
     progressionService,
+    secureCodingExecution,
+    environment,
   });
   return { service, store, sequelize };
+};
+
+const useCodingGraph = (store) => {
+  store.assessments[0].shuffleQuestions = false;
+  store.assessments[0].shuffleChoices = false;
+  store.assessments[0].questions = [{
+    id: 201,
+    assessmentId: store.assessments[0].id,
+    questionText: "Add two integers",
+    questionType: "CODING",
+    displayOrder: 0,
+    points: 10,
+    starterCode: "public static class Solution { public static int Add(int a, int b) => a + b; }",
+    codingTypeName: "Solution",
+    codingMethodName: "Add",
+    codingParameterTypes: ["int", "int"],
+    codingReturnType: "int",
+    choices: [],
+    codingTestCases: [
+      { displayOrder: 0, visibility: "PUBLIC", input: [1, 2], expectedOutput: 3, weight: 1 },
+      { displayOrder: 1, visibility: "HIDDEN", input: [5, 7], expectedOutput: 12, weight: 3 },
+    ],
+  }];
 };
 
 const expectCode = async (promise, code) => assert.rejects(promise, (error) => error?.code === code);
@@ -816,4 +844,99 @@ test("blocks structural edits after the first attempt exists", async () => {
   assert.equal(await service.assertAssessmentStructureMutable({ assessmentId: 10 }), true);
   await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
   await expectCode(service.assertAssessmentStructureMutable({ assessmentId: 10 }), "ASSESSMENT_IMMUTABLE");
+});
+
+test("CODING autosave persists source without grading and enforces response exclusivity and size", async () => {
+  const h = makeHarness();
+  useCodingGraph(h.store);
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  const sourceCode = h.store.assessments[0].questions[0].starterCode;
+  const saved = await h.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201, sourceCode,
+  });
+  assert.deepEqual(saved, { attemptId: started.attempt.id, questionId: 201, sourceCode });
+  assert.equal(h.store.responses[0].isCorrect, false);
+  assert.equal(h.store.responses[0].pointsAwarded, 0);
+  const restored = await h.service.getActiveAttempt({ attemptId: started.attempt.id, studentId: 42 });
+  assert.deepEqual(restored.responses, [{ questionId: 201, selectedChoiceId: null, sourceCode }]);
+  await expectCode(h.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201,
+    selectedChoiceId: 1001, sourceCode,
+  }), "INVALID_CODING_RESPONSE");
+  await expectCode(h.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201,
+    sourceCode: "x".repeat(16 * 1024 + 1),
+  }), "CODING_SOURCE_TOO_LARGE");
+});
+
+test("CODING attempts remain unavailable while the separate player release gate is off", async () => {
+  const h = makeHarness({}, { environment: {} });
+  useCodingGraph(h.store);
+  await expectCode(
+    h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
+    "CODING_PLAYER_UNAVAILABLE",
+  );
+  assert.equal(h.store.attempts.length, 0);
+});
+
+test("CODING submission applies partial credit and preserves PRE diagnostic semantics", async () => {
+  const h = makeHarness({ type: "PRE" }, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => ({
+        category: "RUNTIME_ERROR",
+        invocations: [
+          { category: "SUCCESS", output: 3 },
+          { category: "RUNTIME_ERROR" },
+        ],
+      }),
+    },
+  });
+  useCodingGraph(h.store);
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await h.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201,
+    sourceCode: h.store.assessments[0].questions[0].starterCode,
+  });
+  const result = await h.service.submitAttempt({
+    attemptId: started.attempt.id, studentId: 42, submissionKey: "coding-pre-1",
+  });
+  assert.equal(result.pointsEarned, 2.5);
+  assert.equal(result.percentage, 25);
+  assert.equal(result.passed, null);
+  assert.equal(h.store.responses[0].isCorrect, false);
+  assert.equal(h.store.responses[0].pointsAwarded, 2.5);
+});
+
+test("secure capability failure rolls back CODING grading and leaves the attempt submittable", async () => {
+  const h = makeHarness();
+  useCodingGraph(h.store);
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await h.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201,
+    sourceCode: h.store.assessments[0].questions[0].starterCode,
+  });
+  await expectCode(h.service.submitAttempt({
+    attemptId: started.attempt.id, studentId: 42, submissionKey: "coding-post-1",
+  }), "CODING_EXECUTION_UNAVAILABLE");
+  assert.equal(h.store.attempts[0].status, "IN_PROGRESS");
+  assert.equal(h.store.attempts[0].submissionKey, undefined);
+  assert.equal(h.store.responses[0].pointsAwarded, 0);
+  assert.equal(h.store.responses[0].isCorrect, false);
+});
+
+test("malformed runner output is infrastructure failure and cannot become a student zero", async () => {
+  const h = makeHarness({}, {
+    secureCodingExecution: { runSecureMethodExecution: async () => ({}) },
+  });
+  useCodingGraph(h.store);
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await h.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201,
+    sourceCode: h.store.assessments[0].questions[0].starterCode,
+  });
+  await expectCode(h.service.submitAttempt({
+    attemptId: started.attempt.id, studentId: 42, submissionKey: "malformed-runner-1",
+  }), "CODING_EXECUTION_UNAVAILABLE");
+  assert.equal(h.store.attempts[0].status, "IN_PROGRESS");
+  assert.equal(h.store.responses[0].pointsAwarded, 0);
 });

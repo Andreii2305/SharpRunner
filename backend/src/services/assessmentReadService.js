@@ -10,6 +10,7 @@ const {
   selectFirstSubmittedPostAttempt,
   selectOfficialPostAttempt,
 } = require("./assessmentPolicyService");
+const { isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
 
 const plain = (value) => value?.toJSON ? value.toJSON() : value;
 
@@ -25,10 +26,12 @@ const createAssessmentReadService = ({
   progressionService = defaultProgressionService,
   serializers = defaultSerializers,
   selectors = { calculateLearningGain, selectFirstSubmittedPostAttempt, selectOfficialPostAttempt },
+  environment = process.env,
 } = {}) => {
   const {
     AssessmentAttempt,
     AssessmentChoice,
+    AssessmentCodingTestCase,
     AssessmentQuestion,
     AssessmentResponse,
     LessonAssessment,
@@ -105,13 +108,22 @@ const createAssessmentReadService = ({
       include: [{
         model: AssessmentQuestion,
         as: "questions",
-        include: [{ model: AssessmentChoice, as: "choices" }],
+        include: [
+          { model: AssessmentChoice, as: "choices" },
+          { model: AssessmentCodingTestCase, as: "codingTestCases" },
+        ],
       }],
       order: [
         [{ model: AssessmentQuestion, as: "questions" }, "displayOrder", "ASC"],
         [
           { model: AssessmentQuestion, as: "questions" },
           { model: AssessmentChoice, as: "choices" },
+          "displayOrder",
+          "ASC",
+        ],
+        [
+          { model: AssessmentQuestion, as: "questions" },
+          { model: AssessmentCodingTestCase, as: "codingTestCases" },
           "displayOrder",
           "ASC",
         ],
@@ -127,6 +139,10 @@ const createAssessmentReadService = ({
         "ASSESSMENT_NOT_PUBLISHED",
         "Assessment is not published",
       );
+    }
+    if (assessment.questions?.some((question) => question.questionType === "CODING")
+      && !isCodingAssessmentPlayerEnabled(environment)) {
+      throw new AssessmentApiError(404, "ASSESSMENT_NOT_PUBLISHED", "Assessment is not published");
     }
     const membership = await authorizationService.requireActiveStudentMembership({
       classroomId: assessment.classroomId,
@@ -314,16 +330,19 @@ const createAssessmentReadService = ({
       });
       responses = await AssessmentResponse.findAll({ where: { attemptId: attempt.id } });
     }
-    const review = serializers.serializeAllowedReview({ reviewAvailable, questions, responses });
+    const review = serializers.serializeAllowedReview({ reviewAvailable, questions, responses, scoreVisible });
     output.reviewAvailable = review.reviewAvailable;
     if (review.reviewAvailable) {
       output.review = review.review.map((row) => ({
         questionId: row.questionId,
         selectedChoiceId: row.selectedChoiceId,
-        correctChoiceId: row.correctChoiceId,
-        isCorrect: row.isCorrect,
-        pointsAwarded: row.pointsAwarded,
-        explanation: row.explanation,
+        ...(Object.hasOwn(row, "sourceCode") ? { sourceCode: row.sourceCode } : {}),
+        ...(scoreVisible ? {
+          correctChoiceId: row.correctChoiceId,
+          isCorrect: row.isCorrect,
+          pointsAwarded: row.pointsAwarded,
+          explanation: row.explanation,
+        } : {}),
       }));
     }
     return output;

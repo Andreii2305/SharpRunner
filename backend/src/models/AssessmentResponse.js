@@ -5,6 +5,7 @@ const AssessmentResponse = sequelize.define("AssessmentResponse", {
   attemptId: { type: DataTypes.INTEGER, allowNull: false },
   questionId: { type: DataTypes.INTEGER, allowNull: false },
   selectedChoiceId: { type: DataTypes.INTEGER, allowNull: true },
+  sourceCode: { type: DataTypes.TEXT, allowNull: true },
   isCorrect: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   pointsAwarded: { type: DataTypes.DECIMAL(10, 2), allowNull: false, defaultValue: 0, validate: { min: 0 } },
 }, {

@@ -29,6 +29,7 @@ const AssessmentQuestion = require("./AssessmentQuestion");
 const AssessmentChoice = require("./AssessmentChoice");
 const AssessmentAttempt = require("./AssessmentAttempt");
 const AssessmentResponse = require("./AssessmentResponse");
+const AssessmentCodingTestCase = require("./AssessmentCodingTestCase");
 
 User.hasMany(EmailVerificationToken, {
   foreignKey: "userId",
@@ -360,6 +361,16 @@ AssessmentChoice.belongsTo(AssessmentQuestion, {
   as: "question",
   onDelete: "CASCADE",
 });
+AssessmentQuestion.hasMany(AssessmentCodingTestCase, {
+  foreignKey: "questionId",
+  as: "codingTestCases",
+  onDelete: "CASCADE",
+});
+AssessmentCodingTestCase.belongsTo(AssessmentQuestion, {
+  foreignKey: "questionId",
+  as: "question",
+  onDelete: "CASCADE",
+});
 LessonAssessment.hasMany(AssessmentAttempt, {
   foreignKey: "assessmentId",
   as: "attempts",
@@ -453,4 +464,5 @@ module.exports = {
   AssessmentChoice,
   AssessmentAttempt,
   AssessmentResponse,
+  AssessmentCodingTestCase,
 };

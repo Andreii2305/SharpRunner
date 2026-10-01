@@ -1041,11 +1041,10 @@ test("discovery submitted-attempt ID supports authorized result revisit without 
   assert.deepEqual(revisited.payload.review, [{
     questionId: 101,
     selectedChoiceId: 1001,
-    correctChoiceId: 1001,
-    isCorrect: true,
-    pointsAwarded: 2,
-    explanation: "Arrays use brackets.",
   }]);
+  assertNoKeys(revisited.payload.review, new Set([
+    "correctChoiceId", "isCorrect", "pointsAwarded", "explanation",
+  ]));
   for (const key of ["pointsEarned", "maxPoints", "percentage"]) {
     assert.equal(key in revisited.payload.result, false);
   }

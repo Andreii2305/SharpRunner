@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { FiArrowDown, FiArrowUp, FiPlus, FiTrash2 } from "react-icons/fi";
 import AssessmentCodeEditor from "./AssessmentCodeEditor.jsx";
 import {
@@ -31,6 +32,11 @@ function TypedValueEditor({ type, value, disabled, label, onChange }) {
 }
 
 export default function CodingQuestionEditor({ question, disabled, onChange }) {
+  const validationId = useId();
+  const typeNameInvalid = !question.methodContract.typeName.trim();
+  const methodNameInvalid = !question.methodContract.methodName.trim();
+  const typeNameErrorId = `${validationId}-type-name-error`;
+  const methodNameErrorId = `${validationId}-method-name-error`;
   const replace = (changes) => onChange({ ...question, ...changes });
   const setContract = (changes) => replace({ methodContract: { ...question.methodContract, ...changes } });
   const changeTest = (index, changes) => replace({ codingTestCases: question.codingTestCases.map((testCase, itemIndex) => itemIndex === index ? { ...testCase, ...changes } : testCase) });
@@ -40,8 +46,8 @@ export default function CodingQuestionEditor({ question, disabled, onChange }) {
     <fieldset disabled={disabled} className={styles.signatureFieldset}>
       <legend>Method signature</legend>
       <div className={styles.codingGrid}>
-        <label>Type/Class name<input value={question.methodContract.typeName} maxLength={128} placeholder="Solution" onChange={(event) => setContract({ typeName: event.target.value })} /></label>
-        <label>Method name<input value={question.methodContract.methodName} maxLength={64} placeholder="AddNumbers" onChange={(event) => setContract({ methodName: event.target.value })} /></label>
+        <label>Type/Class name<input value={question.methodContract.typeName} maxLength={128} placeholder="Solution" aria-invalid={typeNameInvalid} aria-describedby={typeNameInvalid ? typeNameErrorId : undefined} onChange={(event) => setContract({ typeName: event.target.value })} />{typeNameInvalid && <span id={typeNameErrorId} className={styles.inlineError}>Type/class name is required.</span>}</label>
+        <label>Method name<input value={question.methodContract.methodName} maxLength={64} placeholder="AddNumbers" aria-invalid={methodNameInvalid} aria-describedby={methodNameInvalid ? methodNameErrorId : undefined} onChange={(event) => setContract({ methodName: event.target.value })} />{methodNameInvalid && <span id={methodNameErrorId} className={styles.inlineError}>Method name is required.</span>}</label>
         <label>Return type<select value={question.methodContract.returnType} onChange={(event) => onChange(updateThrough(question, updateCodingReturnType, event.target.value))}>{METHOD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
       </div>
       <div className={styles.signaturePreview}><span>Signature preview</span><code>{signature}</code></div>

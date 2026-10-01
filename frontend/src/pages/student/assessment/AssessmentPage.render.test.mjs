@@ -143,6 +143,7 @@ test("active CODING question renders the shared C# editor, public examples, and 
   assert.match(html, /Public examples/);
   assert.match(html, /Code answer for question 103/);
   assert.match(html, /Run code/);
+  assert.match(html, /role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
   assert.match(html, /Public test 1: Passed/);
   assert.match(html, /Public test 2: Failed/);
   assert.doesNotMatch(html, /teacher-secret-solution|HIDDEN|99/);

@@ -23,6 +23,26 @@ function Metric({ label, value, note }) {
   return <article className={styles.metric}><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</article>;
 }
 
+function CodingQuestionBreakdown({ questions }) {
+  if (!questions.length) return null;
+  return <section className={styles.codingBreakdown} aria-labelledby="coding-question-performance-title">
+    <header>
+      <div><span>Question performance</span><h3 id="coding-question-performance-title">Coding question performance</h3></div>
+      <p>Question-level performance is separate from the official POST grade. PRE results remain diagnostic and do not imply pass or fail.</p>
+    </header>
+    <div className={styles.codingGrid}>{questions.map((question) => <article key={`${question.assessmentType}-${question.questionId}`}>
+      <span>{question.assessmentType === "PRE" ? "PRE diagnostic question" : "POST assessment question"} {question.questionOrder}</span>
+      <h4>{question.questionLabel}</h4>
+      <dl>
+        <div><dt>Submitted responses</dt><dd>{question.responseCount}</dd></div>
+        <div><dt>Fully correct</dt><dd>{question.fullyCorrectCount} ({percentage(question.fullyCorrectRate)})</dd></div>
+        <div><dt>Average points</dt><dd>{question.averageAwardedPoints} / {question.maximumPoints}</dd></div>
+        <div><dt>Average question points earned</dt><dd>{percentage(question.averagePercentageEarned)}</dd></div>
+      </dl>
+    </article>)}</div>
+  </section>;
+}
+
 function AttemptHistoryDialog({ row, onClose }) {
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
@@ -109,6 +129,9 @@ export default function TeacherAssessmentAnalyticsPanel() {
 
   const model = useMemo(() => buildAssessmentAnalytics(payloads), [payloads]);
   const rows = useMemo(() => filterAssessmentStudents(model.students, { query, type: typeFilter }), [model.students, query, typeFilter]);
+  const codingQuestions = useMemo(() => model.codingQuestions.filter((question) => (
+    typeFilter === "ALL" || question.assessmentType === typeFilter
+  )), [model.codingQuestions, typeFilter]);
   const closeHistory = () => {
     setSelectedStudent(null);
     requestAnimationFrame(() => launcherRef.current?.focus());
@@ -141,6 +164,7 @@ export default function TeacherAssessmentAnalyticsPanel() {
           <Metric label="Learning gain" value={signedPoints(metrics.averageLearningGain)} note={`${metrics.pairedStudents} paired students · PRE to first submitted POST`} />
         </div>
         <p className={styles.limitation}><strong>Submission rate:</strong> Enrollment denominator unavailable from the assessment-results contract. No enrollment-based rate is inferred.</p>
+        <CodingQuestionBreakdown questions={codingQuestions} />
         <div className={styles.tableWrap}><table><caption>Submitted assessment results, alphabetical by student</caption><thead><tr><th scope="col">Student</th><th scope="col">PRE diagnostic</th><th scope="col">First POST</th><th scope="col">Official POST</th><th scope="col">POST status</th><th scope="col">Submitted POST attempts</th><th scope="col">Learning gain</th><th scope="col">History</th></tr></thead><tbody>
           {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td>{percentage(row.preAttempt?.percentage)}<small>{row.preStatus}</small></td><td>{percentage(row.firstPost?.percentage)}</td><td>{percentage(row.officialPost?.percentage)}</td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}
         </tbody></table></div>

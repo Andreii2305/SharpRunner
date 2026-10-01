@@ -27,6 +27,21 @@ const studentIdentity = (source) => ({
   username: source.username ?? "",
 });
 
+const safeCodingQuestion = (source, assessmentType) => ({
+  questionId: source.questionId,
+  questionOrder: finite(source.questionOrder) ? Number(source.questionOrder) : 0,
+  questionLabel: typeof source.questionLabel === "string" ? source.questionLabel : "Coding question",
+  responseCount: finite(source.responseCount) ? Number(source.responseCount) : 0,
+  fullyCorrectCount: finite(source.fullyCorrectCount) ? Number(source.fullyCorrectCount) : 0,
+  fullyCorrectRate: finite(source.fullyCorrectRate) ? Number(source.fullyCorrectRate) : 0,
+  averageAwardedPoints: finite(source.averageAwardedPoints) ? Number(source.averageAwardedPoints) : 0,
+  maximumPoints: finite(source.maximumPoints) ? Number(source.maximumPoints) : 0,
+  averagePercentageEarned: finite(source.averagePercentageEarned)
+    ? Number(source.averagePercentageEarned)
+    : 0,
+  assessmentType,
+});
+
 const compareAttempts = (left, right) => (
   left.attemptNumber - right.attemptNumber
   || String(left.submittedAt).localeCompare(String(right.submittedAt))
@@ -78,8 +93,13 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
   const officialRows = rows.filter((row) => row.officialPost);
   const pairedRows = rows.filter((row) => row.learningGain !== null);
   const passedRows = officialRows.filter((row) => row.officialPost.passed === true);
+  const codingQuestions = [
+    ...(prePayload?.codingQuestions ?? []).map((question) => safeCodingQuestion(question, "PRE")),
+    ...(postPayload?.codingQuestions ?? []).map((question) => safeCodingQuestion(question, "POST")),
+  ];
   return {
     students: rows,
+    codingQuestions,
     metrics: {
       preSubmittedStudents: preRows.length,
       postSubmittedStudents: postRows.length,

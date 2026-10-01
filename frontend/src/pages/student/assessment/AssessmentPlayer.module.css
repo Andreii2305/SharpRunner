@@ -108,6 +108,7 @@
 
 .runResults {
   margin-top: 1rem;
+  overflow-x: auto;
 }
 
 .choices {
@@ -262,6 +263,11 @@
 
   .navigation button {
     flex: 1 1 8rem;
+  }
+
+  .runArea {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

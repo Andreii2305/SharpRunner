@@ -6,7 +6,11 @@ const defaultPolicy = require("./assessmentPolicyService");
 const defaultSerialization = require("./assessmentSerializationService");
 const defaultAttemptService = require("./assessmentAttemptService");
 const { AssessmentApiError } = require("./assessmentErrorService");
-const { ASSESSMENT_TYPES, ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
+const {
+  ASSESSMENT_TYPES,
+  ATTEMPT_STATUSES,
+  QUESTION_TYPES,
+} = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const { isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
 
@@ -117,6 +121,8 @@ const readAggregate = (row, field) => {
   return Number(value || 0);
 };
 
+const roundMetric = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
 const createTeacherAssessmentService = (dependencies = {}) => {
   const {
     models = defaultModels,
@@ -139,6 +145,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     AssessmentChoice,
     AssessmentCodingTestCase,
     AssessmentAttempt,
+    AssessmentResponse,
     ClassroomMembership,
     UserProgress,
     User,
@@ -266,7 +273,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       classroomId,
       assessmentId,
     });
-    const attempts = await AssessmentAttempt.findAll({
+    const [attempts, codingQuestionRows] = await Promise.all([
+      AssessmentAttempt.findAll({
       where: {
         assessmentId,
         classroomId,
@@ -294,6 +302,58 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         ["submittedAt", "ASC"],
         ["id", "ASC"],
       ],
+      }),
+      AssessmentQuestion.findAll({
+        where: { assessmentId, questionType: QUESTION_TYPES.CODING },
+        attributes: ["id", "questionText", "displayOrder", "points"],
+        order: [["displayOrder", "ASC"], ["id", "ASC"]],
+      }),
+    ]);
+
+    const codingQuestions = codingQuestionRows.map(plain);
+    const codingQuestionIds = codingQuestions.map((question) => question.id);
+    const codingResponses = codingQuestionIds.length
+      ? await AssessmentResponse.findAll({
+        where: { questionId: { [Op.in]: codingQuestionIds } },
+        attributes: ["questionId", "isCorrect", "pointsAwarded"],
+        include: [{
+          model: AssessmentAttempt,
+          as: "attempt",
+          attributes: [],
+          required: true,
+          where: { assessmentId, classroomId, status: ATTEMPT_STATUSES.SUBMITTED },
+        }],
+      })
+      : [];
+    const codingResponsesByQuestion = new Map();
+    for (const responseInput of codingResponses) {
+      const response = plain(responseInput);
+      const group = codingResponsesByQuestion.get(response.questionId) || [];
+      group.push(response);
+      codingResponsesByQuestion.set(response.questionId, group);
+    }
+    const codingAnalytics = codingQuestions.map((question) => {
+      const responses = codingResponsesByQuestion.get(question.id) || [];
+      const responseCount = responses.length;
+      const fullyCorrectCount = responses.filter((response) => response.isCorrect === true).length;
+      const maximumPoints = Number(question.points);
+      const averageAwardedPoints = responseCount
+        ? roundMetric(responses.reduce((sum, response) => sum + Number(response.pointsAwarded), 0)
+          / responseCount)
+        : 0;
+      return {
+        questionId: question.id,
+        questionOrder: Number(question.displayOrder) + 1,
+        questionLabel: question.questionText,
+        responseCount,
+        fullyCorrectCount,
+        fullyCorrectRate: responseCount ? roundMetric((fullyCorrectCount / responseCount) * 100) : 0,
+        averageAwardedPoints,
+        maximumPoints,
+        averagePercentageEarned: responseCount && maximumPoints > 0
+          ? roundMetric((averageAwardedPoints / maximumPoints) * 100)
+          : 0,
+      };
     });
 
     const attemptsByStudent = new Map();
@@ -324,7 +384,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         isFirstSubmittedPost: markers?.firstSubmittedId === attempt.id,
       };
     });
-    return serialization.serializeTeacherResults({ assessment, results });
+    return serialization.serializeTeacherResults({
+      assessment,
+      results,
+      codingQuestions: codingAnalytics,
+    });
   };
 
   const validateSaveInput = (input) => {

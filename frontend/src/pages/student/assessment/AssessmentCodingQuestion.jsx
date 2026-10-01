@@ -85,7 +85,13 @@ export default function AssessmentCodingQuestion({
         height="320px"
       />
 
-      <div className={styles.runArea}>
+      <div
+        className={styles.runArea}
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        aria-busy={runState?.status === "running"}
+      >
         <button type="button" onClick={() => onRun(question.id)} disabled={disabled || runState?.status === "running"}>
           {runState?.status === "running" ? "Running code..." : "Run code"}
         </button>

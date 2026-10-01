@@ -21,8 +21,8 @@ const result = (studentValue, overrides = {}) => ({
   isFirstSubmittedPost: overrides.isFirstSubmittedPost ?? false,
 });
 
-const prePayload = (results) => ({ assessment: { id: 1, lessonKey: "arrays", type: "PRE", title: "Arrays diagnostic", passingPercentage: null, maxAttempts: 1 }, results });
-const postPayload = (results) => ({ assessment: { id: 2, lessonKey: "arrays", type: "POST", title: "Arrays check", passingPercentage: 75, maxAttempts: 3 }, results });
+const prePayload = (results, codingQuestions = []) => ({ assessment: { id: 1, lessonKey: "arrays", type: "PRE", title: "Arrays diagnostic", passingPercentage: null, maxAttempts: 1 }, results, codingQuestions });
+const postPayload = (results, codingQuestions = []) => ({ assessment: { id: 2, lessonKey: "arrays", type: "POST", title: "Arrays check", passingPercentage: 75, maxAttempts: 3 }, results, codingQuestions });
 
 test("academic lesson filter uses the backend assessment allowlist", () => {
   assert.deepEqual(ACADEMIC_LESSONS.map(({ key }) => key), ["arrays", "functions", "functions-with-arrays", "final"]);
@@ -132,4 +132,47 @@ test("analytics model exposes no answer content or grading keys", () => {
   const raw = postPayload([{ ...result(student(1, "A", "B"), { isOfficial: true }), responses: [{ isCorrect: true, correctChoiceId: 9 }], explanation: "hidden" }]);
   const serialized = JSON.stringify(buildAssessmentAnalytics({ postPayload: raw }));
   for (const forbidden of ["responses", "isCorrect", "correctChoiceId", "explanation", "pointsEarned", "maxPoints"]) assert.equal(serialized.includes(forbidden), false);
+});
+
+test("coding question performance stays assessment-scoped and allowlisted without ranking data", () => {
+  const preCoding = {
+    questionId: 7,
+    questionOrder: 1,
+    questionLabel: "Return the length.",
+    responseCount: 3,
+    fullyCorrectCount: 2,
+    fullyCorrectRate: 66.67,
+    averageAwardedPoints: 3,
+    maximumPoints: 4,
+    averagePercentageEarned: 75,
+    referenceSolution: "teacher secret",
+    hiddenTestCount: 5,
+    sourceCode: "student secret",
+  };
+  const postCoding = { ...preCoding, questionId: 8, questionOrder: 2, fullyCorrectRate: 50 };
+
+  const model = buildAssessmentAnalytics({
+    prePayload: prePayload([], [preCoding]),
+    postPayload: postPayload([], [postCoding]),
+  });
+
+  const expectedCodingQuestion = {
+    questionId: 7,
+    questionOrder: 1,
+    questionLabel: "Return the length.",
+    responseCount: 3,
+    fullyCorrectCount: 2,
+    fullyCorrectRate: 66.67,
+    averageAwardedPoints: 3,
+    maximumPoints: 4,
+    averagePercentageEarned: 75,
+  };
+  assert.deepEqual(model.codingQuestions, [
+    { ...expectedCodingQuestion, assessmentType: "PRE" },
+    { ...expectedCodingQuestion, questionId: 8, questionOrder: 2, fullyCorrectRate: 50, assessmentType: "POST" },
+  ]);
+  const serialized = JSON.stringify(model.codingQuestions);
+  for (const forbidden of ["referenceSolution", "hiddenTestCount", "sourceCode", "teacher secret", "student secret", "rank"]) {
+    assert.equal(serialized.includes(forbidden), false, forbidden);
+  }
 });

@@ -336,6 +336,20 @@ const serializeTeacherResults = (input = {}) => {
         isFirstSubmittedPost: Boolean(item.isFirstSubmittedPost),
       };
     }),
+    codingQuestions: (input.codingQuestions || []).map((questionInput) => {
+      const question = plain(questionInput);
+      return {
+        questionId: question.questionId,
+        questionOrder: Number(question.questionOrder),
+        questionLabel: question.questionLabel,
+        responseCount: Number(question.responseCount),
+        fullyCorrectCount: Number(question.fullyCorrectCount),
+        fullyCorrectRate: Number(question.fullyCorrectRate),
+        averageAwardedPoints: Number(question.averageAwardedPoints),
+        maximumPoints: Number(question.maximumPoints),
+        averagePercentageEarned: Number(question.averagePercentageEarned),
+      };
+    }),
   };
 };
 

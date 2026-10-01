@@ -1,5 +1,5 @@
 .root { display: grid; gap: 16px; }
-.heading, .filters, .availability article, .metric, .empty, .limitation, .tableWrap { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+.heading, .filters, .availability article, .metric, .empty, .limitation, .tableWrap, .codingBreakdown { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
 .heading { padding: 20px; }
 .heading span { color: #287a9f; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .heading h2 { display: flex; align-items: center; gap: 9px; margin: 4px 0; color: #1e3a5f; }
@@ -17,6 +17,18 @@
 .metric strong { color: #1e3a5f; font-size: 22px; overflow-wrap: anywhere; }
 .metric small { color: #64748b; line-height: 1.4; }
 .limitation, .empty, .error { padding: 14px 16px; }
+.codingBreakdown { display: grid; gap: 14px; padding: 16px; }
+.codingBreakdown > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; }
+.codingBreakdown > header span, .codingGrid article > span { color: #287a9f; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.codingBreakdown h3, .codingBreakdown h4 { margin: 3px 0; color: #1e3a5f; }
+.codingBreakdown > header p { max-width: 42rem; margin: 0; color: #526174; line-height: 1.5; }
+.codingGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); gap: 12px; }
+.codingGrid article { min-width: 0; border: 1px solid #dbe4ee; border-radius: 10px; padding: 14px; background: #f8fafc; }
+.codingGrid h4 { overflow-wrap: anywhere; }
+.codingGrid dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0 0; }
+.codingGrid dl > div { min-width: 0; }
+.codingGrid dt { color: #64748b; font-size: 12px; }
+.codingGrid dd { margin: 2px 0 0; color: #1e3a5f; font-weight: 800; overflow-wrap: anywhere; }
 .error { border: 1px solid #f2c6c2; border-radius: 10px; background: #fff5f3; color: #993c1d; }
 .tableWrap { overflow-x: auto; }
 .tableWrap table { width: 100%; min-width: 1050px; border-collapse: collapse; }
@@ -37,4 +49,4 @@
 .historyList article > div:first-child { align-items: flex-start; flex-direction: column; gap: 2px; }
 .historyList b { border-radius: 999px; background: #eef4fb; color: #26547c; padding: 3px 7px; font-size: 12px; }
 @media (max-width: 1000px) { .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .filters, .metrics, .availability { grid-template-columns: 1fr; }.availability article, .historyList article { flex-direction: column; }.dialog { padding: 15px; } }
+@media (max-width: 640px) { .filters, .metrics, .availability, .codingGrid dl { grid-template-columns: 1fr; }.availability article, .historyList article, .codingBreakdown > header { flex-direction: column; }.dialog { padding: 15px; } }

@@ -25,6 +25,19 @@ test("overview states definitions, denominator limitation, and paired gain sampl
   }
 });
 
+test("coding breakdown is question performance without rankings or inferred official grades", () => {
+  for (const marker of [
+    "Coding question performance",
+    "PRE diagnostic question",
+    "POST assessment question",
+    "Submitted responses",
+    "Fully correct",
+    "Average points",
+    "Question-level performance is separate from the official POST grade",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.equal(source.toLowerCase().includes("ranking"), false);
+});
+
 test("student table and local history detail are accessible and not a leaderboard", () => {
   assert.match(source, /<table/);
   assert.match(source, /scope="col"/);
@@ -44,5 +57,6 @@ test("request handling cancels stale classroom/lesson result loads and normalize
 });
 
 test("render source never asks for answers, responses, or grading keys", () => {
-  for (const forbidden of ["correctChoiceId", "isCorrect", "answerReview", "responses"]) assert.equal(source.includes(forbidden), false);
+  for (const forbidden of ["correctChoiceId", "isCorrect", "answerReview"]) assert.equal(source.includes(forbidden), false);
+  assert.doesNotMatch(source, /\bresponses\s*[:.[]/);
 });

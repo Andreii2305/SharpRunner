@@ -202,4 +202,6 @@ test("responsive page and dialog sizing include padding within the viewport widt
   const css = await readFile(new URL("AssessmentPlayer.module.css", import.meta.url), "utf8");
   assert.match(css, /\.page\s*\{[^}]*box-sizing:\s*border-box/s);
   assert.match(css, /\.dialogPanel\s*\{[^}]*box-sizing:\s*border-box/s);
+  assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*\.runArea\s*\{[^}]*flex-direction:\s*column/s);
+  assert.match(css, /\.runResults\s*\{[^}]*overflow-x:\s*auto/s);
 });

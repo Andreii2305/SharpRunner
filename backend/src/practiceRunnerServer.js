@@ -82,8 +82,8 @@ const createPracticeRunnerApp = ({
           : result.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR ? 503
             : 200;
       return res.status(status).json(result);
-    } catch (error) {
-      console.error("Secure method execution failed", error);
+    } catch {
+      console.error("Secure method execution failed");
       return res.status(503).json({ category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR, code: "SECURE_EXECUTION_UNAVAILABLE", message: "Secure coding execution is unavailable." });
     } finally {
       req.off("aborted", cancel);

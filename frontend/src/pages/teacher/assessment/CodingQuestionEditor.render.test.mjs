@@ -39,9 +39,24 @@ test("coding editor renders structured controls and Monaco becomes read-only whe
   assert.match(editable, /PUBLIC — student example/);
   assert.match(editable, /HIDDEN — grading only/);
   assert.match(editable, /data-read-only="false"/);
+  assert.match(editable, /role="group"[^>]*aria-labelledby="[^"]+"[^>]*aria-describedby="[^"]+"/);
+  assert.match(editable, /aria-invalid="false"/);
   const locked = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question, disabled: true, onChange() {} }));
   assert.match(locked, /<fieldset disabled=""/);
   assert.equal((locked.match(/data-read-only="true"/g) ?? []).length, 2);
+});
+
+test("blank coding signature fields expose associated validation errors", () => {
+  const invalid = {
+    ...question,
+    methodContract: { ...question.methodContract, typeName: "", methodName: "" },
+  };
+  const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question: invalid, disabled: false, onChange() {} }));
+  assert.equal((html.match(/aria-invalid="true"/g) ?? []).length, 2);
+  assert.match(html, /aria-describedby="[^"]+type-name-error"/);
+  assert.match(html, /aria-describedby="[^"]+method-name-error"/);
+  assert.match(html, /Type\/class name is required/);
+  assert.match(html, /Method name is required/);
 });
 
 test("student coding preview excludes reference solution and hidden grading values", () => {

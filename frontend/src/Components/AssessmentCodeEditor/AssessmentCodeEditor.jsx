@@ -1,4 +1,5 @@
 import Editor from "@monaco-editor/react";
+import { useId } from "react";
 
 export default function AssessmentCodeEditor({
   label,
@@ -8,12 +9,20 @@ export default function AssessmentCodeEditor({
   description,
   height = "240px",
 }) {
+  const editorId = useId();
+  const labelId = `${editorId}-label`;
+  const descriptionId = `${editorId}-description`;
   const editorValue = value ?? "";
   const serverNeedsFallback = typeof window === "undefined" && typeof Editor !== "function";
   return (
-    <div aria-label={label}>
-      <div><strong>{label}</strong><span> C#</span></div>
-      {description && <p>{description}</p>}
+    <div
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={description ? descriptionId : undefined}
+      style={{ minWidth: 0, overflow: "hidden" }}
+    >
+      <div><strong id={labelId}>{label}</strong><span> C#</span></div>
+      {description && <p id={descriptionId}>{description}</p>}
       {serverNeedsFallback ? (
         <pre role="textbox" aria-label={label} aria-readonly={disabled}>{editorValue}</pre>
       ) : (

@@ -15,6 +15,7 @@ test("builder exposes labelled settings, question controls, preview, and lifecyc
   }
   assert.match(source, /role="dialog"/);
   assert.match(source, /aria-modal="true"/);
+  assert.match(source, /className=\{styles\.saveState\}[^>]*role="status"[^>]*aria-live="polite"/);
 });
 
 test("preview remains teacher-local and answer keys are never persisted in browser storage", () => {
@@ -73,4 +74,7 @@ test("coding controls stack responsively and preserve usable editor height", () 
   assert.match(styles, /min-height:\s*240px/);
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.codingGrid/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)[\s\S]*\.testCaseGrid/);
+  assert.match(styles, /button\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(sharedCodeEditor, /minWidth:\s*0/);
+  assert.match(sharedCodeEditor, /overflow:\s*"hidden"/);
 });

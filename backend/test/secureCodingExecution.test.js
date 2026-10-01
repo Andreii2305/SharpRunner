@@ -238,3 +238,34 @@ test("runner exposes authenticated fail-closed capability and method endpoints",
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test("runner unexpected failures log no source secret container or raw error details", async () => {
+  const token = "secure-execution-log-token-at-least-32-characters";
+  const originalConsoleError = console.error;
+  const logged = [];
+  console.error = (...args) => logged.push(args);
+  const app = createPracticeRunnerApp({
+    serviceToken: token,
+    secureExecution: {
+      getCapability: async () => ({ available: true }),
+      execute: async () => {
+        throw new Error("student-source SECRET_TOKEN container-123 /host/private/path");
+      },
+    },
+  });
+  const server = await new Promise((resolve) => {
+    const listener = app.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/execute-method`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify(validRequest()),
+    });
+    assert.equal(response.status, 503);
+    assert.deepEqual(logged, [["Secure method execution failed"]]);
+  } finally {
+    console.error = originalConsoleError;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});

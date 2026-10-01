@@ -142,7 +142,7 @@ const matches = (row, where = {}) => Object.entries(where).every(([key, value]) 
   return row[key] === value;
 });
 
-const harness = ({ assessments, questions, choices, codingTests, attempts, memberships, progress } = {}) => {
+const harness = ({ assessments, questions, choices, codingTests, attempts, responses, memberships, progress } = {}) => {
   const store = {
     classrooms: [{ id: 7, teacherId: 5 }, { id: 8, teacherId: 6 }],
     assessments: cloneRows(assessments || [baseAssessment()]),
@@ -150,6 +150,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, membe
     choices: cloneRows(choices || baseChoices()),
     codingTests: cloneRows(codingTests || []),
     attempts: cloneRows(attempts || []),
+    responses: cloneRows(responses || []),
     memberships: cloneRows(memberships || [{ classroomId: 7, studentId: 42, status: "active" }]),
     progress: cloneRows(progress || []),
     listQueries: 0,
@@ -159,6 +160,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, membe
     assessmentDeletes: 0,
     progressQueries: [],
     resultQueries: [],
+    codingAnalyticsQueries: [],
     events: [],
     failChoiceCreate: false,
     failGraphReload: false,
@@ -318,6 +320,16 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, membe
   stub(models.AssessmentQuestion, "findAll", async ({ where }) => (
     store.questions.filter((row) => matches(row, where))
   ));
+  stub(models.AssessmentResponse, "findAll", async (options) => {
+    store.codingAnalyticsQueries.push(options);
+    const questionIds = options.where.questionId?.[Op.in] || [];
+    const attemptWhere = options.include?.[0]?.where || {};
+    const submittedAttemptIds = new Set(store.attempts
+      .filter((row) => matches(row, attemptWhere))
+      .map((row) => row.id));
+    return store.responses.filter((row) => questionIds.includes(row.questionId)
+      && submittedAttemptIds.has(row.attemptId));
+  });
   stub(models.AssessmentQuestion, "destroy", async ({ where }) => {
     store.questionDeletes += 1;
     const retained = store.questions.filter((row) => !matches(row, where));
@@ -1626,4 +1638,57 @@ test("result query count is constant as student and attempt counts grow", async 
   assert.equal(result.payload.results.length, 300);
   assert.equal(h.store.resultQueries.length, 1);
   assert.equal(h.store.attemptCounts, 0);
+});
+
+test("coding analytics batches submitted response grades without loading source or hidden data", async () => {
+  const codingQuestion = baseQuestion({
+    id: 202,
+    questionText: "Return the array length.",
+    questionType: "CODING",
+    displayOrder: 1,
+    points: 4,
+    referenceSolution: "return values.Length;",
+  });
+  const attempts = [
+    submittedAttempt({ id: 44, studentId: 42 }),
+    submittedAttempt({ id: 45, studentId: 43, student: baseStudent({ id: 43 }) }),
+    submittedAttempt({ id: 46, studentId: 44, status: "IN_PROGRESS", student: baseStudent({ id: 44 }) }),
+  ];
+  const h = harness({
+    questions: [baseQuestion(), codingQuestion],
+    attempts,
+    responses: [
+      { id: 1, attemptId: 44, questionId: 202, sourceCode: "student secret one", isCorrect: true, pointsAwarded: 4 },
+      { id: 2, attemptId: 45, questionId: 202, sourceCode: "student secret two", isCorrect: false, pointsAwarded: 2 },
+      { id: 3, attemptId: 46, questionId: 202, sourceCode: "unfinished secret", isCorrect: true, pointsAwarded: 4 },
+    ],
+  });
+
+  const result = await h.call("/classrooms/7/assessments/12/results");
+
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(result.payload.codingQuestions, [{
+    questionId: 202,
+    questionOrder: 2,
+    questionLabel: "Return the array length.",
+    responseCount: 2,
+    fullyCorrectCount: 1,
+    fullyCorrectRate: 50,
+    averageAwardedPoints: 3,
+    maximumPoints: 4,
+    averagePercentageEarned: 75,
+  }]);
+  assert.equal(h.store.codingAnalyticsQueries.length, 1);
+  assert.deepEqual(h.store.codingAnalyticsQueries[0].attributes,
+    ["questionId", "isCorrect", "pointsAwarded"]);
+  assert.deepEqual(h.store.codingAnalyticsQueries[0].include[0].where, {
+    assessmentId: 12,
+    classroomId: 7,
+    status: "SUBMITTED",
+  });
+  const serialized = JSON.stringify(result.payload);
+  for (const forbidden of [
+    "sourceCode", "referenceSolution", "codingTestCases", "expectedOutput",
+    "gradingLeaseToken", "student secret", "hidden",
+  ]) assert.equal(serialized.includes(forbidden), false, forbidden);
 });

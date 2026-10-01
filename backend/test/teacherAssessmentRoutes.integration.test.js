@@ -142,12 +142,13 @@ const matches = (row, where = {}) => Object.entries(where).every(([key, value]) 
   return row[key] === value;
 });
 
-const harness = ({ assessments, questions, choices, attempts, memberships, progress } = {}) => {
+const harness = ({ assessments, questions, choices, codingTests, attempts, memberships, progress } = {}) => {
   const store = {
     classrooms: [{ id: 7, teacherId: 5 }, { id: 8, teacherId: 6 }],
     assessments: cloneRows(assessments || [baseAssessment()]),
     questions: cloneRows(questions || [baseQuestion()]),
     choices: cloneRows(choices || baseChoices()),
+    codingTests: cloneRows(codingTests || []),
     attempts: cloneRows(attempts || []),
     memberships: cloneRows(memberships || [{ classroomId: 7, studentId: 42, status: "active" }]),
     progress: cloneRows(progress || []),
@@ -174,6 +175,9 @@ const harness = ({ assessments, questions, choices, attempts, memberships, progr
         ...question,
         choices: store.choices
           .filter((choice) => choice.questionId === question.id)
+          .sort((left, right) => left.displayOrder - right.displayOrder),
+        codingTestCases: store.codingTests
+          .filter((testCase) => testCase.questionId === question.id)
           .sort((left, right) => left.displayOrder - right.displayOrder),
       })),
   });
@@ -202,7 +206,7 @@ const harness = ({ assessments, questions, choices, attempts, memberships, progr
   };
 
   const restoreSnapshot = (snapshot) => {
-    for (const key of ["assessments", "questions", "choices", "attempts"]) {
+    for (const key of ["assessments", "questions", "choices", "codingTests", "attempts"]) {
       store[key].splice(0, store[key].length, ...cloneRows(snapshot[key]));
     }
   };
@@ -213,6 +217,7 @@ const harness = ({ assessments, questions, choices, attempts, memberships, progr
       assessments: cloneRows(store.assessments),
       questions: cloneRows(store.questions),
       choices: cloneRows(store.choices),
+      codingTests: cloneRows(store.codingTests),
       attempts: cloneRows(store.attempts),
     };
     try {
@@ -339,6 +344,12 @@ const harness = ({ assessments, questions, choices, attempts, memberships, progr
     }
     const row = { id: Math.max(1000, ...store.choices.map(({ id }) => id)) + 1, ...values };
     store.choices.push(row);
+    return row;
+  });
+  stub(models.AssessmentCodingTestCase, "create", async (values) => {
+    await models.AssessmentCodingTestCase.build(values).validate();
+    const row = { id: Math.max(2000, ...store.codingTests.map(({ id }) => id)) + 1, ...values };
+    store.codingTests.push(row);
     return row;
   });
 
@@ -958,6 +969,50 @@ test("published graph save performs full validation with server-derived identifi
   });
   assert.equal(invalid.response.status, 422);
   assert.equal(invalid.payload.code, "ASSESSMENT_INVALID");
+});
+
+test("published graph cannot be converted to CODING while the player release gate is off", async () => {
+  const h = harness({ assessments: [baseAssessment({ isPublished: true, publishedAt: new Date() })] });
+  const result = await h.call("/classrooms/7/assessments/12", {
+    method: "PUT",
+    body: saveBody({ questions: [{
+      questionText: "Add", questionType: "CODING", points: 2, choices: [],
+      starterCode: "public static class Solution { public static int Add(int a) => 0; }",
+      referenceSolution: "public static class Solution { public static int Add(int a) => a + 1; }",
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int" },
+      codingTestCases: [{ visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1 }],
+    }] }),
+  });
+  assert.equal(result.response.status, 409);
+  assert.equal(result.payload.code, "CODING_PLAYER_UNAVAILABLE");
+  assert.equal(h.store.questionDeletes, 0);
+});
+
+test("authorized teacher CODING save reloads reference source and ordered public and hidden tests", async () => {
+  const h = harness();
+  const result = await h.call("/classrooms/7/assessments/12", {
+    method: "PUT",
+    body: saveBody({ questions: [{
+      questionText: "Add", questionType: "CODING", points: 2, choices: [],
+      starterCode: "public static class Solution { public static int Add(int a) => 0; }",
+      referenceSolution: "public static class Solution { public static int Add(int a) => a + 1; }",
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int" },
+      codingTestCases: [
+        { visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1.25 },
+        { visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 2.5 },
+      ],
+    }] }),
+  });
+  assert.equal(result.response.status, 200);
+  const saved = result.payload.assessment.questions[0];
+  assert.match(saved.referenceSolution, /a \+ 1/);
+  assert.deepEqual(saved.methodContract.parameterTypes, ["int"]);
+  assert.deepEqual(saved.codingTestCases.map(({ visibility, input, expectedOutput, weight }) => (
+    { visibility, input, expectedOutput, weight: Number(weight) }
+  )), [
+    { visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1.25 },
+    { visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 2.5 },
+  ]);
 });
 
 test("failed graph creation rolls back the replacement graph", async () => {

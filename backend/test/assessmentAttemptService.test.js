@@ -209,6 +209,7 @@ const useCodingGraph = (store) => {
     displayOrder: 0,
     points: 10,
     starterCode: "public static class Solution { public static int Add(int a, int b) => a + b; }",
+    referenceSolution: "public static class Solution { public static int Add(int a, int b) => a + b; }",
     codingTypeName: "Solution",
     codingMethodName: "Add",
     codingParameterTypes: ["int", "int"],

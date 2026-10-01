@@ -46,6 +46,7 @@ const QUESTION_FIELDS = new Set([
   "objectiveKey",
   "choices",
   "starterCode",
+  "referenceSolution",
   "methodContract",
   "codingTestCases",
 ]);
@@ -337,7 +338,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       rejectUnknownFields(question, QUESTION_FIELDS);
       validateInputTypes(question, {
         strings: ["questionText", "questionType"],
-        nullableStrings: ["explanation", "objectiveKey", "starterCode"],
+        nullableStrings: ["explanation", "objectiveKey", "starterCode", "referenceSolution"],
         numbers: ["points"],
         code: "INVALID_QUESTION",
       });
@@ -504,6 +505,15 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     } catch (error) {
       throw mapValidationError(error);
     }
+    if (assessment.isPublished
+      && normalizedQuestions.some((question) => question.questionType === "CODING")
+      && !isCodingAssessmentPlayerEnabled(environment)) {
+      throw new AssessmentApiError(
+        409,
+        "CODING_PLAYER_UNAVAILABLE",
+        "Coding assessments cannot be published until the coding player is available",
+      );
+    }
     if (assessment.isPublished) {
       const validationQuestions = normalizedQuestions.map((question, questionIndex) => ({
         ...question,
@@ -545,6 +555,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         explanation: question.explanation ?? null,
         objectiveKey: question.objectiveKey || null,
         starterCode: question.questionType === "CODING" ? question.starterCode : null,
+        referenceSolution: question.questionType === "CODING" ? question.referenceSolution : null,
         codingTypeName: question.questionType === "CODING" ? question.codingTypeName : null,
         codingMethodName: question.questionType === "CODING" ? question.codingMethodName : null,
         codingParameterTypes: question.questionType === "CODING" ? question.codingParameterTypes : null,

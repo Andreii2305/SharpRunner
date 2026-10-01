@@ -52,3 +52,43 @@ test("safe teacher errors never expose transport internals", () => {
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_PUBLISHED" } } }).message, "Unpublish this assessment before deleting it.");
   assert.deepEqual(service.normalizeTeacherAssessmentError({ response: { status: 403, data: { message: "SQL secret" } } }), { code: "REQUEST_FAILED", message: "You do not have permission to manage this classroom.", status: 403 });
 });
+
+test("teacher CODING DTO allowlists reference solution and grading cases only on teacher paths", async () => {
+  calls.length = 0;
+  const graph = {
+    version: 2,
+    settings: { title: "Coding", unexpected: "drop" },
+    questions: [{
+      questionText: "Add", questionType: "CODING", points: 4, explanation: null, objectiveKey: null,
+      choices: [], starterCode: "starter", referenceSolution: "teacher secret",
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int", extra: "drop" },
+      codingTestCases: [{ visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1, extra: "drop" }],
+      extra: "drop",
+    }],
+    extra: "drop",
+  };
+  await service.saveTeacherAssessment({ classroomId: 7, assessmentId: 8, graph });
+  const payload = calls[0][2];
+  assert.equal(payload.questions[0].referenceSolution, "teacher secret");
+  assert.deepEqual(Object.keys(payload.questions[0].methodContract).sort(), ["methodName", "parameterTypes", "returnType", "typeName"]);
+  assert.deepEqual(Object.keys(payload.questions[0].codingTestCases[0]).sort(), ["expectedOutput", "input", "visibility", "weight"]);
+  assert.equal(JSON.stringify(payload).includes("extra"), false);
+});
+
+test("teacher CODING response normalization drops arbitrary nested fields", () => {
+  const assessment = service.normalizeTeacherAssessmentGraph({
+    id: 8, classroomId: 7, lessonKey: "arrays", type: "POST", title: "Coding",
+    version: 2, unexpected: "drop",
+    questions: [{
+      id: 9, questionText: "Add", questionType: "CODING", points: 3,
+      starterCode: "starter", referenceSolution: "teacher secret", choices: [], extra: "drop",
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int", extra: "drop" },
+      codingTestCases: [{ id: 4, displayOrder: 0, visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1, extra: "drop" }],
+    }],
+  });
+  assert.equal(assessment.referenceSolution, undefined);
+  assert.equal(assessment.unexpected, undefined);
+  assert.equal(assessment.questions[0].extra, undefined);
+  assert.equal(assessment.questions[0].referenceSolution, "teacher secret");
+  assert.equal(JSON.stringify(assessment).includes("extra"), false);
+});

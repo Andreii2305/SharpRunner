@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  ACADEMIC_LESSONS, addChoice, addQuestion, assessmentStatus, buildSaveGraph,
-  createAssessmentDraft, moveChoice, moveQuestion, publishIssues, removeChoice,
-  removeQuestion, selectCorrectChoice, updateQuestionType,
+  ACADEMIC_LESSONS, METHOD_TYPES, addChoice, addCodingParameter, addCodingTestCase,
+  addQuestion, assessmentStatus, buildSaveGraph, createAssessmentDraft,
+  defaultValueForType, hydrateAssessmentDraft, moveChoice, moveCodingParameter,
+  moveCodingTestCase, moveQuestion, publishIssues, removeChoice,
+  removeCodingParameter, removeCodingTestCase, removeQuestion, selectCorrectChoice,
+  updateCodingParameterType, updateCodingReturnType, updateQuestionType,
 } from "./teacherAssessmentBuilderState.js";
 
 test("academic lesson scope exactly follows backend policy", () => {
@@ -62,4 +65,119 @@ test("publish summary catches obvious incompleteness without replacing backend v
   draft.questions[0].questionText = "Ready?";
   draft.questions[0].choices.forEach((choice, index) => { choice.choiceText = `Choice ${index + 1}`; });
   assert.deepEqual(publishIssues(draft), []);
+});
+
+test("CODING creation and type transitions discard incompatible state", () => {
+  let questions = addQuestion([], "MULTIPLE_CHOICE");
+  const id = questions[0].clientId;
+  questions[0].choices[0].choiceText = "Never survives";
+  questions = updateQuestionType(questions, id, "CODING");
+  assert.equal(questions[0].questionType, "CODING");
+  assert.deepEqual(questions[0].choices, []);
+  assert.deepEqual(questions[0].methodContract.parameterTypes, []);
+  assert.equal(questions[0].referenceSolution, "");
+  questions[0].referenceSolution = "teacher secret";
+  questions[0].codingTestCases = [{ clientId: "test", visibility: "HIDDEN", input: [], expectedOutput: 0, weight: 1 }];
+  questions = updateQuestionType(questions, id, "TRUE_FALSE");
+  assert.deepEqual(questions[0].choices.map(({ choiceText }) => choiceText), ["True", "False"]);
+  for (const field of ["methodContract", "starterCode", "referenceSolution", "codingTestCases"]) {
+    assert.equal(Object.hasOwn(questions[0], field), false, field);
+  }
+  questions = updateQuestionType(questions, id, "CODING");
+  questions = updateQuestionType(questions, id, "MULTIPLE_CHOICE");
+  assert.equal(questions[0].choices.length, 2);
+  assert.equal(questions[0].choices.filter(({ isCorrect }) => isCorrect).length, 1);
+});
+
+test("CODING contract and test operations keep typed inputs aligned and ordered", () => {
+  assert.deepEqual(METHOD_TYPES, ["bool", "int", "long", "string", "bool[]", "int[]", "long[]", "string[]"]);
+  let questions = addQuestion([], "CODING");
+  const id = questions[0].clientId;
+  questions = addCodingParameter(questions, id, "int");
+  questions = addCodingParameter(questions, id, "string[]");
+  questions = addCodingTestCase(questions, id, "PUBLIC");
+  questions = addCodingTestCase(questions, id, "HIDDEN");
+  assert.deepEqual(questions[0].codingTestCases[0].input, [0, []]);
+  questions = updateCodingParameterType(questions, id, 0, "bool");
+  assert.equal(questions[0].codingTestCases[0].input[0], false);
+  questions = moveCodingParameter(questions, id, 1, -1);
+  assert.deepEqual(questions[0].methodContract.parameterTypes, ["string[]", "bool"]);
+  assert.deepEqual(questions[0].codingTestCases[0].input, [[], false]);
+  questions = removeCodingParameter(questions, id, 0);
+  assert.deepEqual(questions[0].codingTestCases[0].input, [false]);
+  questions = updateCodingReturnType(questions, id, "string");
+  assert.equal(questions[0].codingTestCases[0].expectedOutput, "");
+  questions = moveCodingTestCase(questions, id, 1, -1);
+  assert.equal(questions[0].codingTestCases[0].visibility, "HIDDEN");
+  questions = removeCodingTestCase(questions, id, 1);
+  assert.equal(questions[0].codingTestCases.length, 1);
+  assert.deepEqual(defaultValueForType("int[]"), []);
+});
+
+test("CODING graph hydrates and serializes the exact teacher contract without client IDs", () => {
+  const draft = hydrateAssessmentDraft({
+    ...createAssessmentDraft("POST", "functions"), id: 9, version: 4,
+    questions: [{
+      id: 21, questionText: "Add", questionType: "CODING", points: 5,
+      explanation: null, objectiveKey: null, choices: [],
+      starterCode: "starter", referenceSolution: "secret",
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int" },
+      codingTestCases: [{ id: 31, displayOrder: 0, visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 2 }],
+    }],
+  });
+  assert.match(draft.questions[0].codingTestCases[0].clientId, /^coding-test-/);
+  const graph = buildSaveGraph(draft);
+  assert.deepEqual(graph.questions[0], {
+    questionText: "Add", questionType: "CODING", points: 5, explanation: null,
+    objectiveKey: null, choices: [], starterCode: "starter", referenceSolution: "secret",
+    methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int" },
+    codingTestCases: [{ visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 2 }],
+  });
+  assert.doesNotMatch(JSON.stringify(graph), /clientId|displayOrder/);
+});
+
+test("CODING publish issues mirror structural backend requirements", () => {
+  const draft = createAssessmentDraft("POST", "arrays");
+  draft.questions = addQuestion([], "CODING");
+  draft.questions[0].questionText = "Write a method";
+  let issues = publishIssues(draft);
+  for (const marker of ["type/class name", "method name", "starter code", "reference solution", "test case", "HIDDEN"]) {
+    assert.equal(issues.some((issue) => issue.includes(marker)), true, marker);
+  }
+  const question = draft.questions[0];
+  question.methodContract.typeName = "Solution";
+  question.methodContract.methodName = "Solve";
+  question.starterCode = "public static class Solution { public static int Solve() => 0; }";
+  question.referenceSolution = "public static class Solution { public static int Solve() => 1; }";
+  question.codingTestCases = [{ clientId: "hidden", visibility: "HIDDEN", input: [], expectedOutput: 1, weight: 0 }];
+  issues = publishIssues(draft);
+  assert.equal(issues.some((issue) => issue.includes("weight")), true);
+  question.codingTestCases[0].weight = 1;
+  assert.deepEqual(publishIssues(draft), []);
+});
+
+test("CODING publish issues catch backend byte and typed-value limits before save", () => {
+  const draft = createAssessmentDraft("POST", "arrays");
+  draft.questions = addQuestion([], "CODING");
+  const question = draft.questions[0];
+  question.questionText = "Bounded method";
+  question.methodContract = { typeName: "Solution", methodName: "Solve", parameterTypes: ["string"], returnType: "string" };
+  question.starterCode = "x".repeat(16 * 1024 + 1);
+  question.referenceSolution = "solution";
+  question.codingTestCases = [{ clientId: "hidden", visibility: "HIDDEN", input: ["ok"], expectedOutput: "x".repeat(4097), weight: 1 }];
+  let issues = publishIssues(draft);
+  assert.equal(issues.some((issue) => issue.includes("starter code") && issue.includes("16 KB")), true);
+  assert.equal(issues.some((issue) => issue.includes("expected output")), true);
+  question.starterCode = "starter";
+  question.referenceSolution = "😀".repeat(4097);
+  issues = publishIssues(draft);
+  assert.equal(issues.some((issue) => issue.includes("reference solution") && issue.includes("16 KB")), true);
+  question.referenceSolution = "solution";
+  question.codingTestCases[0].input = ["x".repeat(16 * 1024)];
+  issues = publishIssues(draft);
+  assert.equal(issues.some((issue) => issue.includes("test inputs") && issue.includes("16 KB")), true);
+  question.codingTestCases[0].input = ["ok"];
+  question.codingTestCases[0].weight = 1.234;
+  issues = publishIssues(draft);
+  assert.equal(issues.some((issue) => issue.includes("weight") && issue.includes("decimal")), true);
 });

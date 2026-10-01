@@ -108,7 +108,7 @@ const validateQuestionPersistence = (questionInput) => {
   const choices = (question.choices || []).map(plain);
   if (question.questionType === QUESTION_TYPES.CODING) {
     if (choices.length) throw new TypeError("CODING questions cannot have choices");
-    for (const field of ["starterCode", "codingTypeName", "codingMethodName", "codingReturnType"]) {
+    for (const field of ["starterCode", "referenceSolution", "codingTypeName", "codingMethodName", "codingReturnType"]) {
       if (question[field] != null && typeof question[field] !== "string") {
         throw new TypeError("CODING configuration is invalid");
       }
@@ -123,21 +123,30 @@ const validateQuestionPersistence = (questionInput) => {
       && Buffer.byteLength(question.starterCode, "utf8") > MAX_SOURCE_BYTES) {
       throw new TypeError("CODING starter source is too large");
     }
+    if (typeof question.referenceSolution === "string"
+      && Buffer.byteLength(question.referenceSolution, "utf8") > MAX_SOURCE_BYTES) {
+      throw new TypeError("CODING reference solution is too large");
+    }
     const testCases = question.codingTestCases || [];
     if (testCases.length > 10) throw new TypeError("CODING cannot exceed 10 grading tests");
     if (Buffer.byteLength(JSON.stringify(testCases), "utf8") > 32 * 1024) {
       throw new TypeError("CODING grading tests are too large");
     }
     testCases.forEach((testCase) => {
+      const weight = Number(testCase?.weight);
       if (!testCase || typeof testCase !== "object" || Array.isArray(testCase)
         || !["PUBLIC", "HIDDEN"].includes(testCase.visibility)
         || !Array.isArray(testCase.input)
         || !Object.hasOwn(testCase, "expectedOutput")
-        || !Number.isFinite(Number(testCase.weight)) || Number(testCase.weight) <= 0) {
+        || !Number.isFinite(weight) || weight <= 0) {
         throw new TypeError("CODING test case is invalid");
+      }
+      if (weight > 99999999.99 || Math.round(weight * 100) / 100 !== weight) {
+        throw new TypeError("CODING test weight must have at most two decimal places");
       }
     });
     const completeContract = typeof question.starterCode === "string"
+      && typeof question.referenceSolution === "string"
       && typeof question.codingTypeName === "string"
       && typeof question.codingMethodName === "string"
       && Array.isArray(question.codingParameterTypes)
@@ -147,7 +156,7 @@ const validateQuestionPersistence = (questionInput) => {
     return { question, choices, pointUnits: units };
   }
   for (const field of [
-    "starterCode", "codingTypeName", "codingMethodName", "codingParameterTypes",
+    "starterCode", "referenceSolution", "codingTypeName", "codingMethodName", "codingParameterTypes",
     "codingReturnType", "methodContract", "codingTestCases",
   ]) {
     const value = question[field];

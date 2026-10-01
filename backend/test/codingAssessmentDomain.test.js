@@ -16,6 +16,7 @@ const codingQuestion = (overrides = {}) => ({
   questionType: "CODING",
   points: 10,
   starterCode: "public static class Solution { public static int Add(int a, int b) => 0; }",
+  referenceSolution: "public static class Solution { public static int Add(int a, int b) => a + b; }",
   codingTypeName: "Solution",
   codingMethodName: "Add",
   codingParameterTypes: ["int", "int"],
@@ -38,6 +39,18 @@ test("CODING publish validation accepts the METHOD allowlist and requires hidden
     () => validateCodingQuestion(codingQuestion({ codingTestCases: [codingQuestion().codingTestCases[0]] }), { publish: true }),
     /hidden/i,
   );
+  assert.throws(
+    () => validateCodingQuestion(codingQuestion({ referenceSolution: "" }), { publish: true }),
+    /reference/i,
+  );
+  assert.throws(
+    () => validateCodingQuestion(codingQuestion({
+      codingTestCases: codingQuestion().codingTestCases.map((testCase, index) => (
+        index === 0 ? { ...testCase, weight: 1.234 } : testCase
+      )),
+    }), { publish: true }),
+    /weight/i,
+  );
 });
 
 test("student CODING graph exposes public examples but recursively excludes hidden grading data", () => {
@@ -55,6 +68,7 @@ test("student CODING graph exposes public examples but recursively excludes hidd
   assert.doesNotMatch(serialized, /HIDDEN/);
   assert.doesNotMatch(serialized, /\[5,7\]/);
   assert.doesNotMatch(serialized, /"weight"/);
+  assert.doesNotMatch(serialized, /a \+ b/);
 });
 
 test("coding grading awards deterministic weighted partial credit", async () => {
@@ -168,4 +182,5 @@ test("authorized teacher graph retains complete public and hidden coding configu
   assert.equal(serialized.questions[0].codingTestCases[1].visibility, "HIDDEN");
   assert.equal(serialized.questions[0].codingTestCases[1].expectedOutput, 12);
   assert.deepEqual(serialized.questions[0].methodContract.parameterTypes, ["int", "int"]);
+  assert.match(serialized.questions[0].referenceSolution, /a \+ b/);
 });

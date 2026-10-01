@@ -4,6 +4,9 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.jsx", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.module.css", import.meta.url), "utf8");
+const codingEditor = fs.readFileSync(new URL("./CodingQuestionEditor.jsx", import.meta.url), "utf8");
+const codeEditor = fs.readFileSync(new URL("./AssessmentCodeEditor.jsx", import.meta.url), "utf8");
+const codingPreview = fs.readFileSync(new URL("./CodingQuestionPreview.jsx", import.meta.url), "utf8");
 
 test("builder exposes labelled settings, question controls, preview, and lifecycle confirmations", () => {
   for (const marker of ["Assessment builder", "Passing percentage", "Maximum attempts", "Answer review policy", "Add question", "Move question up", "Move choice down", "Preview", "Publish assessment?", "Delete assessment?"]) {
@@ -27,6 +30,11 @@ test("attempt locks disable writes and direct route identity drives requests", (
   assert.match(source, /assessmentId/);
 });
 
+test("question type transitions are draft-only", () => {
+  assert.match(source, /published=\{draft\.isPublished\}/);
+  assert.match(source, /disabled=\{disabled \|\| published\} value=\{question\.questionType\}/);
+});
+
 test("desktop builder keeps scope and assessment selectors compact above the editor", () => {
   assert.match(styles, /\.main\s*\{[^}]*padding:\s*18px\s+clamp\(18px,\s*3vw,\s*44px\)\s+48px/s);
   assert.match(styles, /\.pageHeader\s*\{[^}]*margin-bottom:\s*14px/s);
@@ -39,4 +47,28 @@ test("page shell keeps the builder beside the full-height sidebar instead of bel
   assert.match(styles, /\.root\s*\{[^}]*display:\s*flex[^}]*align-items:\s*flex-start/s);
   assert.match(styles, /\.main\s*\{[^}]*flex:\s*1[^}]*margin-left:\s*0/s);
   assert.doesNotMatch(styles, /@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.main\s*\{[^}]*margin-left/s);
+});
+
+test("coding builder exposes fixed C# contract, typed tests, weights, and teacher-only source", () => {
+  assert.match(source, /value="CODING">Coding/);
+  for (const marker of ["Coding", "C#", "Type\/Class name", "Method name", "Return type", "Signature preview", "Starter code", "Reference solution", "teacher-only", "PUBLIC", "HIDDEN", "Expected output", "Weight", "Add test case"]) {
+    assert.equal(codingEditor.includes(marker), true, marker);
+  }
+  assert.match(codeEditor, /@monaco-editor\/react/);
+  assert.doesNotMatch(`${source}${codingEditor}${codeEditor}`, /localStorage|sessionStorage|indexedDB|BroadcastChannel|console\./);
+});
+
+test("coding preview separates student-visible examples from teacher-only grading configuration", () => {
+  assert.match(source, /STUDENT PREVIEW/);
+  assert.match(source, /TEACHER-ONLY GRADING CONFIGURATION/);
+  assert.match(codingPreview, /visibility === "PUBLIC"/);
+  assert.match(codingPreview, /visibility === "HIDDEN"/);
+});
+
+test("coding controls stack responsively and preserve usable editor height", () => {
+  assert.match(styles, /\.codingGrid/);
+  assert.match(styles, /\.testCaseGrid/);
+  assert.match(styles, /min-height:\s*240px/);
+  assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.codingGrid/);
+  assert.match(styles, /@media\s*\(max-width:\s*640px\)[\s\S]*\.testCaseGrid/);
 });

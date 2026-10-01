@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { FiArrowDown, FiArrowUp, FiCheck, FiEye, FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
+import { FiArrowDown, FiArrowUp, FiEye, FiPlus, FiSave, FiTrash2 } from "react-icons/fi";
 import Sidebar from "../../../Components/SideBar/Sidebar.jsx";
 import ConfirmModal from "../../../Components/ConfirmModal/ConfirmModal.jsx";
+import CodingQuestionEditor from "./CodingQuestionEditor.jsx";
+import { StudentCodingPreview, TeacherCodingConfigurationPreview } from "./CodingQuestionPreview.jsx";
 import {
   createTeacherAssessment, deleteTeacherAssessment, listTeacherAssessments,
   listTeacherClassrooms, loadTeacherAssessment, normalizeTeacherAssessmentError,
@@ -27,17 +29,18 @@ function PreviewDialog({ draft, onClose }) {
     <section className={styles.previewDialog} role="dialog" aria-modal="true" aria-labelledby="assessment-preview-title" onClick={(event) => event.stopPropagation()}>
       <header><div><span>Teacher Preview</span><h2 id="assessment-preview-title">{draft.title || "Untitled assessment"}</h2></div><button type="button" onClick={onClose} aria-label="Close preview">×</button></header>
       {draft.instructions && <p>{draft.instructions}</p>}
+      <h3 className={styles.previewSectionLabel}>STUDENT PREVIEW</h3>
       {draft.questions.length ? draft.questions.map((question, index) => <article key={question.clientId}>
         <h3>{index + 1}. {question.questionText || "Untitled question"} <small>{question.points} point{Number(question.points) === 1 ? "" : "s"}</small></h3>
-        <ul>{question.choices.map((choice) => <li key={choice.clientId} className={choice.isCorrect ? styles.correctPreview : ""}>{choice.choiceText || "Empty choice"}{choice.isCorrect && <strong><FiCheck /> Correct answer</strong>}</li>)}</ul>
-        {question.explanation && <p><b>Explanation:</b> {question.explanation}</p>}
+        {question.questionType === "CODING" ? <StudentCodingPreview question={question} /> : <ul>{question.choices.map((choice) => <li key={choice.clientId}>{choice.choiceText || "Empty choice"}</li>)}</ul>}
       </article>) : <p>No questions in this draft.</p>}
+      {draft.questions.some((question) => question.questionType === "CODING") && <section className={styles.teacherOnlyPreview}><h3>TEACHER-ONLY GRADING CONFIGURATION</h3>{draft.questions.filter((question) => question.questionType === "CODING").map((question, index) => <TeacherCodingConfigurationPreview key={question.clientId} question={question} index={index} />)}</section>}
       <footer><button type="button" onClick={onClose}>Close preview</button></footer>
     </section>
   </div>;
 }
 
-function QuestionEditor({ question, index, count, disabled, onChange, onMove, onRemove }) {
+function QuestionEditor({ question, index, count, disabled, published, onChange, onMove, onRemove }) {
   const replace = (changes) => onChange({ ...question, ...changes });
   const updateChoice = (choiceId, changes) => replace({ choices: question.choices.map((item) => item.clientId === choiceId ? { ...item, ...changes } : item) });
   return <article className={styles.questionCard}>
@@ -48,12 +51,12 @@ function QuestionEditor({ question, index, count, disabled, onChange, onMove, on
     </div></header>
     <div className={styles.fieldGrid}>
       <label className={styles.wide}>Question text<textarea disabled={disabled} value={question.questionText} onChange={(event) => replace({ questionText: event.target.value })} /></label>
-      <label>Question type<select disabled={disabled} value={question.questionType} onChange={(event) => onChange(null, event.target.value)}><option value="MULTIPLE_CHOICE">Multiple choice</option><option value="TRUE_FALSE">True / False</option></select></label>
+      <label>Question type<select disabled={disabled || published} value={question.questionType} onChange={(event) => onChange(null, event.target.value)}><option value="MULTIPLE_CHOICE">Multiple choice</option><option value="TRUE_FALSE">True / False</option><option value="CODING">Coding</option></select>{published && <small>Unpublish before changing question type.</small>}</label>
       <label>Points<input disabled={disabled} type="number" min="0.01" step="0.01" value={question.points} onChange={(event) => replace({ points: event.target.value })} /></label>
       <label>Objective key <small>optional, lowercase kebab-case</small><input disabled={disabled} value={question.objectiveKey} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" onChange={(event) => replace({ objectiveKey: event.target.value })} /></label>
       <label className={styles.wide}>Explanation <small>shown only under the configured review policy</small><textarea disabled={disabled} value={question.explanation} onChange={(event) => replace({ explanation: event.target.value })} /></label>
     </div>
-    <fieldset disabled={disabled} className={styles.choiceFieldset}><legend>Answer choices</legend>
+    {question.questionType === "CODING" ? <CodingQuestionEditor question={question} disabled={disabled} onChange={onChange} /> : <fieldset disabled={disabled} className={styles.choiceFieldset}><legend>Answer choices</legend>
       {question.choices.map((choice, choiceIndex) => <div className={styles.choiceRow} key={choice.clientId}>
         <input type="radio" name={`correct-${question.clientId}`} checked={choice.isCorrect} onChange={() => replace({ choices: selectCorrectChoice([question], question.clientId, choice.clientId)[0].choices })} aria-label={`Mark choice ${choiceIndex + 1} correct`} />
         <label><span>Choice {choiceIndex + 1}</span><input value={choice.choiceText} readOnly={question.questionType === "TRUE_FALSE"} onChange={(event) => updateChoice(choice.clientId, { choiceText: event.target.value })} /></label>
@@ -62,7 +65,7 @@ function QuestionEditor({ question, index, count, disabled, onChange, onMove, on
         {question.questionType === "MULTIPLE_CHOICE" && <button type="button" disabled={question.choices.length <= 2} onClick={() => replace({ choices: removeChoice([question], question.clientId, choice.clientId)[0].choices })} aria-label={`Remove choice ${choiceIndex + 1}`}><FiTrash2 /></button>}
       </div>)}
       {question.questionType === "MULTIPLE_CHOICE" && <button type="button" className={styles.secondaryButton} disabled={question.choices.length >= 10} onClick={() => replace({ choices: addChoice([question], question.clientId)[0].choices })}><FiPlus /> Add choice</button>}
-    </fieldset>
+    </fieldset>}
   </article>;
 }
 
@@ -214,8 +217,8 @@ export default function TeacherAssessmentBuilderPage() {
         </div>
       </section>
       <section className={styles.questionsSection}><div className={styles.sectionHeading}><div><span>Assessment graph</span><h2>Questions</h2></div><button type="button" className={styles.secondaryButton} disabled={locked || draft.questions.length >= 100} onClick={() => changeDraft((current) => ({ ...current, questions: addQuestion(current.questions) }))}><FiPlus /> Add question</button></div>
-        {draft.questions.map((question, index) => <QuestionEditor key={question.clientId} question={question} index={index} count={draft.questions.length} disabled={locked} onChange={(next, type) => changeDraft((current) => ({ ...current, questions: type ? updateQuestionType(current.questions, question.clientId, type) : current.questions.map((item) => item.clientId === question.clientId ? next : item) }))} onMove={(delta) => changeDraft((current) => ({ ...current, questions: moveQuestion(current.questions, index, delta) }))} onRemove={() => changeDraft((current) => ({ ...current, questions: removeQuestion(current.questions, question.clientId) }))} />)}
-        {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice or true/false questions. Drafts may remain incomplete until publication.</p></div>}
+        {draft.questions.map((question, index) => <QuestionEditor key={question.clientId} question={question} index={index} count={draft.questions.length} disabled={locked} published={draft.isPublished} onChange={(next, type) => changeDraft((current) => ({ ...current, questions: type ? updateQuestionType(current.questions, question.clientId, type) : current.questions.map((item) => item.clientId === question.clientId ? next : item) }))} onMove={(delta) => changeDraft((current) => ({ ...current, questions: moveQuestion(current.questions, index, delta) }))} onRemove={() => changeDraft((current) => ({ ...current, questions: removeQuestion(current.questions, question.clientId) }))} />)}
+        {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice, true/false, or coding questions. Drafts may remain incomplete until publication.</p></div>}
       </section>
       <section className={styles.publishCard}><div><h2>Publication</h2>{issues.length ? <><p>Resolve these obvious issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div><div className={styles.publishActions}><button type="button" onClick={() => setPreview(true)}><FiEye /> Preview</button>{draft.isPublished ? <button type="button" disabled={locked || dirty} onClick={() => setConfirmAction("unpublish")}>Unpublish</button> : <button type="button" className={styles.primaryButton} disabled={locked || dirty || issues.length > 0} onClick={() => setConfirmAction("publish")}>Publish</button>}{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={locked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete</button>}</div></section>
     </>}

@@ -20,6 +20,7 @@ const AssessmentQuestion = sequelize.define("AssessmentQuestion", {
   explanation: { type: DataTypes.TEXT, allowNull: true },
   objectiveKey: { type: DataTypes.STRING(ASSESSMENT_LIMITS.objectiveKeyLength), allowNull: true },
   starterCode: { type: DataTypes.TEXT, allowNull: true },
+  referenceSolution: { type: DataTypes.TEXT, allowNull: true },
   codingTypeName: { type: DataTypes.STRING(128), allowNull: true },
   codingMethodName: { type: DataTypes.STRING(64), allowNull: true },
   codingParameterTypes: { type: DataTypes.JSONB, allowNull: true },

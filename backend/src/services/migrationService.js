@@ -52,6 +52,7 @@ const migrations = [
   ["20260922000000_hint_purchase_event_cost", sqlMigration("20260922000000_hint_purchase_event_cost.sql")],
   ["20260925000000_lesson_assessments", sqlMigration("20260925000000_lesson_assessments.sql")],
   ["20261001000000_coding_assessments", sqlMigration("20261001000000_coding_assessments.sql")],
+  ["20261001010000_coding_reference_solution", sqlMigration("20261001010000_coding_reference_solution.sql")],
 ];
 
 const runMigrations = async () => {

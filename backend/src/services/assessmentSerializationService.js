@@ -268,6 +268,7 @@ const serializeTeacherEditor = (assessmentInput, metadata = {}) => {
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === "CODING" ? {
           starterCode: question.starterCode ?? null,
+          referenceSolution: question.referenceSolution ?? null,
           methodContract: {
             typeName: question.codingTypeName ?? null,
             methodName: question.codingMethodName ?? null,

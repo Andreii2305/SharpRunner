@@ -180,6 +180,16 @@ test("draft validation permits incomplete graphs but enforces persistence-safe f
       choices: [{ choiceText: "Invalid choice", isCorrect: null }],
     }],
   }), /correct/i);
+  assert.throws(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [{
+      questionText: "Incomplete coding draft",
+      questionType: "CODING",
+      points: 1,
+      choices: [],
+      codingTestCases: [{ visibility: "PUBLIC", input: [], expectedOutput: 1, weight: 1.234 }],
+    }],
+  }), /weight/i);
 });
 
 test("objective keys use the minimal lowercase kebab-case contract", () => {

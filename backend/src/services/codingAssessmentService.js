@@ -39,6 +39,11 @@ const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
     || Buffer.byteLength(question.starterCode, "utf8") > MAX_SOURCE_BYTES) {
     throw new TypeError("Coding starter source is invalid or too large");
   }
+  if (typeof question.referenceSolution !== "string"
+    || (publish && !question.referenceSolution.trim())
+    || Buffer.byteLength(question.referenceSolution, "utf8") > MAX_SOURCE_BYTES) {
+    throw new TypeError("Coding reference solution is invalid or too large");
+  }
   const tests = sortedTests(question);
   if (publish && !tests.length) throw new TypeError("CODING requires grading tests");
   if (publish && !tests.some((testCase) => testCase.visibility === "HIDDEN")) {
@@ -49,14 +54,21 @@ const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
     if (!Number.isInteger(Number(testCase.displayOrder)) || Number(testCase.displayOrder) < 0
       || Number(testCase.displayOrder) !== index) throw new TypeError("Coding test order is invalid");
     if (!(["PUBLIC", "HIDDEN"].includes(testCase.visibility))) throw new TypeError("Coding test visibility is invalid");
-    if (!Number.isFinite(Number(testCase.weight)) || Number(testCase.weight) <= 0) {
-      throw new TypeError("Coding test weight must be positive");
+    const weight = Number(testCase.weight);
+    if (!Number.isFinite(weight) || weight <= 0 || weight > 99999999.99
+      || Math.round(weight * 100) / 100 !== weight) {
+      throw new TypeError("Coding test weight must be positive with at most two decimal places");
     }
-    totalWeight += Number(testCase.weight);
+    totalWeight += weight;
   });
   try {
     validateMethodExecutionRequest({
       source: question.starterCode || "public static class Placeholder {}",
+      contract: contractForQuestion(question),
+      inputs: tests.length ? tests.map((testCase) => testCase.input) : [[]],
+    });
+    validateMethodExecutionRequest({
+      source: question.referenceSolution || "public static class Placeholder {}",
       contract: contractForQuestion(question),
       inputs: tests.length ? tests.map((testCase) => testCase.input) : [[]],
     });

@@ -5,6 +5,59 @@ const segment = (value) => encodeURIComponent(String(value));
 const config = (signal) => ({ headers: getAuthHeaders(), ...(signal ? { signal } : {}) });
 const base = (classroomId) => `/api/teacher/classrooms/${segment(classroomId)}/assessments`;
 
+const pick = (source = {}, keys = []) => Object.fromEntries(
+  keys.filter((key) => Object.hasOwn(source, key)).map((key) => [key, source[key]]),
+);
+const SETTING_FIELDS = [
+  "title", "instructions", "isRequired", "passingPercentage", "maxAttempts",
+  "requirePassingForCompletion", "showScoreAfterSubmission", "answerReviewPolicy",
+  "shuffleQuestions", "shuffleChoices",
+];
+
+export const serializeTeacherAssessmentGraph = (graph = {}) => ({
+  version: Number(graph.version),
+  settings: pick(graph.settings, SETTING_FIELDS),
+  questions: (graph.questions ?? []).map((question) => ({
+    ...pick(question, ["questionText", "questionType", "points", "explanation", "objectiveKey"]),
+    choices: (question.choices ?? []).map((choice) => pick(choice, ["choiceText", "isCorrect"])),
+    ...(question.questionType === "CODING" ? {
+      starterCode: question.starterCode ?? "",
+      referenceSolution: question.referenceSolution ?? "",
+      methodContract: {
+        ...pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]),
+      },
+      codingTestCases: (question.codingTestCases ?? []).map((testCase) => (
+        pick(testCase, ["visibility", "input", "expectedOutput", "weight"])
+      )),
+    } : {}),
+  })),
+});
+
+const ASSESSMENT_EDITOR_FIELDS = [
+  "id", "classroomId", "lessonKey", "type", "title", "instructions", "isRequired",
+  "isPublished", "publishedAt", "passingPercentage", "maxAttempts", "gradeCalculation",
+  "requirePassingForCompletion", "showScoreAfterSubmission", "answerReviewPolicy",
+  "shuffleQuestions", "shuffleChoices", "version", "attemptsExist", "structureLocked",
+];
+export const normalizeTeacherAssessmentGraph = (assessment = {}) => ({
+  ...pick(assessment, ASSESSMENT_EDITOR_FIELDS),
+  questions: (assessment.questions ?? []).map((question) => ({
+    ...pick(question, ["id", "questionText", "questionType", "displayOrder", "points", "explanation", "objectiveKey"]),
+    choices: (question.choices ?? []).map((choice) => pick(choice, ["id", "choiceText", "displayOrder", "isCorrect"])),
+    ...(question.questionType === "CODING" ? {
+      starterCode: question.starterCode ?? "",
+      referenceSolution: question.referenceSolution ?? "",
+      methodContract: pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]),
+      codingTestCases: (question.codingTestCases ?? []).map((testCase) => (
+        pick(testCase, ["id", "displayOrder", "visibility", "input", "expectedOutput", "weight"])
+      )),
+    } : {}),
+  })),
+});
+const normalizeEditorPayload = (payload) => payload?.assessment
+  ? { ...payload, assessment: normalizeTeacherAssessmentGraph(payload.assessment) }
+  : payload;
+
 export const listTeacherClassrooms = async ({ signal } = {}) => {
   const response = await axios.get(buildApiUrl("/api/teacher/classrooms"), config(signal));
   return response.data;
@@ -20,7 +73,7 @@ export const listTeacherAssessments = async ({ classroomId, lessonKey, signal })
 
 export const createTeacherAssessment = async ({ classroomId, signal, ...input }) => {
   const response = await axios.post(buildApiUrl(base(classroomId)), input, config(signal));
-  return response.data;
+  return normalizeEditorPayload(response.data);
 };
 
 export const loadTeacherAssessment = async ({ classroomId, assessmentId, signal }) => {
@@ -28,7 +81,7 @@ export const loadTeacherAssessment = async ({ classroomId, assessmentId, signal 
     buildApiUrl(`${base(classroomId)}/${segment(assessmentId)}`),
     config(signal),
   );
-  return response.data;
+  return normalizeEditorPayload(response.data);
 };
 
 export const getTeacherAssessmentResults = async ({ classroomId, assessmentId, signal }) => {
@@ -42,10 +95,10 @@ export const getTeacherAssessmentResults = async ({ classroomId, assessmentId, s
 export const saveTeacherAssessment = async ({ classroomId, assessmentId, graph, signal }) => {
   const response = await axios.put(
     buildApiUrl(`${base(classroomId)}/${segment(assessmentId)}`),
-    graph,
+    serializeTeacherAssessmentGraph(graph),
     config(signal),
   );
-  return response.data;
+  return normalizeEditorPayload(response.data);
 };
 
 const action = async ({ classroomId, assessmentId, version, name, signal }) => {
@@ -71,6 +124,7 @@ const SAFE_MESSAGES = Object.freeze({
   ASSESSMENT_LOCKED: "This assessment is locked because a student attempt exists.",
   ASSESSMENT_PUBLISHED: "Unpublish this assessment before deleting it.",
   ASSESSMENT_INVALID: "Complete the assessment before publishing it.",
+  CODING_PLAYER_UNAVAILABLE: "Coding questions can be saved as drafts, but publishing remains unavailable until the student coding player is released.",
   INVALID_QUESTION: "Check the question text, points, objective key, and choices.",
   INVALID_CHOICE: "Each question needs valid choices and exactly one correct answer.",
   FORBIDDEN: "You do not have permission to manage this classroom.",

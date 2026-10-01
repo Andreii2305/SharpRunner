@@ -187,6 +187,17 @@ test("coding assessment migration is additive, protected, and registered after t
   assert.match(sql, /assessment_coding_tests_question_order/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261001000000_coding_assessments");
-  assert.equal(names.at(-2), "20260925000000_lesson_assessments");
+  assert.equal(names.at(-2), "20261001000000_coding_assessments");
+  assert.equal(names.at(-3), "20260925000000_lesson_assessments");
+});
+
+test("teacher-only coding reference solution migration is additive and size-bounded", () => {
+  const path = require("path").join(__dirname, "../../supabase/migrations/20261001010000_coding_reference_solution.sql");
+  const sql = fs.readFileSync(path, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "referenceSolution" TEXT/);
+  assert.match(sql, /octet_length\("referenceSolution"\) <= 16384/);
+  assert.doesNotMatch(sql, /DROP COLUMN|DROP TABLE/i);
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261001010000_coding_reference_solution");
+  assert.equal(names.at(-2), "20261001000000_coding_assessments");
 });

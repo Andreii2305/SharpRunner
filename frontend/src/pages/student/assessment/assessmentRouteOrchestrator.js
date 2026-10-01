@@ -122,7 +122,7 @@ const verifyAttemptEnvelope = (route, assessmentId, envelope, expectedAttemptId 
     || assessment.lessonKey !== route.lessonKey
     || String(assessment.type).toUpperCase() !== route.type
     || !isPositiveInteger(attempt.attemptId)
-    || attempt.status !== "IN_PROGRESS"
+    || !["IN_PROGRESS", "GRADING"].includes(attempt.status)
     || (expectedAttemptId !== null && Number(attempt.attemptId) !== expectedAttemptId)
   ) {
     throw stateMismatch();

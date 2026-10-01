@@ -392,3 +392,130 @@ test("failed background revalidation keeps clean work editable and exposes retry
   assert.equal(failed.externalSyncStatus, "error");
   assert.strictEqual(failed.externalSyncError, error);
 });
+
+const codingEnvelope = (responses = []) => ({
+  attempt: {
+    ...activeEnvelope.attempt,
+    responses,
+  },
+  assessment: {
+    ...activeEnvelope.assessment,
+    questions: [{
+      id: 201,
+      questionText: "Return the array length.",
+      questionType: "CODING",
+      points: 3,
+      objectiveKey: "array-length",
+      starterCode: "return 0;",
+      language: "csharp",
+    }],
+  },
+});
+
+test("coding hydration distinguishes unsaved starter code from persisted empty source", () => {
+  const starter = assessmentReducer(
+    createAssessmentState(context),
+    action("ATTEMPT_LOADED", { payload: codingEnvelope() }),
+  );
+  assert.equal(starter.sourceByQuestion[201], "return 0;");
+  assert.equal(starter.savedSourceByQuestion[201], undefined);
+  assert.equal(starter.responseExistsByQuestion[201], undefined);
+  assert.deepEqual(getAnswerSummary(starter), {
+    total: 1,
+    answered: 0,
+    unansweredQuestionIds: [201],
+  });
+  assert.deepEqual(getSubmissionReadiness(starter).dirtyQuestionIds, [201]);
+
+  const persistedEmpty = assessmentReducer(
+    createAssessmentState(context),
+    action("ATTEMPT_LOADED", {
+      payload: codingEnvelope([{ questionId: 201, sourceCode: "" }]),
+    }),
+  );
+  assert.equal(persistedEmpty.sourceByQuestion[201], "");
+  assert.equal(persistedEmpty.savedSourceByQuestion[201], "");
+  assert.equal(persistedEmpty.responseExistsByQuestion[201], true);
+  assert.equal(getSubmissionReadiness(persistedEmpty).ready, true);
+  assert.equal(getAnswerSummary(persistedEmpty).answered, 0);
+});
+
+test("coding source becomes answered only after its matching server save succeeds", () => {
+  const loaded = assessmentReducer(
+    createAssessmentState(context),
+    action("ATTEMPT_LOADED", { payload: codingEnvelope() }),
+  );
+  const changed = assessmentReducer(loaded, action("SOURCE_CHANGED", {
+    questionId: 201,
+    sourceCode: "return values.Length;",
+  }));
+  assert.equal(changed.saveStateByQuestion[201].status, "dirty");
+  assert.equal(getAnswerSummary(changed).answered, 0);
+
+  const stale = assessmentReducer(changed, action("SAVE_SUCCEEDED", {
+    questionId: 201,
+    sourceCode: "return old;",
+    revision: 1,
+  }));
+  assert.strictEqual(stale, changed);
+
+  const saved = assessmentReducer(changed, action("SAVE_SUCCEEDED", {
+    questionId: 201,
+    sourceCode: "return values.Length;",
+    revision: 1,
+  }));
+  assert.equal(saved.savedSourceByQuestion[201], "return values.Length;");
+  assert.equal(saved.responseExistsByQuestion[201], true);
+  assert.equal(getAnswerSummary(saved).answered, 1);
+  assert.equal(getSubmissionReadiness(saved).ready, true);
+});
+
+test("editing coding source clears public-run feedback for the previous source", () => {
+  const loaded = assessmentReducer(
+    createAssessmentState(context),
+    action("ATTEMPT_LOADED", { payload: codingEnvelope([{ questionId: 201, sourceCode: "return 1;" }]) }),
+  );
+  const withRun = assessmentReducer(loaded, action("CODING_RUN_SUCCEEDED", {
+    questionId: 201,
+    result: { status: "SUCCESS", tests: [{ passed: true }] },
+  }));
+  assert.equal(withRun.codingRunByQuestion[201].status, "succeeded");
+
+  const edited = assessmentReducer(withRun, action("SOURCE_CHANGED", {
+    questionId: 201,
+    sourceCode: "return 2;",
+  }));
+  assert.equal(edited.codingRunByQuestion[201], undefined);
+});
+
+test("grading state is immutable, refresh-recoverable, and can return to retryable in-progress", () => {
+  const loaded = activeState();
+  const grading = assessmentReducer(loaded, action("SUBMIT_GRADING_STARTED"));
+  assert.equal(grading.submitStatus, "grading");
+  assert.equal(grading.attempt.status, "GRADING");
+
+  const pending = assessmentReducer(grading, action("SUBMIT_GRADING_PENDING"));
+  assert.equal(pending.submitStatus, "grading-pending");
+  const pollFailed = assessmentReducer(pending, action("SUBMIT_GRADING_POLL_FAILED", {
+    error: { code: "NETWORK_ERROR" },
+  }));
+  assert.equal(pollFailed.submitStatus, "grading-error");
+  assert.equal(pollFailed.attempt.status, "GRADING");
+
+  const released = assessmentReducer(pollFailed, action("SUBMIT_GRADING_RELEASED", {
+    error: { code: "ATTEMPT_IN_PROGRESS" },
+  }));
+  assert.equal(released.submitStatus, "error");
+  assert.equal(released.attempt.status, "IN_PROGRESS");
+
+  const refreshed = assessmentReducer(
+    createAssessmentState(context),
+    action("ATTEMPT_LOADED", {
+      payload: {
+        ...activeEnvelope,
+        attempt: { ...activeEnvelope.attempt, status: "GRADING" },
+      },
+    }),
+  );
+  assert.equal(refreshed.submitStatus, "grading");
+});

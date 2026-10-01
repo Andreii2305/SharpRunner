@@ -14,6 +14,10 @@ const codingMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261001000000_coding_assessments.sql",
 );
+const gradingLeaseMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261001020000_assessment_grading_lease.sql",
+);
 
 test("assessment models keep results normalized and out of level progress", () => {
   for (const name of [
@@ -46,6 +50,7 @@ test("assessment models keep results normalized and out of level progress", () =
       "assessmentVersion", "startedAt", "submittedAt", "pointsEarned", "maxPoints",
       "percentage", "correctCount", "questionCount", "passed",
       "passingPercentageApplied", "questionOrder", "choiceOrder", "submissionKey",
+      "gradingLeaseToken", "gradingLeaseExpiresAt",
     ],
     AssessmentResponse: [
       "attemptId", "questionId", "selectedChoiceId", "sourceCode", "isCorrect", "pointsAwarded",
@@ -187,8 +192,8 @@ test("coding assessment migration is additive, protected, and registered after t
   assert.match(sql, /assessment_coding_tests_question_order/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-2), "20261001000000_coding_assessments");
-  assert.equal(names.at(-3), "20260925000000_lesson_assessments");
+  assert.equal(names.at(-3), "20261001000000_coding_assessments");
+  assert.equal(names.at(-4), "20260925000000_lesson_assessments");
 });
 
 test("teacher-only coding reference solution migration is additive and size-bounded", () => {
@@ -198,6 +203,20 @@ test("teacher-only coding reference solution migration is additive and size-boun
   assert.match(sql, /octet_length\("referenceSolution"\) <= 16384/);
   assert.doesNotMatch(sql, /DROP COLUMN|DROP TABLE/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261001010000_coding_reference_solution");
-  assert.equal(names.at(-2), "20261001000000_coding_assessments");
+  assert.equal(names.at(-2), "20261001010000_coding_reference_solution");
+  assert.equal(names.at(-3), "20261001000000_coding_assessments");
+});
+
+test("grading lease migration is additive, constrained, and registered last", () => {
+  assert.equal(fs.existsSync(gradingLeaseMigrationPath), true);
+  const sql = fs.readFileSync(gradingLeaseMigrationPath, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "gradingLeaseToken" VARCHAR\(96\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "gradingLeaseExpiresAt" TIMESTAMPTZ/);
+  assert.match(sql, /'IN_PROGRESS', 'GRADING', 'SUBMITTED'/);
+  assert.match(sql, /assessment_attempt_grading_state_valid/);
+  assert.match(sql, /"status" = 'GRADING'[\s\S]*"submissionKey" IS NOT NULL[\s\S]*"gradingLeaseToken" IS NOT NULL[\s\S]*"gradingLeaseExpiresAt" IS NOT NULL/);
+  assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261001020000_assessment_grading_lease");
+  assert.equal(names.at(-2), "20261001010000_coding_reference_solution");
 });

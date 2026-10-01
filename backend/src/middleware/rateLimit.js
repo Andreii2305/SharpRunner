@@ -9,7 +9,7 @@ const sweepExpiredBuckets = (now) => {
   }
 };
 
-const createRateLimit = ({ windowMs, max, keyGenerator, message }) =>
+const createRateLimit = ({ windowMs, max, keyGenerator, message, code }) =>
   (req, res, next) => {
     const now = Date.now();
     sweepExpiredBuckets(now);
@@ -28,7 +28,7 @@ const createRateLimit = ({ windowMs, max, keyGenerator, message }) =>
 
     if (bucket.count > max) {
       res.set("Retry-After", String(Math.ceil((bucket.resetAt - now) / 1000)));
-      return res.status(429).json({ message });
+      return res.status(429).json({ ...(code ? { code } : {}), message });
     }
 
     return next();

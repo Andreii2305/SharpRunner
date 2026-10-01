@@ -7,6 +7,7 @@ const QUESTION_TYPES = Object.freeze({
 const CODING_TEST_VISIBILITIES = Object.freeze({ PUBLIC: "PUBLIC", HIDDEN: "HIDDEN" });
 const ATTEMPT_STATUSES = Object.freeze({
   IN_PROGRESS: "IN_PROGRESS",
+  GRADING: "GRADING",
   SUBMITTED: "SUBMITTED",
 });
 const GRADE_CALCULATIONS = Object.freeze({ FIRST: "FIRST", HIGHEST: "HIGHEST" });

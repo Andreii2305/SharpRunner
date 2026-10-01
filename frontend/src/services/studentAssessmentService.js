@@ -98,14 +98,34 @@ export const saveResponse = ({
   attemptId,
   questionId,
   selectedChoiceId,
+  sourceCode,
   signal,
-}) => request(
-  () => axios.put(
+}) => {
+  const hasChoice = selectedChoiceId !== undefined;
+  const hasSource = sourceCode !== undefined;
+  if (hasChoice === hasSource) {
+    return Promise.reject(new TypeError(
+      "A response save must contain exactly one of selectedChoiceId or sourceCode",
+    ));
+  }
+  const body = hasChoice ? { selectedChoiceId } : { sourceCode };
+  return request(() => axios.put(
     buildApiUrl(
       `/api/assessments/attempts/${segment(attemptId)}`
       + `/responses/${segment(questionId)}`,
     ),
-    { selectedChoiceId },
+    body,
+    authorizedConfig(signal),
+  ));
+};
+
+export const runCodingQuestion = ({ attemptId, questionId, signal }) => request(
+  () => axios.post(
+    buildApiUrl(
+      `/api/assessments/attempts/${segment(attemptId)}`
+      + `/questions/${segment(questionId)}/run`,
+    ),
+    {},
     authorizedConfig(signal),
   ),
 );

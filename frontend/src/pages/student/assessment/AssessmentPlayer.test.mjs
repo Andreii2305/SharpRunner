@@ -47,6 +47,16 @@ const envelope = {
         { id: 2001, choiceText: "True" },
         { id: 2002, choiceText: "False" },
       ],
+    }, {
+      id: 103,
+      questionText: "Return the array length.",
+      questionType: "CODING",
+      points: 3,
+      objectiveKey: "array-length",
+      starterCode: "return 0;",
+      language: "csharp",
+      methodSignature: "public static int Solve(int[] values)",
+      publicTestCases: [],
     }],
   },
   attempt: {
@@ -67,6 +77,7 @@ const createHarness = (saveResponse, overrides = {}) => {
   const controller = createAssessmentPlayerController({
     attemptId: 312,
     initialSavedByQuestion: state.savedByQuestion,
+    initialSavedSourceByQuestion: state.savedSourceByQuestion,
     saveResponse,
     dispatch,
     getState: () => state,
@@ -311,5 +322,32 @@ test("a successful authoritative save emits one non-sensitive tab invalidation c
   assert.equal(harness.controller.selectChoice(101, 1002), true);
   await harness.controller.flushAll();
   assert.deepEqual(saved, [{ attemptId: 312 }]);
+  harness.controller.dispose();
+});
+
+test("coding starter source is persisted once, debounced edits stay typed, and grading blocks edits", async () => {
+  const requests = [];
+  const harness = createHarness(async (request) => {
+    requests.push(request);
+    return { response: { questionId: request.questionId, sourceCode: request.sourceCode } };
+  });
+
+  assert.equal(harness.controller.updateSource(103, "return 0;", { debounceMs: 0 }), true);
+  await harness.controller.flushAll();
+  assert.deepEqual(requests[0], {
+    attemptId: 312,
+    questionId: 103,
+    sourceCode: "return 0;",
+  });
+  assert.equal(harness.getState().responseExistsByQuestion[103], true);
+
+  assert.equal(harness.controller.updateSource(103, "return values.Length;", { debounceMs: 0 }), true);
+  await harness.controller.flushAll();
+  assert.equal(requests[1].sourceCode, "return values.Length;");
+  assert.equal("selectedChoiceId" in requests[1], false);
+
+  harness.getState().attempt.status = "GRADING";
+  assert.equal(harness.controller.updateSource(103, "return 99;"), false);
+  assert.equal(requests.length, 2);
   harness.controller.dispose();
 });

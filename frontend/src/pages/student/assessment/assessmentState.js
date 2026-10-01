@@ -67,8 +67,12 @@ export const createAssessmentState = ({ routeKey = null, requestGeneration = 0 }
   currentQuestionIndex: 0,
   selectedByQuestion: {},
   savedByQuestion: {},
+  sourceByQuestion: {},
+  savedSourceByQuestion: {},
+  responseExistsByQuestion: {},
   revisionByQuestion: {},
   saveStateByQuestion: {},
+  codingRunByQuestion: {},
   submitReviewOpen: false,
   submitStatus: "idle",
   result: null,
@@ -95,11 +99,40 @@ const acceptedChoice = (state, questionId, selectedChoiceId) => {
   return choices?.some((choice) => choice.id === selectedChoiceId) === true;
 };
 
-const responseMap = (responses = []) => Object.fromEntries(
-  responses
-    .filter((response) => response?.questionId !== undefined)
-    .map((response) => [response.questionId, response.selectedChoiceId]),
-);
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value ?? {}, key);
+
+const responseMaps = (questions, responses = []) => {
+  const selectedByQuestion = {};
+  const sourceByQuestion = {};
+  const savedSourceByQuestion = {};
+  const responseExistsByQuestion = {};
+
+  for (const response of responses) {
+    if (response?.questionId === undefined) continue;
+    responseExistsByQuestion[response.questionId] = true;
+    if (hasOwn(response, "selectedChoiceId")) {
+      selectedByQuestion[response.questionId] = response.selectedChoiceId;
+    }
+    if (hasOwn(response, "sourceCode")) {
+      sourceByQuestion[response.questionId] = response.sourceCode;
+      savedSourceByQuestion[response.questionId] = response.sourceCode;
+    }
+  }
+
+  for (const question of questions) {
+    if (question.questionType !== "CODING" || hasOwn(sourceByQuestion, question.id)) continue;
+    sourceByQuestion[question.id] = typeof question.starterCode === "string"
+      ? question.starterCode
+      : "";
+  }
+
+  return {
+    selectedByQuestion,
+    sourceByQuestion,
+    savedSourceByQuestion,
+    responseExistsByQuestion,
+  };
+};
 
 const initialSaveStates = (questions, savedByQuestion) => Object.fromEntries(
   questions.map((question) => [question.id, {
@@ -107,6 +140,14 @@ const initialSaveStates = (questions, savedByQuestion) => Object.fromEntries(
     revision: 0,
     error: null,
   }]).filter(([questionId]) => savedByQuestion[questionId] !== undefined),
+);
+
+const isSourceAction = (action) => hasOwn(action, "sourceCode");
+const saveActionMatches = (state, action) => (
+  state.revisionByQuestion[action.questionId] === action.revision
+  && (isSourceAction(action)
+    ? state.sourceByQuestion[action.questionId] === action.sourceCode
+    : state.selectedByQuestion[action.questionId] === action.selectedChoiceId)
 );
 
 const discoveryScreen = (mode) => {
@@ -148,7 +189,8 @@ export const assessmentReducer = (state, action) => {
       const orderedQuestions = Array.isArray(assessment?.questions)
         ? assessment.questions.slice()
         : [];
-      const savedByQuestion = responseMap(attempt?.responses);
+      const maps = responseMaps(orderedQuestions, attempt?.responses);
+      const savedByQuestion = maps.selectedByQuestion;
       return {
         ...state,
         screen: "active",
@@ -159,10 +201,14 @@ export const assessmentReducer = (state, action) => {
         currentQuestionIndex: 0,
         selectedByQuestion: { ...savedByQuestion },
         savedByQuestion,
+        sourceByQuestion: maps.sourceByQuestion,
+        savedSourceByQuestion: maps.savedSourceByQuestion,
+        responseExistsByQuestion: maps.responseExistsByQuestion,
         revisionByQuestion: {},
         saveStateByQuestion: initialSaveStates(orderedQuestions, savedByQuestion),
+        codingRunByQuestion: {},
         submitReviewOpen: false,
-        submitStatus: "idle",
+        submitStatus: attempt?.status === "GRADING" ? "grading" : "idle",
         result: null,
         progressionError: null,
         retakeStatus: "idle",
@@ -215,11 +261,44 @@ export const assessmentReducer = (state, action) => {
         },
       };
     }
-    case "SAVE_STARTED": {
+    case "SOURCE_CHANGED": {
+      const question = state.orderedQuestions.find(({ id }) => id === action.questionId);
+      if (question?.questionType !== "CODING" || typeof action.sourceCode !== "string") return state;
       if (
-        state.revisionByQuestion[action.questionId] !== action.revision
-        || state.selectedByQuestion[action.questionId] !== action.selectedChoiceId
+        state.sourceByQuestion[action.questionId] === action.sourceCode
+        && !(action.forceSave && state.responseExistsByQuestion[action.questionId] !== true)
       ) return state;
+      const revision = (state.revisionByQuestion[action.questionId] ?? 0) + 1;
+      const clean = state.savedSourceByQuestion[action.questionId] === action.sourceCode
+        && state.responseExistsByQuestion[action.questionId] === true;
+      return {
+        ...state,
+        sourceByQuestion: {
+          ...state.sourceByQuestion,
+          [action.questionId]: action.sourceCode,
+        },
+        codingRunByQuestion: {
+          ...state.codingRunByQuestion,
+          [action.questionId]: undefined,
+        },
+        revisionByQuestion: {
+          ...state.revisionByQuestion,
+          [action.questionId]: revision,
+        },
+        saveStateByQuestion: {
+          ...state.saveStateByQuestion,
+          [action.questionId]: {
+            status: clean
+              ? (action.saveInFlight ? "saving" : "clean")
+              : (action.preserveSaveError ? "error" : "dirty"),
+            revision,
+            error: clean ? null : (action.preserveSaveError ? action.saveError : null),
+          },
+        },
+      };
+    }
+    case "SAVE_STARTED": {
+      if (!saveActionMatches(state, action)) return state;
       return {
         ...state,
         saveStateByQuestion: {
@@ -233,16 +312,30 @@ export const assessmentReducer = (state, action) => {
       };
     }
     case "SAVE_SUCCEEDED": {
-      if (
-        state.revisionByQuestion[action.questionId] !== action.revision
-        || state.selectedByQuestion[action.questionId] !== action.selectedChoiceId
-      ) return state;
+      if (!saveActionMatches(state, action)) return state;
       return {
         ...state,
-        savedByQuestion: {
-          ...state.savedByQuestion,
-          [action.questionId]: action.selectedChoiceId,
-        },
+        ...(isSourceAction(action)
+          ? {
+            savedSourceByQuestion: {
+              ...state.savedSourceByQuestion,
+              [action.questionId]: action.sourceCode,
+            },
+            responseExistsByQuestion: {
+              ...state.responseExistsByQuestion,
+              [action.questionId]: true,
+            },
+          }
+          : {
+            savedByQuestion: {
+              ...state.savedByQuestion,
+              [action.questionId]: action.selectedChoiceId,
+            },
+            responseExistsByQuestion: {
+              ...state.responseExistsByQuestion,
+              [action.questionId]: true,
+            },
+          }),
         saveStateByQuestion: {
           ...state.saveStateByQuestion,
           [action.questionId]: {
@@ -254,10 +347,7 @@ export const assessmentReducer = (state, action) => {
       };
     }
     case "SAVE_FAILED": {
-      if (
-        state.revisionByQuestion[action.questionId] !== action.revision
-        || state.selectedByQuestion[action.questionId] !== action.selectedChoiceId
-      ) return state;
+      if (!saveActionMatches(state, action)) return state;
       return {
         ...state,
         saveStateByQuestion: {
@@ -271,10 +361,7 @@ export const assessmentReducer = (state, action) => {
       };
     }
     case "SAVE_CONFLICTED": {
-      if (
-        state.revisionByQuestion[action.questionId] !== action.revision
-        || state.selectedByQuestion[action.questionId] !== action.selectedChoiceId
-      ) return state;
+      if (!saveActionMatches(state, action)) return state;
       return {
         ...state,
         saveStateByQuestion: {
@@ -287,12 +374,61 @@ export const assessmentReducer = (state, action) => {
         },
       };
     }
+    case "CODING_RUN_STARTED":
+      return {
+        ...state,
+        codingRunByQuestion: {
+          ...state.codingRunByQuestion,
+          [action.questionId]: { status: "running", result: null, message: null },
+        },
+      };
+    case "CODING_RUN_SUCCEEDED":
+      return {
+        ...state,
+        codingRunByQuestion: {
+          ...state.codingRunByQuestion,
+          [action.questionId]: { status: "succeeded", result: action.result, message: null },
+        },
+      };
+    case "CODING_RUN_FAILED":
+      return {
+        ...state,
+        codingRunByQuestion: {
+          ...state.codingRunByQuestion,
+          [action.questionId]: { status: "error", result: null, message: action.message },
+        },
+      };
     case "SUBMIT_REVIEW_OPENED":
       return { ...state, submitReviewOpen: true };
     case "SUBMIT_REVIEW_CLOSED":
       return { ...state, submitReviewOpen: false };
     case "SUBMIT_STARTED":
       return { ...state, submitReviewOpen: false, submitStatus: "submitting", error: null };
+    case "SUBMIT_GRADING_STARTED":
+      return {
+        ...state,
+        submitReviewOpen: false,
+        submitStatus: "grading",
+        attempt: state.attempt ? { ...state.attempt, status: "GRADING" } : state.attempt,
+        error: null,
+      };
+    case "SUBMIT_GRADING_PENDING":
+      return { ...state, submitReviewOpen: false, submitStatus: "grading-pending", error: null };
+    case "SUBMIT_GRADING_POLL_FAILED":
+      return {
+        ...state,
+        submitReviewOpen: false,
+        submitStatus: "grading-error",
+        error: action.error,
+      };
+    case "SUBMIT_GRADING_RELEASED":
+      return {
+        ...state,
+        submitReviewOpen: false,
+        submitStatus: "error",
+        attempt: state.attempt ? { ...state.attempt, status: "IN_PROGRESS" } : state.attempt,
+        error: action.error,
+      };
     case "SUBMIT_RECOVERY_STARTED":
       return {
         ...state,
@@ -380,11 +516,16 @@ export const getAttemptControllerIdentity = (state) => {
 
 export const getAnswerSummary = (state) => {
   const unansweredQuestionIds = state.orderedQuestions
-    .map(({ id }) => id)
-    .filter((questionId) => (
-      state.selectedByQuestion[questionId] === undefined
-      || state.selectedByQuestion[questionId] === null
-    ));
+    .filter((question) => {
+      if (question.questionType === "CODING") {
+        return state.responseExistsByQuestion[question.id] !== true
+          || typeof state.savedSourceByQuestion[question.id] !== "string"
+          || state.savedSourceByQuestion[question.id].trim().length === 0;
+      }
+      return state.selectedByQuestion[question.id] === undefined
+        || state.selectedByQuestion[question.id] === null;
+    })
+    .map(({ id }) => id);
   return {
     total: state.orderedQuestions.length,
     answered: state.orderedQuestions.length - unansweredQuestionIds.length,
@@ -397,8 +538,13 @@ export const getSubmissionReadiness = (state) => {
   const savingQuestionIds = [];
   const failedQuestionIds = [];
 
-  for (const { id: questionId } of state.orderedQuestions) {
-    if (state.selectedByQuestion[questionId] !== state.savedByQuestion[questionId]) {
+  for (const question of state.orderedQuestions) {
+    const questionId = question.id;
+    const dirty = question.questionType === "CODING"
+      ? state.sourceByQuestion[questionId] !== state.savedSourceByQuestion[questionId]
+        || state.responseExistsByQuestion[questionId] !== true
+      : state.selectedByQuestion[questionId] !== state.savedByQuestion[questionId];
+    if (dirty) {
       dirtyQuestionIds.push(questionId);
     }
     const saveState = state.saveStateByQuestion[questionId];

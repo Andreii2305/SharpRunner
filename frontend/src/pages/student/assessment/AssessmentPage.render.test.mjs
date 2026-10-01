@@ -70,6 +70,84 @@ test("active F-C shell never renders hydrated question or answer content", () =>
   assert.match(html, /The assessment player will appear in the next checkpoint/);
 });
 
+test("active CODING question renders the shared C# editor, public examples, and safe run feedback", () => {
+  const assessmentState = {
+    screen: "active",
+    assessment: { id: 91, type: "POST", title: "Mixed assessment", instructions: "Answer all questions." },
+    attempt: { attemptId: 301, status: "IN_PROGRESS" },
+    orderedQuestions: [{
+      id: 103,
+      questionText: "Return the array length.",
+      questionType: "CODING",
+      starterCode: "return 0;",
+      methodContract: {
+        typeName: "Solution",
+        methodName: "Solve",
+        parameterTypes: ["int[]"],
+        returnType: "int",
+      },
+      codingExamples: [{ input: [[1, 2]], expectedOutput: 2 }],
+      referenceSolution: "teacher-secret-solution",
+      codingTestCases: [{ visibility: "HIDDEN", input: [[9]], expectedOutput: 1, weight: 99 }],
+      choices: [],
+    }],
+    currentQuestionIndex: 0,
+    selectedByQuestion: {},
+    savedByQuestion: {},
+    sourceByQuestion: { 103: "return values.Length;" },
+    savedSourceByQuestion: { 103: "return values.Length;" },
+    responseExistsByQuestion: { 103: true },
+    saveStateByQuestion: { 103: { status: "clean" } },
+    codingRunByQuestion: {
+      103: {
+        status: "succeeded",
+        result: {
+          status: "SUCCESS",
+          tests: [{
+            status: "SUCCESS",
+            passed: true,
+            input: [[1, 2]],
+            expectedOutput: 2,
+            actualOutput: 2,
+          }, {
+            status: "SUCCESS",
+            passed: false,
+            input: [[]],
+            expectedOutput: 0,
+            actualOutput: 1,
+          }],
+        },
+      },
+    },
+    externalSyncRequired: false,
+    externalSyncStatus: "idle",
+  };
+  const html = renderToStaticMarkup(React.createElement(AssessmentPageContent, {
+    outcome: { kind: "ACTIVE" },
+    assessmentState,
+    reviewReady: false,
+    onSourceChange() {},
+    onRunCode() {},
+    onPrevious() {},
+    onNext() {},
+    onGoToQuestion() {},
+    onRetrySave() {},
+    onRecoverConflict() {},
+    onRetrySync() {},
+    onReadyToReview() {},
+  }));
+
+  assert.match(html, /C# coding question/);
+  assert.match(html, /Required method signature/);
+  assert.match(html, /Solution\.Solve/);
+  assert.match(html, /Public examples/);
+  assert.match(html, /Code answer for question 103/);
+  assert.match(html, /Run code/);
+  assert.match(html, /Public test 1: Passed/);
+  assert.match(html, /Public test 2: Failed/);
+  assert.doesNotMatch(html, /teacher-secret-solution|HIDDEN|99/);
+});
+
 test("active page content renders the F-D player from hydrated reducer state", () => {
   const assessmentState = {
     screen: "active",
@@ -290,6 +368,7 @@ test("page owns abort and generation fencing and delegates policy orchestration"
   assert.match(source, /saveResponse/);
   assert.match(source, /submitAttempt/);
   assert.match(source, /getAttemptResult/);
+  assert.match(source, /codingRunInFlight/);
   assert.match(source, /assessmentReducer/);
   assert.doesNotMatch(source, /pointsEarned|percentage|passingScore|isCorrect/);
 });

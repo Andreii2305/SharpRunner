@@ -86,6 +86,55 @@ const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
 
 const sameTypedValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
+const shapePublicCodingExecutionResult = ({ tests: inputTests = [], result }) => {
+  const tests = inputTests.map(plain).filter((testCase) => testCase.visibility === "PUBLIC");
+  const validCategories = new Set(Object.values(EXECUTION_CATEGORIES));
+  if (!result || !validCategories.has(result.category)
+    || result.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR
+    || result.code === "SECURE_EXECUTION_UNAVAILABLE") {
+    throw new CodingAssessmentInfrastructureError();
+  }
+  if (tests.length === 0) return { status: "NO_PUBLIC_TESTS", tests: [] };
+  const output = {
+    status: result.category,
+    ...(typeof result.message === "string" ? { message: result.message.slice(0, 512) } : {}),
+    ...(Array.isArray(result.diagnostics) ? {
+      diagnostics: result.diagnostics.slice(0, 50).map((diagnostic) => ({
+        id: String(diagnostic?.id || "").slice(0, 16),
+        line: Math.max(0, Number(diagnostic?.line) || 0),
+        column: Math.max(0, Number(diagnostic?.column) || 0),
+        message: String(diagnostic?.message || "Compilation failed.").slice(0, 512),
+      })),
+    } : {}),
+    tests: [],
+  };
+  const invocations = Array.isArray(result.invocations) ? result.invocations : [];
+  if (result.category === EXECUTION_CATEGORIES.SUCCESS && invocations.length !== tests.length) {
+    throw new CodingAssessmentInfrastructureError();
+  }
+  if (invocations.length === 0) return output;
+  if (invocations.length !== tests.length) throw new CodingAssessmentInfrastructureError();
+  output.tests = tests.map((testCase, index) => {
+    const invocation = invocations[index];
+    if (!invocation || !validCategories.has(invocation.category)
+      || invocation.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR) {
+      throw new CodingAssessmentInfrastructureError();
+    }
+    const passed = invocation.category === EXECUTION_CATEGORIES.SUCCESS
+      && sameTypedValue(invocation.output, testCase.expectedOutput);
+    return {
+      status: invocation.category,
+      passed,
+      input: testCase.input,
+      expectedOutput: testCase.expectedOutput,
+      ...(invocation.category === EXECUTION_CATEGORIES.SUCCESS
+        ? { actualOutput: invocation.output }
+        : {}),
+    };
+  });
+  return output;
+};
+
 const gradeCodingQuestion = async ({ question: input, sourceCode, execute }) => {
   const { question, tests, contract, totalWeight } = validateCodingQuestion(input, { publish: true });
   if (typeof sourceCode !== "string" || Buffer.byteLength(sourceCode, "utf8") > MAX_SOURCE_BYTES) {
@@ -122,5 +171,6 @@ module.exports = {
   contractForQuestion,
   gradeCodingQuestion,
   isCodingAssessmentPlayerEnabled,
+  shapePublicCodingExecutionResult,
   validateCodingQuestion,
 };

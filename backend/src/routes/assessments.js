@@ -1,10 +1,19 @@
 const express = require("express");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
+const { createRateLimit } = require("../middleware/rateLimit");
 const defaultReadService = require("../services/assessmentReadService");
 const defaultAttemptService = require("../services/assessmentAttemptService");
 const { AssessmentApiError, sendAssessmentError } = require("../services/assessmentErrorService");
 const { ASSESSMENT_TYPES } = require("../constants/assessmentConfig");
+
+const codingRunRateLimit = createRateLimit({
+  windowMs: 60_000,
+  max: 10,
+  keyGenerator: (req) => `${req.userId}:${req.params.attemptId}`,
+  code: "CODING_RUN_RATE_LIMITED",
+  message: "Code execution is temporarily rate limited. Please try again shortly.",
+});
 
 const parsePositiveId = (value) => {
   if (!/^[1-9][0-9]*$/.test(String(value || ""))) {
@@ -112,12 +121,40 @@ const createAssessmentRouter = ({
     }
   });
 
+  router.post(
+    "/attempts/:attemptId/questions/:questionId/run",
+    codingRunRateLimit,
+    async (req, res) => {
+      try {
+        validateMutationBody(req);
+        const result = await attemptService.runPublicCodingQuestion({
+          attemptId: parsePositiveId(req.params.attemptId),
+          questionId: parsePositiveId(req.params.questionId),
+          studentId: req.userId,
+        });
+        return res.status(200).json({ result });
+      } catch (error) {
+        return sendAssessmentError(res, error);
+      }
+    },
+  );
+
   router.post("/attempts/:attemptId/submit", async (req, res) => {
     try {
       validateMutationBody(req);
       const attemptId = parsePositiveId(req.params.attemptId);
       const submissionKey = submissionKeyFromHeader(req);
-      await attemptService.submitAttempt({ attemptId, studentId: req.userId, submissionKey });
+      const submitted = await attemptService.submitAttempt({
+        attemptId,
+        studentId: req.userId,
+        submissionKey,
+      });
+      if (submitted.status === "GRADING") {
+        return res.status(202).json({
+          result: { attemptId: submitted.id, status: "GRADING" },
+          reviewAvailable: false,
+        });
+      }
       const payload = await readService.getStudentResult({ attemptId, studentId: req.userId });
       return res.status(200).json(payload);
     } catch (error) {

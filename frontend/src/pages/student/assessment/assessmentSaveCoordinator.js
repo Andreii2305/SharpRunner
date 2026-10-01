@@ -22,6 +22,7 @@ const notify = (callback, event) => {
 export const createAssessmentSaveCoordinator = ({
   attemptId: initialAttemptId,
   initialSavedByQuestion = {},
+  initialSavedSourceByQuestion = {},
   saveResponse,
   onSaveStarted,
   onSaveSucceeded,
@@ -38,42 +39,61 @@ export const createAssessmentSaveCoordinator = ({
   let halted = false;
   let entries = new Map();
 
-  const seed = (savedByQuestion) => {
+  const makeEntry = (questionId, kind, savedValue) => ({
+    questionId,
+    kind,
+    ...(kind === "choice"
+      ? { desiredChoiceId: savedValue, savedChoiceId: savedValue }
+      : { desiredSourceCode: savedValue, savedSourceCode: savedValue }),
+    revision: 0,
+    status: "clean",
+    error: null,
+    inFlight: null,
+    terminalConflict: false,
+    forceWrite: false,
+    debounceTimer: null,
+  });
+
+  const seed = (savedByQuestion, savedSourceByQuestion) => {
     entries = new Map();
     for (const [rawQuestionId, savedChoiceId] of Object.entries(savedByQuestion ?? {})) {
       const questionId = normalizedQuestionId(rawQuestionId);
-      entries.set(questionId, {
-        questionId,
-        desiredChoiceId: savedChoiceId,
-        savedChoiceId,
-        revision: 0,
-        status: "clean",
-        error: null,
-        inFlight: null,
-        terminalConflict: false,
-        forceWrite: false,
-      });
+      entries.set(questionId, makeEntry(questionId, "choice", savedChoiceId));
+    }
+    for (const [rawQuestionId, savedSourceCode] of Object.entries(savedSourceByQuestion ?? {})) {
+      const questionId = normalizedQuestionId(rawQuestionId);
+      entries.set(questionId, makeEntry(questionId, "source", savedSourceCode));
     }
   };
 
-  seed(initialSavedByQuestion);
+  seed(initialSavedByQuestion, initialSavedSourceByQuestion);
 
-  const entryFor = (rawQuestionId) => {
+  const entryFor = (rawQuestionId, kind) => {
     const questionId = normalizedQuestionId(rawQuestionId);
     if (!entries.has(questionId)) {
-      entries.set(questionId, {
-        questionId,
-        desiredChoiceId: undefined,
-        savedChoiceId: undefined,
-        revision: 0,
-        status: "clean",
-        error: null,
-        inFlight: null,
-        terminalConflict: false,
-        forceWrite: false,
-      });
+      entries.set(questionId, makeEntry(questionId, kind, undefined));
     }
-    return entries.get(questionId);
+    const entry = entries.get(questionId);
+    if (entry.kind !== kind) return null;
+    return entry;
+  };
+
+  const desiredValue = (entry) => (
+    entry.kind === "choice" ? entry.desiredChoiceId : entry.desiredSourceCode
+  );
+  const savedValue = (entry) => (
+    entry.kind === "choice" ? entry.savedChoiceId : entry.savedSourceCode
+  );
+  const setSavedValue = (entry, value) => {
+    if (entry.kind === "choice") entry.savedChoiceId = value;
+    else entry.savedSourceCode = value;
+  };
+  const valuePayload = (entry, value = desiredValue(entry)) => (
+    entry.kind === "choice" ? { selectedChoiceId: value } : { sourceCode: value }
+  );
+  const clearDebounce = (entry) => {
+    if (entry.debounceTimer !== null) clearTimeout(entry.debounceTimer);
+    entry.debounceTimer = null;
   };
 
   const start = (entry) => {
@@ -82,17 +102,18 @@ export const createAssessmentSaveCoordinator = ({
       || halted
       || entry.inFlight
       || entry.terminalConflict
-      || (entry.desiredChoiceId === entry.savedChoiceId && !entry.forceWrite)
+      || (desiredValue(entry) === savedValue(entry) && !entry.forceWrite)
     ) return false;
 
+    clearDebounce(entry);
     const requestEpoch = epoch;
     const requestAttemptId = attemptId;
-    const selectedChoiceId = entry.desiredChoiceId;
+    const requestValue = desiredValue(entry);
     const revision = entry.revision;
     const event = {
       attemptId: requestAttemptId,
       questionId: entry.questionId,
-      selectedChoiceId,
+      ...valuePayload(entry, requestValue),
       revision,
     };
 
@@ -105,7 +126,7 @@ export const createAssessmentSaveCoordinator = ({
       operation = Promise.resolve(saveResponse({
         attemptId: requestAttemptId,
         questionId: entry.questionId,
-        selectedChoiceId,
+        ...valuePayload(entry, requestValue),
       }));
     } catch (error) {
       operation = Promise.reject(error);
@@ -125,13 +146,13 @@ export const createAssessmentSaveCoordinator = ({
         }
 
         entry.inFlight = null;
-        entry.savedChoiceId = selectedChoiceId;
+        setSavedValue(entry, requestValue);
         entry.error = null;
         entry.terminalConflict = false;
         entry.forceWrite = false;
-        entry.status = entry.desiredChoiceId === entry.savedChoiceId ? "clean" : "dirty";
+        entry.status = desiredValue(entry) === savedValue(entry) ? "clean" : "dirty";
         notify(onSaveSucceeded, { ...event, response });
-        if (entry.desiredChoiceId !== entry.savedChoiceId) start(entry);
+        if (desiredValue(entry) !== savedValue(entry) && entry.debounceTimer === null) start(entry);
       },
       (error) => {
         if (
@@ -148,9 +169,11 @@ export const createAssessmentSaveCoordinator = ({
         entry.status = entry.terminalConflict ? "conflict" : "error";
         const failedEvent = {
           ...event,
-          selectedChoiceId: entry.desiredChoiceId,
+          ...valuePayload(entry),
           revision: entry.revision,
-          failedSelectedChoiceId: selectedChoiceId,
+          ...(entry.kind === "choice"
+            ? { failedSelectedChoiceId: requestValue }
+            : { failedSourceCode: requestValue }),
           failedRevision: revision,
           error,
         };
@@ -168,7 +191,8 @@ export const createAssessmentSaveCoordinator = ({
 
   const select = (questionId, selectedChoiceId) => {
     if (disposed || halted) return false;
-    const entry = entryFor(questionId);
+    const entry = entryFor(questionId, "choice");
+    if (!entry) return false;
     if (entry.terminalConflict) return false;
     if (entry.desiredChoiceId === selectedChoiceId) return false;
 
@@ -197,6 +221,40 @@ export const createAssessmentSaveCoordinator = ({
     return true;
   };
 
+  const updateSource = (questionId, sourceCode, { debounceMs = 500 } = {}) => {
+    if (disposed || halted || typeof sourceCode !== "string") return false;
+    const entry = entryFor(questionId, "source");
+    if (!entry || entry.terminalConflict) return false;
+    if (entry.desiredSourceCode === sourceCode) return false;
+
+    const failedError = entry.status === "error" ? entry.error : null;
+    entry.desiredSourceCode = sourceCode;
+    entry.revision += 1;
+    clearDebounce(entry);
+
+    if (entry.desiredSourceCode === entry.savedSourceCode && !entry.forceWrite) {
+      if (!entry.inFlight) {
+        entry.status = "clean";
+        entry.error = null;
+      }
+      return true;
+    }
+
+    if (failedError && !entry.inFlight) {
+      entry.status = "error";
+      entry.error = failedError;
+      return true;
+    }
+
+    entry.error = null;
+    entry.status = entry.inFlight ? "saving" : "dirty";
+    entry.debounceTimer = setTimeout(() => {
+      entry.debounceTimer = null;
+      start(entry);
+    }, Math.max(0, Number(debounceMs) || 0));
+    return true;
+  };
+
   const retry = (questionId) => {
     if (disposed || halted) return false;
     const entry = entries.get(normalizedQuestionId(questionId));
@@ -212,9 +270,10 @@ export const createAssessmentSaveCoordinator = ({
       if (failed) throw failed.error;
 
       for (const entry of entries.values()) {
+        clearDebounce(entry);
         if (
           !entry.inFlight
-          && (entry.desiredChoiceId !== entry.savedChoiceId || entry.forceWrite)
+          && (desiredValue(entry) !== savedValue(entry) || entry.forceWrite)
         ) start(entry);
       }
 
@@ -229,25 +288,42 @@ export const createAssessmentSaveCoordinator = ({
   const getSnapshot = (questionId) => {
     const entry = entries.get(normalizedQuestionId(questionId));
     if (!entry) return null;
-    return {
+    const common = {
       questionId: entry.questionId,
-      desiredChoiceId: entry.desiredChoiceId,
-      savedChoiceId: entry.savedChoiceId,
       revision: entry.revision,
       status: entry.status,
       error: entry.error,
     };
+    return entry.kind === "choice"
+      ? {
+        questionId: common.questionId,
+        desiredChoiceId: entry.desiredChoiceId,
+        savedChoiceId: entry.savedChoiceId,
+        revision: common.revision,
+        status: common.status,
+        error: common.error,
+      }
+      : {
+        questionId: common.questionId,
+        desiredSourceCode: entry.desiredSourceCode,
+        savedSourceCode: entry.savedSourceCode,
+        revision: common.revision,
+        status: common.status,
+        error: common.error,
+      };
   };
 
   const reset = ({
     attemptId: nextAttemptId,
     initialSavedByQuestion: nextSavedByQuestion = {},
+    initialSavedSourceByQuestion: nextSavedSourceByQuestion = {},
   }) => {
     if (disposed) return false;
     epoch += 1;
     attemptId = nextAttemptId;
     halted = false;
-    seed(nextSavedByQuestion);
+    for (const entry of entries.values()) clearDebounce(entry);
+    seed(nextSavedByQuestion, nextSavedSourceByQuestion);
     return true;
   };
 
@@ -255,10 +331,12 @@ export const createAssessmentSaveCoordinator = ({
     if (disposed) return;
     disposed = true;
     epoch += 1;
+    for (const entry of entries.values()) clearDebounce(entry);
   };
 
   return {
     select,
+    updateSource,
     retry,
     flushAll,
     getSnapshot,

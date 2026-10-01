@@ -292,6 +292,50 @@ test("mutation routes reject unparsed nonempty bodies instead of treating them a
   assert.equal(h.store.attempts.length, 0);
 });
 
+test("Run Code accepts an empty body, forwards only route identity, and returns a safe envelope", async () => {
+  mutationHarness();
+  let forwarded;
+  stub(assessmentAttemptService, "runPublicCodingQuestion", async (args) => {
+    forwarded = args;
+    return { status: "SUCCESS", tests: [] };
+  });
+  const result = await request("/api/assessments/attempts/77/questions/201/run", {
+    authToken: token(42),
+    method: "POST",
+    body: {},
+  });
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(forwarded, { attemptId: 77, questionId: 201, studentId: 42 });
+  assert.deepEqual(result.payload, { result: { status: "SUCCESS", tests: [] } });
+  assertNoForbiddenKeys(result.payload);
+});
+
+test("Run Code rejects client source and returns a bounded safe rate-limit response", async () => {
+  mutationHarness();
+  let calls = 0;
+  stub(assessmentAttemptService, "runPublicCodingQuestion", async () => {
+    calls += 1;
+    return { status: "SUCCESS", tests: [] };
+  });
+  const injected = await request("/api/assessments/attempts/909/questions/201/run", {
+    authToken: token(42), method: "POST", body: { sourceCode: "client source" },
+  });
+  assert.equal(injected.response.status, 400);
+  assert.equal(calls, 0);
+  let limited;
+  for (let index = 0; index < 11; index += 1) {
+    limited = await request("/api/assessments/attempts/909/questions/201/run", {
+      authToken: token(42), method: "POST", body: {},
+    });
+  }
+  assert.equal(limited.response.status, 429);
+  assert.deepEqual(limited.payload, {
+    code: "CODING_RUN_RATE_LIMITED",
+    message: "Code execution is temporarily rate limited. Please try again shortly.",
+  });
+  assert.equal(calls, 9);
+});
+
 test("submission maps the header to Phase B submissionKey and returns the result envelope", async () => {
   const h = mutationHarness();
   const original = assessmentAttemptService.submitAttempt;
@@ -328,7 +372,7 @@ test("same-key retry returns 200 with the immutable result", async () => {
   const retry = await h.submit(first.id);
   assert.equal(retry.response.status, 200);
   assert.deepEqual(retry.payload, first.payload);
-  assert.equal(h.store.saves, 1);
+  assert.equal(h.store.saves, 2);
   const saveAfter = await h.save(first.id, 1002);
   assert.equal(saveAfter.response.status, 409);
   assert.equal(saveAfter.payload.code, "ATTEMPT_ALREADY_SUBMITTED");
@@ -345,7 +389,7 @@ test("different-key retry and cross-attempt key reuse return distinct 409 codes"
   const reused = await h.submit(next.payload.attempt.attemptId, `submit_key_${first.id}`);
   assert.equal(reused.response.status, 409);
   assert.equal(reused.payload.code, "SUBMISSION_CONFLICT");
-  assert.equal(h.store.saves, 1);
+  assert.equal(h.store.saves, 2);
 });
 
 test("PRE result is diagnostic and omits passed", async () => {
@@ -628,7 +672,7 @@ test("concurrent same-key submissions persist one immutable result", async () =>
   const results = await Promise.all([h.submit(id), h.submit(id)]);
   assert.deepEqual(results.map((result) => result.response.status), [200, 200]);
   assert.deepEqual(results[0].payload, results[1].payload);
-  assert.equal(h.store.saves, 1);
+  assert.equal(h.store.saves, 2);
   assert.equal(h.store.responses.length, 1);
   assert.equal(h.store.attempts[0].percentage, 100);
 });
@@ -642,7 +686,7 @@ test("concurrent different-key submissions return one result and one submitted c
   const results = await Promise.all([h.submit(id, "first_key"), h.submit(id, "second_key")]);
   assert.deepEqual(results.map((result) => result.response.status).sort(), [200, 409]);
   assert.equal(results.find((result) => result.response.status === 409).payload.code, "ATTEMPT_ALREADY_SUBMITTED");
-  assert.equal(h.store.saves, 1);
+  assert.equal(h.store.saves, 2);
   assert.equal(h.store.responses.length, 1);
   assert.equal(h.store.attempts[0].percentage, 100);
 });
@@ -655,6 +699,16 @@ const forbiddenKeys = new Set([
   "gradeCalculation",
   "answerReviewPolicy",
   "createdBy",
+  "referenceSolution",
+  "codingTestCases",
+  "visibility",
+  "weight",
+  "gradingLeaseToken",
+  "gradingLeaseExpiresAt",
+  "internalHarness",
+  "harnessSource",
+  "containerId",
+  "runnerConfig",
 ]);
 
 const assertNoForbiddenKeys = (value) => {

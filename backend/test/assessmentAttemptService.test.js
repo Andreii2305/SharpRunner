@@ -83,6 +83,7 @@ const makeHarness = (assessmentOptions = {}, {
     assessmentReads: [],
     operations: [],
     attemptSetReads: [],
+    transactionDepth: 0,
   };
   let attemptId = 1;
   let responseId = 1;
@@ -169,6 +170,7 @@ const makeHarness = (assessmentOptions = {}, {
           responseId,
         });
         try {
+          store.transactionDepth += 1;
           return await callback({ LOCK: { UPDATE: "UPDATE" } });
         } catch (error) {
           store.attempts = snapshot.attempts;
@@ -176,6 +178,8 @@ const makeHarness = (assessmentOptions = {}, {
           attemptId = snapshot.attemptId;
           responseId = snapshot.responseId;
           throw error;
+        } finally {
+          store.transactionDepth -= 1;
         }
       };
       const pending = tail.then(run, run);
@@ -345,6 +349,15 @@ test("teacher recovery preserves exhaustion official-pass and active-attempt err
   seedSubmittedAttempt(active.store);
   seedActiveAttempt(active.store).attemptNumber = 2;
   await expectCode(active.service.createTeacherGrantedPostAttempt({
+    classroomId: 7, assessmentId: 10, studentId: 42, transaction,
+  }), "ACTIVE_ATTEMPT_EXISTS");
+
+  const grading = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(grading.store);
+  const gradingAttempt = seedActiveAttempt(grading.store);
+  gradingAttempt.attemptNumber = 2;
+  gradingAttempt.status = "GRADING";
+  await expectCode(grading.service.createTeacherGrantedPostAttempt({
     classroomId: 7, assessmentId: 10, studentId: 42, transaction,
   }), "ACTIVE_ATTEMPT_EXISTS");
 });
@@ -815,7 +828,7 @@ test("serializes two-tab submission contention without overwriting history", asy
     service.submitAttempt({ attemptId: attempt.id, studentId: 42, submissionKey: "tab-two-key" }),
   ]);
   assert.equal(settled.filter((item) => item.status === "fulfilled").length, 1);
-  assert.equal(settled.filter((item) => item.reason?.code === "ATTEMPT_SUBMITTED").length, 1);
+  assert.equal(settled.filter((item) => item.reason?.code === "ATTEMPT_GRADING").length, 1);
   assert.equal(store.attempts[0].status, "SUBMITTED");
 });
 
@@ -826,7 +839,7 @@ test("rolls back response grading and attempt mutation when submission persisten
   store.failResponseSave = true;
   await assert.rejects(service.submitAttempt({ attemptId: attempt.id, studentId: 42, submissionKey: "rollback-key" }), /forced response/);
   assert.equal(store.attempts[0].status, "IN_PROGRESS");
-  assert.equal(store.attempts[0].submissionKey, undefined);
+  assert.equal(store.attempts[0].submissionKey, null);
   assert.equal(store.responses.length, 1);
   assert.equal(store.responses[0].isCorrect, false);
   assert.equal(store.responses[0].pointsAwarded, 0);
@@ -859,7 +872,7 @@ test("CODING autosave persists source without grading and enforces response excl
   assert.equal(h.store.responses[0].isCorrect, false);
   assert.equal(h.store.responses[0].pointsAwarded, 0);
   const restored = await h.service.getActiveAttempt({ attemptId: started.attempt.id, studentId: 42 });
-  assert.deepEqual(restored.responses, [{ questionId: 201, selectedChoiceId: null, sourceCode }]);
+  assert.deepEqual(restored.responses, [{ questionId: 201, sourceCode }]);
   await expectCode(h.service.saveResponse({
     attemptId: started.attempt.id, studentId: 42, questionId: 201,
     selectedChoiceId: 1001, sourceCode,
@@ -920,7 +933,7 @@ test("secure capability failure rolls back CODING grading and leaves the attempt
     attemptId: started.attempt.id, studentId: 42, submissionKey: "coding-post-1",
   }), "CODING_EXECUTION_UNAVAILABLE");
   assert.equal(h.store.attempts[0].status, "IN_PROGRESS");
-  assert.equal(h.store.attempts[0].submissionKey, undefined);
+  assert.equal(h.store.attempts[0].submissionKey, null);
   assert.equal(h.store.responses[0].pointsAwarded, 0);
   assert.equal(h.store.responses[0].isCorrect, false);
 });
@@ -940,4 +953,187 @@ test("malformed runner output is infrastructure failure and cannot become a stud
   }), "CODING_EXECUTION_UNAVAILABLE");
   assert.equal(h.store.attempts[0].status, "IN_PROGRESS");
   assert.equal(h.store.responses[0].pointsAwarded, 0);
+});
+
+test("authoritative coding execution occurs after the reservation transaction closes", async () => {
+  let harness;
+  let depthDuringExecution = null;
+  harness = makeHarness({ type: "PRE" }, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => {
+        depthDuringExecution = harness.store.transactionDepth;
+        return {
+          category: "SUCCESS",
+          invocations: [
+            { category: "SUCCESS", output: 3 },
+            { category: "SUCCESS", output: 12 },
+          ],
+        };
+      },
+    },
+  });
+  useCodingGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+    sourceCode: harness.store.assessments[0].questions[0].starterCode,
+  });
+
+  await harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "outside-transaction",
+  });
+
+  assert.equal(depthDuringExecution, 0);
+  assert.equal(harness.store.attempts[0].status, "SUBMITTED");
+});
+
+test("an active grading lease is observable by the same key and blocks a competing key", async () => {
+  const harness = makeHarness({ type: "PRE" });
+  useCodingGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  Object.assign(harness.store.attempts[0], {
+    status: "GRADING",
+    submissionKey: "active-lease-key",
+    gradingLeaseToken: "server-secret-token-that-is-long-enough",
+    gradingLeaseExpiresAt: new Date("2099-01-01T00:00:00.000Z"),
+  });
+
+  const same = await harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "active-lease-key",
+  });
+  assert.deepEqual(same, { id: started.attempt.id, status: "GRADING" });
+  await expectCode(harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "competing-key",
+  }), "ATTEMPT_GRADING");
+  assert.equal(harness.store.attempts[0].gradingLeaseToken, "server-secret-token-that-is-long-enough");
+});
+
+test("an expired lease is reclaimable after the browser submission key is lost", async () => {
+  let executions = 0;
+  const harness = makeHarness({ type: "PRE" }, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => {
+        executions += 1;
+        return {
+          category: "SUCCESS",
+          invocations: [
+            { category: "SUCCESS", output: 3 },
+            { category: "SUCCESS", output: 12 },
+          ],
+        };
+      },
+    },
+  });
+  useCodingGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+    sourceCode: harness.store.assessments[0].questions[0].starterCode,
+  });
+  Object.assign(harness.store.attempts[0], {
+    status: "GRADING",
+    submissionKey: "recover-stale-key",
+    gradingLeaseToken: "expired-server-token-that-is-long-enough",
+    gradingLeaseExpiresAt: new Date("2000-01-01T00:00:00.000Z"),
+  });
+
+  const result = await harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "replacement-browser-key",
+  });
+
+  assert.equal(result.status, "SUBMITTED");
+  assert.equal(executions, 1);
+  assert.equal(harness.store.attempts[0].gradingLeaseToken, null);
+});
+
+test("a stale worker cannot finalize or release a newer grading lease", async () => {
+  let harness;
+  const replacementToken = "replacement-server-token-that-is-long-enough";
+  harness = makeHarness({ type: "PRE" }, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => {
+        Object.assign(harness.store.attempts[0], {
+          gradingLeaseToken: replacementToken,
+          gradingLeaseExpiresAt: new Date("2099-01-01T00:00:00.000Z"),
+        });
+        return {
+          category: "SUCCESS",
+          invocations: [
+            { category: "SUCCESS", output: 3 },
+            { category: "SUCCESS", output: 12 },
+          ],
+        };
+      },
+    },
+  });
+  useCodingGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+    sourceCode: harness.store.assessments[0].questions[0].starterCode,
+  });
+
+  await expectCode(harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "stale-worker-key",
+  }), "GRADING_LEASE_LOST");
+  assert.equal(harness.store.attempts[0].status, "GRADING");
+  assert.equal(harness.store.attempts[0].gradingLeaseToken, replacementToken);
+  assert.equal(harness.store.responses[0].pointsAwarded, 0);
+});
+
+test("Run Code uses persisted source and PUBLIC cases without mutating assessment state", async () => {
+  let executionRequest;
+  const harness = makeHarness({}, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async (request) => {
+        executionRequest = request;
+        return {
+          category: "SUCCESS",
+          invocations: [{ category: "SUCCESS", output: 3 }],
+        };
+      },
+    },
+  });
+  useCodingGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  const sourceCode = "public static class Solution { public static int Add(int a, int b) => a + b; }";
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+    sourceCode,
+  });
+  const beforeAttempt = clone(harness.store.attempts[0]);
+  const beforeResponse = clone(harness.store.responses[0]);
+
+  const result = await harness.service.runPublicCodingQuestion({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+  });
+
+  assert.equal(executionRequest.source, sourceCode);
+  assert.deepEqual(executionRequest.inputs, [[1, 2]]);
+  assert.deepEqual(result.tests, [{
+    status: "SUCCESS", passed: true, input: [1, 2], expectedOutput: 3, actualOutput: 3,
+  }]);
+  assert.deepEqual(clone(harness.store.attempts[0]), beforeAttempt);
+  assert.deepEqual(clone(harness.store.responses[0]), beforeResponse);
+  assert.doesNotMatch(JSON.stringify(result), /HIDDEN|weight|12|referenceSolution|lease/i);
 });

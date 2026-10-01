@@ -86,6 +86,17 @@ test("player renders title, instructions, progress, answered count, and one MCQ 
   assert.match(html, /<button[^>]*>Next<\/button>/);
 });
 
+test("player fails safely when the authoritative attempt contains no questions", () => {
+  const html = renderPlayer(stateAt(0, {
+    orderedQuestions: [],
+    selectedByQuestion: {},
+    savedByQuestion: {},
+    saveStateByQuestion: {},
+  }));
+  assert.match(html, /Assessment unavailable/);
+  assert.match(html, /No questions are available for this attempt/);
+});
+
 test("TRUE_FALSE uses server labels and restores the server-saved selection", () => {
   const html = renderPlayer(stateAt(1));
   assert.match(html, /Question 2 of 2/);

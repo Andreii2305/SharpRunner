@@ -30,6 +30,8 @@ const AssessmentAttempt = sequelize.define("AssessmentAttempt", {
   questionOrder: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   choiceOrder: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
   submissionKey: { type: DataTypes.STRING(ASSESSMENT_LIMITS.submissionKeyLength), allowNull: true },
+  gradingLeaseToken: { type: DataTypes.STRING(96), allowNull: true },
+  gradingLeaseExpiresAt: { type: DataTypes.DATE, allowNull: true },
 }, {
   indexes: [
     {
@@ -40,7 +42,10 @@ const AssessmentAttempt = sequelize.define("AssessmentAttempt", {
     {
       unique: true,
       fields: ["assessmentId", "studentId"],
-      where: { status: ATTEMPT_STATUSES.IN_PROGRESS },
+      where: { status: { [require("sequelize").Op.in]: [
+        ATTEMPT_STATUSES.IN_PROGRESS,
+        ATTEMPT_STATUSES.GRADING,
+      ] } },
       name: "assessment_attempts_one_in_progress",
     },
     {

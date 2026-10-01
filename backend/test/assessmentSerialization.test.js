@@ -92,9 +92,64 @@ test("player serializers recursively exclude answer and teacher configuration fi
     "isCorrect", "correctChoiceId", "explanation", "passingPercentage",
     "passingPercentageApplied", "gradeCalculation", "answerReviewPolicy",
     "createdBy", "studentId", "submissionKey", "pointsAwarded", "displayOrder",
+    "referenceSolution", "codingTestCases", "visibility", "weight",
+    "gradingLeaseToken", "gradingLeaseExpiresAt", "internalHarness", "harnessSource",
+    "containerId", "runnerConfig",
   ]);
   assert.equal(findForbiddenKey(output, forbidden), null);
   assert.equal(output.attempt.responses[0].selectedChoiceId, 1001);
+});
+
+test("coding player and review DTOs expose public contract/source without mixed response fields", () => {
+  const codingAssessment = assessment({
+    questions: [{
+      id: 202,
+      questionText: "Add two values.",
+      questionType: "CODING",
+      points: 3,
+      objectiveKey: "addition",
+      starterCode: "return 0;",
+      referenceSolution: "return left + right;",
+      codingTypeName: "Solution",
+      codingMethodName: "Add",
+      codingParameterTypes: ["int", "int"],
+      codingReturnType: "int",
+      codingTestCases: [
+        { visibility: "PUBLIC", input: [1, 2], expectedOutput: 3, weight: 1 },
+        { visibility: "HIDDEN", input: [9, 9], expectedOutput: 18, weight: 7 },
+      ],
+      choices: [],
+    }],
+  });
+  const player = serializers.serializePlayerAttempt({
+    assessment: codingAssessment,
+    attempt: submittedAttempt(),
+    responses: [{ questionId: 202, selectedChoiceId: null, sourceCode: "return left + right;" }],
+    attemptsUsed: 1,
+    maxAttempts: 3,
+  });
+  assert.deepEqual(player.responses[0], {
+    questionId: 202,
+    sourceCode: "return left + right;",
+  });
+  assert.deepEqual(player.assessment.questions[0].codingExamples, [
+    { input: [1, 2], expectedOutput: 3 },
+  ]);
+
+  const review = serializers.serializeAllowedReview({
+    reviewAvailable: true,
+    scoreVisible: false,
+    questions: codingAssessment.questions,
+    responses: [{ questionId: 202, selectedChoiceId: null, sourceCode: "return left + right;" }],
+  });
+  assert.deepEqual(review.review[0], {
+    questionId: 202,
+    questionText: "Add two values.",
+    sourceCode: "return left + right;",
+  });
+
+  const serialized = JSON.stringify({ player, review });
+  assert.doesNotMatch(serialized, /referenceSolution|HIDDEN|weight|gradingLease|internalHarness|docker/i);
 });
 
 test("teacher editor serializer includes answer keys only after authorization", () => {

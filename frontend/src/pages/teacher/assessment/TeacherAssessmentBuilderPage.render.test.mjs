@@ -6,6 +6,7 @@ const source = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.jsx", imp
 const styles = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.module.css", import.meta.url), "utf8");
 const codingEditor = fs.readFileSync(new URL("./CodingQuestionEditor.jsx", import.meta.url), "utf8");
 const codeEditor = fs.readFileSync(new URL("./AssessmentCodeEditor.jsx", import.meta.url), "utf8");
+const sharedCodeEditor = fs.readFileSync(new URL("../../../Components/AssessmentCodeEditor/AssessmentCodeEditor.jsx", import.meta.url), "utf8");
 const codingPreview = fs.readFileSync(new URL("./CodingQuestionPreview.jsx", import.meta.url), "utf8");
 
 test("builder exposes labelled settings, question controls, preview, and lifecycle confirmations", () => {
@@ -54,8 +55,9 @@ test("coding builder exposes fixed C# contract, typed tests, weights, and teache
   for (const marker of ["Coding", "C#", "Type\/Class name", "Method name", "Return type", "Signature preview", "Starter code", "Reference solution", "teacher-only", "PUBLIC", "HIDDEN", "Expected output", "Weight", "Add test case"]) {
     assert.equal(codingEditor.includes(marker), true, marker);
   }
-  assert.match(codeEditor, /@monaco-editor\/react/);
-  assert.doesNotMatch(`${source}${codingEditor}${codeEditor}`, /localStorage|sessionStorage|indexedDB|BroadcastChannel|console\./);
+  assert.match(codeEditor, /Components\/AssessmentCodeEditor/);
+  assert.match(sharedCodeEditor, /@monaco-editor\/react/);
+  assert.doesNotMatch(`${source}${codingEditor}${codeEditor}${sharedCodeEditor}`, /localStorage|sessionStorage|indexedDB|BroadcastChannel|console\./);
 });
 
 test("coding preview separates student-visible examples from teacher-only grading configuration", () => {

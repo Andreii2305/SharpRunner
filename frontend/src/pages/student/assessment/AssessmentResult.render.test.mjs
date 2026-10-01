@@ -206,6 +206,31 @@ test("answer review follows the cached shuffled attempt order and resolves safe 
   assert.doesNotMatch(html, /2001|2002|correctChoiceId|selectedChoiceId/);
 });
 
+test("coding review renders only the student's source and preserves hidden-score protections", () => {
+  const html = renderResult({
+    questions: [{
+      id: 202,
+      questionText: "Add two values.",
+      questionType: "CODING",
+      methodContract: { typeName: "Solution", methodName: "Add" },
+      codingExamples: [{ input: [1, 2], expectedOutput: 3 }],
+      choices: [],
+    }],
+    envelope: envelope({
+      scoreVisible: false,
+      pointsEarned: undefined,
+      maxPoints: undefined,
+      percentage: undefined,
+    }, {
+      reviewAvailable: true,
+      review: [{ questionId: 202, sourceCode: "return left + right;" }],
+    }),
+  });
+
+  assert.match(html, /Submitted source for question 1/);
+  assert.doesNotMatch(html, /Unanswered|Correct|Incorrect|Points awarded|referenceSolution|HIDDEN|weight/);
+});
+
 test("result source does not grade, reconstruct hidden answers, or inject HTML", async () => {
   const source = await readFile(new URL("AssessmentResult.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /dangerouslySetInnerHTML/);

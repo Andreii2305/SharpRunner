@@ -44,6 +44,16 @@ const ASSESSMENT_FORBIDDEN_KEYS = new Set([
   "questionOrder",
   "studentId",
   "submissionKey",
+  "referenceSolution",
+  "codingTestCases",
+  "visibility",
+  "weight",
+  "gradingLeaseToken",
+  "gradingLeaseExpiresAt",
+  "internalHarness",
+  "harnessSource",
+  "containerId",
+  "runnerConfig",
 ]);
 
 const findForbiddenAssessmentPath = (value, forbidden = ASSESSMENT_FORBIDDEN_KEYS, trail = []) => {

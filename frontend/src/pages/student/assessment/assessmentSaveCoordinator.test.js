@@ -181,3 +181,67 @@ test("reset and dispose prevent late completions from mutating a new attempt", a
   assert.equal(successes.length, 0);
   assert.equal(coordinator.select(101, 2003), false);
 });
+
+test("coding source autosave is debounced and sends only the latest source payload", async () => {
+  const requests = [];
+  const coordinator = createAssessmentSaveCoordinator({
+    attemptId: 312,
+    initialSavedSourceByQuestion: { 201: "return 0;" },
+    saveResponse: async (request) => {
+      requests.push(request);
+      return { response: { questionId: request.questionId, sourceCode: request.sourceCode } };
+    },
+  });
+
+  coordinator.updateSource(201, "return 1;", { debounceMs: 20 });
+  coordinator.updateSource(201, "return 2;", { debounceMs: 20 });
+  assert.equal(requests.length, 0);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  await coordinator.flushAll();
+
+  assert.deepEqual(requests, [{
+    attemptId: 312,
+    questionId: 201,
+    sourceCode: "return 2;",
+  }]);
+  assert.deepEqual(coordinator.getSnapshot(201), {
+    questionId: 201,
+    desiredSourceCode: "return 2;",
+    savedSourceCode: "return 2;",
+    revision: 2,
+    status: "clean",
+    error: null,
+  });
+});
+
+test("flush forces pending coding source to save and serializes later edits", async () => {
+  const requests = [];
+  const coordinator = createAssessmentSaveCoordinator({
+    attemptId: 312,
+    initialSavedSourceByQuestion: { 201: "" },
+    saveResponse: (request) => {
+      const pending = deferred();
+      requests.push({ request, pending });
+      return pending.promise;
+    },
+  });
+
+  coordinator.updateSource(201, "first", { debounceMs: 60_000 });
+  const firstFlush = coordinator.flushAll();
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0].request, {
+    attemptId: 312,
+    questionId: 201,
+    sourceCode: "first",
+  });
+
+  coordinator.updateSource(201, "second", { debounceMs: 60_000 });
+  requests[0].pending.resolve({ response: { sourceCode: "first" } });
+  await nextTurn();
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].request.sourceCode, "second");
+  requests[1].pending.resolve({ response: { sourceCode: "second" } });
+  await firstFlush;
+  await coordinator.flushAll();
+  assert.equal(coordinator.getSnapshot(201).status, "clean");
+});

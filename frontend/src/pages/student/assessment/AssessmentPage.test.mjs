@@ -76,12 +76,13 @@ const attemptEnvelope = ({
   attemptId = 301,
   resumed = false,
   lessonKey = "arrays",
+  status = "IN_PROGRESS",
 } = {}) => ({
   attempt: {
     attemptId,
     attemptNumber: 1,
     assessmentVersion: 4,
-    status: "IN_PROGRESS",
+    status,
     startedAt: "2026-09-29T00:00:00.000Z",
     resumed,
     attemptsUsed: 0,
@@ -1064,4 +1065,21 @@ test("non-mutating revalidation recovers active, submitted, and remote-retake st
     assert.equal(outcome.error.code, "ASSESSMENT_STATE_MISMATCH");
     assert.equal(harness.calls.some(({ name }) => name === "startOrResumeAttempt"), false);
   });
+});
+
+test("direct revisit recovers an authoritative GRADING attempt without starting or exposing lease state", async () => {
+  const activeAttemptId = 301;
+  const harness = createHarness({
+    progress: progressDto({ lesson: lessonProgression({ preAttemptInProgress: true }) }),
+    discovery: discoveryDto({
+      status: { activeAttemptId, attemptStatus: "GRADING" },
+    }),
+    attempt: attemptEnvelope({ attemptId: activeAttemptId, resumed: true, status: "GRADING" }),
+  });
+
+  const outcome = await load(harness);
+  assert.equal(outcome.kind, "ACTIVE");
+  assert.equal(outcome.envelope.attempt.status, "GRADING");
+  assert.equal(harness.calls.some(({ name }) => name === "startOrResumeAttempt"), false);
+  assert.equal(JSON.stringify(outcome).includes("gradingLease"), false);
 });

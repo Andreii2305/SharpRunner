@@ -5,6 +5,7 @@ const {
   CodingAssessmentInfrastructureError,
   gradeCodingQuestion,
   isCodingAssessmentPlayerEnabled,
+  shapePublicCodingExecutionResult,
   validateCodingQuestion,
 } = require("../src/services/codingAssessmentService");
 const { shapePlayerAssessment } = require("../src/services/assessmentPolicyService");
@@ -159,6 +160,48 @@ test("malformed secure runner output aborts coding grading", async () => {
     }),
     CodingAssessmentInfrastructureError,
   );
+});
+
+test("public Run Code result exposes safe public values without weights or hidden metadata", () => {
+  const shaped = shapePublicCodingExecutionResult({
+    tests: [codingQuestion().codingTestCases[0]],
+    result: {
+      category: "SUCCESS",
+      invocations: [{ category: "SUCCESS", output: 4, stdout: "bounded" }],
+    },
+  });
+  assert.deepEqual(shaped, {
+    status: "SUCCESS",
+    tests: [{
+      status: "SUCCESS",
+      passed: false,
+      input: [1, 2],
+      expectedOutput: 3,
+      actualOutput: 4,
+    }],
+  });
+  const serialized = JSON.stringify(shaped);
+  assert.doesNotMatch(serialized, /weight|HIDDEN|referenceSolution|stdout|lease|docker/i);
+});
+
+test("public Run Code preserves sanitized compile diagnostics and rejects infrastructure results", () => {
+  assert.deepEqual(shapePublicCodingExecutionResult({
+    tests: [codingQuestion().codingTestCases[0]],
+    result: {
+      category: "COMPILE_ERROR",
+      message: "Compilation failed.",
+      diagnostics: [{ id: "CS1002", line: 2, column: 4, message: "; expected" }],
+    },
+  }), {
+    status: "COMPILE_ERROR",
+    message: "Compilation failed.",
+    diagnostics: [{ id: "CS1002", line: 2, column: 4, message: "; expected" }],
+    tests: [],
+  });
+  assert.throws(() => shapePublicCodingExecutionResult({
+    tests: [codingQuestion().codingTestCases[0]],
+    result: { category: "INFRASTRUCTURE_ERROR" },
+  }), CodingAssessmentInfrastructureError);
 });
 
 test("authorized teacher graph retains complete public and hidden coding configuration", () => {

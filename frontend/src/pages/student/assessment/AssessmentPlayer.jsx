@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { getAnswerSummary, getCurrentQuestion } from "./assessmentState.js";
 import AssessmentQuestion from "./AssessmentQuestion.jsx";
+import AssessmentCodingQuestion from "./AssessmentCodingQuestion.jsx";
 import styles from "./AssessmentPlayer.module.css";
 
 const statusCopy = (saveState, hasSelection) => {
@@ -21,6 +22,8 @@ const statusCopy = (saveState, hasSelection) => {
 export function AssessmentPlayer({
   state,
   onSelect,
+  onSourceChange,
+  onRunCode,
   onPrevious,
   onNext,
   onGoToQuestion,
@@ -39,6 +42,9 @@ export function AssessmentPlayer({
   const selectedChoiceId = currentQuestion
     ? state.selectedByQuestion[currentQuestion.id]
     : undefined;
+  const sourceCode = currentQuestion
+    ? state.sourceByQuestion?.[currentQuestion.id]
+    : undefined;
   const currentSaveState = currentQuestion
     ? state.saveStateByQuestion[currentQuestion.id]
     : null;
@@ -50,6 +56,13 @@ export function AssessmentPlayer({
   const syncFailed = state.externalSyncStatus === "error";
   const hasSaveError = currentSaveState?.status === "error";
   const syncBlocking = hasConflict || syncRequired || syncChecking;
+  const grading = state.attempt?.status === "GRADING" || state.submitStatus === "grading";
+  const editingBlocked = syncBlocking || grading;
+  const hasSavedAnswer = currentQuestion?.questionType === "CODING"
+    ? state.responseExistsByQuestion?.[currentQuestion.id] === true
+      && typeof state.savedSourceByQuestion?.[currentQuestion.id] === "string"
+      && state.savedSourceByQuestion[currentQuestion.id].trim().length > 0
+    : currentQuestion ? selectedChoiceId != null : false;
   const shouldFocusSaveStatus = syncRequired
     || syncFailed
     || hasSaveError
@@ -62,7 +75,9 @@ export function AssessmentPlayer({
         ? "Could not check for assessment updates. Your saved answers are unchanged."
         : hasConflict
           ? "Answers need to be reloaded"
-          : statusCopy(currentSaveState, selectedChoiceId != null);
+          : grading
+            ? "Grading your assessment..."
+            : statusCopy(currentSaveState, hasSavedAnswer);
   const failedCount = state.orderedQuestions.filter(({ id }) => (
     state.saveStateByQuestion[id]?.status === "error"
     || state.saveStateByQuestion[id]?.status === "conflict"
@@ -108,13 +123,25 @@ export function AssessmentPlayer({
         </div>
       </header>
 
-      <AssessmentQuestion
-        question={currentQuestion}
-        selectedChoiceId={selectedChoiceId}
-        onSelect={onSelect}
-        disabled={syncBlocking}
-        containerRef={questionContainer}
-      />
+      {currentQuestion.questionType === "CODING" ? (
+        <AssessmentCodingQuestion
+          question={currentQuestion}
+          sourceCode={sourceCode}
+          onSourceChange={onSourceChange}
+          disabled={editingBlocked}
+          containerRef={questionContainer}
+          runState={state.codingRunByQuestion?.[currentQuestion.id]}
+          onRun={onRunCode}
+        />
+      ) : (
+        <AssessmentQuestion
+          question={currentQuestion}
+          selectedChoiceId={selectedChoiceId}
+          onSelect={onSelect}
+          disabled={editingBlocked}
+          containerRef={questionContainer}
+        />
+      )}
 
       <section
         className={styles.saveArea}
@@ -130,7 +157,7 @@ export function AssessmentPlayer({
         >
           {saveStatus}
         </p>
-        {!syncBlocking && currentSaveState?.status === "error" && (
+        {!editingBlocked && currentSaveState?.status === "error" && (
           <button type="button" className={styles.secondaryButton} onClick={() => onRetrySave(currentQuestion.id)}>
             Retry save
           </button>
@@ -169,7 +196,7 @@ export function AssessmentPlayer({
         <button type="button" onClick={onPrevious} disabled={isFirst}>
           Previous
         </button>
-        <button type="button" onClick={advance} disabled={isLast && syncBlocking}>
+        <button type="button" onClick={advance} disabled={grading || (isLast && syncBlocking)}>
           {isLast ? "Review answers" : "Next"}
         </button>
       </nav>

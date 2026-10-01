@@ -61,6 +61,10 @@ const isAlreadySubmitted = (error) => (
   error?.status === 409 && error?.code === "ATTEMPT_ALREADY_SUBMITTED"
 );
 
+const isGrading = (payload) => payload?.result?.status === "GRADING";
+const isSubmitted = (payload) => payload?.result?.status === "SUBMITTED";
+const defaultWait = (delay) => new Promise((resolve) => setTimeout(resolve, delay));
+
 export const createAssessmentSubmissionController = ({
   attemptId,
   classroomId,
@@ -76,11 +80,14 @@ export const createAssessmentSubmissionController = ({
   dispatch,
   isCurrent = () => true,
   onSubmitted,
+  wait = defaultWait,
+  gradingPollDelays = [500, 1000, 1500, 2500, 4000, 5000],
 }) => {
   const actionContext = { routeKey, requestGeneration };
   let disposed = false;
   let inFlight = null;
   let immutable = false;
+  let grading = getState()?.attempt?.status === "GRADING";
   const current = () => !disposed && isCurrent();
   const send = (type, payload = {}) => {
     if (current()) dispatch({ type, ...payload, ...actionContext });
@@ -88,6 +95,12 @@ export const createAssessmentSubmissionController = ({
 
   const finish = async (result, recovered) => {
     if (!current()) return { kind: "STALE" };
+    if (!isSubmitted(result)) {
+      const error = new Error("Assessment result response was invalid");
+      send("SUBMIT_RECOVERY_FAILED", { error });
+      return { kind: "RECOVERY_FAILED", error };
+    }
+    grading = false;
     send("SUBMIT_SUCCEEDED", { payload: result });
     onSubmitted?.({ attemptId });
 
@@ -104,10 +117,68 @@ export const createAssessmentSubmissionController = ({
     return { kind: "SUBMITTED", result, progression, recovered };
   };
 
+  const pollForResult = async () => {
+    grading = true;
+    immutable = true;
+    send("SUBMIT_GRADING_STARTED");
+    for (const delay of gradingPollDelays) {
+      await wait(delay);
+      if (!current()) return { kind: "STALE" };
+      let result;
+      try {
+        result = await getAttemptResult({ attemptId });
+      } catch (error) {
+        if (!current()) return { kind: "STALE" };
+        if (error?.code === "ATTEMPT_IN_PROGRESS") {
+          grading = false;
+          immutable = false;
+          send("SUBMIT_GRADING_RELEASED", { error });
+          return { kind: "GRADING_RELEASED", error };
+        }
+        send("SUBMIT_GRADING_POLL_FAILED", { error });
+        return { kind: "GRADING_POLL_FAILED", error };
+      }
+      if (isSubmitted(result)) return finish(result, true);
+      if (!isGrading(result)) {
+        const error = new Error("Assessment grading state is unavailable");
+        send("SUBMIT_GRADING_POLL_FAILED", { error });
+        return { kind: "GRADING_POLL_FAILED", error };
+      }
+    }
+    try {
+      const resumed = await submitAttempt({
+        attemptId,
+        idempotencyKey: getIdempotencyKey(attemptId),
+      });
+      if (!current()) return { kind: "STALE" };
+      if (isSubmitted(resumed)) return finish(resumed, true);
+      if (!isGrading(resumed)) {
+        const error = new Error("Assessment grading state is unavailable");
+        send("SUBMIT_GRADING_POLL_FAILED", { error });
+        return { kind: "GRADING_POLL_FAILED", error };
+      }
+    } catch (error) {
+      if (!current()) return { kind: "STALE" };
+      if (error?.code === "CODING_EXECUTION_UNAVAILABLE") {
+        grading = false;
+        immutable = false;
+        send("SUBMIT_GRADING_RELEASED", { error });
+        return { kind: "GRADING_RELEASED", error };
+      }
+      if (error?.code !== "ATTEMPT_GRADING") {
+        send("SUBMIT_GRADING_POLL_FAILED", { error });
+        return { kind: "GRADING_POLL_FAILED", error };
+      }
+    }
+    send("SUBMIT_GRADING_PENDING");
+    return { kind: "GRADING_PENDING" };
+  };
+
   const recoverResult = async () => {
     send("SUBMIT_RECOVERY_STARTED");
     try {
       const result = await getAttemptResult({ attemptId });
+      if (isGrading(result)) return pollForResult();
       return finish(result, true);
     } catch (error) {
       if (!current()) return { kind: "STALE" };
@@ -117,6 +188,7 @@ export const createAssessmentSubmissionController = ({
   };
 
   const execute = async () => {
+    if (grading) return pollForResult();
     if (immutable) return recoverResult();
     const initialReadiness = getSubmissionReadiness(getState());
     if (!initialReadiness.ready) return { kind: "BLOCKED", readiness: initialReadiness };
@@ -144,6 +216,8 @@ export const createAssessmentSubmissionController = ({
       return recoverResult();
     }
     immutable = true;
+    if (isGrading(result)) return pollForResult();
+    if (!isSubmitted(result)) return recoverResult();
     return finish(result, recovered);
   };
 
@@ -159,7 +233,12 @@ export const createAssessmentSubmissionController = ({
     },
     retryResultRecovery() {
       if (!immutable) return Promise.resolve({ kind: "NOT_IMMUTABLE" });
-      return run(recoverResult);
+      return run(grading ? pollForResult : recoverResult);
+    },
+    resumeGrading() {
+      grading = true;
+      immutable = true;
+      return run(pollForResult);
     },
     dispose() {
       disposed = true;

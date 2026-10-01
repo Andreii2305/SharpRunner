@@ -5,6 +5,7 @@ import {
   getAttempt,
   getAttemptResult,
   getProgress,
+  runCodingQuestion,
   saveResponse,
   startOrResumeAttempt,
   submitAttempt,
@@ -135,6 +136,8 @@ export function AssessmentPageContent({
   reviewReady,
   onRetry,
   onSelect,
+  onSourceChange,
+  onRunCode,
   onPrevious,
   onNext,
   onGoToQuestion,
@@ -147,6 +150,7 @@ export function AssessmentPageContent({
   onCancelConfirmation,
   onConfirmSubmit,
   onRetryResultRecovery,
+  onRetryGrading,
   onRetake,
   onRetryProgression,
 }) {
@@ -176,6 +180,23 @@ export function AssessmentPageContent({
           <p>Your assessment is already submitted and can no longer be edited.</p>
           {failed && (
             <button type="button" onClick={onRetryResultRecovery}>Try loading result again</button>
+          )}
+        </main>
+      );
+    }
+    if (["grading", "grading-pending", "grading-error"].includes(assessmentState.submitStatus)) {
+      const failed = assessmentState.submitStatus === "grading-error";
+      const pending = assessmentState.submitStatus === "grading-pending";
+      return (
+        <main className="assessment-page" role={failed ? "alert" : "status"} aria-live="polite">
+          <h1>{failed ? "Unable to check grading" : "Grading your assessment..."}</h1>
+          <p>
+            {failed
+              ? "Your answers remain saved. Check the grading status again when your connection is available."
+              : "Keep this page open while authoritative grading completes. Your answers cannot be edited during grading."}
+          </p>
+          {(failed || pending) && (
+            <button type="button" onClick={onRetryGrading}>Check grading status</button>
           )}
         </main>
       );
@@ -211,6 +232,8 @@ export function AssessmentPageContent({
       <AssessmentPlayer
         state={assessmentState}
         onSelect={onSelect}
+        onSourceChange={onSourceChange}
+        onRunCode={onRunCode}
         onPrevious={onPrevious}
         onNext={onNext}
         onGoToQuestion={onGoToQuestion}
@@ -240,6 +263,7 @@ function AssessmentPage() {
   const submissionController = useRef(null);
   const sessionGuard = useRef(null);
   const retakeInFlight = useRef(null);
+  const codingRunInFlight = useRef(new Map());
   const latestState = useRef(assessmentState);
   latestState.current = assessmentState;
   const attemptControllerIdentity = getAttemptControllerIdentity(assessmentState);
@@ -281,6 +305,7 @@ function AssessmentPage() {
     });
     setReviewReady(false);
     retakeInFlight.current = null;
+    codingRunInFlight.current.clear();
     setOutcome({ kind: "LOADING", route: parsedRoute });
 
     const loadAssessment = async () => {
@@ -395,6 +420,7 @@ function AssessmentPage() {
     const controller = createAssessmentPlayerController({
       attemptId: assessmentState.attempt.attemptId,
       initialSavedByQuestion: latestState.current.savedByQuestion,
+      initialSavedSourceByQuestion: latestState.current.savedSourceByQuestion,
       routeKey: assessmentState.routeKey,
       requestGeneration: assessmentState.requestGeneration,
       saveResponse,
@@ -403,6 +429,16 @@ function AssessmentPage() {
       onSaved: () => sessionGuard.current?.announceSaved(),
     });
     playerController.current = controller;
+    for (const question of latestState.current.orderedQuestions) {
+      if (
+        question.questionType === "CODING"
+        && latestState.current.responseExistsByQuestion?.[question.id] !== true
+      ) {
+        controller.updateSource(question.id, latestState.current.sourceByQuestion[question.id], {
+          debounceMs: 500,
+        });
+      }
+    }
     const submitController = createAssessmentSubmissionController({
       attemptId: assessmentState.attempt.attemptId,
       classroomId: parsedRoute.classroomId,
@@ -423,6 +459,7 @@ function AssessmentPage() {
       ),
     });
     submissionController.current = submitController;
+    if (latestState.current.attempt?.status === "GRADING") submitController.resumeGrading();
 
     return () => {
       submitController.dispose();
@@ -478,15 +515,72 @@ function AssessmentPage() {
   const selectChoice = useCallback((questionId, selectedChoiceId) => (
     playerController.current?.selectChoice(questionId, selectedChoiceId) ?? false
   ), []);
+  const updateSource = useCallback((questionId, sourceCode) => (
+    playerController.current?.updateSource(questionId, sourceCode) ?? false
+  ), []);
+  const navigateAfterFlush = useCallback(async (action) => {
+    try {
+      await playerController.current?.flushAll();
+      dispatchForCurrentAttempt(action);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [dispatchForCurrentAttempt]);
   const previousQuestion = useCallback(() => {
-    dispatchForCurrentAttempt({ type: "PREVIOUS_QUESTION" });
-  }, [dispatchForCurrentAttempt]);
+    navigateAfterFlush({ type: "PREVIOUS_QUESTION" });
+  }, [navigateAfterFlush]);
   const nextQuestion = useCallback(() => {
-    dispatchForCurrentAttempt({ type: "NEXT_QUESTION" });
-  }, [dispatchForCurrentAttempt]);
-  const goToQuestion = useCallback((index) => {
+    navigateAfterFlush({ type: "NEXT_QUESTION" });
+  }, [navigateAfterFlush]);
+  const goToQuestion = useCallback(async (index) => {
+    if (!await navigateAfterFlush({ type: "QUESTION_CHANGED", index })) return;
     setReviewReady(false);
-    dispatchForCurrentAttempt({ type: "QUESTION_CHANGED", index });
+  }, [navigateAfterFlush]);
+  const runCode = useCallback(async (questionId) => {
+    const current = latestState.current;
+    const attemptId = current.attempt?.attemptId;
+    const question = current.orderedQuestions.find(({ id }) => id === questionId);
+    if (!attemptId || question?.questionType !== "CODING" || current.attempt?.status === "GRADING") {
+      return false;
+    }
+    const runKey = `${attemptId}:${questionId}`;
+    const existing = codingRunInFlight.current.get(runKey);
+    if (existing) return existing;
+    const operation = (async () => {
+      try {
+        await playerController.current?.flushAll();
+      } catch {
+        dispatchForCurrentAttempt({
+          type: "CODING_RUN_FAILED",
+          questionId,
+          message: "Save your code successfully before running it.",
+        });
+        return false;
+      }
+      dispatchForCurrentAttempt({ type: "CODING_RUN_STARTED", questionId });
+      try {
+        const payload = await runCodingQuestion({ attemptId, questionId });
+        if (latestState.current.attempt?.attemptId !== attemptId) return false;
+        dispatchForCurrentAttempt({ type: "CODING_RUN_SUCCEEDED", questionId, result: payload.result });
+        return true;
+      } catch (error) {
+        if (latestState.current.attempt?.attemptId !== attemptId) return false;
+        const message = error?.code === "CODING_RUN_RATE_LIMITED"
+          ? "Too many code runs. Wait a moment and try again."
+          : "Code execution is currently unavailable. Your saved code has not been lost.";
+        dispatchForCurrentAttempt({ type: "CODING_RUN_FAILED", questionId, message });
+        return false;
+      }
+    })();
+    codingRunInFlight.current.set(runKey, operation);
+    try {
+      return await operation;
+    } finally {
+      if (codingRunInFlight.current.get(runKey) === operation) {
+        codingRunInFlight.current.delete(runKey);
+      }
+    }
   }, [dispatchForCurrentAttempt]);
   const retrySave = useCallback((questionId) => (
     playerController.current?.retrySave(questionId) ?? false
@@ -504,6 +598,9 @@ function AssessmentPage() {
   ), []);
   const retryResultRecovery = useCallback(() => (
     submissionController.current?.retryResultRecovery()
+  ), []);
+  const retryGrading = useCallback(() => (
+    submissionController.current?.resumeGrading()
   ), []);
   const retryProgression = useCallback(async () => {
     const current = latestState.current;
@@ -587,6 +684,8 @@ function AssessmentPage() {
       reviewReady={reviewReady}
       onRetry={retry}
       onSelect={selectChoice}
+      onSourceChange={updateSource}
+      onRunCode={runCode}
       onPrevious={previousQuestion}
       onNext={nextQuestion}
       onGoToQuestion={goToQuestion}
@@ -602,6 +701,7 @@ function AssessmentPage() {
       onCancelConfirmation={cancelConfirmation}
       onConfirmSubmit={confirmSubmit}
       onRetryResultRecovery={retryResultRecovery}
+      onRetryGrading={retryGrading}
       onRetake={startRetake}
       onRetryProgression={retryProgression}
     />

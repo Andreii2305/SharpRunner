@@ -79,7 +79,7 @@ const createAssessmentReadService = ({
       (attempt) => attempt.status === ATTEMPT_STATUSES.SUBMITTED,
     );
     const activeAttempt = attempts.find(
-      (attempt) => attempt.status === ATTEMPT_STATUSES.IN_PROGRESS,
+      (attempt) => [ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING].includes(attempt.status),
     ) ?? null;
     const latestSubmitted = newestSubmitted(submittedAttempts);
     const attemptsUsed = submittedAttempts.length;
@@ -231,6 +231,15 @@ const createAssessmentReadService = ({
       studentId,
     });
     if (identity.status !== ATTEMPT_STATUSES.SUBMITTED) {
+      if (identity.status === ATTEMPT_STATUSES.GRADING) {
+        return {
+          result: {
+            attemptId: identity.id,
+            status: ATTEMPT_STATUSES.GRADING,
+          },
+          reviewAvailable: false,
+        };
+      }
       throw new AssessmentApiError(409, "ATTEMPT_IN_PROGRESS", "Assessment attempt has not been submitted");
     }
     const assessment = plain(await LessonAssessment.findByPk(identity.assessmentId, {
@@ -254,7 +263,9 @@ const createAssessmentReadService = ({
       throw new AssessmentApiError(404, "ATTEMPT_NOT_FOUND", "Assessment attempt was not found");
     }
     const submittedAttempts = attempts.filter((row) => row.status === ATTEMPT_STATUSES.SUBMITTED);
-    const activeAttempt = attempts.find((row) => row.status === ATTEMPT_STATUSES.IN_PROGRESS) ?? null;
+    const activeAttempt = attempts.find((row) => (
+      [ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING].includes(row.status)
+    )) ?? null;
     const officialGrade = assessment.type === "POST"
       ? selectors.selectOfficialPostAttempt(submittedAttempts) : null;
     const firstPost = assessment.type === "POST"
@@ -335,8 +346,9 @@ const createAssessmentReadService = ({
     if (review.reviewAvailable) {
       output.review = review.review.map((row) => ({
         questionId: row.questionId,
-        selectedChoiceId: row.selectedChoiceId,
-        ...(Object.hasOwn(row, "sourceCode") ? { sourceCode: row.sourceCode } : {}),
+        ...(Object.hasOwn(row, "sourceCode")
+          ? { sourceCode: row.sourceCode }
+          : { selectedChoiceId: row.selectedChoiceId }),
         ...(scoreVisible ? {
           correctChoiceId: row.correctChoiceId,
           isCorrect: row.isCorrect,

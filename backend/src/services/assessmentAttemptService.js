@@ -1,9 +1,15 @@
+const { randomBytes } = require("crypto");
 const defaultSequelize = require("../config/database");
 const defaultModels = require("../models");
 const defaultProgressionService = require("./lessonProgressionService");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
-const { gradeCodingQuestion, isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
+const {
+  contractForQuestion,
+  gradeCodingQuestion,
+  isCodingAssessmentPlayerEnabled,
+  shapePublicCodingExecutionResult,
+} = require("./codingAssessmentService");
 const {
   ATTEMPT_STATUSES,
 } = require("../constants/assessmentConfig");
@@ -87,8 +93,9 @@ const safeSavedResponses = (rows = []) => rows.map((rowInput) => {
   const row = plain(rowInput);
   return {
     questionId: row.questionId,
-    selectedChoiceId: row.selectedChoiceId ?? null,
-    ...(row.sourceCode != null ? { sourceCode: row.sourceCode } : {}),
+    ...(row.sourceCode != null
+      ? { sourceCode: row.sourceCode }
+      : { selectedChoiceId: row.selectedChoiceId ?? null }),
   };
 });
 
@@ -117,6 +124,7 @@ const createAssessmentAttemptService = ({
   progressionService = defaultProgressionService,
   secureCodingExecution = defaultSecureCodingExecution,
   environment = process.env,
+  createLeaseToken = () => randomBytes(32).toString("base64url"),
 } = {}) => {
   const {
     AssessmentAttempt,
@@ -207,6 +215,22 @@ const createAssessmentAttemptService = ({
     await AssessmentResponse.findAll({ where: { attemptId }, transaction }),
   );
 
+  const gradingLeaseMs = Math.max(
+    30_000,
+    Math.min(5 * 60_000, Number(environment.CODING_ASSESSMENT_GRADING_LEASE_MS) || 90_000),
+  );
+  const safeGradingResult = (attemptInput) => ({
+    id: plain(attemptInput).id,
+    status: ATTEMPT_STATUSES.GRADING,
+  });
+  const activeLease = (attemptInput, at) => {
+    const attempt = plain(attemptInput);
+    return attempt.status === ATTEMPT_STATUSES.GRADING
+      && typeof attempt.gradingLeaseToken === "string"
+      && attempt.gradingLeaseToken.length >= 32
+      && new Date(attempt.gradingLeaseExpiresAt || 0).getTime() > at.getTime();
+  };
+
   const buildOrder = (assessment) => {
     const questions = sortedByDisplayOrder(assessment.questions);
     const questionOrder = assessment.shuffleQuestions
@@ -257,7 +281,8 @@ const createAssessmentAttemptService = ({
     if (selectOfficialPostAttempt(attempts)?.passed === true) {
       fail("POST_ALREADY_PASSED", "The student already has a passing POST result");
     }
-    if (attempts.some((attempt) => plain(attempt).status === ATTEMPT_STATUSES.IN_PROGRESS)) {
+    if (attempts.some((attempt) => [ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING]
+      .includes(plain(attempt).status))) {
       fail("ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt");
     }
 
@@ -291,11 +316,18 @@ const createAssessmentAttemptService = ({
       transaction,
     });
 
-    const active = await AssessmentAttempt.findOne({
+    let active = await AssessmentAttempt.findOne({
       where: { assessmentId: assessment.id, studentId, status: ATTEMPT_STATUSES.IN_PROGRESS },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
+    if (!active) {
+      active = await AssessmentAttempt.findOne({
+        where: { assessmentId: assessment.id, studentId, status: ATTEMPT_STATUSES.GRADING },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+    }
     if (active) {
       requireMatchingVersion(active, assessment);
       return {
@@ -345,7 +377,7 @@ const createAssessmentAttemptService = ({
 
   const getActiveAttempt = ({ attemptId, studentId }) => sequelize.transaction(async (transaction) => {
     const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
-    if (attempt.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
+    if (![ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING].includes(attempt.status)) {
       fail("ATTEMPT_SUBMITTED", "Submitted assessment attempts cannot be changed");
     }
     const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
@@ -369,6 +401,9 @@ const createAssessmentAttemptService = ({
   const saveResponse = ({ attemptId, studentId, questionId, selectedChoiceId, sourceCode }) => sequelize.transaction(
     async (transaction) => {
       const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
+      if (attempt.status === ATTEMPT_STATUSES.GRADING) {
+        fail("ATTEMPT_GRADING", "Assessment attempt is being graded");
+      }
       if (attempt.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
         fail("ATTEMPT_SUBMITTED", "Submitted assessment attempts cannot be changed");
       }
@@ -433,15 +468,83 @@ const createAssessmentAttemptService = ({
     },
   );
 
-  const submitAttempt = ({ attemptId, studentId, submissionKey }) => sequelize.transaction(
+  const runPublicCodingQuestion = async ({ attemptId, studentId, questionId }) => {
+    const execution = await sequelize.transaction(async (transaction) => {
+      const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
+      if (attempt.status === ATTEMPT_STATUSES.GRADING) {
+        fail("ATTEMPT_GRADING", "Assessment attempt is being graded");
+      }
+      if (attempt.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
+        fail("ATTEMPT_SUBMITTED", "Submitted assessment attempts cannot be changed");
+      }
+      const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
+      const assessment = requirePublishedGraph(assessmentRow);
+      requireMatchingVersion(attempt, assessment);
+      const membership = await requireMembership(assessment, studentId, transaction);
+      await progressionService.assertAssessmentInteractionAllowed({
+        assessment,
+        studentId,
+        authorizedMembership: membership,
+        transaction,
+      });
+      if (!(attempt.questionOrder || []).some((id) => sameId(id, questionId))) {
+        fail("QUESTION_NOT_PRESENTED", "Question was not presented in this attempt");
+      }
+      const question = assessment.questions.find((candidate) => sameId(candidate.id, questionId));
+      if (!question) fail("QUESTION_NOT_PRESENTED", "Question does not belong to this assessment");
+      if (question.questionType !== "CODING") {
+        fail("QUESTION_NOT_CODING", "Question does not support code execution");
+      }
+      const response = await AssessmentResponse.findOne({
+        where: { attemptId: attempt.id, questionId: question.id },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!response || typeof response.sourceCode !== "string") {
+        fail("CODING_SOURCE_REQUIRED", "Save source code before running it");
+      }
+      const publicTests = sortedByDisplayOrder(question.codingTestCases)
+        .map(plain)
+        .filter((testCase) => testCase.visibility === "PUBLIC");
+      return {
+        source: response.sourceCode,
+        contract: contractForQuestion(question),
+        publicTests,
+      };
+    });
+
+    const result = execution.publicTests.length === 0
+      ? { category: "SUCCESS", invocations: [] }
+      : await secureCodingExecution.runSecureMethodExecution({
+        source: execution.source,
+        contract: execution.contract,
+        inputs: execution.publicTests.map((testCase) => testCase.input),
+      });
+    return shapePublicCodingExecutionResult({ tests: execution.publicTests, result });
+  };
+
+  const reserveSubmission = ({ attemptId, studentId, submissionKey }) => sequelize.transaction(
     async (transaction) => {
       const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
       if (attempt.status === ATTEMPT_STATUSES.SUBMITTED) {
-        if (attempt.submissionKey === submissionKey) return safeSubmittedResult(attempt);
+        if (attempt.submissionKey === submissionKey) {
+          return { kind: "submitted", result: safeSubmittedResult(attempt) };
+        }
         fail("ATTEMPT_SUBMITTED", "Assessment attempt was already submitted");
       }
       if (!/^[A-Za-z0-9_-]{8,96}$/.test(String(submissionKey || ""))) {
         fail("INVALID_SUBMISSION_KEY", "submissionKey must be 8-96 URL-safe characters");
+      }
+      const reservationTime = now();
+      if (attempt.status === ATTEMPT_STATUSES.GRADING) {
+        if (activeLease(attempt, reservationTime)) {
+          if (attempt.submissionKey !== submissionKey) {
+            fail("ATTEMPT_GRADING", "Assessment attempt is already being graded");
+          }
+          return { kind: "grading", result: safeGradingResult(attempt) };
+        }
+      } else if (attempt.status !== ATTEMPT_STATUSES.IN_PROGRESS) {
+        fail("ATTEMPT_SUBMITTED", "Assessment attempt cannot be submitted");
       }
 
       const reusedKey = await AssessmentAttempt.findOne({
@@ -500,8 +603,132 @@ const createAssessmentAttemptService = ({
         responseByQuestion.set(String(response.questionId), response);
       }
 
+      const leaseToken = createLeaseToken();
+      if (typeof leaseToken !== "string" || leaseToken.length < 32 || leaseToken.length > 96) {
+        fail("GRADING_LEASE_INVALID", "Unable to reserve assessment grading");
+      }
+      attempt.status = ATTEMPT_STATUSES.GRADING;
+      attempt.submissionKey = submissionKey;
+      attempt.gradingLeaseToken = leaseToken;
+      attempt.gradingLeaseExpiresAt = new Date(reservationTime.getTime() + gradingLeaseMs);
+      await attempt.save({ transaction });
+
+      return {
+        kind: "execute",
+        attemptId: attempt.id,
+        studentId,
+        assessment,
+        presentedQuestions: presentedQuestions.map(plain),
+        savedResponses: savedResponses.map((response) => {
+          const saved = plain(response);
+          return {
+            questionId: saved.questionId,
+            selectedChoiceId: saved.selectedChoiceId ?? null,
+            sourceCode: saved.sourceCode ?? null,
+          };
+        }),
+        leaseToken,
+        submissionKey,
+      };
+    },
+  );
+
+  const releaseSubmission = async (reservation) => sequelize.transaction(async (transaction) => {
+    const attempt = await AssessmentAttempt.findByPk(reservation.attemptId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (!attempt
+      || attempt.status !== ATTEMPT_STATUSES.GRADING
+      || attempt.submissionKey !== reservation.submissionKey
+      || attempt.gradingLeaseToken !== reservation.leaseToken) return false;
+    attempt.status = ATTEMPT_STATUSES.IN_PROGRESS;
+    attempt.submissionKey = null;
+    attempt.gradingLeaseToken = null;
+    attempt.gradingLeaseExpiresAt = null;
+    await attempt.save({ transaction });
+    return true;
+  });
+
+  const finalizeSubmission = (reservation, score) => sequelize.transaction(async (transaction) => {
+    const attempt = await requireOwnedAttempt(reservation.attemptId, reservation.studentId, transaction);
+    if (attempt.status === ATTEMPT_STATUSES.SUBMITTED
+      && attempt.submissionKey === reservation.submissionKey) return safeSubmittedResult(attempt);
+    if (attempt.status !== ATTEMPT_STATUSES.GRADING
+      || attempt.submissionKey !== reservation.submissionKey
+      || attempt.gradingLeaseToken !== reservation.leaseToken) {
+      fail("GRADING_LEASE_LOST", "Assessment grading reservation is no longer current");
+    }
+
+    const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
+    const assessment = requirePublishedGraph(assessmentRow);
+    requireMatchingVersion(attempt, assessment);
+    if (Number(assessment.version) !== Number(reservation.assessment.version)) {
+      fail("ASSESSMENT_VERSION_MISMATCH", "Assessment changed during grading");
+    }
+    const currentResponses = await AssessmentResponse.findAll({
+      where: { attemptId: attempt.id },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    const currentSnapshot = currentResponses.map((responseInput) => {
+      const response = plain(responseInput);
+      return {
+        questionId: response.questionId,
+        selectedChoiceId: response.selectedChoiceId ?? null,
+        sourceCode: response.sourceCode ?? null,
+      };
+    }).sort((left, right) => Number(left.questionId) - Number(right.questionId));
+    const reservedSnapshot = [...reservation.savedResponses]
+      .sort((left, right) => Number(left.questionId) - Number(right.questionId));
+    if (JSON.stringify(currentSnapshot) !== JSON.stringify(reservedSnapshot)) {
+      fail("GRADING_SNAPSHOT_CHANGED", "Assessment responses changed during grading");
+    }
+    const responseByQuestion = new Map(currentResponses.map((response) => [String(response.questionId), response]));
+
+    for (const graded of score.responses) {
+      let response = responseByQuestion.get(String(graded.questionId));
+      if (response) {
+        response.selectedChoiceId = graded.selectedChoiceId;
+        response.sourceCode = graded.sourceCode ?? null;
+        response.isCorrect = graded.isCorrect;
+        response.pointsAwarded = graded.pointsAwarded;
+        await response.save({ transaction });
+      } else {
+        response = await AssessmentResponse.create({
+          attemptId: attempt.id,
+          ...graded,
+        }, { transaction });
+      }
+    }
+
+    attempt.status = ATTEMPT_STATUSES.SUBMITTED;
+    attempt.submittedAt = now();
+    attempt.pointsEarned = score.pointsEarned;
+    attempt.maxPoints = score.maxPoints;
+    attempt.percentage = score.percentage;
+    attempt.correctCount = score.correctCount;
+    attempt.questionCount = score.questionCount;
+    attempt.passed = score.passed;
+    attempt.passingPercentageApplied = assessment.type === "POST"
+      ? Number(assessment.passingPercentage)
+      : null;
+    attempt.gradingLeaseToken = null;
+    attempt.gradingLeaseExpiresAt = null;
+    await attempt.save({ transaction });
+    return safeSubmittedResult(attempt);
+  });
+
+  const submitAttempt = async ({ attemptId, studentId, submissionKey }) => {
+    const reservation = await reserveSubmission({ attemptId, studentId, submissionKey });
+    if (reservation.kind !== "execute") return reservation.result;
+    try {
+      const responseByQuestion = new Map(
+        reservation.savedResponses.map((response) => [String(response.questionId), response]),
+      );
+
       const authoritativeResponses = [];
-      for (const question of presentedQuestions) {
+      for (const question of reservation.presentedQuestions) {
         const saved = responseByQuestion.get(String(question.id));
         if (question.questionType === "CODING") {
           const graded = await gradeCodingQuestion({
@@ -523,43 +750,16 @@ const createAssessmentAttemptService = ({
       }
 
       const score = calculateAssessmentScore({
-        assessment,
-        questions: presentedQuestions,
+        assessment: reservation.assessment,
+        questions: reservation.presentedQuestions,
         responses: authoritativeResponses,
       });
-
-      for (const graded of score.responses) {
-        let response = responseByQuestion.get(String(graded.questionId));
-        if (response) {
-          response.selectedChoiceId = graded.selectedChoiceId;
-          response.sourceCode = graded.sourceCode ?? null;
-          response.isCorrect = graded.isCorrect;
-          response.pointsAwarded = graded.pointsAwarded;
-          await response.save({ transaction });
-        } else {
-          response = await AssessmentResponse.create({
-            attemptId: attempt.id,
-            ...graded,
-          }, { transaction });
-        }
-      }
-
-      attempt.status = ATTEMPT_STATUSES.SUBMITTED;
-      attempt.submittedAt = now();
-      attempt.pointsEarned = score.pointsEarned;
-      attempt.maxPoints = score.maxPoints;
-      attempt.percentage = score.percentage;
-      attempt.correctCount = score.correctCount;
-      attempt.questionCount = score.questionCount;
-      attempt.passed = score.passed;
-      attempt.passingPercentageApplied = assessment.type === "POST"
-        ? Number(assessment.passingPercentage)
-        : null;
-      attempt.submissionKey = submissionKey;
-      await attempt.save({ transaction });
-      return safeSubmittedResult(attempt);
-    },
-  );
+      return await finalizeSubmission(reservation, score);
+    } catch (error) {
+      await releaseSubmission(reservation);
+      throw error;
+    }
+  };
 
   const getAttemptResult = ({ attemptId, studentId }) => sequelize.transaction(async (transaction) => {
     const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
@@ -583,6 +783,7 @@ const createAssessmentAttemptService = ({
     createTeacherGrantedPostAttempt,
     getActiveAttempt,
     getAttemptResult,
+    runPublicCodingQuestion,
     saveResponse,
     startOrResumeAttempt,
     submitAttempt,

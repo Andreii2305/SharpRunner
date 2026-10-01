@@ -3,6 +3,7 @@ import { createAssessmentSaveCoordinator } from "./assessmentSaveCoordinator.js"
 export const createAssessmentPlayerController = ({
   attemptId,
   initialSavedByQuestion,
+  initialSavedSourceByQuestion,
   routeKey,
   requestGeneration,
   saveResponse,
@@ -18,12 +19,15 @@ export const createAssessmentPlayerController = ({
     const state = typeof getState === "function" ? getState() : null;
     if (state?.externalSyncRequired || state?.externalSyncStatus === "checking") return true;
     const submitStatus = state?.submitStatus;
-    return ["submitting", "recovering-result", "recovery-error", "succeeded"].includes(submitStatus);
+    return state?.attempt?.status === "GRADING"
+      || ["submitting", "grading", "grading-pending", "grading-error", "recovering-result", "recovery-error", "succeeded"]
+        .includes(submitStatus);
   };
 
   const coordinator = createAssessmentSaveCoordinator({
     attemptId,
     initialSavedByQuestion,
+    initialSavedSourceByQuestion,
     saveResponse,
     onSaveStarted: (event) => send("SAVE_STARTED", event),
     onSaveSucceeded: (event) => {
@@ -59,8 +63,31 @@ export const createAssessmentPlayerController = ({
     return coordinator.select(questionId, selectedChoiceId);
   };
 
+  const updateSource = (questionId, sourceCode, options) => {
+    if (mutationsBlocked() || typeof sourceCode !== "string") return false;
+    const snapshot = coordinator.getSnapshot(questionId);
+    if (snapshot?.status === "conflict" || snapshot?.desiredChoiceId !== undefined) return false;
+
+    const currentState = typeof getState === "function" ? getState() : null;
+    const question = currentState?.orderedQuestions?.find(({ id }) => id === questionId);
+    if (currentState && question?.questionType !== "CODING") return false;
+
+    const forceSave = !snapshot
+      && currentState?.responseExistsByQuestion?.[questionId] !== true;
+    send("SOURCE_CHANGED", {
+      questionId,
+      sourceCode,
+      forceSave,
+      preserveSaveError: snapshot?.status === "error",
+      saveError: snapshot?.error ?? null,
+      saveInFlight: snapshot?.status === "saving",
+    });
+    return coordinator.updateSource(questionId, sourceCode, options);
+  };
+
   return {
     selectChoice,
+    updateSource,
     retrySave: (questionId) => (
       mutationsBlocked() ? false : coordinator.retry(questionId)
     ),

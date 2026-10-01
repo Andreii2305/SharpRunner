@@ -38,7 +38,7 @@ export default function AssessmentSubmitReview({
           <p role="alert">{unresolvedCount} response{unresolvedCount === 1 ? " needs" : "s need"} attention before submission.</p>
         )}
         {submissionError && (
-          <p role="alert">Submission did not complete. Your answers are preserved; try again.</p>
+          <p role="alert">Grading could not complete. Your answers are preserved and this attempt remains available to try again.</p>
         )}
         <div className={styles.reviewActions}>
           <button type="button" onClick={onReturnToQuestions} disabled={submitting}>Back to questions</button>

@@ -61,6 +61,55 @@
   color: #4b5563;
 }
 
+.codingLanguage {
+  color: #315a9b;
+  font-weight: 700;
+}
+
+.contract,
+.publicTests li,
+.runResults li {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid #d8dfeb;
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.contract code,
+.publicTests code,
+.runResults code {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.publicTests ol,
+.runResults ol {
+  padding-left: 1.5rem;
+}
+
+.runArea {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.runArea button {
+  min-height: 44px;
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.runResults {
+  margin-top: 1rem;
+}
+
 .choices {
   display: grid;
   gap: 0.75rem;

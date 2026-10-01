@@ -96,10 +96,12 @@ test("assessment and attempt reads return server DTOs without reshaping them", a
   calls.forEach(([, config]) => assertAuthorizedConfig(config, controller.signal));
 });
 
-test("attempt start, response save, and submission use the exact bodies and idempotency header", async () => {
+test("attempt start, typed response saves, public run, and submission use exact bodies", async () => {
   const controller = new AbortController();
   const startDto = { attempt: { attemptId: 312, resumed: false }, assessment: { id: 91 } };
   const saveDto = { response: { questionId: 3, selectedChoiceId: 19 } };
+  const sourceSaveDto = { response: { questionId: 4, sourceCode: "return values.Length;" } };
+  const runDto = { result: { status: "COMPLETED", tests: [] } };
   const resultDto = { attemptId: 312, result: { passed: false } };
   const postCalls = [];
   const putCalls = [];
@@ -108,11 +110,11 @@ test("attempt start, response save, and submission use the exact bodies and idem
   const originalPut = axios.put;
   axios.post = async (...args) => {
     postCalls.push(args);
-    return { data: postCalls.length === 1 ? startDto : resultDto };
+    return { data: [startDto, runDto, resultDto][postCalls.length - 1] };
   };
   axios.put = async (...args) => {
     putCalls.push(args);
-    return { data: saveDto };
+    return { data: putCalls.length === 1 ? saveDto : sourceSaveDto };
   };
   try {
     assert.strictEqual(await service.startOrResumeAttempt({ assessmentId: 91, signal: controller.signal }), startDto);
@@ -122,6 +124,17 @@ test("attempt start, response save, and submission use the exact bodies and idem
       selectedChoiceId: 19,
       signal: controller.signal,
     }), saveDto);
+    assert.strictEqual(await service.saveResponse({
+      attemptId: 312,
+      questionId: 4,
+      sourceCode: "return values.Length;",
+      signal: controller.signal,
+    }), sourceSaveDto);
+    assert.strictEqual(await service.runCodingQuestion({
+      attemptId: 312,
+      questionId: 4,
+      signal: controller.signal,
+    }), runDto);
     assert.strictEqual(await service.submitAttempt({
       attemptId: 312,
       idempotencyKey: "submit-session-312",
@@ -140,10 +153,34 @@ test("attempt start, response save, and submission use the exact bodies and idem
   assert.deepEqual(putCalls[0][1], { selectedChoiceId: 19 });
   assertAuthorizedConfig(putCalls[0][2], controller.signal);
 
-  assert.equal(postCalls[1][0], "http://localhost:5000/api/assessments/attempts/312/submit");
+  assert.equal(putCalls[1][0], "http://localhost:5000/api/assessments/attempts/312/responses/4");
+  assert.deepEqual(putCalls[1][1], { sourceCode: "return values.Length;" });
+  assertAuthorizedConfig(putCalls[1][2], controller.signal);
+
+  assert.equal(postCalls[1][0], "http://localhost:5000/api/assessments/attempts/312/questions/4/run");
   assert.deepEqual(postCalls[1][1], {});
   assertAuthorizedConfig(postCalls[1][2], controller.signal);
-  assert.equal(postCalls[1][2].headers["Idempotency-Key"], "submit-session-312");
+
+  assert.equal(postCalls[2][0], "http://localhost:5000/api/assessments/attempts/312/submit");
+  assert.deepEqual(postCalls[2][1], {});
+  assertAuthorizedConfig(postCalls[2][2], controller.signal);
+  assert.equal(postCalls[2][2].headers["Idempotency-Key"], "submit-session-312");
+});
+
+test("typed response saves reject mixed or missing payloads before transport", async () => {
+  await assert.rejects(
+    service.saveResponse({
+      attemptId: 312,
+      questionId: 4,
+      selectedChoiceId: 19,
+      sourceCode: "return 1;",
+    }),
+    (error) => error instanceof TypeError,
+  );
+  await assert.rejects(
+    service.saveResponse({ attemptId: 312, questionId: 4 }),
+    (error) => error instanceof TypeError,
+  );
 });
 
 test("safe request errors retain contract data but never leak Axios internals", async () => {

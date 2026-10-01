@@ -69,8 +69,9 @@ const serializePlayerAttempt = ({ assessment, attempt, responses = [], attemptsU
     const response = plain(responseInput);
     return {
       questionId: response.questionId,
-      selectedChoiceId: response.selectedChoiceId ?? null,
-      ...(response.sourceCode != null ? { sourceCode: response.sourceCode } : {}),
+      ...(response.sourceCode != null
+        ? { sourceCode: response.sourceCode }
+        : { selectedChoiceId: response.selectedChoiceId ?? null }),
     };
   }),
   attemptsUsed: Number(attemptsUsed),
@@ -200,8 +201,9 @@ const serializeAllowedReview = (input = {}) => {
       return {
         questionId: question.id,
         questionText: question.questionText,
-        selectedChoiceId,
-        ...(question.questionType === "CODING" ? { sourceCode: response?.sourceCode ?? "" } : {}),
+        ...(question.questionType === "CODING"
+          ? { sourceCode: response?.sourceCode ?? "" }
+          : { selectedChoiceId }),
         ...(input.scoreVisible !== false ? {
           correctChoiceId: correctChoice?.id ?? null,
           isCorrect: question.questionType === "CODING"

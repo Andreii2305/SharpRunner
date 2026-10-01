@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { createAssessmentResultModel } from "./assessmentResultModel.js";
+import AssessmentCodeEditor from "../../../Components/AssessmentCodeEditor/AssessmentCodeEditor.jsx";
 import styles from "./AssessmentPlayer.module.css";
 
 const percentagePoints = (learningGain) => {
@@ -98,7 +99,15 @@ export default function AssessmentResult({
                 <li key={entry.questionId ?? index}>
                   <h3>Question {index + 1}</h3>
                   {question?.questionText && <p>{question.questionText}</p>}
-                  {entry.selectedChoiceId == null ? (
+                  {Object.prototype.hasOwnProperty.call(entry, "sourceCode") ? (
+                    <AssessmentCodeEditor
+                      label={`Submitted source for question ${index + 1}`}
+                      value={entry.sourceCode}
+                      onChange={() => {}}
+                      disabled
+                      height="240px"
+                    />
+                  ) : entry.selectedChoiceId == null ? (
                     <p>Unanswered</p>
                   ) : choiceText(question, entry.selectedChoiceId) ? (
                     <p>Your answer: {choiceText(question, entry.selectedChoiceId)}</p>

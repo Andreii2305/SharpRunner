@@ -40,7 +40,7 @@ function PreviewDialog({ draft, onClose }) {
   </div>;
 }
 
-function QuestionEditor({ question, index, count, disabled, published, onChange, onMove, onRemove }) {
+function QuestionEditor({ question, index, count, disabled, published, validationAttempted, onChange, onMove, onRemove }) {
   const replace = (changes) => onChange({ ...question, ...changes });
   const updateChoice = (choiceId, changes) => replace({ choices: question.choices.map((item) => item.clientId === choiceId ? { ...item, ...changes } : item) });
   return <article className={styles.questionCard}>
@@ -56,7 +56,7 @@ function QuestionEditor({ question, index, count, disabled, published, onChange,
       <label>Objective key <small>optional, lowercase kebab-case</small><input disabled={disabled} value={question.objectiveKey} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" onChange={(event) => replace({ objectiveKey: event.target.value })} /></label>
       <label className={styles.wide}>Explanation <small>shown only under the configured review policy</small><textarea disabled={disabled} value={question.explanation} onChange={(event) => replace({ explanation: event.target.value })} /></label>
     </div>
-    {question.questionType === "CODING" ? <CodingQuestionEditor question={question} disabled={disabled} onChange={onChange} /> : <fieldset disabled={disabled} className={styles.choiceFieldset}><legend>Answer choices</legend>
+    {question.questionType === "CODING" ? <CodingQuestionEditor question={question} disabled={disabled} validationAttempted={validationAttempted} onChange={onChange} /> : <fieldset disabled={disabled} className={styles.choiceFieldset}><legend>Answer choices</legend>
       {question.choices.map((choice, choiceIndex) => <div className={styles.choiceRow} key={choice.clientId}>
         <input type="radio" name={`correct-${question.clientId}`} checked={choice.isCorrect} onChange={() => replace({ choices: selectCorrectChoice([question], question.clientId, choice.clientId)[0].choices })} aria-label={`Mark choice ${choiceIndex + 1} correct`} />
         <label><span>Choice {choiceIndex + 1}</span><input value={choice.choiceText} readOnly={question.questionType === "TRUE_FALSE"} onChange={(event) => updateChoice(choice.clientId, { choiceText: event.target.value })} /></label>
@@ -79,6 +79,7 @@ export default function TeacherAssessmentBuilderPage() {
   const [draft, setDraft] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState("saved");
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(false);
@@ -127,12 +128,12 @@ export default function TeacherAssessmentBuilderPage() {
     if (!dirty || window.confirm("Discard unsaved assessment changes?")) action();
   };
   const updateRoute = (next) => guard(() => {
-    setDirty(false); setDraft(null);
+    setDirty(false); setDraft(null); setValidationAttempted(false);
     setSearchParams({ ...(next.classroomId ? { classroomId: next.classroomId } : {}), ...(next.lessonKey ? { lessonKey: next.lessonKey } : {}) });
   });
 
   const openType = async (type) => guard(async () => {
-    setActiveType(type); setError(""); setDraft(null); setDirty(false);
+    setActiveType(type); setError(""); setDraft(null); setDirty(false); setValidationAttempted(false);
     const summary = slots[type];
     if (!summary?.exists) return;
     const id = ++requestId.current;
@@ -149,7 +150,7 @@ export default function TeacherAssessmentBuilderPage() {
     const lessonTitle = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title ?? "Lesson";
     try {
       const payload = await createTeacherAssessment({ classroomId, lessonKey, type, title: `${lessonTitle} ${type === "PRE" ? "Pre-Test" : "Post-Test"}` });
-      setActiveType(type); setDraft(hydrateAssessmentDraft(payload.assessment)); setDirty(false);
+      setActiveType(type); setDraft(hydrateAssessmentDraft(payload.assessment)); setDirty(false); setValidationAttempted(false);
       await loadSlots({ preserveDraft: true });
     } catch (source) { setError(normalizeTeacherAssessmentError(source).message); }
     finally { setLoading(false); }
@@ -161,6 +162,7 @@ export default function TeacherAssessmentBuilderPage() {
   };
   const save = async () => {
     if (!draft || draft.structureLocked) return;
+    setValidationAttempted(true);
     setSaveState("saving"); setError("");
     try {
       const payload = await saveTeacherAssessment({ classroomId, assessmentId: draft.id, graph: buildSaveGraph(draft) });
@@ -189,6 +191,10 @@ export default function TeacherAssessmentBuilderPage() {
   };
 
   const issues = useMemo(() => draft ? publishIssues(draft) : [], [draft]);
+  const requestPublish = () => {
+    setValidationAttempted(true);
+    if (!issues.length) setConfirmAction("publish");
+  };
   const locked = Boolean(draft?.structureLocked || draft?.attemptsExist);
   const selectedClassroom = classrooms.find((item) => String(item.id) === String(classroomId));
   const confirmCopy = confirmAction === "publish" ? { title: "Publish assessment?", message: "Publishing makes this assessment available according to lesson progression. Save and verify the draft first; later changes may be restricted after a student begins.", label: "Publish", danger: false }
@@ -217,10 +223,10 @@ export default function TeacherAssessmentBuilderPage() {
         </div>
       </section>
       <section className={styles.questionsSection}><div className={styles.sectionHeading}><div><span>Assessment graph</span><h2>Questions</h2></div><button type="button" className={styles.secondaryButton} disabled={locked || draft.questions.length >= 100} onClick={() => changeDraft((current) => ({ ...current, questions: addQuestion(current.questions) }))}><FiPlus /> Add question</button></div>
-        {draft.questions.map((question, index) => <QuestionEditor key={question.clientId} question={question} index={index} count={draft.questions.length} disabled={locked} published={draft.isPublished} onChange={(next, type) => changeDraft((current) => ({ ...current, questions: type ? updateQuestionType(current.questions, question.clientId, type) : current.questions.map((item) => item.clientId === question.clientId ? next : item) }))} onMove={(delta) => changeDraft((current) => ({ ...current, questions: moveQuestion(current.questions, index, delta) }))} onRemove={() => changeDraft((current) => ({ ...current, questions: removeQuestion(current.questions, question.clientId) }))} />)}
+        {draft.questions.map((question, index) => <QuestionEditor key={question.clientId} question={question} index={index} count={draft.questions.length} disabled={locked} published={draft.isPublished} validationAttempted={validationAttempted} onChange={(next, type) => changeDraft((current) => ({ ...current, questions: type ? updateQuestionType(current.questions, question.clientId, type) : current.questions.map((item) => item.clientId === question.clientId ? next : item) }))} onMove={(delta) => changeDraft((current) => ({ ...current, questions: moveQuestion(current.questions, index, delta) }))} onRemove={() => changeDraft((current) => ({ ...current, questions: removeQuestion(current.questions, question.clientId) }))} />)}
         {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice, true/false, or coding questions. Drafts may remain incomplete until publication.</p></div>}
       </section>
-      <section className={styles.publishCard}><div><h2>Publication</h2>{issues.length ? <><p>Resolve these obvious issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div><div className={styles.publishActions}><button type="button" onClick={() => setPreview(true)}><FiEye /> Preview</button>{draft.isPublished ? <button type="button" disabled={locked || dirty} onClick={() => setConfirmAction("unpublish")}>Unpublish</button> : <button type="button" className={styles.primaryButton} disabled={locked || dirty || issues.length > 0} onClick={() => setConfirmAction("publish")}>Publish</button>}{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={locked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete</button>}</div></section>
+      <section className={styles.publishCard}><div><h2>Publication</h2>{issues.length ? <><p>Resolve these obvious issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div><div className={styles.publishActions}><button type="button" onClick={() => setPreview(true)}><FiEye /> Preview</button>{draft.isPublished ? <button type="button" disabled={locked || dirty} onClick={() => setConfirmAction("unpublish")}>Unpublish</button> : <button type="button" className={styles.primaryButton} disabled={locked || dirty} onClick={requestPublish}>Publish</button>}{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={locked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete</button>}</div></section>
     </>}
     {preview && draft && <PreviewDialog draft={draft} onClose={() => setPreview(false)} />}
     <ConfirmModal open={Boolean(confirmAction)} title={confirmCopy.title} message={confirmCopy.message} confirmLabel={confirmCopy.label} danger={confirmCopy.danger} confirmDisabled={loading} onConfirm={runAction} onCancel={() => setConfirmAction(null)} />

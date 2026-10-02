@@ -1,11 +1,11 @@
-import { useId } from "react";
-import { FiArrowDown, FiArrowUp, FiPlus, FiTrash2 } from "react-icons/fi";
+import { useId, useState } from "react";
+import { FiArrowDown, FiArrowUp, FiCheckCircle, FiCode, FiPlus, FiTerminal, FiTrash2 } from "react-icons/fi";
 import AssessmentCodeEditor from "./AssessmentCodeEditor.jsx";
 import {
   METHOD_TYPES, addCodingParameter, addCodingTestCase, codingModeChangeRequiresConfirmation, defaultValueForType,
   moveCodingParameter, moveCodingTestCase, removeCodingParameter,
   removeCodingTestCase, updateCodingParameterType, updateCodingReturnType,
-  updateCodingExecutionMode,
+  showMethodFieldError, updateCodingExecutionMode,
 } from "./teacherAssessmentBuilderState.js";
 import styles from "./TeacherAssessmentBuilderPage.module.css";
 
@@ -32,37 +32,51 @@ function TypedValueEditor({ type, value, disabled, label, onChange }) {
   </fieldset>;
 }
 
-export default function CodingQuestionEditor({ question, disabled, onChange }) {
+export default function CodingQuestionEditor({ question, disabled, validationAttempted = false, onChange }) {
   const executionMode = question.executionMode ?? "METHOD";
   const validationId = useId();
-  const typeNameInvalid = !question.methodContract.typeName.trim();
-  const methodNameInvalid = !question.methodContract.methodName.trim();
+  const [touchedFields, setTouchedFields] = useState({ typeName: false, methodName: false });
+  const typeNameInvalid = showMethodFieldError(question.methodContract.typeName, touchedFields.typeName, validationAttempted);
+  const methodNameInvalid = showMethodFieldError(question.methodContract.methodName, touchedFields.methodName, validationAttempted);
   const typeNameErrorId = `${validationId}-type-name-error`;
   const methodNameErrorId = `${validationId}-method-name-error`;
   const replace = (changes) => onChange({ ...question, ...changes });
   const setContract = (changes) => replace({ methodContract: { ...question.methodContract, ...changes } });
   const changeTest = (index, changes) => replace({ codingTestCases: question.codingTestCases.map((testCase, itemIndex) => itemIndex === index ? { ...testCase, ...changes } : testCase) });
-  const signature = `public static ${question.methodContract.returnType} ${question.methodContract.methodName || "MethodName"}(${question.methodContract.parameterTypes.map((type, index) => `${type} arg${index + 1}`).join(", ")})`;
+  const signature = `public static ${question.methodContract.returnType} ${question.methodContract.methodName.trim() || "<method name>"}(${question.methodContract.parameterTypes.map((type, index) => `${type} arg${index + 1}`).join(", ")})`;
   const switchMode = (nextMode) => {
     if (nextMode === executionMode) return;
     if (codingModeChangeRequiresConfirmation(question, nextMode)
       && !window.confirm("Changing the coding format will reset method-specific/test-case configuration that cannot be used by the new format.")) return;
+    setTouchedFields({ typeName: false, methodName: false });
     onChange(updateThrough(question, updateCodingExecutionMode, nextMode));
   };
   return <section className={styles.codingEditor} aria-label="Coding question configuration">
     <div className={styles.codingHeading}><div><span>Coding</span><strong>C#</strong></div><p>Choose how student code should be executed and graded.</p></div>
-    <fieldset disabled={disabled} className={styles.signatureFieldset}>
+    <fieldset disabled={disabled} className={styles.formatFieldset}>
       <legend>Coding format</legend>
-      <label><input type="radio" name={`${question.clientId}-coding-format`} checked={executionMode === "METHOD"} onChange={() => switchMode("METHOD")} /> Method</label>
-      <p>Students implement a required C# method. SharpRunner calls the method with test inputs and checks its return value.</p>
-      <label><input type="radio" name={`${question.clientId}-coding-format`} checked={executionMode === "PROGRAM"} onChange={() => switchMode("PROGRAM")} /> Program / Main</label>
-      <p>Students write a complete C# program. SharpRunner provides optional console input and checks the program&apos;s output.</p>
+      <div className={styles.formatOptions}>
+        <label className={`${styles.formatCard} ${executionMode === "METHOD" ? styles.formatCardSelected : ""}`}>
+          <input className={styles.formatRadio} type="radio" name={`${question.clientId}-coding-format`} checked={executionMode === "METHOD"} disabled={disabled} aria-describedby={`${validationId}-method-format-description`} onChange={() => switchMode("METHOD")} />
+          <span className={styles.formatCardContent}>
+            <span className={styles.formatCardHeading}><span className={styles.formatIcon}><FiCode aria-hidden="true" /><code>{"{}"}</code></span><strong>Method</strong>{executionMode === "METHOD" && <span className={styles.selectedBadge}><FiCheckCircle aria-hidden="true" /> Selected</span>}</span>
+            <span id={`${validationId}-method-format-description`} className={styles.formatDescription}>Students implement a required C# method. SharpRunner calls the method with test inputs and checks its return value.</span>
+          </span>
+        </label>
+        <label className={`${styles.formatCard} ${executionMode === "PROGRAM" ? styles.formatCardSelected : ""}`}>
+          <input className={styles.formatRadio} type="radio" name={`${question.clientId}-coding-format`} checked={executionMode === "PROGRAM"} disabled={disabled} aria-describedby={`${validationId}-program-format-description`} onChange={() => switchMode("PROGRAM")} />
+          <span className={styles.formatCardContent}>
+            <span className={styles.formatCardHeading}><span className={styles.formatIcon}><FiTerminal aria-hidden="true" /><code>&gt;_</code></span><strong>Program / Main</strong>{executionMode === "PROGRAM" && <span className={styles.selectedBadge}><FiCheckCircle aria-hidden="true" /> Selected</span>}</span>
+            <span id={`${validationId}-program-format-description`} className={styles.formatDescription}>Students write a complete C# program. SharpRunner provides optional console input and checks the program&apos;s output.</span>
+          </span>
+        </label>
+      </div>
     </fieldset>
     {executionMode === "METHOD" && <fieldset disabled={disabled} className={styles.signatureFieldset}>
       <legend>Method signature</legend>
       <div className={styles.codingGrid}>
-        <label>Type/Class name<input value={question.methodContract.typeName} maxLength={128} placeholder="Solution" aria-invalid={typeNameInvalid} aria-describedby={typeNameInvalid ? typeNameErrorId : undefined} onChange={(event) => setContract({ typeName: event.target.value })} />{typeNameInvalid && <span id={typeNameErrorId} className={styles.inlineError}>Type/class name is required.</span>}</label>
-        <label>Method name<input value={question.methodContract.methodName} maxLength={64} placeholder="AddNumbers" aria-invalid={methodNameInvalid} aria-describedby={methodNameInvalid ? methodNameErrorId : undefined} onChange={(event) => setContract({ methodName: event.target.value })} />{methodNameInvalid && <span id={methodNameErrorId} className={styles.inlineError}>Method name is required.</span>}</label>
+        <label>Type/Class name<input value={question.methodContract.typeName} maxLength={128} placeholder="Example: Solution" aria-invalid={typeNameInvalid} aria-describedby={typeNameInvalid ? typeNameErrorId : undefined} onBlur={() => setTouchedFields((current) => ({ ...current, typeName: true }))} onChange={(event) => setContract({ typeName: event.target.value })} />{typeNameInvalid && <span id={typeNameErrorId} className={styles.inlineError}>Type/class name is required.</span>}</label>
+        <label>Method name<input value={question.methodContract.methodName} maxLength={64} placeholder="Example: AddNumbers" aria-invalid={methodNameInvalid} aria-describedby={methodNameInvalid ? methodNameErrorId : undefined} onBlur={() => setTouchedFields((current) => ({ ...current, methodName: true }))} onChange={(event) => setContract({ methodName: event.target.value })} />{methodNameInvalid && <span id={methodNameErrorId} className={styles.inlineError}>Method name is required.</span>}</label>
         <label>Return type<select value={question.methodContract.returnType} onChange={(event) => onChange(updateThrough(question, updateCodingReturnType, event.target.value))}>{METHOD_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
       </div>
       <div className={styles.signaturePreview}><span>Signature preview</span><code>{signature}</code></div>

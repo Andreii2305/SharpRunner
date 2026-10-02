@@ -9,6 +9,9 @@ let sequence = 0;
 const clientId = (prefix) => `${prefix}-${Date.now()}-${sequence += 1}`;
 const choice = (choiceText = "", isCorrect = false) => ({ clientId: clientId("choice"), choiceText, isCorrect });
 export const METHOD_TYPES = Object.freeze(["bool", "int", "long", "string", "bool[]", "int[]", "long[]", "string[]"]);
+export const showMethodFieldError = (value, touched, validationAttempted) => (
+  !String(value ?? "").trim() && (touched || validationAttempted)
+);
 export const defaultValueForType = (type) => type?.endsWith("[]") ? []
   : type === "bool" ? false
     : type === "string" ? "" : 0;

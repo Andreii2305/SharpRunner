@@ -21,11 +21,12 @@ export const serializeTeacherAssessmentGraph = (graph = {}) => ({
     ...pick(question, ["questionText", "questionType", "points", "explanation", "objectiveKey"]),
     choices: (question.choices ?? []).map((choice) => pick(choice, ["choiceText", "isCorrect"])),
     ...(question.questionType === "CODING" ? {
+      executionMode: question.executionMode ?? "METHOD",
       starterCode: question.starterCode ?? "",
       referenceSolution: question.referenceSolution ?? "",
-      methodContract: {
+      ...(question.executionMode !== "PROGRAM" ? { methodContract: {
         ...pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]),
-      },
+      } } : {}),
       codingTestCases: (question.codingTestCases ?? []).map((testCase) => (
         pick(testCase, ["visibility", "input", "expectedOutput", "weight"])
       )),
@@ -45,9 +46,10 @@ export const normalizeTeacherAssessmentGraph = (assessment = {}) => ({
     ...pick(question, ["id", "questionText", "questionType", "displayOrder", "points", "explanation", "objectiveKey"]),
     choices: (question.choices ?? []).map((choice) => pick(choice, ["id", "choiceText", "displayOrder", "isCorrect"])),
     ...(question.questionType === "CODING" ? {
+      executionMode: question.executionMode ?? "METHOD",
       starterCode: question.starterCode ?? "",
       referenceSolution: question.referenceSolution ?? "",
-      methodContract: pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]),
+      ...(question.executionMode !== "PROGRAM" ? { methodContract: pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]) } : {}),
       codingTestCases: (question.codingTestCases ?? []).map((testCase) => (
         pick(testCase, ["id", "displayOrder", "visibility", "input", "expectedOutput", "weight"])
       )),

@@ -5,11 +5,13 @@ const {
   EXECUTION_CATEGORIES,
   METHOD_TYPE_ALLOWLIST,
   validateMethodExecutionRequest,
+  validateProgramExecutionRequest,
 } = require("../src/services/secureCodingExecutionContract");
 const {
   getSecureCodingExecutionCapability,
   normalizeSecureCodingExecutionResult,
   runSecureMethodExecution,
+  runSecureProgramExecution,
 } = require("../src/services/secureCodingExecutionService");
 
 const validRequest = () => ({
@@ -21,6 +23,30 @@ const validRequest = () => ({
     returnType: "int",
   },
   inputs: [[2, 3]],
+});
+const validProgramRequest = () => ({
+  source: "using System; public class Program { public static void Main() { Console.WriteLine(Console.ReadLine()); } }",
+  inputs: ["hello\n", "world\n"],
+});
+
+test("program execution has a separate bounded stdin-only contract", () => {
+  assert.deepEqual(validateProgramExecutionRequest(validProgramRequest()).inputs, ["hello\n", "world\n"]);
+  assert.throws(() => validateProgramExecutionRequest({ ...validProgramRequest(), contract: {} }), (error) => error.code === "UNEXPECTED_FIELD");
+  assert.throws(() => validateProgramExecutionRequest({ ...validProgramRequest(), inputs: [["hello"]] }), (error) => error.code === "INVALID_INPUT");
+  assert.throws(() => validateProgramExecutionRequest({ ...validProgramRequest(), inputs: ["x".repeat(4097)] }), (error) => error.code === "INVALID_INPUT");
+});
+
+test("secure program execution uses the same fail-closed Docker capability boundary", async () => {
+  const environment = { CODING_ASSESSMENT_EXECUTION_ENABLED: "true", CODING_ASSESSMENT_EXECUTION_MODE: "docker", CODING_ASSESSMENT_EXECUTION_ROLE: "runner" };
+  const result = await runSecureProgramExecution(validProgramRequest(), {
+    environment,
+    inspectSandbox: async () => ({ available: true }),
+    executeInSandbox: async (request) => ({ category: "SUCCESS", invocations: request.inputs.map((stdin) => ({ category: "SUCCESS", stdout: stdin })) }),
+  });
+  assert.equal(result.category, "SUCCESS");
+  assert.deepEqual(result.invocations.map((item) => item.stdout), ["hello\n", "world\n"]);
+  const blocked = await runSecureProgramExecution(validProgramRequest(), { environment: {}, executeInSandbox: async () => { throw new Error("must not run"); } });
+  assert.equal(blocked.code, "SECURE_EXECUTION_UNAVAILABLE");
 });
 
 test("method execution contract accepts only the documented deterministic types", () => {
@@ -205,14 +231,16 @@ test("local secure execution is restricted to the dedicated runner role", async 
   assert.deepEqual(capability, { available: false, code: "SECURE_RUNNER_REQUIRED" });
 });
 
-test("runner exposes authenticated fail-closed capability and method endpoints", async () => {
+test("runner exposes authenticated fail-closed capability, method, and program endpoints", async () => {
   const token = "secure-execution-route-token-at-least-32-characters";
-  let received;
+  let receivedMethod;
+  let receivedProgram;
   const app = createPracticeRunnerApp({
     serviceToken: token,
     secureExecution: {
       getCapability: async () => ({ available: false, code: "SECURE_EXECUTION_DISABLED" }),
-      execute: async (request) => { received = request; return { category: EXECUTION_CATEGORIES.SUCCESS, output: 5 }; },
+      execute: async (request) => { receivedMethod = request; return { category: EXECUTION_CATEGORIES.SUCCESS, output: 5 }; },
+      executeProgram: async (request) => { receivedProgram = request; return { category: EXECUTION_CATEGORIES.SUCCESS, invocations: [] }; },
     },
   });
   const server = await new Promise((resolve) => {
@@ -233,7 +261,18 @@ test("runner exposes authenticated fail-closed capability and method endpoints",
     });
     assert.equal(methodResponse.status, 200);
     assert.equal((await methodResponse.json()).category, EXECUTION_CATEGORIES.SUCCESS);
-    assert.deepEqual(received, validRequest());
+    assert.deepEqual(receivedMethod, validRequest());
+
+    assert.equal((await fetch(`${baseUrl}/execute-program`, { method: "POST" })).status, 401);
+    const programRequest = validProgramRequest();
+    const programResponse = await fetch(`${baseUrl}/execute-program`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(programRequest),
+    });
+    assert.equal(programResponse.status, 200);
+    assert.equal((await programResponse.json()).category, EXECUTION_CATEGORIES.SUCCESS);
+    assert.deepEqual(receivedProgram, programRequest);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

@@ -38,6 +38,7 @@ const projectFile = `<Project Sdk="Microsoft.NET.Sdk">
   </PropertyGroup>
   <ItemGroup><Compile Include="StudentSubmission.cs" /></ItemGroup>
 </Project>`;
+const programProjectFile = projectFile.replace("<OutputType>Library</OutputType>", "<OutputType>Exe</OutputType>");
 
 const buildContainerSecurityArgs = ({ name, limits }) => [
   "run", "--name", name,
@@ -90,7 +91,7 @@ const runDockerContainer = (spec) => new Promise((resolve) => {
   try {
     child = spawnProcess(dockerBinary, args, {
       windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: [spec.stdin === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       env: { PATH: environment.PATH },
     });
   } catch {
@@ -135,6 +136,10 @@ const runDockerContainer = (spec) => new Promise((resolve) => {
     void finish({ exitCode, oomKilled });
   });
   timer = setTimeout(() => { void finish({ timedOut: true }, true); }, timeoutMs);
+  if (spec.stdin !== undefined) {
+    child.stdin.on("error", () => { /* A program may exit before consuming all bounded stdin. */ });
+    child.stdin.end(spec.stdin, "utf8");
+  }
   if (signal?.aborted) abort(); else signal?.addEventListener("abort", abort, { once: true });
 });
 
@@ -187,6 +192,15 @@ const defaultVerifyArtifacts = async (artifactDirectory) => {
   try {
     await Promise.all(required.map((file) => fs.access(path.join(artifactDirectory, file))));
     return await directorySize(artifactDirectory) <= MAX_ARTIFACT_BYTES;
+  } catch {
+    return false;
+  }
+};
+
+const defaultVerifyProgramArtifacts = async (artifactDirectory) => {
+  try {
+    await fs.access(path.join(artifactDirectory, "StudentSubmission.runtimeconfig.json"));
+    return await defaultVerifyArtifacts(artifactDirectory);
   } catch {
     return false;
   }
@@ -302,10 +316,76 @@ const executeSecureMethodInDocker = async (request, {
   }
 };
 
+const executeSecureProgramInDocker = async (request, {
+  environment = process.env,
+  signal,
+  limits = DEFAULT_SECURE_LIMITS,
+  createJobDirectory = () => fs.mkdtemp(path.join(os.tmpdir(), "sharprunner-secure-")),
+  verifyArtifacts = defaultVerifyProgramArtifacts,
+  runContainer = runDockerContainer,
+  removeContainer,
+} = {}) => {
+  const dockerBinary = environment.CODING_ASSESSMENT_DOCKER_BIN || environment.PRACTICE_DOCKER_BIN || "docker";
+  const image = environment.CODING_ASSESSMENT_SANDBOX_IMAGE || DEFAULT_IMAGE;
+  const jobDirectory = await createJobDirectory();
+  const sourceDirectory = path.join(jobDirectory, "source");
+  const artifactDirectory = path.join(jobDirectory, "artifacts");
+  const deadline = Date.now() + limits.totalDeadlineMs;
+  const remove = removeContainer || ((name) => forceRemoveDockerContainer(name, { dockerBinary, environment }));
+  const names = [];
+  try {
+    await fs.mkdir(sourceDirectory, { recursive: true, mode: 0o755 });
+    await fs.mkdir(artifactDirectory, { recursive: true, mode: 0o777 });
+    await fs.writeFile(path.join(sourceDirectory, "StudentSubmission.csproj"), programProjectFile, { encoding: "utf8", flag: "wx", mode: 0o644 });
+    await fs.writeFile(path.join(sourceDirectory, "StudentSubmission.cs"), request.source, { encoding: "utf8", flag: "wx", mode: 0o644 });
+    await fs.chmod(jobDirectory, 0o755);
+    await fs.chmod(artifactDirectory, 0o777);
+    const compileName = `sharprunner-secure-compile-${randomUUID()}`;
+    names.push(compileName);
+    const compileSecurityArgs = buildContainerSecurityArgs({ name: compileName, limits });
+    const compileArgs = [...compileSecurityArgs,
+      "--mount", `type=bind,src=${pathForDockerMount(sourceDirectory)},dst=/source,readonly`,
+      "--mount", `type=bind,src=${pathForDockerMount(artifactDirectory)},dst=/artifacts`, image,
+      ...minimalDotnetEnvironment, "/usr/bin/dotnet", "build", "/source/StudentSubmission.csproj",
+      "--artifacts-path", "/work/build", "--output", "/artifacts", "--configuration", "Release",
+      "--nologo", "--verbosity", "quiet", "-p:RestoreIgnoreFailedSources=true", "-p:UseSharedCompilation=false"];
+    const compileResult = await runContainer({ phase: "compile", name: compileName, args: compileArgs,
+      securityArgs: compileSecurityArgs, dockerBinary, environment,
+      timeoutMs: Math.max(1, Math.min(limits.compileTimeoutMs, deadline - Date.now())), outputLimit: limits.outputBytes, signal });
+    const compileFailure = classifyContainerFailure(compileResult, true, limits);
+    if (compileFailure) return compileFailure;
+    if (!await verifyArtifacts(artifactDirectory)) return { category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR };
+    const invocations = [];
+    for (const stdin of request.inputs) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return { category: EXECUTION_CATEGORIES.TIMEOUT, invocations };
+      const name = `sharprunner-secure-exec-${randomUUID()}`;
+      names.push(name);
+      const securityArgs = buildContainerSecurityArgs({ name, limits });
+      const args = [...securityArgs, "--mount", `type=bind,src=${pathForDockerMount(artifactDirectory)},dst=/job,readonly`,
+        image, ...minimalDotnetEnvironment, "/usr/bin/dotnet", "/job/StudentSubmission.dll"];
+      const execution = await runContainer({ phase: "execute", name, args, securityArgs, stdin,
+        dockerBinary, environment, timeoutMs: Math.max(1, Math.min(limits.executionTimeoutMs, remaining)),
+        outputLimit: limits.outputBytes, signal });
+      const failure = classifyContainerFailure(execution, false, limits);
+      invocations.push(failure || (execution.exitCode === 0
+        ? { category: EXECUTION_CATEGORIES.SUCCESS, stdout: execution.stdout }
+        : { category: EXECUTION_CATEGORIES.RUNTIME_ERROR }));
+    }
+    return { category: overallCategory(invocations), invocations };
+  } catch {
+    return { category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR };
+  } finally {
+    await Promise.all(names.map((name) => remove(name)));
+    await fs.rm(jobDirectory, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+  }
+};
+
 module.exports = {
   DEFAULT_SECURE_LIMITS,
   buildContainerSecurityArgs,
   executeSecureMethodInDocker,
+  executeSecureProgramInDocker,
   parseHarnessResult,
   runDockerContainer,
 };

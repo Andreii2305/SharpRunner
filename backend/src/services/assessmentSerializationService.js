@@ -1,5 +1,6 @@
 const plain = (value) => value?.toJSON ? value.toJSON() : (value || {});
 const numberOrNull = (value) => value == null ? null : Number(value);
+const codingExecutionMode = (question) => question.codingExecutionMode || "METHOD";
 const DISCOVERY_LOCK_REASONS = new Set([
   "LESSON_PREREQUISITE_REQUIRED",
   "PRE_ASSESSMENT_REQUIRED",
@@ -24,13 +25,14 @@ const serializePlayerAssessment = (assessmentInput) => {
         points: numberOrNull(question.points),
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === "CODING" ? {
+          executionMode: codingExecutionMode(question),
           starterCode: question.starterCode,
-          methodContract: {
+          ...(codingExecutionMode(question) === "METHOD" ? { methodContract: {
             typeName: question.codingTypeName,
             methodName: question.codingMethodName,
             parameterTypes: [...(question.codingParameterTypes || [])],
             returnType: question.codingReturnType,
-          },
+          } } : {}),
           codingExamples: (question.codingTestCases || [])
             .map(plain)
             .filter((testCase) => testCase.visibility === "PUBLIC")
@@ -269,14 +271,15 @@ const serializeTeacherEditor = (assessmentInput, metadata = {}) => {
         explanation: question.explanation ?? null,
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === "CODING" ? {
+          executionMode: codingExecutionMode(question),
           starterCode: question.starterCode ?? null,
           referenceSolution: question.referenceSolution ?? null,
-          methodContract: {
+          ...(codingExecutionMode(question) === "METHOD" ? { methodContract: {
             typeName: question.codingTypeName ?? null,
             methodName: question.codingMethodName ?? null,
             parameterTypes: question.codingParameterTypes ?? null,
             returnType: question.codingReturnType ?? null,
-          },
+          } } : {}),
           codingTestCases: (question.codingTestCases || []).map((testInput) => {
             const testCase = plain(testInput);
             return {

@@ -13,6 +13,9 @@ const vite = await createServer({
 const { AssessmentPageContent, AssessmentStatusView } = await vite.ssrLoadModule(
   "/src/pages/student/assessment/AssessmentPage.jsx",
 );
+const { default: AssessmentCodingQuestion } = await vite.ssrLoadModule(
+  "/src/pages/student/assessment/AssessmentCodingQuestion.jsx",
+);
 
 test.after(async () => { await vite.close(); });
 
@@ -147,6 +150,18 @@ test("active CODING question renders the shared C# editor, public examples, and 
   assert.match(html, /Public test 1: Passed/);
   assert.match(html, /Public test 2: Failed/);
   assert.doesNotMatch(html, /teacher-secret-solution|HIDDEN|99/);
+});
+
+test("PROGRAM coding question explains complete-program grading without a method signature", () => {
+  const html = renderToStaticMarkup(React.createElement(AssessmentCodingQuestion, {
+    question: { id: 104, questionText: "Print a sum", questionType: "CODING", executionMode: "PROGRAM", codingExamples: [{ input: "", expectedOutput: "5\n" }] },
+    sourceCode: "using System; class Program { static void Main() {} }",
+    onSourceChange() {}, onRun() {}, runState: { status: "idle" },
+  }));
+  assert.match(html, /Program \/ Main/);
+  assert.match(html, /complete C# program/);
+  assert.match(html, /No input/);
+  assert.doesNotMatch(html, /Required method signature|Solution\.Solve/);
 });
 
 test("active page content renders the F-D player from hydrated reducer state", () => {

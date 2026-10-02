@@ -4,6 +4,8 @@ const MAX_INVOCATIONS = 10;
 const MAX_PARAMETERS = 8;
 const MAX_ARRAY_ITEMS = 256;
 const MAX_STRING_BYTES = 4 * 1024;
+const MAX_PROGRAM_STDIN_BYTES = 4 * 1024;
+const MAX_PROGRAM_OUTPUT_BYTES = 8 * 1024;
 
 const METHOD_TYPE_ALLOWLIST = Object.freeze([
   "bool", "int", "long", "string",
@@ -106,12 +108,32 @@ const validateMethodExecutionRequest = (input) => {
   };
 };
 
+const validateProgramExecutionRequest = (input) => {
+  if (!isPlainObject(input)) fail("INVALID_REQUEST", "A program execution request is required.");
+  assertExactKeys(input, ["source", "inputs"], "Request");
+  if (typeof input.source !== "string" || !input.source.trim()) fail("INVALID_SOURCE", "Source code is required.");
+  if (Buffer.byteLength(input.source, "utf8") > MAX_SOURCE_BYTES) fail("SOURCE_TOO_LARGE", "Source code exceeds the execution limit.");
+  if (!Array.isArray(input.inputs) || input.inputs.length < 1) fail("INVALID_INPUT", "At least one program input is required.");
+  if (input.inputs.length > MAX_INVOCATIONS) fail("TOO_MANY_INVOCATIONS", "The request contains too many test invocations.");
+  if (Buffer.byteLength(JSON.stringify(input.inputs), "utf8") > MAX_INPUT_BYTES) fail("INVALID_INPUT", "Program inputs exceed the execution limit.");
+  for (const stdin of input.inputs) {
+    if (typeof stdin !== "string" || Buffer.byteLength(stdin, "utf8") > MAX_PROGRAM_STDIN_BYTES) {
+      fail("INVALID_INPUT", "A program input must be bounded standard input text.");
+    }
+  }
+  return { source: input.source, inputs: [...input.inputs] };
+};
+
 module.exports = {
   EXECUTION_CATEGORIES,
   MAX_INVOCATIONS,
+  MAX_INPUT_BYTES,
+  MAX_PROGRAM_OUTPUT_BYTES,
+  MAX_PROGRAM_STDIN_BYTES,
   MAX_SOURCE_BYTES,
   METHOD_TYPE_ALLOWLIST,
   MethodExecutionValidationError,
   validateTypedValue,
   validateMethodExecutionRequest,
+  validateProgramExecutionRequest,
 };

@@ -310,7 +310,7 @@ test("Run Code accepts an empty body, forwards only route identity, and returns 
   assertNoForbiddenKeys(result.payload);
 });
 
-test("Run Code rejects client source and returns a bounded safe rate-limit response", async () => {
+test("Run Code rejects client source and execution-mode overrides and returns a bounded safe rate-limit response", async () => {
   mutationHarness();
   let calls = 0;
   stub(assessmentAttemptService, "runPublicCodingQuestion", async () => {
@@ -318,7 +318,7 @@ test("Run Code rejects client source and returns a bounded safe rate-limit respo
     return { status: "SUCCESS", tests: [] };
   });
   const injected = await request("/api/assessments/attempts/909/questions/201/run", {
-    authToken: token(42), method: "POST", body: { sourceCode: "client source" },
+    authToken: token(42), method: "POST", body: { sourceCode: "client source", executionMode: "PROGRAM" },
   });
   assert.equal(injected.response.status, 400);
   assert.equal(calls, 0);

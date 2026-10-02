@@ -2,9 +2,10 @@ import { useId } from "react";
 import { FiArrowDown, FiArrowUp, FiPlus, FiTrash2 } from "react-icons/fi";
 import AssessmentCodeEditor from "./AssessmentCodeEditor.jsx";
 import {
-  METHOD_TYPES, addCodingParameter, addCodingTestCase, defaultValueForType,
+  METHOD_TYPES, addCodingParameter, addCodingTestCase, codingModeChangeRequiresConfirmation, defaultValueForType,
   moveCodingParameter, moveCodingTestCase, removeCodingParameter,
   removeCodingTestCase, updateCodingParameterType, updateCodingReturnType,
+  updateCodingExecutionMode,
 } from "./teacherAssessmentBuilderState.js";
 import styles from "./TeacherAssessmentBuilderPage.module.css";
 
@@ -32,6 +33,7 @@ function TypedValueEditor({ type, value, disabled, label, onChange }) {
 }
 
 export default function CodingQuestionEditor({ question, disabled, onChange }) {
+  const executionMode = question.executionMode ?? "METHOD";
   const validationId = useId();
   const typeNameInvalid = !question.methodContract.typeName.trim();
   const methodNameInvalid = !question.methodContract.methodName.trim();
@@ -41,9 +43,22 @@ export default function CodingQuestionEditor({ question, disabled, onChange }) {
   const setContract = (changes) => replace({ methodContract: { ...question.methodContract, ...changes } });
   const changeTest = (index, changes) => replace({ codingTestCases: question.codingTestCases.map((testCase, itemIndex) => itemIndex === index ? { ...testCase, ...changes } : testCase) });
   const signature = `public static ${question.methodContract.returnType} ${question.methodContract.methodName || "MethodName"}(${question.methodContract.parameterTypes.map((type, index) => `${type} arg${index + 1}`).join(", ")})`;
+  const switchMode = (nextMode) => {
+    if (nextMode === executionMode) return;
+    if (codingModeChangeRequiresConfirmation(question, nextMode)
+      && !window.confirm("Changing the coding format will reset method-specific/test-case configuration that cannot be used by the new format.")) return;
+    onChange(updateThrough(question, updateCodingExecutionMode, nextMode));
+  };
   return <section className={styles.codingEditor} aria-label="Coding question configuration">
-    <div className={styles.codingHeading}><div><span>Coding</span><strong>C#</strong></div><p>Configure a public static C# method. Students remain unable to access coding assessments until the separate player release.</p></div>
+    <div className={styles.codingHeading}><div><span>Coding</span><strong>C#</strong></div><p>Choose how student code should be executed and graded.</p></div>
     <fieldset disabled={disabled} className={styles.signatureFieldset}>
+      <legend>Coding format</legend>
+      <label><input type="radio" name={`${question.clientId}-coding-format`} checked={executionMode === "METHOD"} onChange={() => switchMode("METHOD")} /> Method</label>
+      <p>Students implement a required C# method. SharpRunner calls the method with test inputs and checks its return value.</p>
+      <label><input type="radio" name={`${question.clientId}-coding-format`} checked={executionMode === "PROGRAM"} onChange={() => switchMode("PROGRAM")} /> Program / Main</label>
+      <p>Students write a complete C# program. SharpRunner provides optional console input and checks the program&apos;s output.</p>
+    </fieldset>
+    {executionMode === "METHOD" && <fieldset disabled={disabled} className={styles.signatureFieldset}>
       <legend>Method signature</legend>
       <div className={styles.codingGrid}>
         <label>Type/Class name<input value={question.methodContract.typeName} maxLength={128} placeholder="Solution" aria-invalid={typeNameInvalid} aria-describedby={typeNameInvalid ? typeNameErrorId : undefined} onChange={(event) => setContract({ typeName: event.target.value })} />{typeNameInvalid && <span id={typeNameErrorId} className={styles.inlineError}>Type/class name is required.</span>}</label>
@@ -59,10 +74,10 @@ export default function CodingQuestionEditor({ question, disabled, onChange }) {
         <button type="button" disabled={index === question.methodContract.parameterTypes.length - 1} aria-label={`Move parameter ${index + 1} down`} onClick={() => onChange(updateThrough(question, moveCodingParameter, index, 1))}><FiArrowDown /></button>
         <button type="button" aria-label={`Remove parameter ${index + 1}`} onClick={() => onChange(updateThrough(question, removeCodingParameter, index))}><FiTrash2 /></button>
       </div>)}
-    </fieldset>
+    </fieldset>}
     <div className={styles.codeEditorGrid}>
-      <AssessmentCodeEditor label="Starter code" value={question.starterCode} disabled={disabled} onChange={(starterCode) => replace({ starterCode })} description="This code is included in the future student coding workspace." />
-      <AssessmentCodeEditor label="Reference solution" value={question.referenceSolution} disabled={disabled} onChange={(referenceSolution) => replace({ referenceSolution })} description="This is teacher-only. Students will not receive this source. Execution validation is not available in K3." />
+      <AssessmentCodeEditor label="Starter code" value={question.starterCode} disabled={disabled} onChange={(starterCode) => replace({ starterCode })} description="Optional code students receive when they begin this question." />
+      <AssessmentCodeEditor label="Reference solution" value={question.referenceSolution} disabled={disabled} onChange={(referenceSolution) => replace({ referenceSolution })} description="This teacher-only solution is never shown to students." />
     </div>
     <fieldset disabled={disabled} className={styles.testCasesFieldset}>
       <legend>Test cases</legend>
@@ -78,13 +93,18 @@ export default function CodingQuestionEditor({ question, disabled, onChange }) {
           <label>Weight<input type="number" min="0.01" max="99999999.99" step="0.01" value={testCase.weight} onChange={(event) => changeTest(testIndex, { weight: event.target.value })} /></label>
         </div>
         <div className={styles.testValues}>
-          {question.methodContract.parameterTypes.map((type, inputIndex) => <TypedValueEditor key={`input-${inputIndex}`} type={type} value={testCase.input[inputIndex]} disabled={disabled} label={`Argument ${inputIndex + 1} (${type})`} onChange={(value) => changeTest(testIndex, { input: testCase.input.map((item, itemIndex) => itemIndex === inputIndex ? value : item) })} />)}
-          <TypedValueEditor type={question.methodContract.returnType} value={testCase.expectedOutput} disabled={disabled} label={`Expected output (${question.methodContract.returnType})`} onChange={(expectedOutput) => changeTest(testIndex, { expectedOutput })} />
+          {executionMode === "PROGRAM" ? <>
+            <label>Standard input<textarea value={testCase.input} onChange={(event) => changeTest(testIndex, { input: event.target.value })} /><small>Text provided through Console.ReadLine(). Leave blank if no input is required.</small></label>
+            <label>Expected output<textarea value={testCase.expectedOutput} onChange={(event) => changeTest(testIndex, { expectedOutput: event.target.value })} /><small>The output SharpRunner expects the program to print. Leave blank when no output is expected.</small></label>
+          </> : <>
+            {question.methodContract.parameterTypes.map((type, inputIndex) => <TypedValueEditor key={`input-${inputIndex}`} type={type} value={testCase.input[inputIndex]} disabled={disabled} label={`Argument ${inputIndex + 1} (${type})`} onChange={(value) => changeTest(testIndex, { input: testCase.input.map((item, itemIndex) => itemIndex === inputIndex ? value : item) })} />)}
+            <TypedValueEditor type={question.methodContract.returnType} value={testCase.expectedOutput} disabled={disabled} label={`Expected output (${question.methodContract.returnType})`} onChange={(expectedOutput) => changeTest(testIndex, { expectedOutput })} />
+          </>}
         </div>
       </article>)}
       <button type="button" className={styles.secondaryButton} disabled={question.codingTestCases.length >= 10} onClick={() => onChange(updateThrough(question, addCodingTestCase, "PUBLIC"))}><FiPlus /> Add test case</button>
       {!question.codingTestCases.some((testCase) => testCase.visibility === "HIDDEN") && <p className={styles.inlineError} role="status">Add at least one HIDDEN test case before publication.</p>}
     </fieldset>
-    <p className={styles.configurationNote}><strong>Configuration complete</strong> means required fields are present. No reference solution was executed; secure execution remains unavailable.</p>
+    <p className={styles.configurationNote}>Coding execution availability depends on the secure assessment runner configured for this deployment.</p>
   </section>;
 }

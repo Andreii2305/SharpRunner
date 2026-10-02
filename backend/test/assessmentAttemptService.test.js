@@ -226,6 +226,24 @@ const useCodingGraph = (store) => {
   }];
 };
 
+const useProgramGraph = (store) => {
+  useCodingGraph(store);
+  Object.assign(store.assessments[0].questions[0], {
+    questionText: "Print a sum",
+    codingExecutionMode: "PROGRAM",
+    starterCode: "using System; class Program { static void Main() {} }",
+    referenceSolution: "using System; class Program { static void Main() { Console.WriteLine(5); } }",
+    codingTypeName: null,
+    codingMethodName: null,
+    codingParameterTypes: null,
+    codingReturnType: null,
+    codingTestCases: [
+      { displayOrder: 0, visibility: "PUBLIC", input: "2\n3\n", expectedOutput: "5\n", weight: 1 },
+      { displayOrder: 1, visibility: "HIDDEN", input: "10\n20\n", expectedOutput: "30\n", weight: 3 },
+    ],
+  });
+};
+
 const expectCode = async (promise, code) => assert.rejects(promise, (error) => error?.code === code);
 
 const seedActiveAttempt = (store) => {
@@ -991,6 +1009,68 @@ test("authoritative coding execution occurs after the reservation transaction cl
   assert.equal(harness.store.attempts[0].status, "SUBMITTED");
 });
 
+test("authoritative PROGRAM execution occurs outside the reservation transaction", async () => {
+  let harness;
+  let depthDuringExecution = null;
+  harness = makeHarness({ type: "PRE" }, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => assert.fail("METHOD executor must not run"),
+      runSecureProgramExecution: async () => {
+        depthDuringExecution = harness.store.transactionDepth;
+        return {
+          category: "SUCCESS",
+          invocations: [
+            { category: "SUCCESS", stdout: "5\n" },
+            { category: "SUCCESS", stdout: "30\n" },
+          ],
+        };
+      },
+    },
+  });
+  useProgramGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+    sourceCode: harness.store.assessments[0].questions[0].starterCode,
+  });
+  const result = await harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "program-outside-transaction",
+  });
+  assert.equal(depthDuringExecution, 0);
+  assert.equal(result.status, "SUBMITTED");
+  assert.equal(result.pointsEarned, 10);
+});
+
+test("PROGRAM infrastructure failure releases grading without recording a zero", async () => {
+  const harness = makeHarness({}, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => assert.fail("METHOD executor must not run"),
+      runSecureProgramExecution: async () => ({ category: "INFRASTRUCTURE_ERROR" }),
+    },
+  });
+  useProgramGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    questionId: 201,
+    sourceCode: harness.store.assessments[0].questions[0].starterCode,
+  });
+  await expectCode(harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "program-infrastructure-failure",
+  }), "CODING_EXECUTION_UNAVAILABLE");
+  assert.equal(harness.store.attempts[0].status, "IN_PROGRESS");
+  assert.equal(harness.store.attempts[0].submissionKey, null);
+  assert.equal(harness.store.responses[0].pointsAwarded, 0);
+  assert.equal(harness.store.responses[0].isCorrect, false);
+});
+
 test("an active grading lease is observable by the same key and blocks a competing key", async () => {
   const harness = makeHarness({ type: "PRE" });
   useCodingGraph(harness.store);
@@ -1136,4 +1216,35 @@ test("Run Code uses persisted source and PUBLIC cases without mutating assessmen
   assert.deepEqual(clone(harness.store.attempts[0]), beforeAttempt);
   assert.deepEqual(clone(harness.store.responses[0]), beforeResponse);
   assert.doesNotMatch(JSON.stringify(result), /HIDDEN|weight|12|referenceSolution|lease/i);
+});
+
+test("PROGRAM Run Code dispatches saved source and PUBLIC stdin only without scoring", async () => {
+  let executionRequest;
+  const harness = makeHarness({}, {
+    secureCodingExecution: {
+      runSecureMethodExecution: async () => assert.fail("METHOD executor must not run"),
+      runSecureProgramExecution: async (request) => {
+        executionRequest = request;
+        return { category: "SUCCESS", invocations: [{ category: "SUCCESS", stdout: "5\n" }] };
+      },
+    },
+  });
+  useProgramGraph(harness.store);
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  const sourceCode = "using System; class Program { static void Main() { Console.WriteLine(5); } }";
+  await harness.service.saveResponse({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201, sourceCode,
+  });
+  const beforeAttempt = clone(harness.store.attempts[0]);
+  const beforeResponse = clone(harness.store.responses[0]);
+  const result = await harness.service.runPublicCodingQuestion({
+    attemptId: started.attempt.id, studentId: 42, questionId: 201,
+  });
+  assert.deepEqual(executionRequest, { source: sourceCode, inputs: ["2\n3\n"] });
+  assert.deepEqual(result.tests, [{
+    status: "SUCCESS", passed: true, input: "2\n3\n", expectedOutput: "5\n", actualOutput: "5\n",
+  }]);
+  assert.deepEqual(clone(harness.store.attempts[0]), beforeAttempt);
+  assert.deepEqual(clone(harness.store.responses[0]), beforeResponse);
+  assert.doesNotMatch(JSON.stringify(result), /10\\n20|HIDDEN|weight|referenceSolution|lease/i);
 });

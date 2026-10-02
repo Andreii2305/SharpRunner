@@ -109,6 +109,7 @@ test("coding player and review DTOs expose public contract/source without mixed 
       points: 3,
       objectiveKey: "addition",
       starterCode: "return 0;",
+      codingExecutionMode: "METHOD",
       referenceSolution: "return left + right;",
       codingTypeName: "Solution",
       codingMethodName: "Add",
@@ -135,6 +136,7 @@ test("coding player and review DTOs expose public contract/source without mixed 
   assert.deepEqual(player.assessment.questions[0].codingExamples, [
     { input: [1, 2], expectedOutput: 3 },
   ]);
+  assert.equal(player.assessment.questions[0].executionMode, "METHOD");
 
   const review = serializers.serializeAllowedReview({
     reviewAvailable: true,

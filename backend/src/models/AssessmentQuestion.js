@@ -1,6 +1,10 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const { ASSESSMENT_LIMITS, QUESTION_TYPES } = require("../constants/assessmentConfig");
+const {
+  ASSESSMENT_LIMITS,
+  CODING_EXECUTION_MODES,
+  QUESTION_TYPES,
+} = require("../constants/assessmentConfig");
 
 const AssessmentQuestion = sequelize.define("AssessmentQuestion", {
   assessmentId: { type: DataTypes.INTEGER, allowNull: false },
@@ -21,6 +25,11 @@ const AssessmentQuestion = sequelize.define("AssessmentQuestion", {
   objectiveKey: { type: DataTypes.STRING(ASSESSMENT_LIMITS.objectiveKeyLength), allowNull: true },
   starterCode: { type: DataTypes.TEXT, allowNull: true },
   referenceSolution: { type: DataTypes.TEXT, allowNull: true },
+  codingExecutionMode: {
+    type: DataTypes.STRING(8),
+    allowNull: true,
+    validate: { isIn: [Object.values(CODING_EXECUTION_MODES)] },
+  },
   codingTypeName: { type: DataTypes.STRING(128), allowNull: true },
   codingMethodName: { type: DataTypes.STRING(64), allowNull: true },
   codingParameterTypes: { type: DataTypes.JSONB, allowNull: true },

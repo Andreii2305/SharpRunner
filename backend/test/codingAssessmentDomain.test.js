@@ -5,6 +5,7 @@ const {
   CodingAssessmentInfrastructureError,
   gradeCodingQuestion,
   isCodingAssessmentPlayerEnabled,
+  normalizeProgramOutput,
   shapePublicCodingExecutionResult,
   validateCodingQuestion,
 } = require("../src/services/codingAssessmentService");
@@ -28,6 +29,106 @@ const codingQuestion = (overrides = {}) => ({
     { id: 2, displayOrder: 1, visibility: "HIDDEN", input: [5, 7], expectedOutput: 12, weight: 3 },
   ],
   ...overrides,
+});
+
+const programQuestion = (overrides = {}) => codingQuestion({
+  questionText: "Read two integers and print their sum.",
+  codingExecutionMode: "PROGRAM",
+  starterCode: "using System; public class Program { public static void Main() { } }",
+  referenceSolution: "using System; public class Program { public static void Main() { Console.WriteLine(int.Parse(Console.ReadLine()) + int.Parse(Console.ReadLine())); } }",
+  codingTypeName: null,
+  codingMethodName: null,
+  codingParameterTypes: null,
+  codingReturnType: null,
+  codingTestCases: [
+    { id: 1, displayOrder: 0, visibility: "PUBLIC", input: "2\n3\n", expectedOutput: "5\n", weight: 1 },
+    { id: 2, displayOrder: 1, visibility: "HIDDEN", input: "10\n20\n", expectedOutput: "30", weight: 3 },
+  ],
+  ...overrides,
+});
+
+test("legacy CODING defaults to METHOD while PROGRAM ignores method configuration", () => {
+  assert.equal(validateCodingQuestion(codingQuestion(), { publish: true }).executionMode, "METHOD");
+  const validated = validateCodingQuestion(programQuestion(), { publish: true });
+  assert.equal(validated.executionMode, "PROGRAM");
+  assert.equal(validated.contract, null);
+  assert.throws(() => validateCodingQuestion(programQuestion({ codingExecutionMode: "SCRIPT" }), { publish: true }), /mode/i);
+  assert.throws(() => validateCodingQuestion(programQuestion({
+    codingTestCases: programQuestion().codingTestCases.map((testCase, index) => index === 0
+      ? { ...testCase, input: [2, 3] }
+      : testCase),
+  }), { publish: true }), /standard input/i);
+});
+
+test("PROGRAM output normalization is deterministic and preserves meaningful content", async () => {
+  const executeProgram = async () => ({
+    category: "SUCCESS",
+    invocations: [
+      { category: "SUCCESS", stdout: "5  \r\n\r\n" },
+      { category: "SUCCESS", stdout: "30\n" },
+    ],
+  });
+  assert.deepEqual(await gradeCodingQuestion({
+    question: programQuestion(), sourceCode: programQuestion().starterCode, executeProgram,
+  }), { isCorrect: true, pointsAwarded: 10 });
+  assert.deepEqual(await gradeCodingQuestion({
+    question: programQuestion({ codingTestCases: programQuestion().codingTestCases.map((item, index) => index === 0 ? { ...item, expectedOutput: "5 0" } : item) }),
+    sourceCode: programQuestion().starterCode,
+    executeProgram,
+  }), { isCorrect: false, pointsAwarded: 7.5 });
+});
+
+test("PROGRAM output normalization handles line endings without changing meaningful text", () => {
+  for (const value of ["5", "5\n", "5\r\n", "5  \r\n\r\n", "5\t\n\n"]) {
+    assert.equal(normalizeProgramOutput(value), "5");
+  }
+  assert.equal(normalizeProgramOutput(" \t\r\n\r\n"), "");
+  assert.equal(normalizeProgramOutput(""), "");
+  assert.equal(normalizeProgramOutput("a  b\n\u03bb"), "a  b\n\u03bb");
+  assert.notEqual(normalizeProgramOutput("hello"), normalizeProgramOutput("Hello"));
+  assert.notEqual(normalizeProgramOutput("a b"), normalizeProgramOutput("ab"));
+  assert.notEqual(normalizeProgramOutput("a  b"), normalizeProgramOutput("a b"));
+});
+
+test("METHOD and PROGRAM success result shapes cannot cross-normalize", async () => {
+  const emptyOutputProgram = programQuestion({
+    codingTestCases: [
+      { displayOrder: 0, visibility: "PUBLIC", input: "", expectedOutput: "", weight: 1 },
+      { displayOrder: 1, visibility: "HIDDEN", input: "", expectedOutput: "", weight: 1 },
+    ],
+  });
+  await assert.rejects(gradeCodingQuestion({
+    question: emptyOutputProgram,
+    sourceCode: emptyOutputProgram.starterCode,
+    executeProgram: async () => ({
+      category: "SUCCESS",
+      invocations: [
+        { category: "SUCCESS", output: "" },
+        { category: "SUCCESS", output: "" },
+      ],
+    }),
+  }), CodingAssessmentInfrastructureError);
+  await assert.rejects(gradeCodingQuestion({
+    question: codingQuestion(),
+    sourceCode: codingQuestion().starterCode,
+    executeMethod: async () => ({
+      category: "SUCCESS",
+      invocations: [
+        { category: "SUCCESS", stdout: "3" },
+        { category: "SUCCESS", stdout: "12" },
+      ],
+    }),
+  }), CodingAssessmentInfrastructureError);
+  assert.throws(() => shapePublicCodingExecutionResult({
+    tests: [emptyOutputProgram.codingTestCases[0]],
+    executionMode: "PROGRAM",
+    result: { category: "SUCCESS", invocations: [{ category: "SUCCESS", output: "" }] },
+  }), CodingAssessmentInfrastructureError);
+  assert.throws(() => shapePublicCodingExecutionResult({
+    tests: [codingQuestion().codingTestCases[0]],
+    executionMode: "METHOD",
+    result: { category: "SUCCESS", invocations: [{ category: "SUCCESS", stdout: "3" }] },
+  }), CodingAssessmentInfrastructureError);
 });
 
 test("CODING publish validation accepts the METHOD allowlist and requires hidden grading tests", () => {
@@ -70,6 +171,14 @@ test("student CODING graph exposes public examples but recursively excludes hidd
   assert.doesNotMatch(serialized, /\[5,7\]/);
   assert.doesNotMatch(serialized, /"weight"/);
   assert.doesNotMatch(serialized, /a \+ b/);
+});
+
+test("PROGRAM student graph exposes mode and public stdin/output without method or hidden data", () => {
+  const shaped = shapePlayerAssessment({ id: 7, lessonKey: "arrays", type: "POST", title: "Programs", version: 1, questions: [programQuestion()] });
+  assert.equal(shaped.questions[0].executionMode, "PROGRAM");
+  assert.equal(shaped.questions[0].methodContract, undefined);
+  assert.deepEqual(shaped.questions[0].codingExamples, [{ input: "2\n3\n", expectedOutput: "5\n" }]);
+  assert.doesNotMatch(JSON.stringify(shaped), /10\\n20|referenceSolution|HIDDEN|weight/);
 });
 
 test("coding grading awards deterministic weighted partial credit", async () => {

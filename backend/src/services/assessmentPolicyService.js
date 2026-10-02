@@ -18,6 +18,7 @@ const QUESTION_TYPE_SET = values(QUESTION_TYPES);
 const ANSWER_REVIEW_POLICY_SET = values(ANSWER_REVIEW_POLICIES);
 const ACADEMIC_LESSON_KEY_SET = new Set(ACADEMIC_LESSON_KEYS);
 const POINT_SCALE = 10 ** ASSESSMENT_LIMITS.pointPrecision;
+const codingExecutionMode = (question) => question.codingExecutionMode || "METHOD";
 
 const plain = (value) => value?.toJSON ? value.toJSON() : value;
 const roundPercentage = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
@@ -108,6 +109,8 @@ const validateQuestionPersistence = (questionInput) => {
   const choices = (question.choices || []).map(plain);
   if (question.questionType === QUESTION_TYPES.CODING) {
     if (choices.length) throw new TypeError("CODING questions cannot have choices");
+    const executionMode = codingExecutionMode(question);
+    if (!["METHOD", "PROGRAM"].includes(executionMode)) throw new TypeError("CODING execution mode is invalid");
     for (const field of ["starterCode", "referenceSolution", "codingTypeName", "codingMethodName", "codingReturnType"]) {
       if (question[field] != null && typeof question[field] !== "string") {
         throw new TypeError("CODING configuration is invalid");
@@ -136,8 +139,9 @@ const validateQuestionPersistence = (questionInput) => {
       const weight = Number(testCase?.weight);
       if (!testCase || typeof testCase !== "object" || Array.isArray(testCase)
         || !["PUBLIC", "HIDDEN"].includes(testCase.visibility)
-        || !Array.isArray(testCase.input)
+        || (executionMode === "METHOD" ? !Array.isArray(testCase.input) : typeof testCase.input !== "string")
         || !Object.hasOwn(testCase, "expectedOutput")
+        || (executionMode === "PROGRAM" && typeof testCase.expectedOutput !== "string")
         || !Number.isFinite(weight) || weight <= 0) {
         throw new TypeError("CODING test case is invalid");
       }
@@ -147,10 +151,10 @@ const validateQuestionPersistence = (questionInput) => {
     });
     const completeContract = typeof question.starterCode === "string"
       && typeof question.referenceSolution === "string"
-      && typeof question.codingTypeName === "string"
-      && typeof question.codingMethodName === "string"
-      && Array.isArray(question.codingParameterTypes)
-      && typeof question.codingReturnType === "string"
+      && (executionMode === "PROGRAM" || (typeof question.codingTypeName === "string"
+        && typeof question.codingMethodName === "string"
+        && Array.isArray(question.codingParameterTypes)
+        && typeof question.codingReturnType === "string"))
       && testCases.length > 0;
     if (completeContract) validateCodingQuestion(question, { publish: false });
     return { question, choices, pointUnits: units };
@@ -158,6 +162,7 @@ const validateQuestionPersistence = (questionInput) => {
   for (const field of [
     "starterCode", "referenceSolution", "codingTypeName", "codingMethodName", "codingParameterTypes",
     "codingReturnType", "methodContract", "codingTestCases",
+    "codingExecutionMode", "executionMode",
   ]) {
     const value = question[field];
     if (value != null && !(field === "codingTestCases" && Array.isArray(value) && value.length === 0)) {
@@ -360,13 +365,14 @@ const shapePlayerAssessment = (assessmentInput) => {
         points: Number(question.points),
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === QUESTION_TYPES.CODING ? {
+          executionMode: codingExecutionMode(question),
           starterCode: question.starterCode,
-          methodContract: {
+          ...(codingExecutionMode(question) === "METHOD" ? { methodContract: {
             typeName: question.codingTypeName,
             methodName: question.codingMethodName,
             parameterTypes: [...(question.codingParameterTypes || [])],
             returnType: question.codingReturnType,
-          },
+          } } : {}),
           codingExamples: (question.codingTestCases || [])
             .map(plain)
             .filter((testCase) => testCase.visibility === "PUBLIC")

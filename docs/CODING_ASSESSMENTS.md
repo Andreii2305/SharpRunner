@@ -1,6 +1,8 @@
 # Coding assessments
 
-CODING questions are part of the existing PRE/POST assessment domain. Version 1 accepts C# source for one required `public static` method using the K2A METHOD contract and its deterministic type allowlist. Teachers configure starter source, the method contract, and weighted PUBLIC/HIDDEN cases. Executable teacher-authored harness code is not supported.
+CODING questions are part of the existing PRE/POST assessment domain and use an explicit execution format. `METHOD` preserves the original required `public static` method contract and deterministic type allowlist. `PROGRAM` accepts a complete C# console program with an entry point and grades bounded standard input to normalized standard output. Existing coding rows are additively backfilled as `METHOD`.
+
+PROGRAM output comparison normalizes CRLF and CR to LF, removes trailing whitespace from each line, and ignores blank lines only at the end. It preserves line order, case, internal spaces, and all other meaningful content. Each stdin value is limited to 4 KB, expected output to 8 KB, aggregate inputs to 16 KB, source to 16 KB, and a request to ten cases.
 
 ## Release gates
 
@@ -10,7 +12,7 @@ Authoritative coding execution is independently default OFF and must pass the K2
 
 ## Student data and saves
 
-Student graph DTOs contain the starter source, fixed method contract, and PUBLIC examples only. HIDDEN inputs, expected outputs, weights, counts, reference solutions, grading leases, harness details, and runner configuration remain server-only.
+Student graph DTOs contain the starter source, execution mode, the METHOD contract when applicable, and PUBLIC examples only. HIDDEN inputs, expected outputs, weights, counts, reference solutions, grading leases, harness details, and runner configuration remain server-only.
 
 Source is stored only in `AssessmentResponse.sourceCode`. The browser does not persist it. A source response and a choice response are mutually exclusive on both request and response DTOs. Intentionally empty persisted source is restored as empty; starter code is used only when no response exists. A CODING question is considered answered in the review UI only after a server-saved, non-whitespace source response exists.
 
@@ -25,7 +27,7 @@ Run Code is limited to 10 requests per minute for each student/attempt pair. Run
 Submission uses three phases:
 
 1. A short database transaction validates authority and the immutable graph/response snapshot, then reserves a `GRADING` lease.
-2. K2A executes all authoritative PUBLIC and HIDDEN inputs outside any database transaction.
+2. K2A executes all authoritative PUBLIC and HIDDEN cases outside any database transaction. METHOD uses the trusted reflection harness; PROGRAM compiles an executable once and launches a fresh isolated container for each stdin value.
 3. A short transaction verifies the lease and unchanged snapshot, then atomically persists response grades and the final attempt aggregate.
 
 The same submission key observes an active lease without launching duplicate execution. A competing key cannot double-grade. An expired lease can be replaced, while a stale worker cannot finalize or release its replacement. Infrastructure failure releases only the owned lease, returns the attempt to `IN_PROGRESS`, preserves source, and commits no partial score. Student-code outcomes retain K2B grading semantics; infrastructure failure never becomes student zero.

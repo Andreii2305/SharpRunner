@@ -4,6 +4,7 @@ const {
   MethodExecutionValidationError,
   validateTypedValue,
   validateMethodExecutionRequest,
+  validateProgramExecutionRequest,
 } = require("./secureCodingExecutionContract");
 const { validatePracticeCode } = require("./practiceRunnerService");
 
@@ -175,6 +176,47 @@ const normalizeResult = (value, returnType, expectedInvocations) => {
   return result;
 };
 
+const normalizeProgramInvocation = (value) => {
+  const allowed = [
+    EXECUTION_CATEGORIES.SUCCESS, EXECUTION_CATEGORIES.RUNTIME_ERROR,
+    EXECUTION_CATEGORIES.TIMEOUT, EXECUTION_CATEGORIES.OUTPUT_LIMIT,
+    EXECUTION_CATEGORIES.RESOURCE_LIMIT, EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR,
+  ];
+  if (!allowed.includes(value?.category)) return { category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR };
+  if (value.category !== EXECUTION_CATEGORIES.SUCCESS) return { category: value.category };
+  if (typeof value.stdout !== "string") return { category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR };
+  return { category: EXECUTION_CATEGORIES.SUCCESS, stdout: value.stdout.slice(0, 8 * 1024) };
+};
+
+const normalizeProgramResult = (value, expectedInvocations) => {
+  if (value?.category === EXECUTION_CATEGORIES.COMPILE_ERROR) {
+    return normalizeResult(value, undefined, undefined);
+  }
+  const allowedCategories = new Set([
+    EXECUTION_CATEGORIES.SUCCESS, EXECUTION_CATEGORIES.RUNTIME_ERROR,
+    EXECUTION_CATEGORIES.TIMEOUT, EXECUTION_CATEGORIES.OUTPUT_LIMIT,
+    EXECUTION_CATEGORIES.RESOURCE_LIMIT, EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR,
+  ]);
+  if (!allowedCategories.has(value?.category)) {
+    return { category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR, message: CATEGORY_MESSAGES[EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR] };
+  }
+  if (!Array.isArray(value?.invocations) || value.invocations.length !== expectedInvocations) {
+    return { category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR, message: CATEGORY_MESSAGES[EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR] };
+  }
+  const invocations = value.invocations.map(normalizeProgramInvocation);
+  const priority = [EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR, EXECUTION_CATEGORIES.RESOURCE_LIMIT,
+    EXECUTION_CATEGORIES.TIMEOUT, EXECUTION_CATEGORIES.OUTPUT_LIMIT, EXECUTION_CATEGORIES.RUNTIME_ERROR];
+  const category = priority.find((candidate) => invocations.some((item) => item.category === candidate)) || value.category;
+  const result = {
+    category,
+    invocations,
+    ...(category === EXECUTION_CATEGORIES.SUCCESS ? {} : { message: CATEGORY_MESSAGES[category] }),
+  };
+  return Buffer.byteLength(JSON.stringify(result), "utf8") <= RESULT_BYTE_LIMIT
+    ? result
+    : { category: EXECUTION_CATEGORIES.OUTPUT_LIMIT, message: CATEGORY_MESSAGES[EXECUTION_CATEGORIES.OUTPUT_LIMIT] };
+};
+
 const unavailableResult = () => ({
   category: EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR,
   code: "SECURE_EXECUTION_UNAVAILABLE",
@@ -213,9 +255,40 @@ const runSecureMethodExecution = async (request, {
   }
 };
 
+const runSecureProgramExecution = async (request, {
+  environment = process.env,
+  inspectSandbox = inspectSecureDockerSandbox,
+  executeInSandbox,
+  signal,
+} = {}) => {
+  const capability = await getSecureCodingExecutionCapability({ environment, inspectSandbox });
+  if (!capability.available) return unavailableResult();
+  let normalized;
+  try {
+    normalized = validateProgramExecutionRequest(request);
+  } catch (error) {
+    if (!(error instanceof MethodExecutionValidationError)) throw error;
+    return { category: EXECUTION_CATEGORIES.POLICY_REJECTION, code: error.code, message: error.message };
+  }
+  const policy = validatePracticeCode(normalized.source);
+  if (!policy.allowed) return { category: EXECUTION_CATEGORIES.POLICY_REJECTION, code: "SOURCE_POLICY_REJECTION", message: CATEGORY_MESSAGES[EXECUTION_CATEGORIES.POLICY_REJECTION] };
+  try {
+    if (capability.mode === "remote") {
+      const response = await fetchRemoteJson("/execute-program", { environment, method: "POST", body: normalized });
+      if (!response.ok) return unavailableResult();
+      return normalizeProgramResult(response.value, normalized.inputs.length);
+    }
+    const executor = executeInSandbox || require("./secureCodingDockerSandbox").executeSecureProgramInDocker;
+    return normalizeProgramResult(await executor(normalized, { environment, signal }), normalized.inputs.length);
+  } catch {
+    return unavailableResult();
+  }
+};
+
 module.exports = {
   getSecureCodingExecutionCapability,
   inspectSecureDockerSandbox,
   normalizeSecureCodingExecutionResult: normalizeResult,
   runSecureMethodExecution,
+  runSecureProgramExecution,
 };

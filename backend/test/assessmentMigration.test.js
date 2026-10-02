@@ -18,6 +18,10 @@ const gradingLeaseMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261001020000_assessment_grading_lease.sql",
 );
+const executionModeMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261002000000_coding_execution_modes.sql",
+);
 
 test("assessment models keep results normalized and out of level progress", () => {
   for (const name of [
@@ -42,7 +46,7 @@ test("assessment models keep results normalized and out of level progress", () =
       "assessmentId", "questionText", "questionType", "displayOrder", "points",
       "explanation", "objectiveKey",
       "starterCode", "codingTypeName", "codingMethodName", "codingParameterTypes",
-      "codingReturnType",
+      "codingReturnType", "codingExecutionMode",
     ],
     AssessmentChoice: ["questionId", "choiceText", "displayOrder", "isCorrect"],
     AssessmentAttempt: [
@@ -192,8 +196,8 @@ test("coding assessment migration is additive, protected, and registered after t
   assert.match(sql, /assessment_coding_tests_question_order/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-3), "20261001000000_coding_assessments");
-  assert.equal(names.at(-4), "20260925000000_lesson_assessments");
+  assert.equal(names.at(-4), "20261001000000_coding_assessments");
+  assert.equal(names.at(-5), "20260925000000_lesson_assessments");
 });
 
 test("teacher-only coding reference solution migration is additive and size-bounded", () => {
@@ -203,8 +207,8 @@ test("teacher-only coding reference solution migration is additive and size-boun
   assert.match(sql, /octet_length\("referenceSolution"\) <= 16384/);
   assert.doesNotMatch(sql, /DROP COLUMN|DROP TABLE/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-2), "20261001010000_coding_reference_solution");
-  assert.equal(names.at(-3), "20261001000000_coding_assessments");
+  assert.equal(names.at(-3), "20261001010000_coding_reference_solution");
+  assert.equal(names.at(-4), "20261001000000_coding_assessments");
 });
 
 test("grading lease migration is additive, constrained, and registered last", () => {
@@ -217,6 +221,18 @@ test("grading lease migration is additive, constrained, and registered last", ()
   assert.match(sql, /"status" = 'GRADING'[\s\S]*"submissionKey" IS NOT NULL[\s\S]*"gradingLeaseToken" IS NOT NULL[\s\S]*"gradingLeaseExpiresAt" IS NOT NULL/);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261001020000_assessment_grading_lease");
-  assert.equal(names.at(-2), "20261001010000_coding_reference_solution");
+  assert.equal(names.at(-2), "20261001020000_assessment_grading_lease");
+  assert.equal(names.at(-3), "20261001010000_coding_reference_solution");
+});
+
+test("coding execution mode migration backfills CODING as METHOD without changing non-coding rows", () => {
+  assert.equal(fs.existsSync(executionModeMigrationPath), true);
+  const sql = fs.readFileSync(executionModeMigrationPath, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "codingExecutionMode" VARCHAR\(8\)/);
+  assert.match(sql, /UPDATE "AssessmentQuestions"[\s\S]*SET "codingExecutionMode" = 'METHOD'[\s\S]*"questionType" = 'CODING'/);
+  assert.match(sql, /'METHOD', 'PROGRAM'/);
+  assert.match(sql, /"questionType" <> 'CODING'[\s\S]*"codingExecutionMode" IS NULL/);
+  assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261002000000_coding_execution_modes");
 });

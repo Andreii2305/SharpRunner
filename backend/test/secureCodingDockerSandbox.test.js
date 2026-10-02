@@ -10,6 +10,7 @@ const {
   DEFAULT_SECURE_LIMITS,
   buildContainerSecurityArgs,
   executeSecureMethodInDocker,
+  executeSecureProgramInDocker,
   runDockerContainer,
 } = require("../src/services/secureCodingDockerSandbox");
 
@@ -44,6 +45,45 @@ test("container security arguments enforce the required kernel boundaries", () =
   assert.match(joined, /--user 65534:65534/);
   assert.match(joined, /\/tmp:rw,nosuid,nodev,size=64m/);
   assert.doesNotMatch(joined, /PRACTICE_RUNNER_TOKEN|DATABASE_URL|JWT_SECRET/);
+});
+
+test("program execution compiles an executable once and isolates each stdin invocation", async () => {
+  const calls = [];
+  const jobDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "secure-program-unit-"));
+  const result = await executeSecureProgramInDocker({ source: "class Program { static void Main() {} }", inputs: ["2\n3\n", "10\n20\n"] }, {
+    createJobDirectory: async () => jobDirectory,
+    verifyArtifacts: async () => true,
+    runContainer: async (spec) => {
+      calls.push(spec);
+      return spec.phase === "compile" ? { exitCode: 0 } : { exitCode: 0, stdout: spec.stdin === "2\n3\n" ? "5\n" : "30\n" };
+    },
+    removeContainer: async () => {},
+  });
+  assert.equal(result.category, EXECUTION_CATEGORIES.SUCCESS);
+  assert.deepEqual(result.invocations.map((item) => item.stdout), ["5\n", "30\n"]);
+  assert.equal(calls.filter((call) => call.phase === "compile").length, 1);
+  assert.equal(new Set(calls.filter((call) => call.phase === "execute").map((call) => call.name)).size, 2);
+  assert.ok(calls.every((call) => call.securityArgs.includes("--network")));
+});
+
+test("program execution rejects incomplete executable artifacts before grading", async () => {
+  const jobDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "secure-program-artifacts-"));
+  let executions = 0;
+  const result = await executeSecureProgramInDocker({ source: "class Program { static void Main() {} }", inputs: [""] }, {
+    createJobDirectory: async () => jobDirectory,
+    runContainer: async (spec) => {
+      if (spec.phase === "execute") {
+        executions += 1;
+        return { exitCode: 0, stdout: "" };
+      }
+      await fs.writeFile(path.join(jobDirectory, "artifacts", "StudentSubmission.dll"), "incomplete");
+      await fs.writeFile(path.join(jobDirectory, "artifacts", "StudentSubmission.deps.json"), "{}");
+      return { exitCode: 0, stdout: "", stderr: "" };
+    },
+    removeContainer: async () => {},
+  });
+  assert.equal(result.category, EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR);
+  assert.equal(executions, 0);
 });
 
 test("method execution compiles once and uses a fresh sandbox for every input", async () => {

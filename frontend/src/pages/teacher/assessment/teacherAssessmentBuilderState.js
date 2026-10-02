@@ -15,6 +15,7 @@ export const defaultValueForType = (type) => type?.endsWith("[]") ? []
 
 const codingFields = () => ({
   choices: [],
+  executionMode: "METHOD",
   starterCode: "",
   referenceSolution: "",
   methodContract: { typeName: "", methodName: "", parameterTypes: [], returnType: "int" },
@@ -24,8 +25,8 @@ const codingFields = () => ({
 const codingTestCase = (question, visibility = "PUBLIC") => ({
   clientId: clientId("coding-test"),
   visibility,
-  input: question.methodContract.parameterTypes.map(defaultValueForType),
-  expectedOutput: defaultValueForType(question.methodContract.returnType),
+  input: question.executionMode === "PROGRAM" ? "" : question.methodContract.parameterTypes.map(defaultValueForType),
+  expectedOutput: question.executionMode === "PROGRAM" ? "" : defaultValueForType(question.methodContract.returnType),
   weight: 1,
 });
 
@@ -66,6 +67,7 @@ export const hydrateAssessmentDraft = (assessment) => ({
     objectiveKey: question.objectiveKey ?? "",
     choices: (question.choices ?? []).map((item) => ({ ...item, clientId: `choice-${item.id}` })),
     ...(question.questionType === "CODING" ? {
+      executionMode: question.executionMode ?? "METHOD",
       starterCode: question.starterCode ?? "",
       referenceSolution: question.referenceSolution ?? "",
       methodContract: {
@@ -124,6 +126,23 @@ export const updateQuestionType = (questions, id, questionType) => changeQuestio
       : [choice("", true), choice("", false)],
   };
 });
+export const updateCodingExecutionMode = (questions, id, executionMode) => changeQuestion(questions, id, (question) => ({
+  ...question,
+  executionMode,
+  methodContract: executionMode === "METHOD"
+    ? { typeName: "", methodName: "", parameterTypes: [], returnType: "int" }
+    : { typeName: "", methodName: "", parameterTypes: [], returnType: "int" },
+  codingTestCases: [],
+}));
+export const codingModeChangeRequiresConfirmation = (question, nextMode) => {
+  const executionMode = question.executionMode ?? "METHOD";
+  if (executionMode === nextMode) return false;
+  if ((question.codingTestCases ?? []).length > 0) return true;
+  if (executionMode !== "METHOD") return false;
+  const contract = question.methodContract ?? {};
+  return Boolean(contract.typeName?.trim() || contract.methodName?.trim()
+    || contract.parameterTypes?.length || (contract.returnType ?? "int") !== "int");
+};
 export const addChoice = (questions, id) => changeQuestion(questions, id, (question) => ({ ...question, choices: [...question.choices, choice()] }));
 export const removeChoice = (questions, id, choiceId) => changeQuestion(questions, id, (question) => ({ ...question, choices: question.choices.filter((item) => item.clientId !== choiceId) }));
 export const moveChoice = (questions, id, index, delta) => changeQuestion(questions, id, (question) => ({ ...question, choices: move(question.choices, index, delta) }));
@@ -191,14 +210,15 @@ export const buildSaveGraph = (draft) => ({
     objectiveKey: question.objectiveKey || null,
     choices: question.questionType === "CODING" ? [] : question.choices.map((item) => ({ choiceText: item.choiceText, isCorrect: Boolean(item.isCorrect) })),
     ...(question.questionType === "CODING" ? {
+      executionMode: question.executionMode ?? "METHOD",
       starterCode: question.starterCode,
       referenceSolution: question.referenceSolution,
-      methodContract: {
+      ...(question.executionMode !== "PROGRAM" ? { methodContract: {
         typeName: question.methodContract.typeName,
         methodName: question.methodContract.methodName,
         parameterTypes: [...question.methodContract.parameterTypes],
         returnType: question.methodContract.returnType,
-      },
+      } } : {}),
       codingTestCases: question.codingTestCases.map((testCase) => ({
         visibility: testCase.visibility,
         input: testCase.input,
@@ -229,10 +249,13 @@ export const publishIssues = (draft) => {
     if (!question.questionText?.trim()) issues.push(`${label}: add question text.`);
     if (!Number.isFinite(Number(question.points)) || Number(question.points) <= 0) issues.push(`${label}: points must be greater than zero.`);
     if (question.questionType === "CODING") {
+      const executionMode = question.executionMode ?? "METHOD";
       const contract = question.methodContract ?? {};
-      if (!qualifiedIdentifier.test(contract.typeName ?? "")) issues.push(`${label}: add a valid type/class name.`);
-      if (!identifier.test(contract.methodName ?? "")) issues.push(`${label}: add a valid method name.`);
-      if (!METHOD_TYPES.includes(contract.returnType) || (contract.parameterTypes ?? []).some((type) => !METHOD_TYPES.includes(type))) issues.push(`${label}: select only supported method types.`);
+      if (executionMode === "METHOD") {
+        if (!qualifiedIdentifier.test(contract.typeName ?? "")) issues.push(`${label}: add a valid type/class name.`);
+        if (!identifier.test(contract.methodName ?? "")) issues.push(`${label}: add a valid method name.`);
+        if (!METHOD_TYPES.includes(contract.returnType) || (contract.parameterTypes ?? []).some((type) => !METHOD_TYPES.includes(type))) issues.push(`${label}: select only supported method types.`);
+      }
       if (!question.starterCode?.trim()) issues.push(`${label}: add starter code.`);
       else if (utf8Bytes(question.starterCode) > 16 * 1024) issues.push(`${label}: starter code must be 16 KB or smaller.`);
       if (!question.referenceSolution?.trim()) issues.push(`${label}: add a reference solution.`);
@@ -243,9 +266,14 @@ export const publishIssues = (draft) => {
         const weight = Number(testCase.weight);
         if (!Number.isFinite(weight) || weight <= 0) issues.push(`${label}, test ${testIndex + 1}: weight must be greater than zero.`);
         else if (weight > 99999999.99 || Math.round(weight * 100) / 100 !== weight) issues.push(`${label}, test ${testIndex + 1}: weight must fit eight digits and at most two decimal places.`);
-        if (!Array.isArray(testCase.input) || testCase.input.length !== (contract.parameterTypes ?? []).length
-          || testCase.input.some((value, valueIndex) => !validTypedValue(contract.parameterTypes[valueIndex], value))) issues.push(`${label}, test ${testIndex + 1}: complete valid typed inputs.`);
-        if (!validTypedValue(contract.returnType, testCase.expectedOutput)) issues.push(`${label}, test ${testIndex + 1}: complete a valid expected output.`);
+        if (executionMode === "PROGRAM") {
+          if (typeof testCase.input !== "string" || utf8Bytes(testCase.input) > 4096) issues.push(`${label}, test ${testIndex + 1}: standard input must be 4 KB or smaller.`);
+          if (typeof testCase.expectedOutput !== "string" || utf8Bytes(testCase.expectedOutput) > 8192) issues.push(`${label}, test ${testIndex + 1}: expected output must be 8 KB or smaller.`);
+        } else {
+          if (!Array.isArray(testCase.input) || testCase.input.length !== (contract.parameterTypes ?? []).length
+            || testCase.input.some((value, valueIndex) => !validTypedValue(contract.parameterTypes[valueIndex], value))) issues.push(`${label}, test ${testIndex + 1}: complete valid typed inputs.`);
+          if (!validTypedValue(contract.returnType, testCase.expectedOutput)) issues.push(`${label}, test ${testIndex + 1}: complete a valid expected output.`);
+        }
       });
       if (utf8Bytes(JSON.stringify(question.codingTestCases?.map((testCase) => testCase.input) ?? [])) > 16 * 1024) issues.push(`${label}: test inputs must total 16 KB or smaller.`);
     } else {

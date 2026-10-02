@@ -6,6 +6,7 @@ const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
 const {
   contractForQuestion,
+  executionModeForQuestion,
   gradeCodingQuestion,
   isCodingAssessmentPlayerEnabled,
   shapePublicCodingExecutionResult,
@@ -508,19 +509,25 @@ const createAssessmentAttemptService = ({
         .filter((testCase) => testCase.visibility === "PUBLIC");
       return {
         source: response.sourceCode,
-        contract: contractForQuestion(question),
+        executionMode: executionModeForQuestion(question),
+        contract: executionModeForQuestion(question) === "METHOD" ? contractForQuestion(question) : null,
         publicTests,
       };
     });
 
     const result = execution.publicTests.length === 0
       ? { category: "SUCCESS", invocations: [] }
-      : await secureCodingExecution.runSecureMethodExecution({
+      : await (execution.executionMode === "PROGRAM"
+        ? secureCodingExecution.runSecureProgramExecution({
+          source: execution.source,
+          inputs: execution.publicTests.map((testCase) => testCase.input),
+        })
+        : secureCodingExecution.runSecureMethodExecution({
         source: execution.source,
         contract: execution.contract,
         inputs: execution.publicTests.map((testCase) => testCase.input),
-      });
-    return shapePublicCodingExecutionResult({ tests: execution.publicTests, result });
+        }));
+    return shapePublicCodingExecutionResult({ tests: execution.publicTests, result, executionMode: execution.executionMode });
   };
 
   const reserveSubmission = ({ attemptId, studentId, submissionKey }) => sequelize.transaction(
@@ -735,6 +742,7 @@ const createAssessmentAttemptService = ({
             question,
             sourceCode: saved?.sourceCode ?? "",
             execute: (request) => secureCodingExecution.runSecureMethodExecution(request),
+            executeProgram: (request) => secureCodingExecution.runSecureProgramExecution(request),
           });
           authoritativeResponses.push({
             questionId: question.id,

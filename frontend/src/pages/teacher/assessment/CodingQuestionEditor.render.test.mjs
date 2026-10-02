@@ -59,6 +59,31 @@ test("blank coding signature fields expose associated validation errors", () => 
   assert.match(html, /Method name is required/);
 });
 
+test("PROGRAM format hides METHOD signature controls and renders stdin/stdout editors", () => {
+  const program = {
+    ...question,
+    executionMode: "PROGRAM",
+    codingTestCases: [{ clientId: "program", visibility: "PUBLIC", input: "2\n3\n", expectedOutput: "5\n", weight: 1 }],
+  };
+  const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question: program, disabled: false, onChange() {} }));
+  assert.match(html, /Program \/ Main/);
+  assert.match(html, /Standard input/);
+  assert.match(html, /Console.ReadLine/);
+  assert.doesNotMatch(html, /Type\/Class name|Signature preview|Argument 1/);
+});
+
+test("PROGRAM format permits empty stdin and expected stdout", () => {
+  const program = {
+    ...question,
+    executionMode: "PROGRAM",
+    codingTestCases: [{ clientId: "program-empty", visibility: "HIDDEN", input: "", expectedOutput: "", weight: 1 }],
+  };
+  const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question: program, disabled: false, onChange() {} }));
+  assert.match(html, /Leave blank if no input is required/);
+  assert.match(html, /Leave blank when no output is expected/);
+  assert.doesNotMatch(html, /Expected output<textarea[^>]*required/);
+});
+
 test("student coding preview excludes reference solution and hidden grading values", () => {
   const html = renderToStaticMarkup(React.createElement(StudentCodingPreview, { question }));
   assert.match(html, /public starter/);

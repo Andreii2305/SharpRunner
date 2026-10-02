@@ -3,10 +3,10 @@ import test from "node:test";
 import {
   ACADEMIC_LESSONS, METHOD_TYPES, addChoice, addCodingParameter, addCodingTestCase,
   addQuestion, assessmentStatus, buildSaveGraph, createAssessmentDraft,
-  defaultValueForType, hydrateAssessmentDraft, moveChoice, moveCodingParameter,
+  codingModeChangeRequiresConfirmation, defaultValueForType, hydrateAssessmentDraft, moveChoice, moveCodingParameter,
   moveCodingTestCase, moveQuestion, publishIssues, removeChoice,
   removeCodingParameter, removeCodingTestCase, removeQuestion, selectCorrectChoice,
-  updateCodingParameterType, updateCodingReturnType, updateQuestionType,
+  updateCodingExecutionMode, updateCodingParameterType, updateCodingReturnType, updateQuestionType,
 } from "./teacherAssessmentBuilderState.js";
 
 test("academic lesson scope exactly follows backend policy", () => {
@@ -129,11 +129,43 @@ test("CODING graph hydrates and serializes the exact teacher contract without cl
   const graph = buildSaveGraph(draft);
   assert.deepEqual(graph.questions[0], {
     questionText: "Add", questionType: "CODING", points: 5, explanation: null,
-    objectiveKey: null, choices: [], starterCode: "starter", referenceSolution: "secret",
+    objectiveKey: null, choices: [], executionMode: "METHOD", starterCode: "starter", referenceSolution: "secret",
     methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int" },
     codingTestCases: [{ visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 2 }],
   });
   assert.doesNotMatch(JSON.stringify(graph), /clientId|displayOrder/);
+});
+
+test("CODING format switching clears incompatible contract tests and PROGRAM validates text cases", () => {
+  let questions = addQuestion([], "CODING");
+  const id = questions[0].clientId;
+  questions[0].questionText = "Print a sum";
+  questions[0].starterCode = "using System; class Program { static void Main() {} }";
+  questions[0].referenceSolution = "using System; class Program { static void Main() { Console.WriteLine(5); } }";
+  questions[0].methodContract.typeName = "Solution";
+  questions[0].codingTestCases = [{ clientId: "old", visibility: "HIDDEN", input: [], expectedOutput: 5, weight: 1 }];
+  questions = updateCodingExecutionMode(questions, id, "PROGRAM");
+  assert.equal(questions[0].executionMode, "PROGRAM");
+  assert.deepEqual(questions[0].codingTestCases, []);
+  questions = addCodingTestCase(questions, id, "HIDDEN");
+  questions[0].codingTestCases[0].input = "2\n3\n";
+  questions[0].codingTestCases[0].expectedOutput = "5\n";
+  const draft = { ...createAssessmentDraft("POST", "arrays"), questions };
+  assert.deepEqual(publishIssues(draft), []);
+  const saved = buildSaveGraph(draft).questions[0];
+  assert.equal(saved.executionMode, "PROGRAM");
+  assert.equal(saved.methodContract, undefined);
+});
+
+test("CODING format switching requests confirmation for configured METHOD data even without tests", () => {
+  const question = addQuestion([], "CODING")[0];
+  assert.equal(codingModeChangeRequiresConfirmation(question, "PROGRAM"), false);
+  question.methodContract.methodName = "Solve";
+  assert.equal(codingModeChangeRequiresConfirmation(question, "PROGRAM"), true);
+  question.methodContract.methodName = "";
+  question.codingTestCases = [{ visibility: "PUBLIC", input: [], expectedOutput: 0, weight: 1 }];
+  assert.equal(codingModeChangeRequiresConfirmation(question, "PROGRAM"), true);
+  assert.equal(codingModeChangeRequiresConfirmation({ ...question, executionMode: "PROGRAM" }, "PROGRAM"), false);
 });
 
 test("CODING publish issues mirror structural backend requirements", () => {

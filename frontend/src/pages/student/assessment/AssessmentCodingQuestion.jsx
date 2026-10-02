@@ -46,6 +46,7 @@ export default function AssessmentCodingQuestion({
   const groupName = `assessment-question-${question.id}`;
   const examples = Array.isArray(question.codingExamples) ? question.codingExamples : [];
   const result = runState?.result;
+  const programMode = question.executionMode === "PROGRAM";
 
   return (
     <section
@@ -56,11 +57,13 @@ export default function AssessmentCodingQuestion({
     >
       <h2 id={`${groupName}-title`} className={styles.questionText}>{question.questionText}</h2>
       <p className={styles.codingLanguage}>C# coding question</p>
-      <p>Implement the required method. Your source is saved automatically.</p>
-      <div className={styles.contract}>
+      <p>{programMode
+        ? "Write a complete C# program. Your program's output will be checked against the expected results."
+        : "Implement the required method. Your source is saved automatically."}</p>
+      {programMode ? <div className={styles.contract}><strong>Coding format</strong><span>Program / Main</span></div> : <div className={styles.contract}>
         <strong>Required method signature</strong>
         <code>{contractText(question.methodContract)}</code>
-      </div>
+      </div>}
 
       {examples.length > 0 && (
         <section className={styles.publicTests} aria-label="Public examples">
@@ -68,7 +71,7 @@ export default function AssessmentCodingQuestion({
           <ol>
             {examples.map((example, index) => (
               <li key={`${question.id}-example-${index}`}>
-                <div><strong>Input</strong><code>{displayValue(example.input)}</code></div>
+                <div><strong>Input</strong><code>{programMode && example.input === "" ? "No input" : displayValue(example.input)}</code></div>
                 <div><strong>Expected output</strong><code>{displayValue(example.expectedOutput)}</code></div>
               </li>
             ))}
@@ -78,7 +81,7 @@ export default function AssessmentCodingQuestion({
 
       <AssessmentCodeEditor
         label={`Code answer for question ${question.id}`}
-        description="Use only the required C# method contract shown above."
+        description={programMode ? "Write a complete C# program with an entry point such as Main()." : "Use only the required C# method contract shown above."}
         value={sourceCode}
         onChange={(next) => onSourceChange(question.id, next)}
         disabled={disabled}

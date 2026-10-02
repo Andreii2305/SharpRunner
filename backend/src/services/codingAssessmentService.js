@@ -4,6 +4,10 @@ const {
   validateMethodExecutionRequest,
   validateTypedValue,
 } = require("./secureCodingExecutionContract");
+const { CODING_EXECUTION_MODES } = require("../constants/assessmentConfig");
+
+const MAX_PROGRAM_STDIN_BYTES = 4 * 1024;
+const MAX_PROGRAM_OUTPUT_BYTES = 8 * 1024;
 
 class CodingAssessmentInfrastructureError extends Error {
   constructor() {
@@ -20,6 +24,16 @@ const isCodingAssessmentPlayerEnabled = (environment = process.env) => (
 const sortedTests = (question) => [...(question.codingTestCases || [])]
   .map(plain)
   .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder));
+const executionModeForQuestion = (questionInput) => {
+  const question = plain(questionInput) || {};
+  return question.codingExecutionMode || CODING_EXECUTION_MODES.METHOD;
+};
+const normalizeProgramOutput = (value) => {
+  const lines = String(value ?? "").replace(/\r\n?/g, "\n").split("\n")
+    .map((line) => line.trimEnd());
+  while (lines.length && lines.at(-1) === "") lines.pop();
+  return lines.join("\n");
+};
 
 const contractForQuestion = (questionInput) => {
   const question = plain(questionInput);
@@ -34,6 +48,10 @@ const contractForQuestion = (questionInput) => {
 const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
   const question = plain(questionInput) || {};
   if (question.questionType !== "CODING") throw new TypeError("Question is not CODING");
+  const executionMode = executionModeForQuestion(question);
+  if (!Object.values(CODING_EXECUTION_MODES).includes(executionMode)) {
+    throw new TypeError("Coding execution mode is invalid");
+  }
   if (typeof question.starterCode !== "string"
     || (publish && !question.starterCode.trim())
     || Buffer.byteLength(question.starterCode, "utf8") > MAX_SOURCE_BYTES) {
@@ -61,32 +79,62 @@ const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
     }
     totalWeight += weight;
   });
-  try {
-    validateMethodExecutionRequest({
-      source: question.starterCode || "public static class Placeholder {}",
-      contract: contractForQuestion(question),
-      inputs: tests.length ? tests.map((testCase) => testCase.input) : [[]],
-    });
-    validateMethodExecutionRequest({
-      source: question.referenceSolution || "public static class Placeholder {}",
-      contract: contractForQuestion(question),
-      inputs: tests.length ? tests.map((testCase) => testCase.input) : [[]],
-    });
-  } catch (error) {
-    throw new TypeError(`Coding contract or test input is unsupported: ${error.message}`);
-  }
-  for (const testCase of tests) {
-    if (!validateTypedValue(question.codingReturnType, testCase.expectedOutput)) {
-      throw new TypeError("Coding expected output does not match the return type");
+  if (executionMode === CODING_EXECUTION_MODES.METHOD) {
+    try {
+      validateMethodExecutionRequest({
+        source: question.starterCode || "public static class Placeholder {}",
+        contract: contractForQuestion(question),
+        inputs: tests.length ? tests.map((testCase) => testCase.input) : [[]],
+      });
+      validateMethodExecutionRequest({
+        source: question.referenceSolution || "public static class Placeholder {}",
+        contract: contractForQuestion(question),
+        inputs: tests.length ? tests.map((testCase) => testCase.input) : [[]],
+      });
+    } catch (error) {
+      throw new TypeError(`Coding contract or test input is unsupported: ${error.message}`);
+    }
+    for (const testCase of tests) {
+      if (!validateTypedValue(question.codingReturnType, testCase.expectedOutput)) {
+        throw new TypeError("Coding expected output does not match the return type");
+      }
+    }
+  } else {
+    for (const testCase of tests) {
+      if (typeof testCase.input !== "string"
+        || Buffer.byteLength(testCase.input, "utf8") > MAX_PROGRAM_STDIN_BYTES) {
+        throw new TypeError("PROGRAM standard input must be bounded text");
+      }
+      if (typeof testCase.expectedOutput !== "string"
+        || Buffer.byteLength(testCase.expectedOutput, "utf8") > MAX_PROGRAM_OUTPUT_BYTES) {
+        throw new TypeError("PROGRAM expected output must be bounded text");
+      }
     }
   }
   if (publish && totalWeight <= 0) throw new TypeError("Coding grading weight must be positive");
-  return { question, tests, contract: contractForQuestion(question), totalWeight };
+  return {
+    question,
+    tests,
+    contract: executionMode === CODING_EXECUTION_MODES.METHOD ? contractForQuestion(question) : null,
+    totalWeight,
+    executionMode,
+  };
 };
 
 const sameTypedValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const hasValidSuccessOutput = ({ invocation, executionMode, returnType }) => {
+  if (invocation?.category !== EXECUTION_CATEGORIES.SUCCESS) return true;
+  if (executionMode === CODING_EXECUTION_MODES.PROGRAM) {
+    return typeof invocation.stdout === "string";
+  }
+  return hasOwn(invocation, "output")
+    && (returnType === undefined || validateTypedValue(returnType, invocation.output));
+};
 
-const shapePublicCodingExecutionResult = ({ tests: inputTests = [], result }) => {
+const shapePublicCodingExecutionResult = ({
+  tests: inputTests = [], result, executionMode = CODING_EXECUTION_MODES.METHOD,
+}) => {
   const tests = inputTests.map(plain).filter((testCase) => testCase.visibility === "PUBLIC");
   const validCategories = new Set(Object.values(EXECUTION_CATEGORIES));
   if (!result || !validCategories.has(result.category)
@@ -117,30 +165,46 @@ const shapePublicCodingExecutionResult = ({ tests: inputTests = [], result }) =>
   output.tests = tests.map((testCase, index) => {
     const invocation = invocations[index];
     if (!invocation || !validCategories.has(invocation.category)
-      || invocation.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR) {
+      || invocation.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR
+      || !hasValidSuccessOutput({ invocation, executionMode })) {
       throw new CodingAssessmentInfrastructureError();
     }
+    const actualOutput = executionMode === CODING_EXECUTION_MODES.PROGRAM
+      ? invocation.stdout
+      : invocation.output;
     const passed = invocation.category === EXECUTION_CATEGORIES.SUCCESS
-      && sameTypedValue(invocation.output, testCase.expectedOutput);
+      && (executionMode === CODING_EXECUTION_MODES.PROGRAM
+        ? normalizeProgramOutput(actualOutput) === normalizeProgramOutput(testCase.expectedOutput)
+        : sameTypedValue(actualOutput, testCase.expectedOutput));
     return {
       status: invocation.category,
       passed,
       input: testCase.input,
       expectedOutput: testCase.expectedOutput,
       ...(invocation.category === EXECUTION_CATEGORIES.SUCCESS
-        ? { actualOutput: invocation.output }
+        ? { actualOutput }
         : {}),
     };
   });
   return output;
 };
 
-const gradeCodingQuestion = async ({ question: input, sourceCode, execute }) => {
-  const { question, tests, contract, totalWeight } = validateCodingQuestion(input, { publish: true });
+const gradeCodingQuestion = async ({
+  question: input, sourceCode, execute, executeMethod = execute, executeProgram,
+}) => {
+  const {
+    question, tests, contract, totalWeight, executionMode,
+  } = validateCodingQuestion(input, { publish: true });
   if (typeof sourceCode !== "string" || Buffer.byteLength(sourceCode, "utf8") > MAX_SOURCE_BYTES) {
     throw new TypeError("Coding response source is invalid or too large");
   }
-  const result = await execute({ source: sourceCode, contract, inputs: tests.map((item) => item.input) });
+  const executor = executionMode === CODING_EXECUTION_MODES.PROGRAM ? executeProgram : executeMethod;
+  if (typeof executor !== "function") throw new CodingAssessmentInfrastructureError();
+  const result = await executor({
+    source: sourceCode,
+    ...(executionMode === CODING_EXECUTION_MODES.METHOD ? { contract } : {}),
+    inputs: tests.map((item) => item.input),
+  });
   const validCategories = new Set(Object.values(EXECUTION_CATEGORIES));
   const invocations = Array.isArray(result?.invocations) ? result.invocations : null;
   if (result?.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR
@@ -150,7 +214,12 @@ const gradeCodingQuestion = async ({ question: input, sourceCode, execute }) => 
       && (!invocations || invocations.length !== tests.length))
     || (invocations && invocations.length !== tests.length)
     || (invocations && invocations.some((item) => !item || !validCategories.has(item.category)
-      || item.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR))) {
+      || item.category === EXECUTION_CATEGORIES.INFRASTRUCTURE_ERROR
+      || !hasValidSuccessOutput({
+        invocation: item,
+        executionMode,
+        returnType: question.codingReturnType,
+      })))) {
     throw new CodingAssessmentInfrastructureError();
   }
   const gradedInvocations = invocations || [];
@@ -158,7 +227,9 @@ const gradeCodingQuestion = async ({ question: input, sourceCode, execute }) => 
   tests.forEach((testCase, index) => {
     const invocation = gradedInvocations[index];
     if (invocation?.category === EXECUTION_CATEGORIES.SUCCESS
-      && sameTypedValue(invocation.output, testCase.expectedOutput)) {
+      && (executionMode === CODING_EXECUTION_MODES.PROGRAM
+        ? normalizeProgramOutput(invocation.stdout) === normalizeProgramOutput(testCase.expectedOutput)
+        : sameTypedValue(invocation.output, testCase.expectedOutput))) {
       passedWeight += Number(testCase.weight);
     }
   });
@@ -169,8 +240,10 @@ const gradeCodingQuestion = async ({ question: input, sourceCode, execute }) => 
 module.exports = {
   CodingAssessmentInfrastructureError,
   contractForQuestion,
+  executionModeForQuestion,
   gradeCodingQuestion,
   isCodingAssessmentPlayerEnabled,
+  normalizeProgramOutput,
   shapePublicCodingExecutionResult,
   validateCodingQuestion,
 };

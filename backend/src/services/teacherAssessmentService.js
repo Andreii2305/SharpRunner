@@ -51,6 +51,7 @@ const QUESTION_FIELDS = new Set([
   "choices",
   "starterCode",
   "referenceSolution",
+  "executionMode",
   "methodContract",
   "codingTestCases",
 ]);
@@ -406,6 +407,9 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         numbers: ["points"],
         code: "INVALID_QUESTION",
       });
+      if (question.executionMode !== undefined && !["METHOD", "PROGRAM"].includes(question.executionMode)) {
+        throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
+      }
       if (question.choices !== undefined && !Array.isArray(question.choices)) {
         throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
       }
@@ -433,7 +437,10 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         validateInputTypes(testCase, {
           strings: ["visibility"], numbers: ["weight"], code: "INVALID_QUESTION",
         });
-        if (!Array.isArray(testCase.input) || !Object.hasOwn(testCase, "expectedOutput")) {
+        const mode = question.executionMode || "METHOD";
+        if ((mode === "METHOD" && !Array.isArray(testCase.input))
+          || (mode === "PROGRAM" && (typeof testCase.input !== "string" || typeof testCase.expectedOutput !== "string"))
+          || !Object.hasOwn(testCase, "expectedOutput")) {
           throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
         }
       }
@@ -550,10 +557,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
 
     const normalizedQuestions = input.questions.map((question) => ({
       ...question,
-      codingTypeName: question.methodContract?.typeName ?? null,
-      codingMethodName: question.methodContract?.methodName ?? null,
-      codingParameterTypes: question.methodContract?.parameterTypes ?? null,
-      codingReturnType: question.methodContract?.returnType ?? null,
+      codingExecutionMode: question.questionType === "CODING" ? (question.executionMode || "METHOD") : null,
+      codingTypeName: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.typeName ?? null : null,
+      codingMethodName: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.methodName ?? null : null,
+      codingParameterTypes: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.parameterTypes ?? null : null,
+      codingReturnType: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.returnType ?? null : null,
       codingTestCases: (question.codingTestCases || []).map((testCase, displayOrder) => ({
         ...testCase,
         displayOrder,
@@ -620,6 +628,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         objectiveKey: question.objectiveKey || null,
         starterCode: question.questionType === "CODING" ? question.starterCode : null,
         referenceSolution: question.questionType === "CODING" ? question.referenceSolution : null,
+        codingExecutionMode: question.questionType === "CODING" ? question.codingExecutionMode : null,
         codingTypeName: question.questionType === "CODING" ? question.codingTypeName : null,
         codingMethodName: question.questionType === "CODING" ? question.codingMethodName : null,
         codingParameterTypes: question.questionType === "CODING" ? question.codingParameterTypes : null,

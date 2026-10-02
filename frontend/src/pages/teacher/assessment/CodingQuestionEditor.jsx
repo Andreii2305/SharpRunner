@@ -90,8 +90,8 @@ export default function CodingQuestionEditor({ question, disabled, validationAtt
       </div>)}
     </fieldset>}
     <div className={styles.codeEditorGrid}>
-      <AssessmentCodeEditor label="Starter code" value={question.starterCode} disabled={disabled} onChange={(starterCode) => replace({ starterCode })} description="Optional code students receive when they begin this question." />
-      <AssessmentCodeEditor label="Reference solution" value={question.referenceSolution} disabled={disabled} onChange={(referenceSolution) => replace({ referenceSolution })} description="This teacher-only solution is never shown to students." />
+      <AssessmentCodeEditor label="Starter code (optional)" value={question.starterCode} disabled={disabled} onChange={(starterCode) => replace({ starterCode })} description="Optional code students receive when they begin this question." />
+      <AssessmentCodeEditor label="Reference solution (optional)" value={question.referenceSolution} disabled={disabled} onChange={(referenceSolution) => replace({ referenceSolution })} description="Optional teacher-only solution. It is never shown to students and is not required for grading." />
     </div>
     <fieldset disabled={disabled} className={styles.testCasesFieldset}>
       <legend>Test cases</legend>

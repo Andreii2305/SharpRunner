@@ -1027,6 +1027,44 @@ test("authorized teacher CODING save reloads reference source and ordered public
   ]);
 });
 
+test("blank optional CODING source saves canonically, reloads empty, and publishes", async () => {
+  const previousGate = process.env.CODING_ASSESSMENT_PLAYER_ENABLED;
+  process.env.CODING_ASSESSMENT_PLAYER_ENABLED = "true";
+  try {
+    const h = harness();
+    const savedResult = await h.call("/classrooms/7/assessments/12", {
+      method: "PUT",
+      body: saveBody({ questions: [{
+        questionText: "Add", questionType: "CODING", points: 2, choices: [],
+        starterCode: null,
+        referenceSolution: null,
+        methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int" },
+        codingTestCases: [
+          { visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1 },
+          { visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 2 },
+        ],
+      }] }),
+    });
+    assert.equal(savedResult.response.status, 200);
+    assert.equal(savedResult.payload.assessment.questions[0].starterCode, "");
+    assert.equal(savedResult.payload.assessment.questions[0].referenceSolution, "");
+
+    const reloaded = await h.call("/classrooms/7/assessments/12");
+    assert.equal(reloaded.response.status, 200);
+    assert.equal(reloaded.payload.assessment.questions[0].starterCode, "");
+    assert.equal(reloaded.payload.assessment.questions[0].referenceSolution, "");
+
+    const published = await h.call("/classrooms/7/assessments/12/publish", {
+      method: "POST", body: { version: 2 },
+    });
+    assert.equal(published.response.status, 200);
+    assert.equal(published.payload.assessment.isPublished, true);
+  } finally {
+    if (previousGate === undefined) delete process.env.CODING_ASSESSMENT_PLAYER_ENABLED;
+    else process.env.CODING_ASSESSMENT_PLAYER_ENABLED = previousGate;
+  }
+});
+
 test("failed graph creation rolls back the replacement graph", async () => {
   const h = harness();
   const logged = [];

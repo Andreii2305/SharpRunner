@@ -1191,6 +1191,8 @@ test("Run Code uses persisted source and PUBLIC cases without mutating assessmen
     },
   });
   useCodingGraph(harness.store);
+  harness.store.assessments[0].questions[0].starterCode = "";
+  harness.store.assessments[0].questions[0].referenceSolution = "";
   const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
   const sourceCode = "public static class Solution { public static int Add(int a, int b) => a + b; }";
   await harness.service.saveResponse({
@@ -1230,6 +1232,8 @@ test("PROGRAM Run Code dispatches saved source and PUBLIC stdin only without sco
     },
   });
   useProgramGraph(harness.store);
+  harness.store.assessments[0].questions[0].starterCode = "";
+  harness.store.assessments[0].questions[0].referenceSolution = "";
   const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
   const sourceCode = "using System; class Program { static void Main() { Console.WriteLine(5); } }";
   await harness.service.saveResponse({

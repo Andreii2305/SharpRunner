@@ -26,7 +26,7 @@ const serializePlayerAssessment = (assessmentInput) => {
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === "CODING" ? {
           executionMode: codingExecutionMode(question),
-          starterCode: question.starterCode,
+          starterCode: question.starterCode ?? "",
           ...(codingExecutionMode(question) === "METHOD" ? { methodContract: {
             typeName: question.codingTypeName,
             methodName: question.codingMethodName,
@@ -272,8 +272,8 @@ const serializeTeacherEditor = (assessmentInput, metadata = {}) => {
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === "CODING" ? {
           executionMode: codingExecutionMode(question),
-          starterCode: question.starterCode ?? null,
-          referenceSolution: question.referenceSolution ?? null,
+          starterCode: question.starterCode ?? "",
+          referenceSolution: question.referenceSolution ?? "",
           ...(codingExecutionMode(question) === "METHOD" ? { methodContract: {
             typeName: question.codingTypeName ?? null,
             methodName: question.codingMethodName ?? null,

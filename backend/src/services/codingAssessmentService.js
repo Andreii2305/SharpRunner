@@ -46,19 +46,22 @@ const contractForQuestion = (questionInput) => {
 };
 
 const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
-  const question = plain(questionInput) || {};
+  const rawQuestion = plain(questionInput) || {};
+  const question = {
+    ...rawQuestion,
+    starterCode: rawQuestion.starterCode ?? "",
+    referenceSolution: rawQuestion.referenceSolution ?? "",
+  };
   if (question.questionType !== "CODING") throw new TypeError("Question is not CODING");
   const executionMode = executionModeForQuestion(question);
   if (!Object.values(CODING_EXECUTION_MODES).includes(executionMode)) {
     throw new TypeError("Coding execution mode is invalid");
   }
   if (typeof question.starterCode !== "string"
-    || (publish && !question.starterCode.trim())
     || Buffer.byteLength(question.starterCode, "utf8") > MAX_SOURCE_BYTES) {
     throw new TypeError("Coding starter source is invalid or too large");
   }
   if (typeof question.referenceSolution !== "string"
-    || (publish && !question.referenceSolution.trim())
     || Buffer.byteLength(question.referenceSolution, "utf8") > MAX_SOURCE_BYTES) {
     throw new TypeError("Coding reference solution is invalid or too large");
   }

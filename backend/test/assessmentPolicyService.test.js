@@ -190,6 +190,22 @@ test("draft validation permits incomplete graphs but enforces persistence-safe f
       codingTestCases: [{ visibility: "PUBLIC", input: [], expectedOutput: 1, weight: 1.234 }],
     }],
   }), /weight/i);
+  assert.throws(() => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [{
+      questionText: "Complete contract with malformed typed input",
+      questionType: "CODING",
+      points: 1,
+      choices: [],
+      starterCode: null,
+      referenceSolution: null,
+      codingTypeName: "Solution",
+      codingMethodName: "Solve",
+      codingParameterTypes: ["int"],
+      codingReturnType: "int",
+      codingTestCases: [{ displayOrder: 0, visibility: "HIDDEN", input: ["not-an-int"], expectedOutput: 1, weight: 1 }],
+    }],
+  }), /unsupported/i);
 });
 
 test("objective keys use the minimal lowercase kebab-case contract", () => {

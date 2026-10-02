@@ -149,9 +149,7 @@ const validateQuestionPersistence = (questionInput) => {
         throw new TypeError("CODING test weight must have at most two decimal places");
       }
     });
-    const completeContract = typeof question.starterCode === "string"
-      && typeof question.referenceSolution === "string"
-      && (executionMode === "PROGRAM" || (typeof question.codingTypeName === "string"
+    const completeContract = (executionMode === "PROGRAM" || (typeof question.codingTypeName === "string"
         && typeof question.codingMethodName === "string"
         && Array.isArray(question.codingParameterTypes)
         && typeof question.codingReturnType === "string"))
@@ -366,7 +364,7 @@ const shapePlayerAssessment = (assessmentInput) => {
         objectiveKey: question.objectiveKey ?? null,
         ...(question.questionType === QUESTION_TYPES.CODING ? {
           executionMode: codingExecutionMode(question),
-          starterCode: question.starterCode,
+          starterCode: question.starterCode ?? "",
           ...(codingExecutionMode(question) === "METHOD" ? { methodContract: {
             typeName: question.codingTypeName,
             methodName: question.codingMethodName,

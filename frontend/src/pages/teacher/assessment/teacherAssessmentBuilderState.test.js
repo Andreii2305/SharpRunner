@@ -173,18 +173,32 @@ test("CODING publish issues mirror structural backend requirements", () => {
   draft.questions = addQuestion([], "CODING");
   draft.questions[0].questionText = "Write a method";
   let issues = publishIssues(draft);
-  for (const marker of ["type/class name", "method name", "starter code", "reference solution", "test case", "HIDDEN"]) {
+  for (const marker of ["type/class name", "method name", "test case", "HIDDEN"]) {
     assert.equal(issues.some((issue) => issue.includes(marker)), true, marker);
   }
+  assert.equal(issues.some((issue) => issue.includes("starter code")), false);
+  assert.equal(issues.some((issue) => issue.includes("reference solution")), false);
   const question = draft.questions[0];
   question.methodContract.typeName = "Solution";
   question.methodContract.methodName = "Solve";
-  question.starterCode = "public static class Solution { public static int Solve() => 0; }";
-  question.referenceSolution = "public static class Solution { public static int Solve() => 1; }";
   question.codingTestCases = [{ clientId: "hidden", visibility: "HIDDEN", input: [], expectedOutput: 1, weight: 0 }];
   issues = publishIssues(draft);
   assert.equal(issues.some((issue) => issue.includes("weight")), true);
   question.codingTestCases[0].weight = 1;
+  assert.deepEqual(publishIssues(draft), []);
+});
+
+test("blank optional source leaves only the mandatory HIDDEN issue for an otherwise valid PROGRAM", () => {
+  const draft = createAssessmentDraft("POST", "arrays");
+  draft.questions = addQuestion([], "CODING");
+  const question = draft.questions[0];
+  question.questionText = "Print nothing";
+  question.executionMode = "PROGRAM";
+  question.starterCode = "";
+  question.referenceSolution = "";
+  question.codingTestCases = [{ clientId: "public", visibility: "PUBLIC", input: "", expectedOutput: "", weight: 1 }];
+  assert.deepEqual(publishIssues(draft), ["Question 1: add at least one HIDDEN test case."]);
+  question.codingTestCases.push({ clientId: "hidden", visibility: "HIDDEN", input: "", expectedOutput: "", weight: 1 });
   assert.deepEqual(publishIssues(draft), []);
 });
 

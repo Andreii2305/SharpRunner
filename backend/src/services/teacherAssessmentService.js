@@ -557,6 +557,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
 
     const normalizedQuestions = input.questions.map((question) => ({
       ...question,
+      starterCode: question.questionType === "CODING" ? question.starterCode ?? "" : null,
+      referenceSolution: question.questionType === "CODING" ? question.referenceSolution ?? "" : null,
       codingExecutionMode: question.questionType === "CODING" ? (question.executionMode || "METHOD") : null,
       codingTypeName: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.typeName ?? null : null,
       codingMethodName: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.methodName ?? null : null,

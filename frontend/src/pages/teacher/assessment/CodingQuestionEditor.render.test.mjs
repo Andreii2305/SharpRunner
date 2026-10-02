@@ -68,6 +68,15 @@ test("coding editor renders structured controls and Monaco becomes read-only whe
   assert.equal((locked.match(/data-read-only="true"/g) ?? []).length, 2);
 });
 
+test("starter and reference editors unmistakably describe optional source semantics", () => {
+  const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question, disabled: false, onChange() {} }));
+  assert.match(html, /Starter code \(optional\)/);
+  assert.match(html, /Optional code students receive when they begin this question/);
+  assert.match(html, /Reference solution \(optional\)/);
+  assert.match(html, /Optional teacher-only solution/);
+  assert.match(html, /not required for grading/);
+});
+
 test("untouched blank METHOD fields use explicit examples without premature validation errors", () => {
   const invalid = {
     ...question,

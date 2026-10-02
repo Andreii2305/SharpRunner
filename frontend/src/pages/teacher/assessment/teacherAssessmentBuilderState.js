@@ -259,10 +259,8 @@ export const publishIssues = (draft) => {
         if (!identifier.test(contract.methodName ?? "")) issues.push(`${label}: add a valid method name.`);
         if (!METHOD_TYPES.includes(contract.returnType) || (contract.parameterTypes ?? []).some((type) => !METHOD_TYPES.includes(type))) issues.push(`${label}: select only supported method types.`);
       }
-      if (!question.starterCode?.trim()) issues.push(`${label}: add starter code.`);
-      else if (utf8Bytes(question.starterCode) > 16 * 1024) issues.push(`${label}: starter code must be 16 KB or smaller.`);
-      if (!question.referenceSolution?.trim()) issues.push(`${label}: add a reference solution.`);
-      else if (utf8Bytes(question.referenceSolution) > 16 * 1024) issues.push(`${label}: reference solution must be 16 KB or smaller.`);
+      if (utf8Bytes(question.starterCode ?? "") > 16 * 1024) issues.push(`${label}: starter code must be 16 KB or smaller.`);
+      if (utf8Bytes(question.referenceSolution ?? "") > 16 * 1024) issues.push(`${label}: reference solution must be 16 KB or smaller.`);
       if (!question.codingTestCases?.length) issues.push(`${label}: add at least one test case.`);
       if (!question.codingTestCases?.some((testCase) => testCase.visibility === "HIDDEN")) issues.push(`${label}: add at least one HIDDEN test case.`);
       question.codingTestCases?.forEach((testCase, testIndex) => {

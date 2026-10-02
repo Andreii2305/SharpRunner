@@ -133,6 +133,12 @@ test("METHOD and PROGRAM success result shapes cannot cross-normalize", async ()
 
 test("CODING publish validation accepts the METHOD allowlist and requires hidden grading tests", () => {
   assert.doesNotThrow(() => validateCodingQuestion(codingQuestion(), { publish: true }));
+  assert.doesNotThrow(() => validateCodingQuestion(codingQuestion({
+    starterCode: "", referenceSolution: "",
+  }), { publish: true }));
+  assert.doesNotThrow(() => validateCodingQuestion(codingQuestion({
+    starterCode: null, referenceSolution: null,
+  }), { publish: true }));
   assert.throws(
     () => validateCodingQuestion(codingQuestion({ codingReturnType: "double" }), { publish: true }),
     /unsupported/i,
@@ -142,10 +148,6 @@ test("CODING publish validation accepts the METHOD allowlist and requires hidden
     /hidden/i,
   );
   assert.throws(
-    () => validateCodingQuestion(codingQuestion({ referenceSolution: "" }), { publish: true }),
-    /reference/i,
-  );
-  assert.throws(
     () => validateCodingQuestion(codingQuestion({
       codingTestCases: codingQuestion().codingTestCases.map((testCase, index) => (
         index === 0 ? { ...testCase, weight: 1.234 } : testCase
@@ -153,6 +155,56 @@ test("CODING publish validation accepts the METHOD allowlist and requires hidden
     }), { publish: true }),
     /weight/i,
   );
+});
+
+test("PROGRAM publication and grading do not depend on starter or reference source", async () => {
+  const question = programQuestion({ starterCode: "", referenceSolution: "" });
+  assert.doesNotThrow(() => validateCodingQuestion(question, { publish: true }));
+  assert.deepEqual(await gradeCodingQuestion({
+    question,
+    sourceCode: "using System; Console.WriteLine(5);",
+    executeProgram: async ({ source, inputs }) => {
+      assert.equal(source, "using System; Console.WriteLine(5);");
+      assert.deepEqual(inputs, ["2\n3\n", "10\n20\n"]);
+      return {
+        category: "SUCCESS",
+        invocations: [
+          { category: "SUCCESS", stdout: "5\n" },
+          { category: "SUCCESS", stdout: "30\n" },
+        ],
+      };
+    },
+  }), { isCorrect: true, pointsAwarded: 10 });
+  assert.throws(() => validateCodingQuestion(programQuestion({
+    starterCode: "", referenceSolution: "",
+    codingTestCases: [programQuestion().codingTestCases[0]],
+  }), { publish: true }), /hidden/i);
+  assert.throws(() => validateCodingQuestion(programQuestion({
+    starterCode: "", referenceSolution: "",
+    codingTestCases: programQuestion().codingTestCases.map((testCase, index) => (
+      index === 0 ? { ...testCase, input: [] } : testCase
+    )),
+  }), { publish: true }), /standard input/i);
+});
+
+test("METHOD grading uses submitted source when optional teacher sources are blank", async () => {
+  const question = codingQuestion({ starterCode: "", referenceSolution: "" });
+  assert.deepEqual(await gradeCodingQuestion({
+    question,
+    sourceCode: "public static class Solution { public static int Add(int a, int b) => a + b; }",
+    executeMethod: async ({ source, contract, inputs }) => {
+      assert.match(source, /a \+ b/);
+      assert.equal(contract.methodName, "Add");
+      assert.deepEqual(inputs, [[1, 2], [5, 7]]);
+      return {
+        category: "SUCCESS",
+        invocations: [
+          { category: "SUCCESS", output: 3 },
+          { category: "SUCCESS", output: 12 },
+        ],
+      };
+    },
+  }), { isCorrect: true, pointsAwarded: 10 });
 });
 
 test("student CODING graph exposes public examples but recursively excludes hidden grading data", () => {
@@ -171,6 +223,20 @@ test("student CODING graph exposes public examples but recursively excludes hidd
   assert.doesNotMatch(serialized, /\[5,7\]/);
   assert.doesNotMatch(serialized, /"weight"/);
   assert.doesNotMatch(serialized, /a \+ b/);
+});
+
+test("legacy null starter source becomes an empty student editor without exposing reference source", () => {
+  const shaped = shapePlayerAssessment({
+    id: 7,
+    lessonKey: "arrays",
+    type: "POST",
+    title: "Coding",
+    version: 1,
+    questions: [codingQuestion({ starterCode: null, referenceSolution: null })],
+  });
+  assert.equal(shaped.questions[0].starterCode, "");
+  assert.equal(shaped.questions[0].referenceSolution, undefined);
+  assert.doesNotMatch(JSON.stringify(shaped), /HIDDEN|referenceSolution|\[5,7\]/);
 });
 
 test("PROGRAM student graph exposes mode and public stdin/output without method or hidden data", () => {

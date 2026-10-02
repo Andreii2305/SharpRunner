@@ -154,6 +154,30 @@ test("coding player and review DTOs expose public contract/source without mixed 
   assert.doesNotMatch(serialized, /referenceSolution|HIDDEN|weight|gradingLease|internalHarness|docker/i);
 });
 
+test("player serializers normalize legacy null starter source to an empty editor", () => {
+  const codingAssessment = assessment({
+    questions: [{
+      id: 202,
+      questionText: "Add two values.",
+      questionType: "CODING",
+      points: 3,
+      starterCode: null,
+      referenceSolution: null,
+      codingExecutionMode: "METHOD",
+      codingTypeName: "Solution",
+      codingMethodName: "Add",
+      codingParameterTypes: ["int", "int"],
+      codingReturnType: "int",
+      codingTestCases: [{ visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 1 }],
+      choices: [],
+    }],
+  });
+  const serialized = serializers.serializePlayerAssessment(codingAssessment);
+  assert.equal(serialized.questions[0].starterCode, "");
+  assert.equal(serialized.questions[0].referenceSolution, undefined);
+  assert.doesNotMatch(JSON.stringify(serialized), /referenceSolution|HIDDEN|weight|expectedOutput/);
+});
+
 test("teacher editor serializer includes answer keys only after authorization", () => {
   const editor = serializers.serializeTeacherEditor(assessment(), {
     attemptsExist: true,

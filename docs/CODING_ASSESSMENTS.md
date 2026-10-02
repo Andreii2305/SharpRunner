@@ -2,7 +2,7 @@
 
 CODING questions are part of the existing PRE/POST assessment domain and use an explicit execution format. `METHOD` preserves the original required `public static` method contract and deterministic type allowlist. `PROGRAM` accepts a complete C# console program with an entry point and grades bounded standard input to normalized standard output. Existing coding rows are additively backfilled as `METHOD`.
 
-Starter code is optional scaffolding, and the teacher-only reference solution is optional metadata rather than grading authority. An omitted value is normalized to the canonical empty string. PUBLIC cases remain optional student-visible examples used by Run Code, while every published CODING question still requires at least one server-only HIDDEN grading case.
+Starter code is optional scaffolding, and the teacher-only reference solution is optional metadata rather than grading authority. An omitted value is normalized to the canonical empty string. Every published CODING question requires at least one valid test case. PUBLIC cases are student-visible examples used by Run Code, while HIDDEN cases are optional server-only grading cases.
 
 PROGRAM output comparison normalizes CRLF and CR to LF, removes trailing whitespace from each line, and ignores blank lines only at the end. It preserves line order, case, internal spaces, and all other meaningful content. Each stdin value is limited to 4 KB, expected output to 8 KB, aggregate inputs to 16 KB, source to 16 KB, and a request to ten cases.
 

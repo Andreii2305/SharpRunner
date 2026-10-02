@@ -1041,7 +1041,6 @@ test("blank optional CODING source saves canonically, reloads empty, and publish
         methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int" },
         codingTestCases: [
           { visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1 },
-          { visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 2 },
         ],
       }] }),
     });

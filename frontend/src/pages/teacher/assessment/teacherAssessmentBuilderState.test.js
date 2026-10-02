@@ -173,9 +173,10 @@ test("CODING publish issues mirror structural backend requirements", () => {
   draft.questions = addQuestion([], "CODING");
   draft.questions[0].questionText = "Write a method";
   let issues = publishIssues(draft);
-  for (const marker of ["type/class name", "method name", "test case", "HIDDEN"]) {
+  for (const marker of ["type/class name", "method name", "test case"]) {
     assert.equal(issues.some((issue) => issue.includes(marker)), true, marker);
   }
+  assert.equal(issues.some((issue) => issue.includes("HIDDEN")), false);
   assert.equal(issues.some((issue) => issue.includes("starter code")), false);
   assert.equal(issues.some((issue) => issue.includes("reference solution")), false);
   const question = draft.questions[0];
@@ -188,7 +189,7 @@ test("CODING publish issues mirror structural backend requirements", () => {
   assert.deepEqual(publishIssues(draft), []);
 });
 
-test("blank optional source leaves only the mandatory HIDDEN issue for an otherwise valid PROGRAM", () => {
+test("PUBLIC-only PROGRAM tests satisfy publication while zero tests remain invalid", () => {
   const draft = createAssessmentDraft("POST", "arrays");
   draft.questions = addQuestion([], "CODING");
   const question = draft.questions[0];
@@ -196,9 +197,8 @@ test("blank optional source leaves only the mandatory HIDDEN issue for an otherw
   question.executionMode = "PROGRAM";
   question.starterCode = "";
   question.referenceSolution = "";
+  assert.deepEqual(publishIssues(draft), ["Question 1: add at least one test case."]);
   question.codingTestCases = [{ clientId: "public", visibility: "PUBLIC", input: "", expectedOutput: "", weight: 1 }];
-  assert.deepEqual(publishIssues(draft), ["Question 1: add at least one HIDDEN test case."]);
-  question.codingTestCases.push({ clientId: "hidden", visibility: "HIDDEN", input: "", expectedOutput: "", weight: 1 });
   assert.deepEqual(publishIssues(draft), []);
 });
 

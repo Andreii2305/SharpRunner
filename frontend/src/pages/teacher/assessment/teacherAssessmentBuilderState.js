@@ -262,7 +262,6 @@ export const publishIssues = (draft) => {
       if (utf8Bytes(question.starterCode ?? "") > 16 * 1024) issues.push(`${label}: starter code must be 16 KB or smaller.`);
       if (utf8Bytes(question.referenceSolution ?? "") > 16 * 1024) issues.push(`${label}: reference solution must be 16 KB or smaller.`);
       if (!question.codingTestCases?.length) issues.push(`${label}: add at least one test case.`);
-      if (!question.codingTestCases?.some((testCase) => testCase.visibility === "HIDDEN")) issues.push(`${label}: add at least one HIDDEN test case.`);
       question.codingTestCases?.forEach((testCase, testIndex) => {
         const weight = Number(testCase.weight);
         if (!Number.isFinite(weight) || weight <= 0) issues.push(`${label}, test ${testIndex + 1}: weight must be greater than zero.`);

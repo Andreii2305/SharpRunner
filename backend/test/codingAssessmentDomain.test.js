@@ -131,7 +131,7 @@ test("METHOD and PROGRAM success result shapes cannot cross-normalize", async ()
   }), CodingAssessmentInfrastructureError);
 });
 
-test("CODING publish validation accepts the METHOD allowlist and requires hidden grading tests", () => {
+test("CODING publish validation accepts the METHOD allowlist and PUBLIC-only grading tests", () => {
   assert.doesNotThrow(() => validateCodingQuestion(codingQuestion(), { publish: true }));
   assert.doesNotThrow(() => validateCodingQuestion(codingQuestion({
     starterCode: "", referenceSolution: "",
@@ -143,9 +143,12 @@ test("CODING publish validation accepts the METHOD allowlist and requires hidden
     () => validateCodingQuestion(codingQuestion({ codingReturnType: "double" }), { publish: true }),
     /unsupported/i,
   );
-  assert.throws(
+  assert.doesNotThrow(
     () => validateCodingQuestion(codingQuestion({ codingTestCases: [codingQuestion().codingTestCases[0]] }), { publish: true }),
-    /hidden/i,
+  );
+  assert.throws(
+    () => validateCodingQuestion(codingQuestion({ codingTestCases: [] }), { publish: true }),
+    /grading tests/i,
   );
   assert.throws(
     () => validateCodingQuestion(codingQuestion({
@@ -175,10 +178,10 @@ test("PROGRAM publication and grading do not depend on starter or reference sour
       };
     },
   }), { isCorrect: true, pointsAwarded: 10 });
-  assert.throws(() => validateCodingQuestion(programQuestion({
+  assert.doesNotThrow(() => validateCodingQuestion(programQuestion({
     starterCode: "", referenceSolution: "",
     codingTestCases: [programQuestion().codingTestCases[0]],
-  }), { publish: true }), /hidden/i);
+  }), { publish: true }));
   assert.throws(() => validateCodingQuestion(programQuestion({
     starterCode: "", referenceSolution: "",
     codingTestCases: programQuestion().codingTestCases.map((testCase, index) => (

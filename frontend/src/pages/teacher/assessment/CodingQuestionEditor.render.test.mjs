@@ -60,6 +60,8 @@ test("coding editor renders structured controls and Monaco becomes read-only whe
   assert.match(editable, /PUBLIC — student example/);
   assert.match(editable, /HIDDEN — grading only/);
   assert.match(editable, /data-read-only="false"/);
+  assert.match(editable, /HIDDEN<\/strong> cases are optional/);
+  assert.doesNotMatch(editable, /Add at least one HIDDEN test case/);
   assert.match(editable, /role="group"[^>]*aria-labelledby="[^"]+"[^>]*aria-describedby="[^"]+"/);
   assert.match(editable, /aria-invalid="false"/);
   const locked = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question, disabled: true, onChange() {} }));
@@ -112,7 +114,7 @@ test("actual METHOD values clear errors and drive the signature preview", () => 
   const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, {
     question: configured, disabled: false, validationAttempted: true, onChange() {},
   }));
-  assert.doesNotMatch(html, /aria-invalid="true"|is required/);
+  assert.doesNotMatch(html, /aria-invalid="true"|Type\/class name is required|Method name is required/);
   assert.match(html, /value="Solution"/);
   assert.match(html, /value="AddNumbers"/);
   assert.match(html, /public static int AddNumbers\(int arg1, int arg2\)/);

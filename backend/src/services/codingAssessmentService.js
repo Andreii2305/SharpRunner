@@ -67,9 +67,6 @@ const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
   }
   const tests = sortedTests(question);
   if (publish && !tests.length) throw new TypeError("CODING requires grading tests");
-  if (publish && !tests.some((testCase) => testCase.visibility === "HIDDEN")) {
-    throw new TypeError("CODING requires at least one hidden grading test");
-  }
   let totalWeight = 0;
   tests.forEach((testCase, index) => {
     if (!Number.isInteger(Number(testCase.displayOrder)) || Number(testCase.displayOrder) < 0

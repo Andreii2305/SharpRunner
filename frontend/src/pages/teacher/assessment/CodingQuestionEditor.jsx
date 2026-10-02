@@ -95,7 +95,7 @@ export default function CodingQuestionEditor({ question, disabled, validationAtt
     </div>
     <fieldset disabled={disabled} className={styles.testCasesFieldset}>
       <legend>Test cases</legend>
-      <p><strong>PUBLIC</strong> cases become student-visible examples. <strong>HIDDEN</strong> cases are used for grading and never shown to students. Weights control each test's share of this question's points.</p>
+      <p><strong>PUBLIC</strong> cases become student-visible examples. <strong>HIDDEN</strong> cases are optional, used for server-only grading, and never shown to students. At least one test case is required. Weights control each test's share of this question's points.</p>
       {question.codingTestCases.map((testCase, testIndex) => <article className={styles.testCaseCard} key={testCase.clientId}>
         <header><div><span>Test {testIndex + 1}</span><strong className={testCase.visibility === "HIDDEN" ? styles.hiddenBadge : styles.publicBadge}>{testCase.visibility}</strong></div><div className={styles.iconActions}>
           <button type="button" disabled={testIndex === 0} aria-label={`Move test ${testIndex + 1} up`} onClick={() => onChange(updateThrough(question, moveCodingTestCase, testIndex, -1))}><FiArrowUp /></button>
@@ -117,7 +117,6 @@ export default function CodingQuestionEditor({ question, disabled, validationAtt
         </div>
       </article>)}
       <button type="button" className={styles.secondaryButton} disabled={question.codingTestCases.length >= 10} onClick={() => onChange(updateThrough(question, addCodingTestCase, "PUBLIC"))}><FiPlus /> Add test case</button>
-      {!question.codingTestCases.some((testCase) => testCase.visibility === "HIDDEN") && <p className={styles.inlineError} role="status">Add at least one HIDDEN test case before publication.</p>}
     </fieldset>
     <p className={styles.configurationNote}>Coding execution availability depends on the secure assessment runner configured for this deployment.</p>
   </section>;

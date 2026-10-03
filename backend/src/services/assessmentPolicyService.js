@@ -10,6 +10,10 @@ const {
   QUESTION_TYPES,
 } = require("../constants/assessmentConfig");
 const { validateCodingQuestion } = require("./codingAssessmentService");
+const {
+  resolveCodingParameterNames,
+  validateExplicitCodingParameterNames,
+} = require("./codingParameterNameService");
 const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
 
 const values = (object) => new Set(Object.values(object));
@@ -119,6 +123,17 @@ const validateQuestionPersistence = (questionInput) => {
     if (question.codingParameterTypes != null && !Array.isArray(question.codingParameterTypes)) {
       throw new TypeError("CODING parameter types must be an array");
     }
+    if (question.codingParameterNames != null && !Array.isArray(question.codingParameterNames)) {
+      throw new TypeError("CODING parameter names must be an array");
+    }
+    if (executionMode === "METHOD") {
+      validateExplicitCodingParameterNames(
+        question.codingParameterTypes,
+        question.codingParameterNames,
+      );
+    } else if (question.codingParameterNames != null) {
+      throw new TypeError("PROGRAM cannot define METHOD parameter names");
+    }
     if (question.codingTestCases != null && !Array.isArray(question.codingTestCases)) {
       throw new TypeError("CODING test cases must be an array");
     }
@@ -158,7 +173,7 @@ const validateQuestionPersistence = (questionInput) => {
     return { question, choices, pointUnits: units };
   }
   for (const field of [
-    "starterCode", "referenceSolution", "codingTypeName", "codingMethodName", "codingParameterTypes",
+    "starterCode", "referenceSolution", "codingTypeName", "codingMethodName", "codingParameterTypes", "codingParameterNames",
     "codingReturnType", "methodContract", "codingTestCases",
     "codingExecutionMode", "executionMode",
   ]) {
@@ -369,6 +384,10 @@ const shapePlayerAssessment = (assessmentInput) => {
             typeName: question.codingTypeName,
             methodName: question.codingMethodName,
             parameterTypes: [...(question.codingParameterTypes || [])],
+            parameterNames: resolveCodingParameterNames(
+              question.codingParameterTypes,
+              question.codingParameterNames,
+            ),
             returnType: question.codingReturnType,
           } } : {}),
           codingExamples: (question.codingTestCases || [])

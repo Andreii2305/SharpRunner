@@ -13,6 +13,7 @@ const {
 } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const { isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
+const { validateExplicitCodingParameterNames } = require("./codingParameterNameService");
 
 const CREATE_FIELDS = new Set([
   "lessonKey",
@@ -57,7 +58,7 @@ const QUESTION_FIELDS = new Set([
 ]);
 
 const CHOICE_FIELDS = new Set(["choiceText", "isCorrect"]);
-const METHOD_CONTRACT_FIELDS = new Set(["typeName", "methodName", "parameterTypes", "returnType"]);
+const METHOD_CONTRACT_FIELDS = new Set(["typeName", "methodName", "parameterTypes", "parameterNames", "returnType"]);
 const CODING_TEST_FIELDS = new Set(["visibility", "input", "expectedOutput", "weight"]);
 const SAVE_FIELDS = new Set(["version", "settings", "questions"]);
 const BOOLEAN_SETTINGS = ["isRequired", "requirePassingForCompletion",
@@ -421,11 +422,23 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       }
       if (question.methodContract !== undefined) {
         rejectUnknownFields(question.methodContract, METHOD_CONTRACT_FIELDS);
+        if ((question.executionMode || "METHOD") === "PROGRAM"
+          && question.methodContract.parameterNames !== undefined) {
+          throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
+        }
         validateInputTypes(question.methodContract, {
           strings: ["typeName", "methodName", "returnType"], code: "INVALID_QUESTION",
         });
         if (!Array.isArray(question.methodContract.parameterTypes)
           || question.methodContract.parameterTypes.some((type) => typeof type !== "string")) {
+          throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
+        }
+        try {
+          validateExplicitCodingParameterNames(
+            question.methodContract.parameterTypes,
+            question.methodContract.parameterNames,
+          );
+        } catch {
           throw new AssessmentApiError(400, "INVALID_QUESTION", "Invalid question");
         }
       }
@@ -563,6 +576,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       codingTypeName: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.typeName ?? null : null,
       codingMethodName: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.methodName ?? null : null,
       codingParameterTypes: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.parameterTypes ?? null : null,
+      codingParameterNames: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.parameterNames ?? null : null,
       codingReturnType: question.questionType === "CODING" && (question.executionMode || "METHOD") === "METHOD" ? question.methodContract?.returnType ?? null : null,
       codingTestCases: (question.codingTestCases || []).map((testCase, displayOrder) => ({
         ...testCase,
@@ -634,6 +648,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         codingTypeName: question.questionType === "CODING" ? question.codingTypeName : null,
         codingMethodName: question.questionType === "CODING" ? question.codingMethodName : null,
         codingParameterTypes: question.questionType === "CODING" ? question.codingParameterTypes : null,
+        codingParameterNames: question.questionType === "CODING" ? question.codingParameterNames : null,
         codingReturnType: question.questionType === "CODING" ? question.codingReturnType : null,
       }, { transaction });
       for (let choiceIndex = 0; choiceIndex < (question.choices || []).length; choiceIndex += 1) {

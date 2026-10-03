@@ -217,6 +217,7 @@ const useCodingGraph = (store) => {
     codingTypeName: "Solution",
     codingMethodName: "Add",
     codingParameterTypes: ["int", "int"],
+    codingParameterNames: ["left", "right"],
     codingReturnType: "int",
     choices: [],
     codingTestCases: [
@@ -236,6 +237,7 @@ const useProgramGraph = (store) => {
     codingTypeName: null,
     codingMethodName: null,
     codingParameterTypes: null,
+    codingParameterNames: null,
     codingReturnType: null,
     codingTestCases: [
       { displayOrder: 0, visibility: "PUBLIC", input: "2\n3\n", expectedOutput: "5\n", weight: 1 },
@@ -912,15 +914,19 @@ test("CODING attempts remain unavailable while the separate player release gate 
 });
 
 test("CODING submission applies partial credit and preserves PRE diagnostic semantics", async () => {
+  let executionRequest;
   const h = makeHarness({ type: "PRE" }, {
     secureCodingExecution: {
-      runSecureMethodExecution: async () => ({
+      runSecureMethodExecution: async (request) => {
+        executionRequest = request;
+        return {
         category: "RUNTIME_ERROR",
         invocations: [
           { category: "SUCCESS", output: 3 },
           { category: "RUNTIME_ERROR" },
         ],
-      }),
+        };
+      },
     },
   });
   useCodingGraph(h.store);
@@ -937,6 +943,11 @@ test("CODING submission applies partial credit and preserves PRE diagnostic sema
   assert.equal(result.passed, null);
   assert.equal(h.store.responses[0].isCorrect, false);
   assert.equal(h.store.responses[0].pointsAwarded, 2.5);
+  assert.deepEqual(executionRequest.contract, {
+    typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int",
+  });
+  assert.deepEqual(executionRequest.inputs, [[1, 2], [5, 7]]);
+  assert.equal(Object.hasOwn(executionRequest.contract, "parameterNames"), false);
 });
 
 test("secure capability failure rolls back CODING grading and leaves the attempt submittable", async () => {
@@ -1211,7 +1222,11 @@ test("Run Code uses persisted source and PUBLIC cases without mutating assessmen
   });
 
   assert.equal(executionRequest.source, sourceCode);
+  assert.deepEqual(executionRequest.contract, {
+    typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int",
+  });
   assert.deepEqual(executionRequest.inputs, [[1, 2]]);
+  assert.equal(Object.hasOwn(executionRequest.contract, "parameterNames"), false);
   assert.deepEqual(result.tests, [{
     status: "SUCCESS", passed: true, input: [1, 2], expectedOutput: 3, actualOutput: 3,
   }]);

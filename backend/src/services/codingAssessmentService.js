@@ -5,6 +5,7 @@ const {
   validateTypedValue,
 } = require("./secureCodingExecutionContract");
 const { CODING_EXECUTION_MODES } = require("../constants/assessmentConfig");
+const { validateExplicitCodingParameterNames } = require("./codingParameterNameService");
 
 const MAX_PROGRAM_STDIN_BYTES = 4 * 1024;
 const MAX_PROGRAM_OUTPUT_BYTES = 8 * 1024;
@@ -80,6 +81,10 @@ const validateCodingQuestion = (questionInput, { publish = false } = {}) => {
     totalWeight += weight;
   });
   if (executionMode === CODING_EXECUTION_MODES.METHOD) {
+    validateExplicitCodingParameterNames(
+      question.codingParameterTypes,
+      question.codingParameterNames,
+    );
     try {
       validateMethodExecutionRequest({
         source: question.starterCode || "public static class Placeholder {}",

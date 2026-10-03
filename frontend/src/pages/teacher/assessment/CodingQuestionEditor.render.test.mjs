@@ -25,7 +25,7 @@ test.after(async () => vite.close());
 const question = {
   clientId: "question-1", questionType: "CODING", starterCode: "public starter",
   referenceSolution: "private solution", methodContract: {
-    typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int[]"], returnType: "int",
+    typeName: "Solution", methodName: "Add", parameterNames: ["left", "numbers"], parameterTypes: ["int", "int[]"], returnType: "int",
   },
   codingTestCases: [
     { clientId: "public", visibility: "PUBLIC", input: [1, [2]], expectedOutput: 3, weight: 1 },
@@ -56,7 +56,16 @@ test("coding editor renders semantic selectable METHOD and PROGRAM cards with on
 test("coding editor renders structured controls and Monaco becomes read-only when locked", () => {
   const editable = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question, disabled: false, onChange() {} }));
   assert.match(editable, /Type\/Class name/);
-  assert.match(editable, /Argument 2 \(int\[\]\)/);
+  assert.match(editable, /Parameter 2/);
+  assert.match(editable, /Parameter name/);
+  assert.match(editable, /placeholder="parameterName"/);
+  assert.match(editable, /Input for <code>numbers<\/code>/);
+  assert.match(editable, /int\[\] array/);
+  assert.match(editable, /Add value/);
+  assert.match(editable, /Array preview:[\s\S]*\[2\]/);
+  assert.match(editable, /Expected return value[\s\S]*int/);
+  assert.match(editable, /aria-label="Remove value 1 from input for numbers"/);
+  assert.doesNotMatch(editable, /\[object Object\]/);
   assert.match(editable, /PUBLIC — student example/);
   assert.match(editable, /HIDDEN — grading only/);
   assert.match(editable, /data-read-only="false"/);
@@ -82,42 +91,79 @@ test("starter and reference editors unmistakably describe optional source semant
 test("untouched blank METHOD fields use explicit examples without premature validation errors", () => {
   const invalid = {
     ...question,
-    methodContract: { ...question.methodContract, typeName: "", methodName: "" },
+    methodContract: { ...question.methodContract, typeName: "", methodName: "", parameterNames: ["", "numbers"] },
   };
   const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question: invalid, disabled: false, onChange() {} }));
   assert.match(html, /placeholder="Example: Solution"/);
   assert.match(html, /placeholder="Example: AddNumbers"/);
   assert.doesNotMatch(html, /aria-invalid="true"|Type\/class name is required|Method name is required/);
-  assert.match(html, /public static int &lt;method name&gt;\(int arg1, int\[\] arg2\)/);
+  assert.doesNotMatch(html, /Parameter name is required/);
+  assert.match(html, /public static int &lt;method name&gt;\(int &lt;parameter name&gt;, int\[\] numbers\)/);
 });
 
 test("validation attempts expose associated METHOD field errors", () => {
   const invalid = {
     ...question,
-    methodContract: { ...question.methodContract, typeName: "", methodName: "" },
+    methodContract: { ...question.methodContract, typeName: "", methodName: "", parameterNames: ["", "numbers"] },
   };
   const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, {
     question: invalid, disabled: false, validationAttempted: true, onChange() {},
   }));
-  assert.equal((html.match(/aria-invalid="true"/g) ?? []).length, 2);
+  assert.equal((html.match(/aria-invalid="true"/g) ?? []).length, 3);
   assert.match(html, /aria-describedby="[^"]+type-name-error"/);
   assert.match(html, /aria-describedby="[^"]+method-name-error"/);
   assert.match(html, /Type\/class name is required/);
   assert.match(html, /Method name is required/);
+  assert.match(html, /aria-describedby="[^"]+parameter-0-error"/);
+  assert.match(html, /Parameter name is required/);
+});
+
+test("parameter fields report invalid and duplicate C# names with associated errors", () => {
+  const invalidName = renderToStaticMarkup(React.createElement(CodingQuestionEditor, {
+    question: { ...question, methodContract: { ...question.methodContract, parameterNames: ["class", "numbers"] } },
+    disabled: false, validationAttempted: true, onChange() {},
+  }));
+  assert.match(invalidName, /Use a valid C# parameter name/);
+  const duplicate = renderToStaticMarkup(React.createElement(CodingQuestionEditor, {
+    question: { ...question, methodContract: { ...question.methodContract, parameterNames: ["value", "value"] } },
+    disabled: false, validationAttempted: true, onChange() {},
+  }));
+  assert.equal((duplicate.match(/Parameter names must be unique/g) ?? []).length, 2);
+  assert.equal((duplicate.match(/aria-invalid="true"/g) ?? []).length, 2);
 });
 
 test("actual METHOD values clear errors and drive the signature preview", () => {
   const configured = {
     ...question,
-    methodContract: { typeName: "Solution", methodName: "AddNumbers", parameterTypes: ["int", "int"], returnType: "int" },
+    methodContract: { typeName: "Solution", methodName: "CountAbove", parameterNames: ["numbers", "limit"], parameterTypes: ["int[]", "int"], returnType: "int" },
   };
   const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, {
     question: configured, disabled: false, validationAttempted: true, onChange() {},
   }));
   assert.doesNotMatch(html, /aria-invalid="true"|Type\/class name is required|Method name is required/);
   assert.match(html, /value="Solution"/);
-  assert.match(html, /value="AddNumbers"/);
-  assert.match(html, /public static int AddNumbers\(int arg1, int arg2\)/);
+  assert.match(html, /value="CountAbove"/);
+  assert.match(html, /public static int CountAbove\(int\[\] numbers, int limit\)/);
+  assert.match(html, /Students must implement this exact signature/);
+});
+
+test("legacy METHOD names render deterministic argN values without validation errors", () => {
+  const legacy = { ...question, methodContract: { ...question.methodContract, parameterNames: null } };
+  const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, {
+    question: legacy, disabled: false, validationAttempted: true, onChange() {},
+  }));
+  assert.match(html, /public static int Add\(int arg1, int\[\] arg2\)/);
+  assert.doesNotMatch(html, /Parameter name is required|aria-invalid="true"/);
+});
+
+test("array previews cover empty, string, boolean, negative, and Unicode structured values", () => {
+  const arrays = {
+    ...question,
+    methodContract: { ...question.methodContract, parameterNames: ["empty", "names", "flags", "values"], parameterTypes: ["int[]", "string[]", "bool[]", "long[]"] },
+    codingTestCases: [{ clientId: "arrays", visibility: "PUBLIC", input: [[], ["Ana", "Mabuhay 🌞"], [true, false], [-5, 10]], expectedOutput: 0, weight: 1 }],
+  };
+  const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question: arrays, disabled: false, onChange() {} }));
+  for (const preview of ["[]", '[&quot;Ana&quot;, &quot;Mabuhay 🌞&quot;]', "[true, false]", "[-5, 10]"]) assert.equal(html.includes(preview), true, preview);
 });
 
 test("PROGRAM format hides METHOD signature controls and renders stdin/stdout editors", () => {
@@ -129,8 +175,9 @@ test("PROGRAM format hides METHOD signature controls and renders stdin/stdout ed
   const html = renderToStaticMarkup(React.createElement(CodingQuestionEditor, { question: program, disabled: false, validationAttempted: true, onChange() {} }));
   assert.match(html, /Program \/ Main/);
   assert.match(html, /Standard input/);
+  assert.match(html, /Expected output/);
   assert.match(html, /Console.ReadLine/);
-  assert.doesNotMatch(html, /Type\/Class name|Signature preview|Argument 1|Type\/class name is required|Method name is required/);
+  assert.doesNotMatch(html, /Type\/Class name|Signature preview|Input for|Expected return value|Type\/class name is required|Method name is required/);
 });
 
 test("PROGRAM format permits empty stdin and expected stdout", () => {

@@ -61,7 +61,7 @@ test("teacher CODING DTO allowlists reference solution and grading cases only on
     questions: [{
       questionText: "Add", questionType: "CODING", points: 4, explanation: null, objectiveKey: null,
       choices: [], starterCode: "starter", referenceSolution: "teacher secret",
-      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int", extra: "drop" },
+      methodContract: { typeName: "Solution", methodName: "Add", parameterNames: ["value"], parameterTypes: ["int"], returnType: "int", extra: "drop" },
       codingTestCases: [{ visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1, extra: "drop" }],
       extra: "drop",
     }],
@@ -70,7 +70,8 @@ test("teacher CODING DTO allowlists reference solution and grading cases only on
   await service.saveTeacherAssessment({ classroomId: 7, assessmentId: 8, graph });
   const payload = calls[0][2];
   assert.equal(payload.questions[0].referenceSolution, "teacher secret");
-  assert.deepEqual(Object.keys(payload.questions[0].methodContract).sort(), ["methodName", "parameterTypes", "returnType", "typeName"]);
+  assert.deepEqual(Object.keys(payload.questions[0].methodContract).sort(), ["methodName", "parameterNames", "parameterTypes", "returnType", "typeName"]);
+  assert.deepEqual(payload.questions[0].methodContract.parameterNames, ["value"]);
   assert.deepEqual(Object.keys(payload.questions[0].codingTestCases[0]).sort(), ["expectedOutput", "input", "visibility", "weight"]);
   assert.equal(JSON.stringify(payload).includes("extra"), false);
 });
@@ -82,7 +83,7 @@ test("teacher CODING response normalization drops arbitrary nested fields", () =
     questions: [{
       id: 9, questionText: "Add", questionType: "CODING", points: 3,
       starterCode: "starter", referenceSolution: "teacher secret", choices: [], extra: "drop",
-      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int", extra: "drop" },
+      methodContract: { typeName: "Solution", methodName: "Add", parameterNames: ["value"], parameterTypes: ["int"], returnType: "int", extra: "drop" },
       codingTestCases: [{ id: 4, displayOrder: 0, visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1, extra: "drop" }],
     }],
   });
@@ -90,5 +91,6 @@ test("teacher CODING response normalization drops arbitrary nested fields", () =
   assert.equal(assessment.unexpected, undefined);
   assert.equal(assessment.questions[0].extra, undefined);
   assert.equal(assessment.questions[0].referenceSolution, "teacher secret");
+  assert.deepEqual(assessment.questions[0].methodContract.parameterNames, ["value"]);
   assert.equal(JSON.stringify(assessment).includes("extra"), false);
 });

@@ -22,6 +22,10 @@ const executionModeMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261002000000_coding_execution_modes.sql",
 );
+const parameterNamesMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261003000000_method_parameter_names.sql",
+);
 
 test("assessment models keep results normalized and out of level progress", () => {
   for (const name of [
@@ -46,7 +50,7 @@ test("assessment models keep results normalized and out of level progress", () =
       "assessmentId", "questionText", "questionType", "displayOrder", "points",
       "explanation", "objectiveKey",
       "starterCode", "codingTypeName", "codingMethodName", "codingParameterTypes",
-      "codingReturnType", "codingExecutionMode",
+      "codingParameterNames", "codingReturnType", "codingExecutionMode",
     ],
     AssessmentChoice: ["questionId", "choiceText", "displayOrder", "isCorrect"],
     AssessmentAttempt: [
@@ -196,8 +200,8 @@ test("coding assessment migration is additive, protected, and registered after t
   assert.match(sql, /assessment_coding_tests_question_order/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-4), "20261001000000_coding_assessments");
-  assert.equal(names.at(-5), "20260925000000_lesson_assessments");
+  assert.equal(names.at(-5), "20261001000000_coding_assessments");
+  assert.equal(names.at(-6), "20260925000000_lesson_assessments");
 });
 
 test("teacher-only coding reference solution migration is additive and size-bounded", () => {
@@ -207,8 +211,8 @@ test("teacher-only coding reference solution migration is additive and size-boun
   assert.match(sql, /octet_length\("referenceSolution"\) <= 16384/);
   assert.doesNotMatch(sql, /DROP COLUMN|DROP TABLE/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-3), "20261001010000_coding_reference_solution");
-  assert.equal(names.at(-4), "20261001000000_coding_assessments");
+  assert.equal(names.at(-4), "20261001010000_coding_reference_solution");
+  assert.equal(names.at(-5), "20261001000000_coding_assessments");
 });
 
 test("grading lease migration is additive, constrained, and registered last", () => {
@@ -221,8 +225,8 @@ test("grading lease migration is additive, constrained, and registered last", ()
   assert.match(sql, /"status" = 'GRADING'[\s\S]*"submissionKey" IS NOT NULL[\s\S]*"gradingLeaseToken" IS NOT NULL[\s\S]*"gradingLeaseExpiresAt" IS NOT NULL/);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-2), "20261001020000_assessment_grading_lease");
-  assert.equal(names.at(-3), "20261001010000_coding_reference_solution");
+  assert.equal(names.at(-3), "20261001020000_assessment_grading_lease");
+  assert.equal(names.at(-4), "20261001010000_coding_reference_solution");
 });
 
 test("coding execution mode migration backfills CODING as METHOD without changing non-coding rows", () => {
@@ -234,5 +238,16 @@ test("coding execution mode migration backfills CODING as METHOD without changin
   assert.match(sql, /"questionType" <> 'CODING'[\s\S]*"codingExecutionMode" IS NULL/);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261002000000_coding_execution_modes");
+  assert.equal(names.at(-2), "20261002000000_coding_execution_modes");
+});
+
+test("METHOD parameter-name migration is nullable additive and registered last", () => {
+  assert.equal(fs.existsSync(parameterNamesMigrationPath), true);
+  const sql = fs.readFileSync(parameterNamesMigrationPath, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "codingParameterNames" JSONB/);
+  assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|TRUNCATE|DROP)\b/i);
+  assert.doesNotMatch(sql, /NOT NULL|DEFAULT/i);
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261003000000_method_parameter_names");
+  assert.equal(names.at(-2), "20261002000000_coding_execution_modes");
 });

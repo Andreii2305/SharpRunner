@@ -6,6 +6,14 @@ Starter code is optional scaffolding, and the teacher-only reference solution is
 
 PROGRAM output comparison normalizes CRLF and CR to LF, removes trailing whitespace from each line, and ignores blank lines only at the end. It preserves line order, case, internal spaces, and all other meaningful content. Each stdin value is limited to 4 KB, expected output to 8 KB, aggregate inputs to 16 KB, source to 16 KB, and a request to ten cases.
 
+## METHOD authoring
+
+Teachers give each METHOD parameter a C# identifier name as well as a type. For example, a `SumArray` question uses `numbers : int[]`, shows the required signature `public static int SumArray(int[] numbers)`, and stores its test input as a structured array. The teacher adds the values `1`, `2`, and `3` with the individual array controls, sees the display-only preview `[1, 2, 3]`, and enters `6` as the expected return value.
+
+The notation `[1, 2, 3] -> 6` is only conceptual shorthand. Teachers do not type the arrow or a manually parsed array string: inputs remain typed structured values, and the expected return is a separate typed field. Parameter names are authoring/display metadata; execution still pairs each test input with its parameter type by array index. Reordering or deleting a parameter therefore moves its name, type, and corresponding value in every existing test together.
+
+Historical METHOD questions whose stored parameter-name field is missing or `NULL` display deterministic names `arg1`, `arg2`, and so on. They remain valid without a destructive backfill or a write merely from being read. A newly added parameter instead starts with an explicit empty name and must receive a valid, unique, non-keyword C# identifier before publication.
+
 ## Release gates
 
 The student implementation is present, but `CODING_ASSESSMENT_PLAYER_ENABLED` remains default OFF. A deliberate deployment or development environment may set it to `true`; doing so only permits the student CODING graph and player. It does not enable execution.
@@ -92,7 +100,7 @@ Production execution requires a separate authenticated runner host/service that 
 
 ## Migration and direct-database readiness
 
-The schema evolves additively from the base PRE/POST assessment tables through CODING question/test/response columns, teacher reference solutions, and the K4 `GRADING` lease fields/status constraint. Foreign keys, assessment/question ordering uniqueness, response attempt/question uniqueness, choice/source exclusivity, points precision, lease-state checks, and supporting indexes are defined in the migration chain. The application remains the only assessment data authority exposed to students; assessment tables are not granted through a student-facing direct-database contract, and API serializers/authorization keep classroom, ownership, hidden grading data, reference solutions, and lease tokens scoped server-side.
+The schema evolves additively from the base PRE/POST assessment tables through CODING question/test/response columns, teacher reference solutions, the nullable METHOD `codingParameterNames` JSONB metadata column, and the K4 `GRADING` lease fields/status constraint. The parameter-name migration performs no historical-row backfill; `NULL` remains the legacy `argN` signal. Foreign keys, assessment/question ordering uniqueness, response attempt/question uniqueness, choice/source exclusivity, points precision, lease-state checks, and supporting indexes are defined in the migration chain. The application remains the only assessment data authority exposed to students; assessment tables are not granted through a student-facing direct-database contract, and API serializers/authorization keep classroom, ownership, hidden grading data, reference solutions, and lease tokens scoped server-side.
 
 SQL inspection and automated migration-contract tests do not replace a live database exercise. A clean install and a representative upgrade on disposable PostgreSQL/Supabase-compatible infrastructure remain mandatory deployment QA before either coding gate is enabled.
 

@@ -1,4 +1,5 @@
 import AssessmentCodeEditor from "../../../Components/AssessmentCodeEditor/AssessmentCodeEditor.jsx";
+import { resolveParameterNames } from "../../../utils/codingMethodContract.js";
 import styles from "./AssessmentPlayer.module.css";
 
 const displayValue = (value) => {
@@ -11,8 +12,9 @@ const displayValue = (value) => {
 };
 
 const contractText = (contract = {}) => {
+  const parameterNames = resolveParameterNames(contract.parameterTypes, contract.parameterNames);
   const parameters = Array.isArray(contract.parameterTypes)
-    ? contract.parameterTypes.map((type, index) => `${type} value${index + 1}`).join(", ")
+    ? contract.parameterTypes.map((type, index) => `${type} ${parameterNames[index]}`).join(", ")
     : "";
   return `public static ${contract.returnType ?? "void"} ${contract.typeName ?? "Solution"}.${contract.methodName ?? "Solve"}(${parameters})`;
 };

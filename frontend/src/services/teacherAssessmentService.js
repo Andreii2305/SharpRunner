@@ -25,7 +25,7 @@ export const serializeTeacherAssessmentGraph = (graph = {}) => ({
       starterCode: question.starterCode ?? "",
       referenceSolution: question.referenceSolution ?? "",
       ...(question.executionMode !== "PROGRAM" ? { methodContract: {
-        ...pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]),
+        ...pick(question.methodContract, ["typeName", "methodName", "parameterNames", "parameterTypes", "returnType"]),
       } } : {}),
       codingTestCases: (question.codingTestCases ?? []).map((testCase) => (
         pick(testCase, ["visibility", "input", "expectedOutput", "weight"])
@@ -49,7 +49,7 @@ export const normalizeTeacherAssessmentGraph = (assessment = {}) => ({
       executionMode: question.executionMode ?? "METHOD",
       starterCode: question.starterCode ?? "",
       referenceSolution: question.referenceSolution ?? "",
-      ...(question.executionMode !== "PROGRAM" ? { methodContract: pick(question.methodContract, ["typeName", "methodName", "parameterTypes", "returnType"]) } : {}),
+      ...(question.executionMode !== "PROGRAM" ? { methodContract: pick(question.methodContract, ["typeName", "methodName", "parameterNames", "parameterTypes", "returnType"]) } : {}),
       codingTestCases: (question.codingTestCases ?? []).map((testCase) => (
         pick(testCase, ["id", "displayOrder", "visibility", "input", "expectedOutput", "weight"])
       )),

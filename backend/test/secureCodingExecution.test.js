@@ -64,6 +64,16 @@ test("method execution contract accepts only the documented deterministic types"
   }
 });
 
+test("method execution contract rejects display-only parameter names", () => {
+  assert.throws(
+    () => validateMethodExecutionRequest({
+      ...validRequest(),
+      contract: { ...validRequest().contract, parameterNames: ["left", "right"] },
+    }),
+    (error) => error.code === "UNEXPECTED_FIELD",
+  );
+});
+
 test("method execution contract rejects malformed signatures and typed inputs", () => {
   assert.throws(
     () => validateMethodExecutionRequest({ ...validRequest(), contract: { ...validRequest().contract, methodName: "Run();System.IO.File.ReadAllText" } }),

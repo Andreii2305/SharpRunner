@@ -51,9 +51,9 @@ test("page shell keeps the builder beside the full-height sidebar instead of bel
   assert.doesNotMatch(styles, /@media\s*\(max-width:\s*900px\)\s*\{[^}]*\.main\s*\{[^}]*margin-left/s);
 });
 
-test("coding builder exposes fixed C# contract, typed tests, weights, and teacher-only source", () => {
+test("coding builder exposes named C# contract, typed tests, weights, and teacher-only source", () => {
   assert.match(source, /value="CODING">Coding/);
-  for (const marker of ["Coding", "C#", "Type\/Class name", "Method name", "Return type", "Signature preview", "Starter code", "Reference solution", "teacher-only", "PUBLIC", "HIDDEN", "Expected output", "Weight", "Add test case"]) {
+  for (const marker of ["Coding", "C#", "Type/Class name", "Method name", "Parameter name", "Return type", "Signature preview", "Starter code", "Reference solution", "teacher-only", "PUBLIC", "HIDDEN", "Expected return value", "Expected output", "Weight", "Add test case", "Add value", "Array preview"]) {
     assert.equal(codingEditor.includes(marker), true, marker);
   }
   assert.match(codeEditor, /Components\/AssessmentCodeEditor/);
@@ -74,6 +74,12 @@ test("coding controls stack responsively and preserve usable editor height", () 
   assert.match(styles, /min-height:\s*240px/);
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.codingGrid/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)[\s\S]*\.testCaseGrid/);
+  assert.match(styles, /\.parameterFields\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(styles, /\.parameterActions\s*\{[^}]*flex-wrap:\s*wrap/s);
+  assert.match(styles, /\.parameterRow\s*\{[^}]*min-width:\s*0/s);
+  assert.match(styles, /\.testValues\s*\{[^}]*min-width:\s*0/s);
+  assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.parameterFields/);
+  assert.match(styles, /@media\s*\(max-width:\s*640px\)[\s\S]*\.parameterActions/);
   assert.match(styles, /button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(sharedCodeEditor, /minWidth:\s*0/);
   assert.match(sharedCodeEditor, /overflow:\s*"hidden"/);

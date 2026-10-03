@@ -991,7 +991,7 @@ test("published graph cannot be converted to CODING while the player release gat
       questionText: "Add", questionType: "CODING", points: 2, choices: [],
       starterCode: "public static class Solution { public static int Add(int a) => 0; }",
       referenceSolution: "public static class Solution { public static int Add(int a) => a + 1; }",
-      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int" },
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], parameterNames: ["value"], returnType: "int" },
       codingTestCases: [{ visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1 }],
     }] }),
   });
@@ -1008,7 +1008,7 @@ test("authorized teacher CODING save reloads reference source and ordered public
       questionText: "Add", questionType: "CODING", points: 2, choices: [],
       starterCode: "public static class Solution { public static int Add(int a) => 0; }",
       referenceSolution: "public static class Solution { public static int Add(int a) => a + 1; }",
-      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], returnType: "int" },
+      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int"], parameterNames: ["value"], returnType: "int" },
       codingTestCases: [
         { visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1.25 },
         { visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 2.5 },
@@ -1019,12 +1019,47 @@ test("authorized teacher CODING save reloads reference source and ordered public
   const saved = result.payload.assessment.questions[0];
   assert.match(saved.referenceSolution, /a \+ 1/);
   assert.deepEqual(saved.methodContract.parameterTypes, ["int"]);
+  assert.deepEqual(saved.methodContract.parameterNames, ["value"]);
+  assert.deepEqual(h.store.questions[0].codingParameterNames, ["value"]);
   assert.deepEqual(saved.codingTestCases.map(({ visibility, input, expectedOutput, weight }) => (
     { visibility, input, expectedOutput, weight: Number(weight) }
   )), [
     { visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1.25 },
     { visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 2.5 },
   ]);
+});
+
+test("teacher CODING save rejects malformed explicit parameter names before graph replacement", async () => {
+  const invalidNames = [["value", "extra"], ["class"], ["value", "value"], [7]];
+  for (const parameterNames of invalidNames) {
+    const h = harness();
+    const result = await h.call("/classrooms/7/assessments/12", {
+      method: "PUT",
+      body: saveBody({ questions: [{
+        questionText: "Add", questionType: "CODING", points: 2, choices: [],
+        starterCode: "", referenceSolution: "",
+        methodContract: {
+          typeName: "Solution", methodName: "Add", parameterTypes: ["int"], parameterNames, returnType: "int",
+        },
+        codingTestCases: [{ visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1 }],
+      }] }),
+    });
+    assert.equal(result.response.status, 400);
+    assert.equal(h.store.questionDeletes, 0);
+  }
+  const h = harness();
+  const programWithNames = await h.call("/classrooms/7/assessments/12", {
+    method: "PUT",
+    body: saveBody({ questions: [{
+      questionText: "Print", questionType: "CODING", points: 2, choices: [], executionMode: "PROGRAM",
+      methodContract: {
+        typeName: "Solution", methodName: "Ignored", parameterTypes: ["int"], parameterNames: ["value"], returnType: "int",
+      },
+      codingTestCases: [{ visibility: "PUBLIC", input: "1\n", expectedOutput: "1\n", weight: 1 }],
+    }] }),
+  });
+  assert.equal(programWithNames.response.status, 400);
+  assert.equal(h.store.questionDeletes, 0);
 });
 
 test("blank optional CODING source saves canonically, reloads empty, and publishes", async () => {

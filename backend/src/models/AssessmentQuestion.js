@@ -33,6 +33,7 @@ const AssessmentQuestion = sequelize.define("AssessmentQuestion", {
   codingTypeName: { type: DataTypes.STRING(128), allowNull: true },
   codingMethodName: { type: DataTypes.STRING(64), allowNull: true },
   codingParameterTypes: { type: DataTypes.JSONB, allowNull: true },
+  codingParameterNames: { type: DataTypes.JSONB, allowNull: true },
   codingReturnType: { type: DataTypes.STRING(16), allowNull: true },
 }, {
   indexes: [

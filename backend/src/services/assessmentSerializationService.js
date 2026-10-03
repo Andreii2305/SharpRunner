@@ -1,6 +1,7 @@
 const plain = (value) => value?.toJSON ? value.toJSON() : (value || {});
 const numberOrNull = (value) => value == null ? null : Number(value);
 const codingExecutionMode = (question) => question.codingExecutionMode || "METHOD";
+const { resolveCodingParameterNames } = require("./codingParameterNameService");
 const DISCOVERY_LOCK_REASONS = new Set([
   "LESSON_PREREQUISITE_REQUIRED",
   "PRE_ASSESSMENT_REQUIRED",
@@ -31,6 +32,10 @@ const serializePlayerAssessment = (assessmentInput) => {
             typeName: question.codingTypeName,
             methodName: question.codingMethodName,
             parameterTypes: [...(question.codingParameterTypes || [])],
+            parameterNames: resolveCodingParameterNames(
+              question.codingParameterTypes,
+              question.codingParameterNames,
+            ),
             returnType: question.codingReturnType,
           } } : {}),
           codingExamples: (question.codingTestCases || [])
@@ -278,6 +283,7 @@ const serializeTeacherEditor = (assessmentInput, metadata = {}) => {
             typeName: question.codingTypeName ?? null,
             methodName: question.codingMethodName ?? null,
             parameterTypes: question.codingParameterTypes ?? null,
+            parameterNames: question.codingParameterNames ?? null,
             returnType: question.codingReturnType ?? null,
           } } : {}),
           codingTestCases: (question.codingTestCases || []).map((testInput) => {

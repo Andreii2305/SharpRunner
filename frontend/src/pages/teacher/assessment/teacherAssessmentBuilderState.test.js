@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as builderState from "./teacherAssessmentBuilderState.js";
 import {
   ACADEMIC_LESSONS, METHOD_TYPES, addChoice, addCodingParameter, addCodingTestCase,
   addQuestion, assessmentStatus, buildSaveGraph, createAssessmentDraft,
@@ -95,11 +96,12 @@ test("CODING contract and test operations keep typed inputs aligned and ordered"
   const id = questions[0].clientId;
   questions = addCodingParameter(questions, id, "int");
   questions = addCodingParameter(questions, id, "string[]");
+  assert.deepEqual(questions[0].methodContract.parameterNames, ["", ""]);
   questions = addCodingTestCase(questions, id, "PUBLIC");
   questions = addCodingTestCase(questions, id, "HIDDEN");
   assert.deepEqual(questions[0].codingTestCases[0].input, [0, []]);
   questions = updateCodingParameterType(questions, id, 0, "bool");
-  assert.equal(questions[0].codingTestCases[0].input[0], false);
+  assert.deepEqual(questions[0].codingTestCases.map(({ input }) => input[0]), [false, false]);
   questions = moveCodingParameter(questions, id, 1, -1);
   assert.deepEqual(questions[0].methodContract.parameterTypes, ["string[]", "bool"]);
   assert.deepEqual(questions[0].codingTestCases[0].input, [[], false]);
@@ -114,6 +116,86 @@ test("CODING contract and test operations keep typed inputs aligned and ordered"
   assert.deepEqual(defaultValueForType("int[]"), []);
 });
 
+test("METHOD parameter names, types, and every test input move and delete as one positional tuple", () => {
+  let questions = addQuestion([], "CODING");
+  const id = questions[0].clientId;
+  questions = addCodingParameter(questions, id, "int[]");
+  questions = builderState.updateCodingParameterName(questions, id, 0, "numbers");
+  questions = addCodingParameter(questions, id, "int");
+  questions = builderState.updateCodingParameterName(questions, id, 1, "limit");
+  questions = addCodingTestCase(questions, id, "PUBLIC");
+  questions = addCodingTestCase(questions, id, "HIDDEN");
+  questions[0].codingTestCases[0].input = [[1, 2, 3], 2];
+  questions[0].codingTestCases[1].input = [[10, 20], 10];
+
+  questions = moveCodingParameter(questions, id, 1, -1);
+  assert.deepEqual(questions[0].methodContract.parameterNames, ["limit", "numbers"]);
+  assert.deepEqual(questions[0].methodContract.parameterTypes, ["int", "int[]"]);
+  assert.deepEqual(questions[0].codingTestCases.map(({ input }) => input), [[2, [1, 2, 3]], [10, [10, 20]]]);
+
+  questions = removeCodingParameter(questions, id, 0);
+  assert.deepEqual(questions[0].methodContract.parameterNames, ["numbers"]);
+  assert.deepEqual(questions[0].methodContract.parameterTypes, ["int[]"]);
+  assert.deepEqual(questions[0].codingTestCases.map(({ input }) => input), [[[1, 2, 3]], [[10, 20]]]);
+});
+
+test("adding every supported METHOD type seeds typed values in PUBLIC and HIDDEN cases", () => {
+  let questions = addQuestion([], "CODING");
+  const id = questions[0].clientId;
+  questions = addCodingTestCase(questions, id, "PUBLIC");
+  questions = addCodingTestCase(questions, id, "HIDDEN");
+  for (const type of METHOD_TYPES) questions = addCodingParameter(questions, id, type);
+
+  assert.deepEqual(METHOD_TYPES, ["bool", "int", "long", "string", "bool[]", "int[]", "long[]", "string[]"]);
+  assert.deepEqual(
+    questions[0].codingTestCases.map(({ input }) => input),
+    [
+      [false, 0, 0, "", [], [], [], []],
+      [false, 0, 0, "", [], [], [], []],
+    ],
+  );
+});
+
+test("METHOD parameter-name validation mirrors ordinary C# identifiers and exact duplicate rules", () => {
+  assert.equal(builderState.parameterNameError(["_numbers", "value1", "value", "Value"], 0), null);
+  assert.equal(builderState.parameterNameError([""], 0), "required");
+  assert.equal(builderState.parameterNameError(["   "], 0), "required");
+  for (const name of ["1value", "two values", "has-dash", "class", "x".repeat(65)]) {
+    assert.equal(builderState.parameterNameError([name], 0), "invalid", name);
+  }
+  assert.equal(builderState.parameterNameError(["value", "value"], 1), "duplicate");
+  assert.equal(builderState.parameterNameError(["value", "Value"], 1), null);
+  const draft = createAssessmentDraft("POST", "functions");
+  draft.questions = addQuestion([], "CODING");
+  Object.assign(draft.questions[0], { questionText: "Mismatch", codingTestCases: [{ clientId: "test", visibility: "PUBLIC", input: [1], expectedOutput: 1, weight: 1 }] });
+  draft.questions[0].methodContract = { typeName: "Solution", methodName: "Solve", parameterNames: ["value", "extra"], parameterTypes: ["int"], returnType: "int" };
+  assert.equal(publishIssues(draft).some((issue) => issue.includes("one name for every parameter type")), true);
+});
+
+test("legacy METHOD contracts resolve argN in memory while new blank names stay incomplete", () => {
+  assert.deepEqual(builderState.resolveParameterNames(["int[]", "int"], null), ["arg1", "arg2"]);
+  const legacy = hydrateAssessmentDraft({
+    ...createAssessmentDraft("POST", "functions"), id: 9,
+    questions: [{
+      id: 21, questionText: "Legacy", questionType: "CODING", points: 1, choices: [],
+      executionMode: "METHOD", methodContract: { typeName: "Solution", methodName: "Solve", parameterTypes: ["int", "int"], returnType: "int" },
+      codingTestCases: [],
+    }],
+  });
+  assert.deepEqual(legacy.questions[0].methodContract.parameterNames, ["arg1", "arg2"]);
+  let questions = addQuestion([], "CODING");
+  const id = questions[0].clientId;
+  questions = addCodingParameter(questions, id, "int");
+  assert.deepEqual(questions[0].methodContract.parameterNames, [""]);
+});
+
+test("array previews are display-only compact C#-friendly value summaries", () => {
+  assert.equal(builderState.formatArrayPreview([]), "[]");
+  assert.equal(builderState.formatArrayPreview([1, -2, 3]), "[1, -2, 3]");
+  assert.equal(builderState.formatArrayPreview([true, false]), "[true, false]");
+  assert.equal(builderState.formatArrayPreview(["hello", "\u00c1na", 'a"b']), '["hello", "\u00c1na", "a\\"b"]');
+});
+
 test("CODING graph hydrates and serializes the exact teacher contract without client IDs", () => {
   const draft = hydrateAssessmentDraft({
     ...createAssessmentDraft("POST", "functions"), id: 9, version: 4,
@@ -121,7 +203,7 @@ test("CODING graph hydrates and serializes the exact teacher contract without cl
       id: 21, questionText: "Add", questionType: "CODING", points: 5,
       explanation: null, objectiveKey: null, choices: [],
       starterCode: "starter", referenceSolution: "secret",
-      methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int" },
+      methodContract: { typeName: "Solution", methodName: "Add", parameterNames: ["left", "right"], parameterTypes: ["int", "int"], returnType: "int" },
       codingTestCases: [{ id: 31, displayOrder: 0, visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 2 }],
     }],
   });
@@ -130,7 +212,7 @@ test("CODING graph hydrates and serializes the exact teacher contract without cl
   assert.deepEqual(graph.questions[0], {
     questionText: "Add", questionType: "CODING", points: 5, explanation: null,
     objectiveKey: null, choices: [], executionMode: "METHOD", starterCode: "starter", referenceSolution: "secret",
-    methodContract: { typeName: "Solution", methodName: "Add", parameterTypes: ["int", "int"], returnType: "int" },
+    methodContract: { typeName: "Solution", methodName: "Add", parameterNames: ["left", "right"], parameterTypes: ["int", "int"], returnType: "int" },
     codingTestCases: [{ visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 2 }],
   });
   assert.doesNotMatch(JSON.stringify(graph), /clientId|displayOrder/);
@@ -207,7 +289,7 @@ test("CODING publish issues catch backend byte and typed-value limits before sav
   draft.questions = addQuestion([], "CODING");
   const question = draft.questions[0];
   question.questionText = "Bounded method";
-  question.methodContract = { typeName: "Solution", methodName: "Solve", parameterTypes: ["string"], returnType: "string" };
+  question.methodContract = { typeName: "Solution", methodName: "Solve", parameterNames: ["value"], parameterTypes: ["string"], returnType: "string" };
   question.starterCode = "x".repeat(16 * 1024 + 1);
   question.referenceSolution = "solution";
   question.codingTestCases = [{ clientId: "hidden", visibility: "HIDDEN", input: ["ok"], expectedOutput: "x".repeat(4097), weight: 1 }];

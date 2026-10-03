@@ -1,8 +1,10 @@
 import styles from "./TeacherAssessmentBuilderPage.module.css";
+import { resolveParameterNames } from "./teacherAssessmentBuilderState.js";
 
 export function StudentCodingPreview({ question }) {
   const publicCases = question.codingTestCases.filter((testCase) => testCase.visibility === "PUBLIC");
-  const signature = `public static ${question.methodContract.returnType} ${question.methodContract.methodName || "MethodName"}(${question.methodContract.parameterTypes.map((type, index) => `${type} arg${index + 1}`).join(", ")})`;
+  const parameterNames = resolveParameterNames(question.methodContract.parameterTypes, question.methodContract.parameterNames);
+  const signature = `public static ${question.methodContract.returnType} ${question.methodContract.methodName || "MethodName"}(${question.methodContract.parameterTypes.map((type, index) => `${type} ${parameterNames[index] || "<parameter name>"}`).join(", ")})`;
   return <div className={styles.codingPreview}>
     <p><strong>C# signature</strong></p><code>{signature}</code>
     <pre>{question.starterCode || "No starter code"}</pre>

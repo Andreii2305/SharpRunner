@@ -114,6 +114,7 @@ test("coding player and review DTOs expose public contract/source without mixed 
       codingTypeName: "Solution",
       codingMethodName: "Add",
       codingParameterTypes: ["int", "int"],
+      codingParameterNames: ["left", "right"],
       codingReturnType: "int",
       codingTestCases: [
         { visibility: "PUBLIC", input: [1, 2], expectedOutput: 3, weight: 1 },
@@ -137,6 +138,7 @@ test("coding player and review DTOs expose public contract/source without mixed 
     { input: [1, 2], expectedOutput: 3 },
   ]);
   assert.equal(player.assessment.questions[0].executionMode, "METHOD");
+  assert.deepEqual(player.assessment.questions[0].methodContract.parameterNames, ["left", "right"]);
 
   const review = serializers.serializeAllowedReview({
     reviewAvailable: true,
@@ -167,6 +169,7 @@ test("player serializers normalize legacy null starter source to an empty editor
       codingTypeName: "Solution",
       codingMethodName: "Add",
       codingParameterTypes: ["int", "int"],
+      codingParameterNames: null,
       codingReturnType: "int",
       codingTestCases: [{ visibility: "HIDDEN", input: [1, 2], expectedOutput: 3, weight: 1 }],
       choices: [],
@@ -174,8 +177,25 @@ test("player serializers normalize legacy null starter source to an empty editor
   });
   const serialized = serializers.serializePlayerAssessment(codingAssessment);
   assert.equal(serialized.questions[0].starterCode, "");
+  assert.deepEqual(serialized.questions[0].methodContract.parameterNames, ["arg1", "arg2"]);
   assert.equal(serialized.questions[0].referenceSolution, undefined);
   assert.doesNotMatch(JSON.stringify(serialized), /referenceSolution|HIDDEN|weight|expectedOutput/);
+});
+
+test("teacher serializer preserves nullable legacy METHOD parameter names without writing fallbacks", () => {
+  const codingAssessment = assessment({
+    questions: [{
+      id: 202, questionText: "Legacy method", questionType: "CODING", points: 3,
+      starterCode: "", referenceSolution: "", codingExecutionMode: "METHOD",
+      codingTypeName: "Solution", codingMethodName: "Add",
+      codingParameterTypes: ["int", "int"], codingParameterNames: null, codingReturnType: "int",
+      codingTestCases: [{ visibility: "PUBLIC", input: [1, 2], expectedOutput: 3, weight: 1 }],
+      choices: [],
+    }],
+  });
+  const editor = serializers.serializeTeacherEditor(codingAssessment);
+  assert.equal(editor.questions[0].methodContract.parameterNames, null);
+  assert.deepEqual(editor.questions[0].methodContract.parameterTypes, ["int", "int"]);
 });
 
 test("teacher editor serializer includes answer keys only after authorization", () => {

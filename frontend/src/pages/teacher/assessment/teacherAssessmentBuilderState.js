@@ -1,3 +1,9 @@
+import {
+  formatArrayPreview, parameterNameError, resolveParameterNames,
+} from "../../../utils/codingMethodContract.js";
+
+export { formatArrayPreview, parameterNameError, resolveParameterNames };
+
 export const ACADEMIC_LESSONS = Object.freeze([
   { key: "arrays", title: "Arrays" },
   { key: "functions", title: "Functions and Methods" },
@@ -21,7 +27,7 @@ const codingFields = () => ({
   executionMode: "METHOD",
   starterCode: "",
   referenceSolution: "",
-  methodContract: { typeName: "", methodName: "", parameterTypes: [], returnType: "int" },
+  methodContract: { typeName: "", methodName: "", parameterNames: [], parameterTypes: [], returnType: "int" },
   codingTestCases: [],
 });
 
@@ -76,6 +82,10 @@ export const hydrateAssessmentDraft = (assessment) => ({
       methodContract: {
         typeName: question.methodContract?.typeName ?? "",
         methodName: question.methodContract?.methodName ?? "",
+        parameterNames: resolveParameterNames(
+          question.methodContract?.parameterTypes,
+          question.methodContract?.parameterNames,
+        ),
         parameterTypes: [...(question.methodContract?.parameterTypes ?? [])],
         returnType: question.methodContract?.returnType ?? "int",
       },
@@ -133,8 +143,8 @@ export const updateCodingExecutionMode = (questions, id, executionMode) => chang
   ...question,
   executionMode,
   methodContract: executionMode === "METHOD"
-    ? { typeName: "", methodName: "", parameterTypes: [], returnType: "int" }
-    : { typeName: "", methodName: "", parameterTypes: [], returnType: "int" },
+    ? { typeName: "", methodName: "", parameterNames: [], parameterTypes: [], returnType: "int" }
+    : { typeName: "", methodName: "", parameterNames: [], parameterTypes: [], returnType: "int" },
   codingTestCases: [],
 }));
 export const codingModeChangeRequiresConfirmation = (question, nextMode) => {
@@ -153,22 +163,45 @@ export const selectCorrectChoice = (questions, id, choiceId) => changeQuestion(q
 
 export const addCodingParameter = (questions, id, type = "int") => changeQuestion(questions, id, (question) => ({
   ...question,
-  methodContract: { ...question.methodContract, parameterTypes: [...question.methodContract.parameterTypes, type] },
+  methodContract: {
+    ...question.methodContract,
+    parameterNames: [...resolveParameterNames(question.methodContract.parameterTypes, question.methodContract.parameterNames), ""],
+    parameterTypes: [...question.methodContract.parameterTypes, type],
+  },
   codingTestCases: question.codingTestCases.map((testCase) => ({ ...testCase, input: [...testCase.input, defaultValueForType(type)] })),
 }));
 export const removeCodingParameter = (questions, id, index) => changeQuestion(questions, id, (question) => ({
   ...question,
-  methodContract: { ...question.methodContract, parameterTypes: question.methodContract.parameterTypes.filter((_, itemIndex) => itemIndex !== index) },
+  methodContract: {
+    ...question.methodContract,
+    parameterNames: resolveParameterNames(question.methodContract.parameterTypes, question.methodContract.parameterNames).filter((_, itemIndex) => itemIndex !== index),
+    parameterTypes: question.methodContract.parameterTypes.filter((_, itemIndex) => itemIndex !== index),
+  },
   codingTestCases: question.codingTestCases.map((testCase) => ({ ...testCase, input: testCase.input.filter((_, itemIndex) => itemIndex !== index) })),
 }));
 export const moveCodingParameter = (questions, id, index, delta) => changeQuestion(questions, id, (question) => {
   const parameterTypes = move(question.methodContract.parameterTypes, index, delta);
+  const parameterNames = move(
+    resolveParameterNames(question.methodContract.parameterTypes, question.methodContract.parameterNames),
+    index,
+    delta,
+  );
   return {
     ...question,
-    methodContract: { ...question.methodContract, parameterTypes },
+    methodContract: { ...question.methodContract, parameterNames, parameterTypes },
     codingTestCases: question.codingTestCases.map((testCase) => ({ ...testCase, input: move(testCase.input, index, delta) })),
   };
 });
+export const updateCodingParameterName = (questions, id, index, name) => changeQuestion(questions, id, (question) => ({
+  ...question,
+  methodContract: {
+    ...question.methodContract,
+    parameterNames: resolveParameterNames(
+      question.methodContract.parameterTypes,
+      question.methodContract.parameterNames,
+    ).map((item, itemIndex) => itemIndex === index ? name : item),
+  },
+}));
 export const updateCodingParameterType = (questions, id, index, type) => changeQuestion(questions, id, (question) => ({
   ...question,
   methodContract: { ...question.methodContract, parameterTypes: question.methodContract.parameterTypes.map((item, itemIndex) => itemIndex === index ? type : item) },
@@ -219,6 +252,10 @@ export const buildSaveGraph = (draft) => ({
       ...(question.executionMode !== "PROGRAM" ? { methodContract: {
         typeName: question.methodContract.typeName,
         methodName: question.methodContract.methodName,
+        parameterNames: resolveParameterNames(
+          question.methodContract.parameterTypes,
+          question.methodContract.parameterNames,
+        ),
         parameterTypes: [...question.methodContract.parameterTypes],
         returnType: question.methodContract.returnType,
       } } : {}),
@@ -258,6 +295,16 @@ export const publishIssues = (draft) => {
         if (!qualifiedIdentifier.test(contract.typeName ?? "")) issues.push(`${label}: add a valid type/class name.`);
         if (!identifier.test(contract.methodName ?? "")) issues.push(`${label}: add a valid method name.`);
         if (!METHOD_TYPES.includes(contract.returnType) || (contract.parameterTypes ?? []).some((type) => !METHOD_TYPES.includes(type))) issues.push(`${label}: select only supported method types.`);
+        const parameterNames = resolveParameterNames(contract.parameterTypes, contract.parameterNames);
+        if (Array.isArray(contract.parameterNames) && contract.parameterNames.length !== (contract.parameterTypes ?? []).length) {
+          issues.push(`${label}: provide one name for every parameter type.`);
+        }
+        parameterNames.forEach((_, parameterIndex) => {
+          const error = parameterNameError(parameterNames, parameterIndex);
+          if (error === "required") issues.push(`${label}, parameter ${parameterIndex + 1}: add a parameter name.`);
+          else if (error === "duplicate") issues.push(`${label}, parameter ${parameterIndex + 1}: parameter names must be unique.`);
+          else if (error === "invalid") issues.push(`${label}, parameter ${parameterIndex + 1}: use a valid non-keyword C# identifier.`);
+        });
       }
       if (utf8Bytes(question.starterCode ?? "") > 16 * 1024) issues.push(`${label}: starter code must be 16 KB or smaller.`);
       if (utf8Bytes(question.referenceSolution ?? "") > 16 * 1024) issues.push(`${label}: reference solution must be 16 KB or smaller.`);

@@ -55,6 +55,7 @@ const migrations = [
   ["20261001010000_coding_reference_solution", sqlMigration("20261001010000_coding_reference_solution.sql")],
   ["20261001020000_assessment_grading_lease", sqlMigration("20261001020000_assessment_grading_lease.sql")],
   ["20261002000000_coding_execution_modes", sqlMigration("20261002000000_coding_execution_modes.sql")],
+  ["20261003000000_method_parameter_names", sqlMigration("20261003000000_method_parameter_names.sql")],
 ];
 
 const runMigrations = async () => {

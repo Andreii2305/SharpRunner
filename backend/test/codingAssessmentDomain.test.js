@@ -12,6 +12,18 @@ const {
 const { shapePlayerAssessment } = require("../src/services/assessmentPolicyService");
 const { serializeTeacherEditor } = require("../src/services/assessmentSerializationService");
 
+let parameterNameService = {};
+try {
+  parameterNameService = require("../src/services/codingParameterNameService");
+} catch {
+  // The first RED run intentionally exercises the not-yet-created helper.
+}
+
+const {
+  resolveCodingParameterNames,
+  validateExplicitCodingParameterNames,
+} = parameterNameService;
+
 const codingQuestion = (overrides = {}) => ({
   id: 11,
   questionText: "Add two integers.",
@@ -45,6 +57,64 @@ const programQuestion = (overrides = {}) => codingQuestion({
     { id: 2, displayOrder: 1, visibility: "HIDDEN", input: "10\n20\n", expectedOutput: "30", weight: 3 },
   ],
   ...overrides,
+});
+
+test("METHOD parameter names resolve legacy contracts without changing explicit names", () => {
+  assert.equal(typeof resolveCodingParameterNames, "function");
+  assert.deepEqual(resolveCodingParameterNames(["int[]", "int"], null), ["arg1", "arg2"]);
+  assert.deepEqual(resolveCodingParameterNames([], undefined), []);
+  assert.deepEqual(
+    resolveCodingParameterNames(["int[]", "int"], ["numbers", "limit"]),
+    ["numbers", "limit"],
+  );
+});
+
+test("explicit METHOD parameter names accept bounded ordinary C# identifiers", () => {
+  assert.equal(typeof validateExplicitCodingParameterNames, "function");
+  for (const names of [["numbers"], ["_numbers"], ["value1"], ["value", "Value"]]) {
+    assert.equal(validateExplicitCodingParameterNames(names.map(() => "int"), names), true);
+  }
+});
+
+test("explicit METHOD parameter names reject incomplete invalid reserved duplicate and misaligned values", () => {
+  assert.equal(typeof validateExplicitCodingParameterNames, "function");
+  const invalidCases = [
+    [["int"], [""]],
+    [["int"], ["   "]],
+    [["int"], ["1number"]],
+    [["int"], ["student scores"]],
+    [["int"], ["numbers[]"]],
+    [["int"], ["a-b"]],
+    [["int"], ["x".repeat(65)]],
+    [["int"], ["class"]],
+    [["int"], ["return"]],
+    [["int"], ["int"]],
+    [["int"], ["public"]],
+    [["int", "int"], ["numbers", "numbers"]],
+    [["int", "int"], ["numbers"]],
+    [["int"], [7]],
+    [["int"], "numbers"],
+  ];
+  for (const [types, names] of invalidCases) {
+    assert.throws(() => validateExplicitCodingParameterNames(types, names), TypeError);
+  }
+  assert.equal(validateExplicitCodingParameterNames(["int"], null), true);
+  assert.equal(validateExplicitCodingParameterNames(["int"], undefined), true);
+});
+
+test("METHOD domain validation treats missing names as legacy and validates explicit names", () => {
+  assert.doesNotThrow(() => validateCodingQuestion(codingQuestion(), { publish: true }));
+  assert.doesNotThrow(() => validateCodingQuestion(codingQuestion({
+    codingParameterNames: ["left", "right"],
+  }), { publish: true }));
+  for (const codingParameterNames of [
+    ["left"], ["left", "left"], ["class", "right"], ["", "right"],
+  ]) {
+    assert.throws(
+      () => validateCodingQuestion(codingQuestion({ codingParameterNames }), { publish: true }),
+      /parameter/i,
+    );
+  }
 });
 
 test("legacy CODING defaults to METHOD while PROGRAM ignores method configuration", () => {
@@ -222,6 +292,7 @@ test("student CODING graph exposes public examples but recursively excludes hidd
   const serialized = JSON.stringify(shaped);
   assert.equal(shaped.questions[0].codingExamples.length, 1);
   assert.equal(shaped.questions[0].codingExamples[0].expectedOutput, 3);
+  assert.deepEqual(shaped.questions[0].methodContract.parameterNames, ["arg1", "arg2"]);
   assert.doesNotMatch(serialized, /HIDDEN/);
   assert.doesNotMatch(serialized, /\[5,7\]/);
   assert.doesNotMatch(serialized, /"weight"/);
@@ -403,5 +474,6 @@ test("authorized teacher graph retains complete public and hidden coding configu
   assert.equal(serialized.questions[0].codingTestCases[1].visibility, "HIDDEN");
   assert.equal(serialized.questions[0].codingTestCases[1].expectedOutput, 12);
   assert.deepEqual(serialized.questions[0].methodContract.parameterTypes, ["int", "int"]);
+  assert.equal(serialized.questions[0].methodContract.parameterNames, null);
   assert.match(serialized.questions[0].referenceSolution, /a \+ b/);
 });

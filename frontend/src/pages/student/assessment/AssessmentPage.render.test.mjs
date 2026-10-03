@@ -85,7 +85,8 @@ test("active CODING question renders the shared C# editor, public examples, and 
       starterCode: "return 0;",
       methodContract: {
         typeName: "Solution",
-        methodName: "Solve",
+        methodName: "SumArray",
+        parameterNames: ["numbers"],
         parameterTypes: ["int[]"],
         returnType: "int",
       },
@@ -142,14 +143,29 @@ test("active CODING question renders the shared C# editor, public examples, and 
 
   assert.match(html, /C# coding question/);
   assert.match(html, /Required method signature/);
-  assert.match(html, /Solution\.Solve/);
+  assert.match(html, /public static int Solution\.SumArray\(int\[\] numbers\)/);
   assert.match(html, /Public examples/);
   assert.match(html, /Code answer for question 103/);
   assert.match(html, /Run code/);
   assert.match(html, /role="status"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
   assert.match(html, /Public test 1: Passed/);
   assert.match(html, /Public test 2: Failed/);
-  assert.doesNotMatch(html, /teacher-secret-solution|HIDDEN|99/);
+  assert.doesNotMatch(html, /teacher-secret-solution|HIDDEN|99|referenceSolution|codingTestCases/);
+});
+
+test("student METHOD signatures preserve meaningful parameter order and use argN only for legacy contracts", () => {
+  const renderQuestion = (methodContract) => renderToStaticMarkup(React.createElement(AssessmentCodingQuestion, {
+    question: { id: 105, questionText: "Count values", questionType: "CODING", methodContract, codingExamples: [{ input: [[10, 20], 10], expectedOutput: 1 }] },
+    sourceCode: "", onSourceChange() {}, onRun() {}, runState: { status: "idle" },
+  }));
+  const named = renderQuestion({ typeName: "Solution", methodName: "CountAbove", parameterNames: ["numbers", "limit"], parameterTypes: ["int[]", "int"], returnType: "int" });
+  assert.match(named, /public static int Solution\.CountAbove\(int\[\] numbers, int limit\)/);
+  assert.match(named, /Public examples/);
+  assert.match(named, /Run code/);
+
+  const legacy = renderQuestion({ typeName: "Solution", methodName: "CountAbove", parameterNames: null, parameterTypes: ["int[]", "int"], returnType: "int" });
+  assert.match(legacy, /public static int Solution\.CountAbove\(int\[\] arg1, int arg2\)/);
+  assert.doesNotMatch(legacy, /value1|value2/);
 });
 
 test("PROGRAM coding question explains complete-program grading without a method signature", () => {

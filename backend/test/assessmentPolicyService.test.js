@@ -208,6 +208,48 @@ test("draft validation permits incomplete graphs but enforces persistence-safe f
   }), /unsupported/i);
 });
 
+test("draft policy validates explicit METHOD parameter names without requiring grading tests", () => {
+  const codingDraft = (overrides = {}) => ({
+    questionText: "Work in progress method",
+    questionType: "CODING",
+    points: 1,
+    choices: [],
+    starterCode: "",
+    referenceSolution: "",
+    codingExecutionMode: "METHOD",
+    codingTypeName: "Solution",
+    codingMethodName: "CountAbove",
+    codingParameterTypes: ["int[]", "int"],
+    codingParameterNames: ["numbers", "limit"],
+    codingReturnType: "int",
+    codingTestCases: [],
+    ...overrides,
+  });
+  const validate = (question) => policy.validateAssessmentDraft({
+    assessment: { lessonKey: "arrays", type: "POST", title: "Draft" },
+    questions: [question],
+  });
+
+  assert.doesNotThrow(() => validate(codingDraft()));
+  assert.doesNotThrow(() => validate(codingDraft({ codingParameterNames: null })));
+  assert.throws(() => validate(codingDraft({ codingParameterNames: ["numbers"] })), /parameter/i);
+  assert.throws(() => validate(codingDraft({ codingParameterNames: ["class", "limit"] })), /parameter/i);
+  assert.throws(() => validate(codingDraft({ codingParameterNames: ["numbers", "numbers"] })), /parameter/i);
+  assert.throws(() => validate(codingDraft({ codingParameterNames: ["numbers", 7] })), /parameter/i);
+  assert.throws(() => validate(codingDraft({ codingParameterNames: "numbers" })), /parameter/i);
+
+  assert.throws(() => validate(multipleChoice({ codingParameterNames: ["numbers"] })), /coding configuration/i);
+  assert.throws(() => validate(trueFalse({ codingParameterNames: ["numbers"] })), /coding configuration/i);
+  assert.throws(() => validate(codingDraft({
+    codingExecutionMode: "PROGRAM",
+    codingTypeName: null,
+    codingMethodName: null,
+    codingParameterTypes: null,
+    codingParameterNames: ["numbers"],
+    codingReturnType: null,
+  })), /parameter|configuration/i);
+});
+
 test("objective keys use the minimal lowercase kebab-case contract", () => {
   assert.equal(policy.validateObjectiveKey(null), null);
   assert.equal(policy.validateObjectiveKey("array-declaration-2"), "array-declaration-2");

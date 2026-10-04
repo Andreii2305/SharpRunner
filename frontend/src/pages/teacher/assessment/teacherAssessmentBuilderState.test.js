@@ -45,6 +45,13 @@ test("MCQ and true/false editing supports add, remove, reorder, and exactly one 
   assert.equal(questions.length, 1);
 });
 
+test("new question authoring offers only MCQ and true/false while retaining an existing CODING type", () => {
+  assert.deepEqual(builderState.availableQuestionTypes?.("MULTIPLE_CHOICE"), ["MULTIPLE_CHOICE", "TRUE_FALSE"]);
+  assert.deepEqual(builderState.availableQuestionTypes?.("TRUE_FALSE"), ["MULTIPLE_CHOICE", "TRUE_FALSE"]);
+  assert.deepEqual(builderState.availableQuestionTypes?.("CODING"), ["MULTIPLE_CHOICE", "TRUE_FALSE", "CODING"]);
+  assert.equal(addQuestion([])[0].questionType, "MULTIPLE_CHOICE");
+});
+
 test("save graph emits only backend DTO fields and canonical display order", () => {
   const draft = createAssessmentDraft("POST", "functions");
   draft.questions = addQuestion([], "MULTIPLE_CHOICE");

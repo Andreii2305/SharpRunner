@@ -110,6 +110,12 @@ const newQuestion = (questionType) => ({
   }),
 });
 
+const NEW_QUESTION_TYPES = ["MULTIPLE_CHOICE", "TRUE_FALSE"];
+
+export const availableQuestionTypes = (currentQuestionType) => (
+  currentQuestionType === "CODING" ? [...NEW_QUESTION_TYPES, "CODING"] : NEW_QUESTION_TYPES
+);
+
 export const addQuestion = (questions, questionType = "MULTIPLE_CHOICE") => [...questions, newQuestion(questionType)];
 export const removeQuestion = (questions, id) => questions.filter((question) => question.clientId !== id);
 

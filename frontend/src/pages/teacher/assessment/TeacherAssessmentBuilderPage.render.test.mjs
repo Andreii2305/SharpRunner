@@ -35,6 +35,8 @@ test("attempt locks disable writes and direct route identity drives requests", (
 test("question type transitions are draft-only", () => {
   assert.match(source, /published=\{draft\.isPublished\}/);
   assert.match(source, /disabled=\{disabled \|\| published\} value=\{question\.questionType\}/);
+  assert.match(source, /availableQuestionTypes\(question\.questionType\)\.map/);
+  assert.doesNotMatch(source, /Add multiple-choice, true\/false, or coding questions/);
 });
 
 test("desktop builder keeps scope and assessment selectors compact above the editor", () => {
@@ -52,7 +54,7 @@ test("page shell keeps the builder beside the full-height sidebar instead of bel
 });
 
 test("coding builder exposes named C# contract, typed tests, weights, and teacher-only source", () => {
-  assert.match(source, /value="CODING">Coding/);
+  assert.match(source, /question\.questionType === "CODING" \? <CodingQuestionEditor/);
   for (const marker of ["Coding", "C#", "Type/Class name", "Method name", "Parameter name", "Return type", "Signature preview", "Starter code", "Reference solution", "teacher-only", "PUBLIC", "HIDDEN", "Expected return value", "Expected output", "Weight", "Add test case", "Add value", "Array preview"]) {
     assert.equal(codingEditor.includes(marker), true, marker);
   }

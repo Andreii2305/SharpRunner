@@ -11,13 +11,14 @@ import {
   publishTeacherAssessment, saveTeacherAssessment, unpublishTeacherAssessment,
 } from "../../../services/teacherAssessmentService.js";
 import {
-  ACADEMIC_LESSONS, addChoice, addQuestion, assessmentStatus, buildSaveGraph,
+  ACADEMIC_LESSONS, addChoice, addQuestion, assessmentStatus, availableQuestionTypes, buildSaveGraph,
   hydrateAssessmentDraft, moveChoice, moveQuestion, publishIssues, removeChoice,
   removeQuestion, selectCorrectChoice, updateQuestionType,
 } from "./teacherAssessmentBuilderState.js";
 import styles from "./TeacherAssessmentBuilderPage.module.css";
 
 const emptySlots = () => ({ PRE: { exists: false }, POST: { exists: false } });
+const QUESTION_TYPE_LABELS = { MULTIPLE_CHOICE: "Multiple choice", TRUE_FALSE: "True / False", CODING: "Coding" };
 
 function Status({ summary }) {
   const label = assessmentStatus(summary);
@@ -51,7 +52,7 @@ function QuestionEditor({ question, index, count, disabled, published, validatio
     </div></header>
     <div className={styles.fieldGrid}>
       <label className={styles.wide}>Question text<textarea disabled={disabled} value={question.questionText} onChange={(event) => replace({ questionText: event.target.value })} /></label>
-      <label>Question type<select disabled={disabled || published} value={question.questionType} onChange={(event) => onChange(null, event.target.value)}><option value="MULTIPLE_CHOICE">Multiple choice</option><option value="TRUE_FALSE">True / False</option><option value="CODING">Coding</option></select>{published && <small>Unpublish before changing question type.</small>}</label>
+      <label>Question type<select disabled={disabled || published} value={question.questionType} onChange={(event) => onChange(null, event.target.value)}>{availableQuestionTypes(question.questionType).map((questionType) => <option key={questionType} value={questionType}>{QUESTION_TYPE_LABELS[questionType]}</option>)}</select>{published && <small>Unpublish before changing question type.</small>}</label>
       <label>Points<input disabled={disabled} type="number" min="0.01" step="0.01" value={question.points} onChange={(event) => replace({ points: event.target.value })} /></label>
       <label>Objective key <small>optional, lowercase kebab-case</small><input disabled={disabled} value={question.objectiveKey} pattern="[a-z0-9]+(?:-[a-z0-9]+)*" onChange={(event) => replace({ objectiveKey: event.target.value })} /></label>
       <label className={styles.wide}>Explanation <small>shown only under the configured review policy</small><textarea disabled={disabled} value={question.explanation} onChange={(event) => replace({ explanation: event.target.value })} /></label>
@@ -224,7 +225,7 @@ export default function TeacherAssessmentBuilderPage() {
       </section>
       <section className={styles.questionsSection}><div className={styles.sectionHeading}><div><span>Assessment graph</span><h2>Questions</h2></div><button type="button" className={styles.secondaryButton} disabled={locked || draft.questions.length >= 100} onClick={() => changeDraft((current) => ({ ...current, questions: addQuestion(current.questions) }))}><FiPlus /> Add question</button></div>
         {draft.questions.map((question, index) => <QuestionEditor key={question.clientId} question={question} index={index} count={draft.questions.length} disabled={locked} published={draft.isPublished} validationAttempted={validationAttempted} onChange={(next, type) => changeDraft((current) => ({ ...current, questions: type ? updateQuestionType(current.questions, question.clientId, type) : current.questions.map((item) => item.clientId === question.clientId ? next : item) }))} onMove={(delta) => changeDraft((current) => ({ ...current, questions: moveQuestion(current.questions, index, delta) }))} onRemove={() => changeDraft((current) => ({ ...current, questions: removeQuestion(current.questions, question.clientId) }))} />)}
-        {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice, true/false, or coding questions. Drafts may remain incomplete until publication.</p></div>}
+        {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice or true/false questions. Drafts may remain incomplete until publication.</p></div>}
       </section>
       <section className={styles.publishCard}><div><h2>Publication</h2>{issues.length ? <><p>Resolve these obvious issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div><div className={styles.publishActions}><button type="button" onClick={() => setPreview(true)}><FiEye /> Preview</button>{draft.isPublished ? <button type="button" disabled={locked || dirty} onClick={() => setConfirmAction("unpublish")}>Unpublish</button> : <button type="button" className={styles.primaryButton} disabled={locked || dirty} onClick={requestPublish}>Publish</button>}{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={locked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete</button>}</div></section>
     </>}

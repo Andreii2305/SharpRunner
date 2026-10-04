@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
 
 const source = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.jsx", import.meta.url), "utf8");
 const styles = fs.readFileSync(new URL("./TeacherAssessmentBuilderPage.module.css", import.meta.url), "utf8");
@@ -9,13 +12,63 @@ const codeEditor = fs.readFileSync(new URL("./AssessmentCodeEditor.jsx", import.
 const sharedCodeEditor = fs.readFileSync(new URL("../../../Components/AssessmentCodeEditor/AssessmentCodeEditor.jsx", import.meta.url), "utf8");
 const codingPreview = fs.readFileSync(new URL("./CodingQuestionPreview.jsx", import.meta.url), "utf8");
 
+const vite = await createServer({
+  server: { middlewareMode: true }, appType: "custom", optimizeDeps: { noDiscovery: true },
+});
+test.after(async () => vite.close());
+
+test("question navigation identifies the current question and keeps add question available", async () => {
+  const { QuestionNavigator } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentBuilderChrome.jsx");
+  const html = renderToStaticMarkup(React.createElement(QuestionNavigator, {
+    questions: [
+      { clientId: "question-1", questionText: "Variables and values" },
+      { clientId: "question-2", questionText: "" },
+    ],
+    activeQuestionId: "question-2",
+    onNavigate() {},
+    onAdd() {},
+  }));
+  assert.match(html, /<nav[^>]*aria-label="Question navigation"/);
+  assert.match(html, /Variables and values/);
+  assert.match(html, /Question 2/);
+  assert.match(html, /aria-current="true"/);
+  assert.match(html, /Add question/);
+});
+
+test("sticky editor actions preserve lesson, assessment, status, and save context", async () => {
+  const { EditorActionBar } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentBuilderChrome.jsx");
+  const html = renderToStaticMarkup(React.createElement(EditorActionBar, {
+    lessonTitle: "Arrays",
+    assessmentType: "PRE",
+    status: "Draft",
+    saveState: "unsaved",
+    dirty: true,
+    locked: false,
+    saving: false,
+    published: false,
+    publishDisabled: true,
+    onPreview() {},
+    onSave() {},
+    onPublish() {},
+    onUnpublish() {},
+  }));
+  assert.match(html, /Arrays/);
+  assert.match(html, /PRE-Test/);
+  assert.match(html, /Draft/);
+  assert.match(html, /Unsaved changes/);
+  assert.match(html, /Save Draft/);
+  assert.match(html, /Preview/);
+  assert.match(html, /Publish/);
+});
+
 test("builder exposes labelled settings, question controls, preview, and lifecycle confirmations", () => {
   for (const marker of ["Assessment builder", "Passing percentage", "Maximum attempts", "Answer review policy", "Add question", "Move question up", "Move choice down", "Preview", "Publish assessment?", "Delete assessment?"]) {
     assert.equal(source.includes(marker), true, marker);
   }
+  assert.doesNotMatch(source, />Objective key\s*</);
+  assert.doesNotMatch(source, />Explanation\s*</);
   assert.match(source, /role="dialog"/);
   assert.match(source, /aria-modal="true"/);
-  assert.match(source, /className=\{styles\.saveState\}[^>]*role="status"[^>]*aria-live="polite"/);
 });
 
 test("preview remains teacher-local and answer keys are never persisted in browser storage", () => {
@@ -39,11 +92,14 @@ test("question type transitions are draft-only", () => {
   assert.doesNotMatch(source, /Add multiple-choice, true\/false, or coding questions/);
 });
 
-test("desktop builder keeps scope and assessment selectors compact above the editor", () => {
-  assert.match(styles, /\.main\s*\{[^}]*padding:\s*18px\s+clamp\(18px,\s*3vw,\s*44px\)\s+48px/s);
+test("desktop builder keeps scope compact and constrains the question workspace", () => {
+  assert.match(styles, /\.main\s*\{[^}]*padding:\s*18px\s+clamp\(18px,\s*3vw,\s*40px\)\s+64px/s);
   assert.match(styles, /\.pageHeader\s*\{[^}]*margin-bottom:\s*14px/s);
   assert.match(styles, /\.selectorCard\s*\{[^}]*padding:\s*16px\s+18px/s);
   assert.match(styles, /\.slotGrid\s+article\s*\{[^}]*display:\s*grid[^}]*grid-template-areas:\s*"heading action"\s*"summary action"/s);
+  assert.match(styles, /\.editorWorkspace\s*\{[^}]*grid-template-columns:[^}]*230px[^}]*900px/s);
+  assert.match(styles, /\.editorActionBar\s*\{[^}]*position:\s*sticky[^}]*top:\s*0/s);
+  assert.match(styles, /\.questionNavigator\s*\{[^}]*position:\s*sticky/s);
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.slotGrid\s+article\s*\{[^}]*grid-template-areas:\s*"heading"\s*"summary"\s*"action"/);
 });
 

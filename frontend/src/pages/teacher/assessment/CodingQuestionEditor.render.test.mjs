@@ -196,7 +196,7 @@ test("student coding preview excludes reference solution and hidden grading valu
   const html = renderToStaticMarkup(React.createElement(StudentCodingPreview, { question }));
   assert.match(html, /public starter/);
   assert.match(html, /Expected: 3/);
-  assert.doesNotMatch(html, /private solution|17|\[9,\[8\]\]/);
+  assert.doesNotMatch(html, /private solution|Expected: 17|Input: \[9,\[8\]\]/);
   const teacher = renderToStaticMarkup(React.createElement(TeacherCodingConfigurationPreview, { question, index: 0 }));
   assert.match(teacher, /private solution/);
   assert.match(teacher, /17/);

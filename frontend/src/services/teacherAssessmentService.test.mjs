@@ -50,6 +50,14 @@ test("safe teacher errors never expose transport internals", () => {
   const error = { message: "secret stack", stack: "ORM password", config: { headers: { Authorization: "token" } }, response: { status: 409, data: { error: { code: "VERSION_CONFLICT", message: "Version conflict" } } } };
   assert.deepEqual(service.normalizeTeacherAssessmentError(error), { code: "VERSION_CONFLICT", message: "This assessment changed elsewhere. Reload it before continuing.", status: 409 });
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_PUBLISHED" } } }).message, "Unpublish this assessment before deleting it.");
+  assert.deepEqual(
+    service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "CODING_EXECUTION_UNAVAILABLE" } } }),
+    {
+      code: "CODING_EXECUTION_UNAVAILABLE",
+      message: "Coding assessments can be saved as drafts, but publishing is unavailable until secure coding execution is available.",
+      status: 409,
+    },
+  );
   assert.deepEqual(service.normalizeTeacherAssessmentError({ response: { status: 403, data: { message: "SQL secret" } } }), { code: "REQUEST_FAILED", message: "You do not have permission to manage this classroom.", status: 403 });
 });
 

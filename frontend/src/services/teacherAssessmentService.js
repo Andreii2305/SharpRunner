@@ -126,7 +126,7 @@ const SAFE_MESSAGES = Object.freeze({
   ASSESSMENT_LOCKED: "This assessment is locked because a student attempt exists.",
   ASSESSMENT_PUBLISHED: "Unpublish this assessment before deleting it.",
   ASSESSMENT_INVALID: "Complete the assessment before publishing it.",
-  CODING_PLAYER_UNAVAILABLE: "Coding questions can be saved as drafts, but publishing remains unavailable until the student coding player is released.",
+  CODING_EXECUTION_UNAVAILABLE: "Coding assessments can be saved as drafts, but publishing is unavailable until secure coding execution is available.",
   INVALID_QUESTION: "Check the question text, points, objective key, and choices.",
   INVALID_CHOICE: "Each question needs valid choices and exactly one correct answer.",
   FORBIDDEN: "You do not have permission to manage this classroom.",

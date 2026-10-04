@@ -1166,6 +1166,54 @@ test("published player graph is available only to an exact classroom member", as
   assertNoForbiddenKeys(allowed.payload);
 });
 
+test("published CODING discovery ignores the obsolete player-release flag and stays student-safe", async () => {
+  const previousPlayerFlag = process.env.CODING_ASSESSMENT_PLAYER_ENABLED;
+  process.env.CODING_ASSESSMENT_PLAYER_ENABLED = "false";
+  try {
+    stub(User, "findByPk", async () => activeUser(42));
+    stub(models.LessonAssessment, "findByPk", async () => assessment({
+      questions: [{
+        id: 201,
+        questionText: "Add one",
+        questionType: "CODING",
+        displayOrder: 0,
+        points: 2,
+        objectiveKey: null,
+        starterCode: "public static class Solution { public static int Add(int value) => 0; }",
+        referenceSolution: "private teacher answer",
+        codingExecutionMode: "METHOD",
+        codingTypeName: "Solution",
+        codingMethodName: "Add",
+        codingParameterTypes: ["int"],
+        codingParameterNames: ["value"],
+        codingReturnType: "int",
+        choices: [],
+        codingTestCases: [
+          { id: 1, displayOrder: 0, visibility: "PUBLIC", input: [1], expectedOutput: 2, weight: 1 },
+          { id: 2, displayOrder: 1, visibility: "HIDDEN", input: [9], expectedOutput: 10, weight: 1 },
+        ],
+      }],
+    }));
+    stub(models.ClassroomMembership, "findOne", async () => ({
+      id: 1, classroomId: 7, studentId: 42, status: "active",
+    }));
+    stub(lessonProgressionService, "assertAssessmentInteractionAllowed", async () => ({
+      allowed: true, reason: null,
+    }));
+
+    const result = await request("/api/assessments/12", { authToken: token(42) });
+    assert.equal(result.response.status, 200);
+    assert.equal(result.payload.assessment.questions[0].questionType, "CODING");
+    assert.deepEqual(result.payload.assessment.questions[0].codingExamples, [{
+      input: [1], expectedOutput: 2,
+    }]);
+    assertNoForbiddenKeys(result.payload);
+  } finally {
+    if (previousPlayerFlag === undefined) delete process.env.CODING_ASSESSMENT_PLAYER_ENABLED;
+    else process.env.CODING_ASSESSMENT_PLAYER_ENABLED = previousPlayerFlag;
+  }
+});
+
 test("player graph cannot bypass POST or PRE stage gates while standalone lessons remain compatible", async () => {
   stub(User, "findByPk", async () => activeUser(42));
   let graph = assessment();

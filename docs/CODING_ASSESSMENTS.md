@@ -16,9 +16,11 @@ Historical METHOD questions whose stored parameter-name field is missing or `NUL
 
 ## Release gates
 
-The student implementation is present, but `CODING_ASSESSMENT_PLAYER_ENABLED` remains default OFF. A deliberate deployment or development environment may set it to `true`; doing so only permits the student CODING graph and player. It does not enable execution.
+The student coding UI/player is an implemented application feature. It is not controlled by a release flag: published CODING assessments can be discovered, opened, autosaved, resumed, and reviewed under the same classroom and progression authorization as other assessment types.
 
-Authoritative coding execution is independently default OFF and must pass the K2A secure-capability check. Docker secure-runner mode and the dedicated runner role are required. Direct mode, including the current Render web-service configuration, is ineligible. `render.yaml` is intentionally unchanged.
+Secure authoritative execution is a separate deployment capability and remains default OFF. CODING drafts can always be authored, but publishing an assessment containing any CODING question, or modifying an already-published assessment that contains CODING, requires the existing K2A secure-capability check to report ready. The check includes runner eligibility and isolation prerequisites; `CODING_ASSESSMENT_EXECUTION_ENABLED=true` by itself is not sufficient. Assessments containing only MULTIPLE_CHOICE and TRUE_FALSE questions do not invoke this capability check.
+
+Docker secure-runner mode and the dedicated runner role are required for local execution. An eligible authenticated remote runner may attest the same capability. Direct mode, including the current Render web-service configuration, is ineligible. `render.yaml` is intentionally unchanged.
 
 ## Student data and saves
 
@@ -28,7 +30,7 @@ Source is stored only in `AssessmentResponse.sourceCode`. The browser does not p
 
 ## Run Code
 
-`POST /api/assessments/attempts/:attemptId/questions/:questionId/run` accepts an empty body. It verifies the authenticated student, active owned attempt, player gate, assessment version, CODING question, and secure execution capability. It executes the server-saved source against PUBLIC cases only through K2A. It never grades, mutates points, finalizes the response, submits the attempt, consumes a POST attempt, or reveals hidden-case counts.
+`POST /api/assessments/attempts/:attemptId/questions/:questionId/run` accepts an empty body. It verifies the authenticated student, active owned attempt, assessment version, CODING question, and secure execution capability. It executes the server-saved source against PUBLIC cases only through K2A. It never grades, mutates points, finalizes the response, submits the attempt, consumes a POST attempt, or reveals hidden-case counts.
 
 Run Code is limited to 10 requests per minute for each student/attempt pair. Run Code and authoritative grading currently share K2A secure-runner capacity; K4 does not add a queue. Safe results can include bounded diagnostics and public input, expected output, actual output, status, and pass/fail. Infrastructure failures are reported as unavailable, never as a wrong answer.
 
@@ -56,20 +58,21 @@ The existing assessment analytics results contract includes a question-performan
 
 PRE question performance remains diagnostic and is not described as passing or failing. POST question performance is explicitly separate from the backend-selected official assessment grade. The UI does not rank students, infer per-test outcomes, or expose source, reference solutions, HIDDEN definitions/counts/weights, lease data, or runner details.
 
-## Feature-gate matrix
+## Capability matrix
 
-| Player gate | Execution gate / runner | Teacher behavior | Student access | Run Code | Coding submission and safe failure |
-| --- | --- | --- | --- | --- | --- |
-| OFF | OFF | CODING drafts can be saved; CODING publication is blocked. | CODING graph/player is unavailable. | Unavailable. | Unavailable; no attempt is graded or consumed. |
-| ON | OFF | Complete CODING assessments can be published. | Player, autosave, review, and recovery are available. | Fails closed as temporarily unavailable. | Fails closed before authoritative grading; saved source and the in-progress attempt remain retryable. |
-| ON | ON, runner ineligible | Publication and player behavior are the same as above. | Player remains available. | Secure-capability check rejects the run. | Secure-capability check rejects grading; no partial grade or student zero is persisted. |
-| ON | ON, eligible authenticated Docker runner | Publication and player are available. | Full CODING experience is available. | Executes server-saved source against PUBLIC cases only. | Three-phase lease/fencing flow executes PUBLIC and HIDDEN cases through K2A and atomically finalizes the authoritative grade. |
+| Assessment content | Secure execution capability | Teacher behavior | Student behavior |
+| --- | --- | --- | --- |
+| No CODING questions | Unavailable or available | Valid drafts publish normally; the coding capability is not queried. | Existing MCQ/TRUE_FALSE player and grading behavior is unchanged. |
+| Any CODING question, draft | Unavailable or available | METHOD, PROGRAM, and mixed drafts save normally. | Drafts remain undiscoverable under the existing publication boundary. |
+| Any CODING question, publish or published-graph mutation | Unavailable | The request fails safely with `CODING_EXECUTION_UNAVAILABLE`; no partial publication or graph replacement is committed. | No newly required unusable coding assessment is introduced. |
+| Any CODING question, publish or published-graph mutation | Available from an eligible authenticated runner | Existing structural validation passes, then the assessment can publish or be updated. | Player, autosave, PUBLIC-only Run Code, authoritative grading, result, and review flows are available. |
+| Historically/inconsistently published CODING assessment during a later outage | Temporarily unavailable | Existing publication remains visible; future published mutations are blocked until readiness returns. | Open and autosave remain available. Run Code and submission fail closed; the grading lease is released, source is preserved, no partial score is written, and no attempt is consumed. |
 
-Feature gating is not sandboxing. It prevents entry to an unsafe capability; only an eligible runner supplies the required isolation.
+A boolean feature setting is not sandboxing. Only the authoritative capability check for an eligible runner supplies the required execution-readiness decision.
 
 ## Production enablement checklist
 
-`CODING_ASSESSMENT_PLAYER_ENABLED` may be enabled only after all of these are complete:
+The student coding UI/player is part of the application and requires the normal assessment deployment checks:
 
 - [ ] K3, K4, and K5 are deployed together.
 - [ ] The complete assessment migration chain has been applied successfully to the production-compatible database.
@@ -77,7 +80,7 @@ Feature gating is not sandboxing. It prevents entry to an unsafe capability; onl
 - [ ] Recursive DTO leak tests pass in the deployed revision.
 - [ ] An authenticated teacher/student smoke test covers create, publish, autosave, revisit, result, and review behavior.
 
-Authoritative coding execution may be enabled only after the player checklist and every item below are complete:
+Authoritative coding execution may be enabled only after every item below is complete:
 
 - [ ] An eligible secure runner is deployed with an authenticated API-to-runner transport and is not an open public compiler.
 - [ ] The immutable/trusted sandbox image identity is recorded and deployed.
@@ -90,11 +93,11 @@ Authoritative coding execution may be enabled only after the player checklist an
 - [ ] Authenticated Run Code, authoritative grading, and infrastructure-failure retry smoke tests pass.
 - [ ] Runner capacity, monitoring, saturation behavior, and incident response are understood.
 
-Both coding gates remain default OFF until these checklists are complete and an explicit deployment decision enables them.
+Authoritative coding execution remains default OFF until these checks are complete and an explicit deployment decision enables it. That default prevents CODING publication but does not block non-coding assessment publication or CODING draft authoring.
 
 ## Current Render limitation
 
-The repository's current Render runner uses direct execution mode. It does not provide the K2A per-job Docker/OCI boundary and is therefore **not eligible** for authoritative assessment execution. `render.yaml` keeps the player and execution gates off. Switching a feature flag does not add containment and must not be treated as a substitute for it.
+The repository's current Render runner uses direct execution mode. It does not provide the K2A per-job Docker/OCI boundary and is therefore **not eligible** for authoritative assessment execution. `render.yaml` keeps authoritative execution off. Switching a boolean setting does not add containment and must not be treated as a substitute for the capability check.
 
 Production execution requires a separate authenticated runner host/service that can launch the trusted sandbox image as a fresh constrained container for each compile and invocation, or an equivalently isolated execution service whose controls pass the same live containment tests. The present repository evidence does not establish that capability on the current Render service.
 
@@ -102,7 +105,7 @@ Production execution requires a separate authenticated runner host/service that 
 
 The schema evolves additively from the base PRE/POST assessment tables through CODING question/test/response columns, teacher reference solutions, the nullable METHOD `codingParameterNames` JSONB metadata column, and the K4 `GRADING` lease fields/status constraint. The parameter-name migration performs no historical-row backfill; `NULL` remains the legacy `argN` signal. Foreign keys, assessment/question ordering uniqueness, response attempt/question uniqueness, choice/source exclusivity, points precision, lease-state checks, and supporting indexes are defined in the migration chain. The application remains the only assessment data authority exposed to students; assessment tables are not granted through a student-facing direct-database contract, and API serializers/authorization keep classroom, ownership, hidden grading data, reference solutions, and lease tokens scoped server-side.
 
-SQL inspection and automated migration-contract tests do not replace a live database exercise. A clean install and a representative upgrade on disposable PostgreSQL/Supabase-compatible infrastructure remain mandatory deployment QA before either coding gate is enabled.
+SQL inspection and automated migration-contract tests do not replace a live database exercise. A clean install and a representative upgrade on disposable PostgreSQL/Supabase-compatible infrastructure remain mandatory deployment QA before authoritative coding execution is enabled.
 
 ## Final threat review
 

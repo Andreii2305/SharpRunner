@@ -35,7 +35,6 @@ const PHASE_B_ERRORS = Object.freeze({
   CODING_SOURCE_TOO_LARGE: [413, "CODING_SOURCE_TOO_LARGE", "Coding response exceeds the source limit"],
   CODING_SOURCE_REQUIRED: [409, "CODING_SOURCE_REQUIRED", "Save source code before running it"],
   CODING_EXECUTION_UNAVAILABLE: [503, "CODING_EXECUTION_UNAVAILABLE", "Secure coding assessment execution is temporarily unavailable"],
-  CODING_PLAYER_UNAVAILABLE: [409, "CODING_PLAYER_UNAVAILABLE", "Coding assessment player is unavailable"],
   INVALID_SUBMISSION_KEY: [400, "INVALID_SUBMISSION_KEY", "Invalid submission key"],
   ASSESSMENT_INVALID: [422, "ASSESSMENT_INVALID", "Assessment graph is invalid"],
   ATTEMPT_SUBMITTED: [409, "ATTEMPT_ALREADY_SUBMITTED", "Assessment attempt was already submitted"],

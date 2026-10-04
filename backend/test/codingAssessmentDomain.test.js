@@ -4,7 +4,6 @@ const { test } = require("node:test");
 const {
   CodingAssessmentInfrastructureError,
   gradeCodingQuestion,
-  isCodingAssessmentPlayerEnabled,
   normalizeProgramOutput,
   shapePublicCodingExecutionResult,
   validateCodingQuestion,
@@ -353,12 +352,6 @@ test("coding points use deterministic two-decimal rounding", async () => {
     }),
   });
   assert.deepEqual(result, { isCorrect: false, pointsAwarded: 0.33 });
-});
-
-test("coding assessment player release gate defaults off and requires explicit enablement", () => {
-  assert.equal(isCodingAssessmentPlayerEnabled({}), false);
-  assert.equal(isCodingAssessmentPlayerEnabled({ CODING_ASSESSMENT_PLAYER_ENABLED: "false" }), false);
-  assert.equal(isCodingAssessmentPlayerEnabled({ CODING_ASSESSMENT_PLAYER_ENABLED: "true" }), true);
 });
 
 test("coding grading treats compile, signature, runtime, timeout, and resource outcomes as student zeroes", async () => {

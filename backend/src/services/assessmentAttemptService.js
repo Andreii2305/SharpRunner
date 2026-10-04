@@ -9,7 +9,6 @@ const {
   contractForQuestion,
   executionModeForQuestion,
   gradeCodingQuestion,
-  isCodingAssessmentPlayerEnabled,
   shapePublicCodingExecutionResult,
 } = require("./codingAssessmentService");
 const {
@@ -168,10 +167,6 @@ const createAssessmentAttemptService = ({
     const assessment = plain(assessmentInput);
     if (!assessment.isPublished) {
       fail("ASSESSMENT_UNAVAILABLE", "Assessment is not published");
-    }
-    if (assessment.questions?.some((question) => question.questionType === "CODING")
-      && !isCodingAssessmentPlayerEnabled(environment)) {
-      fail("CODING_PLAYER_UNAVAILABLE", "Coding assessment player is unavailable");
     }
     try {
       validateAssessmentForPublish({ assessment, questions: assessment.questions });

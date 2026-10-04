@@ -78,7 +78,7 @@ const makeHarness = (assessmentOptions = {}, {
   progressionService = allowAllProgression,
   baselineService = defaultBaselineService,
   secureCodingExecution = { runSecureMethodExecution: async () => ({ category: "INFRASTRUCTURE_ERROR" }) },
-  environment = { CODING_ASSESSMENT_PLAYER_ENABLED: "true" },
+  environment = {},
 } = {}) => {
   const store = {
     assessments: [makeGraph(assessmentOptions)],
@@ -999,14 +999,13 @@ test("CODING autosave persists source without grading and enforces response excl
   }), "CODING_SOURCE_TOO_LARGE");
 });
 
-test("CODING attempts remain unavailable while the separate player release gate is off", async () => {
-  const h = makeHarness({}, { environment: {} });
+test("CODING attempts remain available without the obsolete player release gate", async () => {
+  const h = makeHarness({}, { environment: { CODING_ASSESSMENT_PLAYER_ENABLED: "false" } });
   useCodingGraph(h.store);
-  await expectCode(
-    h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
-    "CODING_PLAYER_UNAVAILABLE",
-  );
-  assert.equal(h.store.attempts.length, 0);
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  assert.equal(started.assessment.questions[0].questionType, "CODING");
+  assert.equal(started.attempt.status, "IN_PROGRESS");
+  assert.equal(h.store.attempts.length, 1);
 });
 
 test("CODING submission applies partial credit and preserves PRE diagnostic semantics", async () => {
@@ -1061,6 +1060,7 @@ test("secure capability failure rolls back CODING grading and leaves the attempt
   assert.equal(h.store.attempts[0].submissionKey, null);
   assert.equal(h.store.responses[0].pointsAwarded, 0);
   assert.equal(h.store.responses[0].isCorrect, false);
+  assert.equal(h.store.responses[0].sourceCode, h.store.assessments[0].questions[0].starterCode);
 });
 
 test("malformed runner output is infrastructure failure and cannot become a student zero", async () => {
@@ -1256,6 +1256,10 @@ test("PROGRAM infrastructure failure releases grading without recording a zero",
   assert.equal(harness.store.attempts[0].submissionKey, null);
   assert.equal(harness.store.responses[0].pointsAwarded, 0);
   assert.equal(harness.store.responses[0].isCorrect, false);
+  assert.equal(
+    harness.store.responses[0].sourceCode,
+    harness.store.assessments[0].questions[0].starterCode,
+  );
 });
 
 test("an active grading lease is observable by the same key and blocks a competing key", async () => {

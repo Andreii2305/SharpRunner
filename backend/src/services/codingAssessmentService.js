@@ -19,9 +19,6 @@ class CodingAssessmentInfrastructureError extends Error {
 }
 
 const plain = (value) => value?.toJSON ? value.toJSON() : value;
-const isCodingAssessmentPlayerEnabled = (environment = process.env) => (
-  String(environment.CODING_ASSESSMENT_PLAYER_ENABLED || "false").toLowerCase() === "true"
-);
 const sortedTests = (question) => [...(question.codingTestCases || [])]
   .map(plain)
   .sort((left, right) => Number(left.displayOrder) - Number(right.displayOrder));
@@ -247,7 +244,6 @@ module.exports = {
   contractForQuestion,
   executionModeForQuestion,
   gradeCodingQuestion,
-  isCodingAssessmentPlayerEnabled,
   normalizeProgramOutput,
   shapePublicCodingExecutionResult,
   validateCodingQuestion,

@@ -12,6 +12,7 @@ const productionApp = require("../src/app");
 const { createTeacherAssessmentService } = require("../src/services/teacherAssessmentService");
 const { createAssessmentAttemptService } = require("../src/services/assessmentAttemptService");
 const { createAssessmentAuthorizationService } = require("../src/services/assessmentAuthorizationService");
+const { getSecureCodingExecutionCapability } = require("../src/services/secureCodingExecutionService");
 const { TERMS_VERSION, PRIVACY_POLICY_VERSION } = require("../src/constants/policyVersions");
 
 const restorations = [];
@@ -393,6 +394,95 @@ const saveBody = (overrides = {}) => ({
     shuffleChoices: true,
   },
   questions: [],
+  ...overrides,
+});
+
+const codingQuestionInput = (executionMode = "METHOD") => ({
+  questionText: executionMode === "PROGRAM" ? "Print the sum" : "Add one",
+  questionType: "CODING",
+  points: 2,
+  choices: [],
+  executionMode,
+  starterCode: executionMode === "PROGRAM"
+    ? "using System; class Program { static void Main() {} }"
+    : "public static class Solution { public static int Add(int value) => 0; }",
+  referenceSolution: executionMode === "PROGRAM"
+    ? "using System; class Program { static void Main() { Console.WriteLine(2); } }"
+    : "public static class Solution { public static int Add(int value) => value + 1; }",
+  ...(executionMode === "METHOD" ? {
+    methodContract: {
+      typeName: "Solution",
+      methodName: "Add",
+      parameterTypes: ["int"],
+      parameterNames: ["value"],
+      returnType: "int",
+    },
+  } : {}),
+  codingTestCases: [executionMode === "PROGRAM"
+    ? { visibility: "HIDDEN", input: "1\n", expectedOutput: "2\n", weight: 1 }
+    : { visibility: "HIDDEN", input: [1], expectedOutput: 2, weight: 1 }],
+});
+
+const codingQuestionRow = (executionMode = "METHOD", overrides = {}) => ({
+  id: 201,
+  assessmentId: 12,
+  questionText: executionMode === "PROGRAM" ? "Print the sum" : "Add one",
+  questionType: "CODING",
+  displayOrder: 0,
+  points: 2,
+  explanation: null,
+  objectiveKey: null,
+  starterCode: executionMode === "PROGRAM"
+    ? "using System; class Program { static void Main() {} }"
+    : "public static class Solution { public static int Add(int value) => 0; }",
+  referenceSolution: executionMode === "PROGRAM"
+    ? "using System; class Program { static void Main() { Console.WriteLine(2); } }"
+    : "public static class Solution { public static int Add(int value) => value + 1; }",
+  codingExecutionMode: executionMode,
+  codingTypeName: executionMode === "METHOD" ? "Solution" : null,
+  codingMethodName: executionMode === "METHOD" ? "Add" : null,
+  codingParameterTypes: executionMode === "METHOD" ? ["int"] : null,
+  codingParameterNames: executionMode === "METHOD" ? ["value"] : null,
+  codingReturnType: executionMode === "METHOD" ? "int" : null,
+  ...overrides,
+});
+
+const codingTestRow = (executionMode = "METHOD", overrides = {}) => ({
+  id: 2001,
+  questionId: 201,
+  displayOrder: 0,
+  visibility: "HIDDEN",
+  input: executionMode === "PROGRAM" ? "1\n" : [1],
+  expectedOutput: executionMode === "PROGRAM" ? "2\n" : 2,
+  weight: 1,
+  ...overrides,
+});
+
+const trueFalseQuestionRow = (overrides = {}) => ({
+  id: 102,
+  assessmentId: 12,
+  questionText: "Arrays have a Length property.",
+  questionType: "TRUE_FALSE",
+  displayOrder: 0,
+  points: 1,
+  explanation: null,
+  objectiveKey: null,
+  ...overrides,
+});
+
+const trueFalseChoices = (questionId = 102) => [
+  { id: 1003, questionId, choiceText: "True", displayOrder: 0, isCorrect: true },
+  { id: 1004, questionId, choiceText: "False", displayOrder: 1, isCorrect: false },
+];
+
+const preAssessment = (overrides = {}) => baseAssessment({
+  type: "PRE",
+  title: "Arrays diagnostic",
+  passingPercentage: null,
+  maxAttempts: 1,
+  gradeCalculation: "FIRST",
+  requirePassingForCompletion: false,
+  answerReviewPolicy: "NEVER",
   ...overrides,
 });
 
@@ -983,7 +1073,7 @@ test("published graph save performs full validation with server-derived identifi
   assert.equal(invalid.payload.code, "ASSESSMENT_INVALID");
 });
 
-test("published graph cannot be converted to CODING while the player release gate is off", async () => {
+test("published graph cannot be converted to CODING while secure execution is unavailable", async () => {
   const h = harness({ assessments: [baseAssessment({ isPublished: true, publishedAt: new Date() })] });
   const result = await h.call("/classrooms/7/assessments/12", {
     method: "PUT",
@@ -996,8 +1086,25 @@ test("published graph cannot be converted to CODING while the player release gat
     }] }),
   });
   assert.equal(result.response.status, 409);
-  assert.equal(result.payload.code, "CODING_PLAYER_UNAVAILABLE");
+  assert.equal(result.payload.code, "CODING_EXECUTION_UNAVAILABLE");
   assert.equal(h.store.questionDeletes, 0);
+});
+
+test("published graph cannot retain CODING content while secure execution is unavailable", async () => {
+  const h = harness({
+    assessments: [baseAssessment({ isPublished: true, publishedAt: new Date() })],
+    questions: [codingQuestionRow("METHOD")],
+    choices: [],
+    codingTests: [codingTestRow("METHOD")],
+  });
+  const result = await h.call("/classrooms/7/assessments/12", {
+    method: "PUT",
+    body: saveBody({ questions: [codingQuestionInput("METHOD")] }),
+  });
+  assert.equal(result.response.status, 409);
+  assert.equal(result.payload.code, "CODING_EXECUTION_UNAVAILABLE");
+  assert.equal(h.store.questionDeletes, 0);
+  assert.equal(h.store.questions[0].questionType, "CODING");
 });
 
 test("authorized teacher CODING save reloads reference source and ordered public and hidden tests", async () => {
@@ -1062,11 +1169,8 @@ test("teacher CODING save rejects malformed explicit parameter names before grap
   assert.equal(h.store.questionDeletes, 0);
 });
 
-test("blank optional CODING source saves canonically, reloads empty, and publishes", async () => {
-  const previousGate = process.env.CODING_ASSESSMENT_PLAYER_ENABLED;
-  process.env.CODING_ASSESSMENT_PLAYER_ENABLED = "true";
-  try {
-    const h = harness();
+test("blank optional CODING source saves canonically and reloads while execution is unavailable", async () => {
+  const h = harness();
     const savedResult = await h.call("/classrooms/7/assessments/12", {
       method: "PUT",
       body: saveBody({ questions: [{
@@ -1087,15 +1191,145 @@ test("blank optional CODING source saves canonically, reloads empty, and publish
     assert.equal(reloaded.response.status, 200);
     assert.equal(reloaded.payload.assessment.questions[0].starterCode, "");
     assert.equal(reloaded.payload.assessment.questions[0].referenceSolution, "");
+});
 
-    const published = await h.call("/classrooms/7/assessments/12/publish", {
-      method: "POST", body: { version: 2 },
+for (const executionMode of ["METHOD", "PROGRAM"]) {
+  test(`${executionMode} CODING draft saves while secure execution is unavailable`, async () => {
+    const h = harness();
+    const saved = await h.call("/classrooms/7/assessments/12", {
+      method: "PUT",
+      body: saveBody({ questions: [codingQuestionInput(executionMode)] }),
     });
-    assert.equal(published.response.status, 200);
-    assert.equal(published.payload.assessment.isPublished, true);
-  } finally {
-    if (previousGate === undefined) delete process.env.CODING_ASSESSMENT_PLAYER_ENABLED;
-    else process.env.CODING_ASSESSMENT_PLAYER_ENABLED = previousGate;
+    assert.equal(saved.response.status, 200);
+    assert.equal(saved.payload.assessment.questions[0].executionMode, executionMode);
+    assert.equal(saved.payload.assessment.isPublished, false);
+  });
+
+  test(`${executionMode} CODING publication fails when authoritative execution is unavailable`, async () => {
+    const h = harness({
+      questions: [codingQuestionRow(executionMode)],
+      choices: [],
+      codingTests: [codingTestRow(executionMode)],
+    });
+    const published = await h.call("/classrooms/7/assessments/12/publish", {
+      method: "POST",
+      body: { version: 1 },
+    });
+    assert.equal(published.response.status, 409);
+    assert.equal(published.payload.code, "CODING_EXECUTION_UNAVAILABLE");
+    assert.equal(h.store.assessments[0].isPublished, false);
+  });
+}
+
+for (const executionMode of ["METHOD", "PROGRAM"]) {
+  test(`mixed MCQ and ${executionMode} CODING draft saves but publication fails while secure execution is unavailable`, async () => {
+    const h = harness();
+    const saved = await h.call("/classrooms/7/assessments/12", {
+      method: "PUT",
+      body: saveBody({ questions: [{
+        questionText: "Pick one",
+        questionType: "MULTIPLE_CHOICE",
+        points: 1,
+        choices: [{ choiceText: "A", isCorrect: true }, { choiceText: "B", isCorrect: false }],
+      }, codingQuestionInput(executionMode)] }),
+    });
+    assert.equal(saved.response.status, 200);
+    const published = await h.call("/classrooms/7/assessments/12/publish", {
+      method: "POST",
+      body: { version: 2 },
+    });
+    assert.equal(published.response.status, 409);
+    assert.equal(published.payload.code, "CODING_EXECUTION_UNAVAILABLE");
+  });
+}
+
+test("CODING publication succeeds only when the authoritative capability reports ready", async () => {
+  const h = harness({
+    questions: [codingQuestionRow("METHOD")],
+    choices: [],
+    codingTests: [codingTestRow("METHOD")],
+  });
+  const capabilityRequests = [];
+  const environment = {
+    CODING_ASSESSMENT_EXECUTION_ENABLED: "true",
+    PRACTICE_RUNNER_URL: "https://runner.example.test",
+    PRACTICE_RUNNER_TOKEN: "remote-secure-runner-token-at-least-32-characters",
+  };
+  stub(global, "fetch", async (url, options = {}) => {
+    capabilityRequests.push({ url, options });
+    return new Response(JSON.stringify({ available: true, mode: "docker" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const service = createTeacherAssessmentService({
+    environment,
+    secureCodingExecution: {
+      getSecureCodingExecutionCapability,
+    },
+  });
+  const result = await service.publishAssessment({
+    classroomId: 7,
+    assessmentId: 12,
+    actorId: 5,
+    actorRole: "teacher",
+    version: 1,
+  });
+  assert.equal(result.assessment.isPublished, true);
+  assert.equal(capabilityRequests.length, 1);
+  assert.equal(capabilityRequests[0].url, "https://runner.example.test/capabilities/assessment-coding");
+  assert.equal(
+    capabilityRequests[0].options.headers.authorization,
+    `Bearer ${environment.PRACTICE_RUNNER_TOKEN}`,
+  );
+  assert.equal(h.store.assessments[0].version, 2);
+});
+
+test("CODING publication reports structural invalidity before execution readiness", async () => {
+  const h = harness({
+    questions: [codingQuestionRow("METHOD")],
+    choices: [],
+    codingTests: [],
+  });
+  const published = await h.call("/classrooms/7/assessments/12/publish", {
+    method: "POST",
+    body: { version: 1 },
+  });
+  assert.equal(published.response.status, 422);
+  assert.equal(published.payload.code, "ASSESSMENT_INVALID");
+  assert.equal(h.store.assessments[0].isPublished, false);
+});
+
+test("non-coding PRE and POST publication never invokes coding capability", async () => {
+  const cases = [
+    { name: "MCQ-only", questions: [baseQuestion()], choices: baseChoices() },
+    { name: "TRUE_FALSE-only", questions: [trueFalseQuestionRow()], choices: trueFalseChoices() },
+    {
+      name: "MCQ + TRUE_FALSE",
+      questions: [baseQuestion(), trueFalseQuestionRow({ displayOrder: 1 })],
+      choices: [...baseChoices(), ...trueFalseChoices()],
+    },
+  ];
+  for (const assessmentType of ["PRE", "POST"]) {
+    for (const scenario of cases) {
+      const assessment = assessmentType === "PRE" ? preAssessment() : baseAssessment();
+      const h = harness({ assessments: [assessment], questions: scenario.questions, choices: scenario.choices });
+      const service = createTeacherAssessmentService({
+        secureCodingExecution: {
+          getSecureCodingExecutionCapability: async () => {
+            assert.fail(`${assessmentType} ${scenario.name} invoked coding capability`);
+          },
+        },
+      });
+      const result = await service.publishAssessment({
+        classroomId: 7,
+        assessmentId: 12,
+        actorId: 5,
+        actorRole: "teacher",
+        version: 1,
+      });
+      assert.equal(result.assessment.isPublished, true, `${assessmentType} ${scenario.name}`);
+    }
   }
 });
 

@@ -10,7 +10,6 @@ const {
   selectFirstSubmittedPostAttempt,
   selectOfficialPostAttempt,
 } = require("./assessmentPolicyService");
-const { isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
 
 const plain = (value) => value?.toJSON ? value.toJSON() : value;
 
@@ -26,7 +25,6 @@ const createAssessmentReadService = ({
   progressionService = defaultProgressionService,
   serializers = defaultSerializers,
   selectors = { calculateLearningGain, selectFirstSubmittedPostAttempt, selectOfficialPostAttempt },
-  environment = process.env,
 } = {}) => {
   const {
     AssessmentAttempt,
@@ -139,10 +137,6 @@ const createAssessmentReadService = ({
         "ASSESSMENT_NOT_PUBLISHED",
         "Assessment is not published",
       );
-    }
-    if (assessment.questions?.some((question) => question.questionType === "CODING")
-      && !isCodingAssessmentPlayerEnabled(environment)) {
-      throw new AssessmentApiError(404, "ASSESSMENT_NOT_PUBLISHED", "Assessment is not published");
     }
     const membership = await authorizationService.requireActiveStudentMembership({
       classroomId: assessment.classroomId,

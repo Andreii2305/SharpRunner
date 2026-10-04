@@ -12,7 +12,7 @@ const {
   QUESTION_TYPES,
 } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
-const { isCodingAssessmentPlayerEnabled } = require("./codingAssessmentService");
+const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const { validateExplicitCodingParameterNames } = require("./codingParameterNameService");
 
 const CREATE_FIELDS = new Set([
@@ -140,6 +140,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
   const attemptService = dependencies.assessmentAttemptService
     || dependencies.attemptService
     || defaultAttemptService;
+  const secureCodingExecution = dependencies.secureCodingExecution
+    || defaultSecureCodingExecution;
   const environment = dependencies.environment || process.env;
   const {
     LessonAssessment,
@@ -180,6 +182,18 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     ],
     ...(transaction ? { transaction } : {}),
   });
+
+  const assertCodingExecutionAvailable = async (questions = []) => {
+    if (!questions.some((question) => question.questionType === QUESTION_TYPES.CODING)) return;
+    const capability = await secureCodingExecution.getSecureCodingExecutionCapability({ environment });
+    if (!capability?.available) {
+      throw new AssessmentApiError(
+        409,
+        "CODING_EXECUTION_UNAVAILABLE",
+        "Coding assessments cannot be published until secure coding execution is available",
+      );
+    }
+  };
 
   const listAssessments = async ({ classroomId, lessonKey, actorId, actorRole }) => {
     await authorization.requireManagedClassroom({ classroomId, actorId, actorRole });
@@ -594,15 +608,6 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     } catch (error) {
       throw mapValidationError(error);
     }
-    if (assessment.isPublished
-      && normalizedQuestions.some((question) => question.questionType === "CODING")
-      && !isCodingAssessmentPlayerEnabled(environment)) {
-      throw new AssessmentApiError(
-        409,
-        "CODING_PLAYER_UNAVAILABLE",
-        "Coding assessments cannot be published until the coding player is available",
-      );
-    }
     if (assessment.isPublished) {
       const validationQuestions = normalizedQuestions.map((question, questionIndex) => ({
         ...question,
@@ -620,6 +625,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       } catch (error) {
         throw mapValidationError(error, "ASSESSMENT_INVALID");
       }
+      await assertCodingExecutionAvailable(normalizedQuestions);
     }
 
     const oldQuestions = await AssessmentQuestion.findAll({
@@ -710,22 +716,16 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     const currentVersion = assertVersion(assessment, version);
     await assertNoAttempts(assessmentId, transaction);
     const graph = await loadGraph(assessmentId, transaction);
-    if (plain(graph).questions?.some((question) => question.questionType === "CODING")
-      && !isCodingAssessmentPlayerEnabled(environment)) {
-      throw new AssessmentApiError(
-        409,
-        "CODING_PLAYER_UNAVAILABLE",
-        "Coding assessments cannot be published until the coding player is available",
-      );
-    }
+    const questions = plain(graph).questions || [];
     try {
       policy.validateAssessmentForPublish({
         assessment: plain(graph),
-        questions: plain(graph).questions || [],
+        questions,
       });
     } catch (error) {
       throw mapValidationError(error, "ASSESSMENT_INVALID");
     }
+    await assertCodingExecutionAvailable(questions);
     const warnings = await calculatePublicationWarnings(assessment, transaction);
     assessment.isPublished = true;
     assessment.publishedAt = new Date();

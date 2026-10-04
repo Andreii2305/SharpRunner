@@ -9,6 +9,15 @@ const finite = (value) => value !== null && value !== undefined && value !== "" 
 const rounded = (value) => Math.round((value + Number.EPSILON) * 10) / 10;
 const average = (values) => values.length ? rounded(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
 
+const baselineStatus = (value) => ["VALID", "RETROACTIVE", "UNKNOWN"].includes(value)
+  ? value
+  : "UNKNOWN";
+export const baselineStatusLabel = (value) => ({
+  VALID: "Valid baseline",
+  RETROACTIVE: "Retroactive — game activity preceded PRE",
+  UNKNOWN: "Unknown — legacy baseline timing",
+}[baselineStatus(value)]);
+
 const safeAttempt = (row, type) => ({
   attemptId: row.attemptId,
   attemptNumber: Number(row.attemptNumber),
@@ -17,6 +26,10 @@ const safeAttempt = (row, type) => ({
   passed: type === "POST" && typeof row.passed === "boolean" ? row.passed : null,
   isOfficial: type === "POST" && row.isOfficial === true,
   isFirstSubmittedPost: type === "POST" && row.isFirstSubmittedPost === true,
+  ...(type === "PRE" ? {
+    preBaselineStatus: baselineStatus(row.preBaselineStatus),
+    baselineLabel: baselineStatusLabel(row.preBaselineStatus),
+  } : {}),
   type,
 });
 
@@ -68,7 +81,8 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
     const preAttempt = entry.preAttempts[0] ?? null;
     const firstPost = entry.postAttempts.find((attempt) => attempt.isFirstSubmittedPost) ?? null;
     const officialPost = entry.postAttempts.find((attempt) => attempt.isOfficial) ?? null;
-    const learningGain = finite(preAttempt?.percentage) && finite(firstPost?.percentage)
+    const learningGain = preAttempt?.preBaselineStatus === "VALID"
+      && finite(preAttempt?.percentage) && finite(firstPost?.percentage)
       ? rounded(firstPost.percentage - preAttempt.percentage)
       : null;
     const name = `${entry.student.firstName} ${entry.student.lastName}`.trim() || entry.student.username;
@@ -76,7 +90,7 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
       student: entry.student,
       name,
       preAttempt,
-      preStatus: preAttempt ? "Diagnostic submitted" : "Not submitted",
+      preStatus: preAttempt?.baselineLabel ?? "Not submitted",
       postAttempts: entry.postAttempts,
       firstPost,
       officialPost,
@@ -89,6 +103,7 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
   }).sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) || String(left.student.id).localeCompare(String(right.student.id)));
 
   const preRows = rows.filter((row) => row.preAttempt);
+  const validBaselineRows = preRows.filter((row) => row.preAttempt.preBaselineStatus === "VALID");
   const postRows = rows.filter((row) => row.postAttempts.length);
   const officialRows = rows.filter((row) => row.officialPost);
   const pairedRows = rows.filter((row) => row.learningGain !== null);
@@ -103,7 +118,11 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
     metrics: {
       preSubmittedStudents: preRows.length,
       postSubmittedStudents: postRows.length,
+      averageAllPrePercentage: average(preRows.map((row) => row.preAttempt.percentage).filter(finite).map(Number)),
+      averageValidBaselinePrePercentage: average(validBaselineRows.map((row) => row.preAttempt.percentage).filter(finite).map(Number)),
       averagePrePercentage: average(preRows.map((row) => row.preAttempt.percentage).filter(finite).map(Number)),
+      validBaselineStudents: validBaselineRows.length,
+      excludedBaselineStudents: preRows.length - validBaselineRows.length,
       averageOfficialPostPercentage: average(officialRows.map((row) => row.officialPost.percentage).filter(finite).map(Number)),
       postPassedStudents: postPassingApplies ? passedRows.length : null,
       postPassRate: postPassingApplies && officialRows.length === postRows.length && officialRows.length ? rounded((passedRows.length / officialRows.length) * 100) : null,

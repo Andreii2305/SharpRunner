@@ -1662,12 +1662,22 @@ test("PRE rows never receive an official highest marker", async () => {
       maxAttempts: 1,
       gradeCalculation: "FIRST",
     })],
-    attempts: [submittedAttempt({ percentage: 70, passed: null })],
+    attempts: [submittedAttempt({ percentage: 70, passed: null, preBaselineStatus: null })],
   });
   const result = await h.call("/classrooms/7/assessments/12/results");
   assert.equal(result.response.status, 200);
   assert.equal(result.payload.results[0].isOfficial, false);
   assert.equal(result.payload.results[0].isFirstSubmittedPost, false);
+  assert.equal(result.payload.results[0].preBaselineStatus, "UNKNOWN");
+  assert.equal(h.store.resultQueries[0].attributes.includes("preBaselineStatus"), true);
+});
+
+test("POST result rows neither query nor expose PRE baseline status", async () => {
+  const h = harness({ attempts: [submittedAttempt({ preBaselineStatus: "VALID" })] });
+  const result = await h.call("/classrooms/7/assessments/12/results");
+  assert.equal(result.response.status, 200);
+  assert.equal(h.store.resultQueries[0].attributes.includes("preBaselineStatus"), false);
+  assert.equal("preBaselineStatus" in result.payload.results[0], false);
 });
 
 test("result payload excludes responses submission keys and private account fields", async () => {

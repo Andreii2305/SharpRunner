@@ -114,6 +114,13 @@
 .completed .nodeContent { color: #efffe7; }
 .current .shieldInner { background: linear-gradient(#c44a36, #8b2c1a); box-shadow: inset 0 0 0 1px #ffb89a; }
 .current .nodeContent { color: #fff4ce; text-shadow: 1px 1px #000; }
+.assessment-required .shieldInner { background: linear-gradient(#3f7cbf, #23476f); box-shadow: inset 0 0 0 1px #8fc7ff; }
+.assessment-required .nodeContent { color: #fff8dc; }
+.assessment-required .nodeTitle { color: #e8f5ff; border-color: #78aede; background: rgba(25, 61, 96, 0.95); }
+.assessment-recovery .shieldInner,
+.assessment-invalid .shieldInner { background: linear-gradient(#8f4b45, #572f2b); box-shadow: inset 0 0 0 1px #c77a70; }
+.assessment-recovery .nodeTitle,
+.assessment-invalid .nodeTitle { color: #ffd8d1; border-color: #9e5c54; background: rgba(74, 31, 27, 0.94); }
 
 .pulseRing {
   position: absolute;

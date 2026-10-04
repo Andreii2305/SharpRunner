@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Editor from "@monaco-editor/react";
 import { FiCrosshair, FiRefreshCw, FiSmartphone, FiVolume2, FiVolumeX, FiZap, FiZapOff } from "react-icons/fi";
 import axios from "axios";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import styles from "./GamePage.module.css";
 import Button from "../../Components/Button/Button.jsx";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
@@ -38,12 +38,18 @@ import { shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
 import { finishGameTutorialSession, shouldDismissPortraitPrompt } from "./tutorial/gameTutorialFlow.js";
 import { readGameAuthHeaders, readGameDraft, removeGameDraft } from "./gamePageStorage.js";
 import { getProgress } from "../../services/studentAssessmentService.js";
-import { buildMapHref, withExactClassroom } from "../../utils/lessonProgressionNavigation.js";
+import {
+  buildMapHref,
+  isLevelAssessmentRestriction,
+  resolveLevelAssessmentAction,
+  withExactClassroom,
+} from "../../utils/lessonProgressionNavigation.js";
 import { buildExactClassroomProgressUrl, createGameCompletionAction } from "./gameCompletionNavigation.js";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
 const MOBILE_GAME_QUERY = "(max-width: 820px) and (orientation: portrait), (max-height: 500px) and (orientation: landscape)";
+const STALE_ACCESS_HANDLED = Symbol("stale-access-handled");
 
 const createRequestId = () => window.crypto?.randomUUID?.()
   ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`;
@@ -126,10 +132,8 @@ const formatPhilippineDeadline = (value) => value
     }).format(new Date(value))
   : "";
 
-function GamePage({ levelConfig }) {
+function GamePage({ levelConfig, classroomId }) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const routedClassroomIdParam = searchParams.get("classroomId");
   const toast = useToast();
   const [tutorialUserId] = useState(getTutorialUserId);
   const [tutorialRequested, setTutorialRequested] = useState(
@@ -211,6 +215,8 @@ function GamePage({ levelConfig }) {
   const activeTimerAnchorRef = useRef(null);
   const levelSessionIdRef = useRef(null);
   const levelSessionActiveRef = useRef(false);
+  const heartbeatStopRef = useRef(null);
+  const accessChangedRef = useRef(null);
   const failedAttemptsRef = useRef(0);
   const hintsEnabledRef = useRef(true);
   const hintContextRef = useRef({ stage: null, failureCode: null });
@@ -218,6 +224,7 @@ function GamePage({ levelConfig }) {
   const [effectiveDueAt, setEffectiveDueAt] = useState(null);
   const [hasDeadlineExtension, setHasDeadlineExtension] = useState(false);
   const [deadlineExpired, setDeadlineExpired] = useState(false);
+  const [accessRevoked, setAccessRevoked] = useState(null);
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [hintUnlockThreshold, setHintUnlockThreshold] = useState(3);
   const [hintUnlocked, setHintUnlocked] = useState(false);
@@ -293,6 +300,47 @@ function GamePage({ levelConfig }) {
     nextLevelTimerRef.current = null;
   }, []);
 
+  const stopForStaleAccess = useCallback(() => {
+    levelSessionActiveRef.current = false;
+    activeTimerAnchorRef.current = null;
+    heartbeatStopRef.current?.();
+    clearNextLevelTimer();
+    evaluationActivityIdRef.current = null;
+    evaluationInFlightRef.current = false;
+    setActiveHint(null);
+    setShowHintPurchase(false);
+    setGradeModal(null);
+    void bgmManager.fadeOut();
+    dialogueSfxManager.stop();
+  }, [clearNextLevelTimer]);
+
+  const handleStaleAccessError = useCallback((error) => {
+    const payload = error?.response?.data;
+    if (!payload || typeof payload !== "object") return false;
+
+    const action = resolveLevelAssessmentAction({ classroomId, level: payload });
+    const invalidAssessmentState = isLevelAssessmentRestriction(payload);
+    if (!action && !invalidAssessmentState) return false;
+
+    stopForStaleAccess();
+    if (action?.routable && action.href) {
+      navigate(action.href, { replace: true });
+      return true;
+    }
+
+    setAccessRevoked({
+      kind: action?.kind === "recovery" ? "recovery" : "invalid",
+      label: action?.kind === "recovery"
+        ? action.label
+        : "Level access changed — return to the map",
+    });
+    return true;
+  }, [classroomId, navigate, stopForStaleAccess]);
+
+  useEffect(() => {
+    if (accessRevoked) accessChangedRef.current?.focus();
+  }, [accessRevoked]);
+
   const reportGameActivity = useCallback(async (isPlayingGame) => {
     try {
       await axios.post(
@@ -347,9 +395,11 @@ function GamePage({ levelConfig }) {
     activeTimerAnchorRef.current = null;
     levelSessionIdRef.current = null;
     levelSessionActiveRef.current = false;
+    heartbeatStopRef.current = null;
     setEffectiveDueAt(null);
     setHasDeadlineExtension(false);
     setDeadlineExpired(false);
+    setAccessRevoked(null);
   }, [clearNextLevelTimer, levelConfig]);
 
   const { bgmVolume, bgmMuted, sfxVolume, sfxMuted } = audioPreferences;
@@ -374,7 +424,7 @@ function GamePage({ levelConfig }) {
     let cancelled = false;
     axios
       .get(
-        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/content`, routedClassroomIdParam)),
+        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/content`, classroomId)),
         { headers: getGameAuthHeaders() },
       )
       .then((res) => {
@@ -425,9 +475,11 @@ function GamePage({ levelConfig }) {
 
         setMergedLevelConfig(merged);
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (!cancelled) handleStaleAccessError(error, "protected-content");
+      });
     return () => { cancelled = true; };
-  }, [levelConfig, routedClassroomIdParam]);
+  }, [classroomId, handleStaleAccessError, levelConfig]);
 
   useEffect(() => {
     if (!levelConfig?.progressKey) return;
@@ -445,6 +497,7 @@ function GamePage({ levelConfig }) {
       if (heartbeatTimer) window.clearInterval(heartbeatTimer);
       heartbeatTimer = null;
     };
+    heartbeatStopRef.current = stopHeartbeat;
     const handleAccessError = (error) => {
       const code = error.response?.data?.code;
       if (code === "DEADLINE_PASSED") {
@@ -463,13 +516,15 @@ function GamePage({ levelConfig }) {
       const syncId = createRequestId();
       try {
         const response = await axios.post(
-          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/heartbeat`, routedClassroomIdParam)),
+          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/heartbeat`, classroomId)),
           { sessionId: levelSessionIdRef.current, syncId },
           { headers: getGameAuthHeaders() },
         );
         if (!cancelled) syncTimer(response.data.activeSeconds);
       } catch (error) {
-        if (!cancelled) handleAccessError(error);
+        if (!cancelled) {
+          handleStaleAccessError(error, "session-heartbeat") || handleAccessError(error);
+        }
       }
     };
     const scheduleHeartbeat = (seconds = 30) => {
@@ -482,7 +537,7 @@ function GamePage({ levelConfig }) {
       levelSessionIdRef.current = sessionId;
       try {
         const response = await axios.post(
-          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/start`, routedClassroomIdParam)),
+          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/start`, classroomId)),
           { sessionId },
           { headers: getGameAuthHeaders() },
         );
@@ -497,13 +552,15 @@ function GamePage({ levelConfig }) {
         levelSessionActiveRef.current = !response.data.ephemeral;
         if (!response.data.ephemeral) scheduleHeartbeat(response.data.heartbeatIntervalSeconds);
       } catch (error) {
-        if (!cancelled) handleAccessError(error);
+        if (!cancelled) {
+          handleStaleAccessError(error, "session-start") || handleAccessError(error);
+        }
       }
     };
     const endSession = async (keepalive = false) => {
       stopHeartbeat();
       levelSessionActiveRef.current = false;
-      const url = buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/end`, routedClassroomIdParam));
+      const url = buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/end`, classroomId));
       const payload = {
         sessionId: levelSessionIdRef.current,
         syncId: createRequestId(),
@@ -520,8 +577,9 @@ function GamePage({ levelConfig }) {
       try {
         const response = await axios.post(url, payload, { headers: getGameAuthHeaders() });
         if (!cancelled && response.data.ended) syncTimer(response.data.activeSeconds);
-      } catch {
-        // Heartbeat staleness still prevents indefinite accumulation.
+      } catch (error) {
+        if (!cancelled) handleStaleAccessError(error, "session-end");
+        // Heartbeat staleness still prevents indefinite accumulation for ordinary failures.
       }
     };
     const handleVisibility = () => {
@@ -537,11 +595,12 @@ function GamePage({ levelConfig }) {
     return () => {
       cancelled = true;
       stopHeartbeat();
+      if (heartbeatStopRef.current === stopHeartbeat) heartbeatStopRef.current = null;
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("pagehide", handlePageHide);
       void endSession(true);
     };
-  }, [levelConfig, routedClassroomIdParam, syncHintState]);
+  }, [classroomId, handleStaleAccessError, levelConfig, syncHintState]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -615,7 +674,7 @@ function GamePage({ levelConfig }) {
     if (!completionRequestRef.current) {
       completionRequestRef.current = axios
         .put(
-          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}`, routedClassroomIdParam)),
+          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}`, classroomId)),
           {
             progressPercent: 100,
             isCompleted: true,
@@ -626,6 +685,10 @@ function GamePage({ levelConfig }) {
         )
         .then((response) => response.data)
         .catch((error) => {
+          if (handleStaleAccessError(error, "completion-save")) {
+            completionRequestRef.current = null;
+            return STALE_ACCESS_HANDLED;
+          }
           if (error.response?.data?.code === "DEADLINE_PASSED") {
             levelSessionActiveRef.current = false;
             setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
@@ -641,7 +704,7 @@ function GamePage({ levelConfig }) {
     }
 
     return completionRequestRef.current;
-  }, [code, levelConfig, routedClassroomIdParam]);
+  }, [classroomId, code, handleStaleAccessError, levelConfig]);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -666,6 +729,7 @@ function GamePage({ levelConfig }) {
         if (shouldProceed) {
           void (async () => {
             const progressPayload = await markLevelAsCompleted(activityId);
+            if (progressPayload === STALE_ACCESS_HANDLED) return;
             if (!progressPayload) {
               setResult({
                 type: "error",
@@ -698,11 +762,11 @@ function GamePage({ levelConfig }) {
               progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp,
             );
 
-            const routedClassroomId = Number(routedClassroomIdParam);
+            const verifiedClassroomId = Number(classroomId);
             let authoritativeProgress = progressPayload;
-            if (Number.isSafeInteger(routedClassroomId) && routedClassroomId > 0) {
+            if (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0) {
               try {
-                authoritativeProgress = await getProgress({ classroomId: routedClassroomId });
+                authoritativeProgress = await getProgress({ classroomId: verifiedClassroomId });
               } catch {
                 authoritativeProgress = null;
               }
@@ -727,7 +791,7 @@ function GamePage({ levelConfig }) {
               xpBreakdown: progressPayload.xpAward?.breakdown ?? [],
               lessonAction,
               classroomId: authoritativeProgress?.classroomId
-                ?? (Number.isSafeInteger(routedClassroomId) && routedClassroomId > 0 ? routedClassroomId : null),
+                ?? (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0 ? verifiedClassroomId : null),
             });
           })();
         }
@@ -738,7 +802,7 @@ function GamePage({ levelConfig }) {
       if (levelConfig?.progressKey) {
         axios
           .post(
-            buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`, routedClassroomIdParam)),
+            buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`, classroomId)),
             { sourceCode: code ?? "", activityId },
             { headers: getGameAuthHeaders() },
           )
@@ -747,7 +811,9 @@ function GamePage({ levelConfig }) {
             setFailedAttempts(res.data.attemptCount);
             syncHintState(res.data);
           })
-          .catch(() => {});
+          .catch((error) => {
+            handleStaleAccessError(error, "failed-attempt");
+          });
       }
 
       setResult({
@@ -762,7 +828,7 @@ function GamePage({ levelConfig }) {
       gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
       clearNextLevelTimer();
     };
-  }, [clearNextLevelTimer, code, currentXp, levelConfig, markLevelAsCompleted, mergedLevelConfig, routedClassroomIdParam, syncHintState]);
+  }, [classroomId, clearNextLevelTimer, code, currentXp, handleStaleAccessError, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -839,7 +905,7 @@ function GamePage({ levelConfig }) {
     if (!basicHint || !hintUnlocked || !hintsEnabledRef.current) return;
     try {
       const response = await axios.post(
-        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/hint-use`, routedClassroomIdParam)),
+        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/hint-use`, classroomId)),
         {},
         { headers: getGameAuthHeaders() },
       );
@@ -848,6 +914,7 @@ function GamePage({ levelConfig }) {
         setActiveHint({ title: "Basic Hint · Free", text: response.data.basicHint });
       }
     } catch (error) {
+      if (handleStaleAccessError(error, "basic-hint")) return;
       setResult({
         type: "error",
         message: error.response?.data?.message ?? "The hint could not be opened.",
@@ -882,7 +949,7 @@ function GamePage({ levelConfig }) {
     try {
       const response = await axios.post(
         buildApiUrl(
-          buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/detailed-hint-purchase`, routedClassroomIdParam),
+          buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/detailed-hint-purchase`, classroomId),
         ),
         {},
         { headers: getGameAuthHeaders() },
@@ -902,6 +969,7 @@ function GamePage({ levelConfig }) {
           : "Personalized hint was already unlocked. No XP was charged.",
       );
     } catch (error) {
+      if (handleStaleAccessError(error, "detailed-hint")) return;
       const message =
         error.response?.data?.message ?? "The personalized hint could not be unlocked.";
       if (error.response?.data?.currentXp != null) {
@@ -919,12 +987,13 @@ function GamePage({ levelConfig }) {
     if (!activeHint?.personalized || hintFeedback != null) return;
     try {
       await axios.post(
-        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/hint-feedback`, routedClassroomIdParam)),
+        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/hint-feedback`, classroomId)),
         { helpful },
         { headers: getGameAuthHeaders() },
       );
       setHintFeedback(helpful);
     } catch (error) {
+      if (handleStaleAccessError(error, "hint-feedback")) return;
       setResult({
         type: "error",
         message: error.response?.data?.message ?? "Your hint feedback could not be saved.",
@@ -1201,6 +1270,33 @@ function GamePage({ levelConfig }) {
   const lessonCardSections = mergedLevelConfig?.lessonCard?.sections ?? [];
   const chapterLabel =
     levelConfig.chapterLabel ?? `Chapter ${levelConfig.levelNumber}`;
+
+  if (accessRevoked) {
+    return (
+      <div className={styles.accessChangedPage}>
+        <section
+          ref={accessChangedRef}
+          className={styles.accessChangedPanel}
+          role="alert"
+          aria-live="assertive"
+          tabIndex={-1}
+        >
+          <h1>
+            {accessRevoked.kind === "recovery"
+              ? "Post-Test attempts exhausted"
+              : "Level access changed"}
+          </h1>
+          <p>{accessRevoked.label}</p>
+          <Button
+            label="Back to Map"
+            variant="primary"
+            size="md"
+            onClick={() => navigate(buildMapHref(classroomId), { replace: true })}
+          />
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.gameContainer} ref={gamePageRef}>

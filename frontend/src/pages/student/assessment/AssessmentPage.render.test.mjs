@@ -327,7 +327,7 @@ test("server result state renders the reusable result component without shell pl
       },
       progression: {
         classroomId: 47,
-        lessons: [{ lessonKey: "arrays", moduleUnlocked: true }],
+        lessons: [{ lessonKey: "arrays", moduleUnlocked: true, nextAction: "PLAY_GAME" }],
         summary: { nextAction: "PLAY_GAME", nextActionLessonKey: "arrays" },
       },
       progressionError: null,

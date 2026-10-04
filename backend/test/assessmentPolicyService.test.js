@@ -328,8 +328,8 @@ test("official POST uses highest percentage with deterministic earlier tie handl
   assert.equal(policy.selectFirstSubmittedPostAttempt(attempts).id, 1);
 });
 
-test("learning gain uses first POST and formats percentage-point semantics", () => {
-  const pre = { percentage: 40 };
+test("learning gain uses only a valid PRE baseline and the first POST", () => {
+  const pre = { percentage: 40, preBaselineStatus: "VALID" };
   const posts = [
     { id: 1, status: "SUBMITTED", attemptNumber: 1, percentage: 70, submittedAt: new Date("2026-01-01") },
     { id: 2, status: "SUBMITTED", attemptNumber: 2, percentage: 100, submittedAt: new Date("2026-01-02") },
@@ -341,12 +341,15 @@ test("learning gain uses first POST and formats percentage-point semantics", () 
     prePercentage: 40,
     firstPostPercentage: 70,
   });
-  assert.equal(policy.calculateLearningGain({ percentage: 80 }, [{
+  assert.equal(policy.calculateLearningGain({ percentage: 80, preBaselineStatus: "VALID" }, [{
     status: "SUBMITTED", attemptNumber: 1, percentage: 60, submittedAt: new Date("2026-01-01"),
   }]).label, "-20 percentage points");
-  assert.equal(policy.calculateLearningGain({ percentage: 70 }, [{
+  assert.equal(policy.calculateLearningGain({ percentage: 70, preBaselineStatus: "VALID" }, [{
     status: "SUBMITTED", attemptNumber: 1, percentage: 70, submittedAt: new Date("2026-01-01"),
   }]).label, "0 percentage points");
+  for (const preBaselineStatus of ["RETROACTIVE", "UNKNOWN", null, undefined]) {
+    assert.equal(policy.calculateLearningGain({ percentage: 40, preBaselineStatus }, posts), null);
+  }
 });
 
 test("player shaping strips answer keys and hidden explanations", () => {

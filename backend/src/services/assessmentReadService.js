@@ -211,7 +211,7 @@ const createAssessmentReadService = ({
 
   const resultAttributes = [
     "id", "assessmentId", "classroomId", "attemptNumber", "status", "submittedAt",
-    "pointsEarned", "maxPoints", "percentage", "passed",
+    "pointsEarned", "maxPoints", "percentage", "passed", "preBaselineStatus",
   ];
 
   const getStudentResult = async ({ attemptId, studentId }) => {
@@ -280,7 +280,7 @@ const createAssessmentReadService = ({
         ? plain(await AssessmentAttempt.findOne({
         where: { assessmentId: preAssessment.id, classroomId: assessment.classroomId,
           studentId, status: ATTEMPT_STATUSES.SUBMITTED },
-        attributes: ["percentage"],
+        attributes: ["percentage", "preBaselineStatus"],
         order: [["attemptNumber", "ASC"], ["submittedAt", "ASC"]],
       })) : null;
       learningGain = selectors.calculateLearningGain(preAttempt, firstPost);
@@ -297,6 +297,7 @@ const createAssessmentReadService = ({
         attemptNumber: attempt.attemptNumber,
         submittedAt: attempt.submittedAt,
         ...(assessment.type === "PRE" ? { diagnosticCompleted: true } : {}),
+        ...(assessment.type === "PRE" ? { baselineEligible: safe.result.baselineEligible } : {}),
         scoreVisible,
         ...(scoreVisible ? {
           pointsEarned: safe.result.pointsEarned,

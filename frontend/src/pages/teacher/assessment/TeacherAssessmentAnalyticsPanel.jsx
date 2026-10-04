@@ -66,7 +66,7 @@ function AttemptHistoryDialog({ row, onClose }) {
       <header><div><span>Submitted assessment history</span><h3 id="assessment-history-title">{row.name}</h3></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Close assessment history"><FiX /></button></header>
       <div className={styles.historyList}>{row.history.map((attempt) => <article key={`${attempt.type}-${attempt.attemptId}`}>
         <div><strong>{attempt.type === "PRE" ? "PRE diagnostic" : `POST attempt ${attempt.attemptNumber}`}</strong><span>{submittedDate(attempt.submittedAt)}</span></div>
-        <div><span>{percentage(attempt.percentage)}</span>{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div>
+        <div><span>{percentage(attempt.percentage)}</span>{attempt.type === "PRE" && <b>{attempt.baselineLabel}</b>}{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div>
       </article>)}</div>
     </section>
   </div>;
@@ -157,12 +157,16 @@ export default function TeacherAssessmentAnalyticsPanel() {
         </div>
         <div className={styles.metrics} aria-label="Assessment analytics overview">
           <Metric label="Submitted students" value={`${metrics.preSubmittedStudents} PRE · ${metrics.postSubmittedStudents} POST`} note="Distinct students with submitted attempts" />
-          <Metric label="Average PRE" value={percentage(metrics.averagePrePercentage)} note="Diagnostic; no pass/fail" />
+          <Metric label="All submitted PRE average" value={percentage(metrics.averageAllPrePercentage)} note="All diagnostic submissions; no pass/fail" />
+          <Metric label="Valid baseline PRE average" value={percentage(metrics.averageValidBaselinePrePercentage)} note="PRE completed before meaningful game activity" />
+          <Metric label="Valid baseline students" value={metrics.validBaselineStudents} note="Eligible for paired learning gain" />
+          <Metric label="Excluded baseline students" value={metrics.excludedBaselineStudents} note="Retroactive or unknown timing" />
           <Metric label="Average official POST" value={percentage(metrics.averageOfficialPostPercentage)} note="Backend-selected best grade" />
           <Metric label="POST pass rate" value={percentage(metrics.postPassRate)} note={metrics.postPassedStudents == null ? "No passing threshold applies" : `${metrics.postPassedStudents} passed; submitted official results only`} />
           <Metric label="Average submitted POST attempts" value={metrics.averagePostAttempts ?? "Unavailable"} note="Submitted attempts among POST submitters" />
-          <Metric label="Learning gain" value={signedPoints(metrics.averageLearningGain)} note={`${metrics.pairedStudents} paired students · PRE to first submitted POST`} />
+          <Metric label="Learning gain" value={signedPoints(metrics.averageLearningGain)} note={`${metrics.pairedStudents} valid-baseline paired students · PRE to first submitted POST`} />
         </div>
+        <p className={styles.limitation}><strong>PRE baseline labels:</strong> Valid baseline; Retroactive — game activity preceded PRE; Unknown — legacy baseline timing.</p>
         <p className={styles.limitation}><strong>Submission rate:</strong> Enrollment denominator unavailable from the assessment-results contract. No enrollment-based rate is inferred.</p>
         <CodingQuestionBreakdown questions={codingQuestions} />
         <div className={styles.tableWrap}><table><caption>Submitted assessment results, alphabetical by student</caption><thead><tr><th scope="col">Student</th><th scope="col">PRE diagnostic</th><th scope="col">First POST</th><th scope="col">Official POST</th><th scope="col">POST status</th><th scope="col">Submitted POST attempts</th><th scope="col">Learning gain</th><th scope="col">History</th></tr></thead><tbody>

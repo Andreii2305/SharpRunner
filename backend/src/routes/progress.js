@@ -272,6 +272,10 @@ const buildProgressPayloadForUser = async (userId, authorizedMembership) => {
       prerequisiteLevelKey: access.prerequisiteLevelKey ?? null,
       isAccessible: access.allowed,
       accessReason: access.reason,
+      assessmentRequired: access.assessmentRequired === true,
+      assessmentType: access.assessmentType ?? null,
+      assessmentId: access.assessmentId ?? null,
+      assessmentAction: access.assessmentAction ?? null,
       lockReason: access.reason === "DEADLINE_PASSED"
         ? "deadline"
         : access.reason === "LEVEL_SCHEDULED"

@@ -20,9 +20,18 @@ test("canonical assessment-exempt lessons render an explicit not-applicable stat
 });
 
 test("overview states definitions, denominator limitation, and paired gain sample size", () => {
-  for (const marker of ["Submitted students", "Average PRE", "Average official POST", "POST pass rate", "Average submitted POST attempts", "Submitted POST attempts", "Learning gain", "paired students", "Enrollment denominator unavailable"]) {
+  for (const marker of ["Submitted students", "All submitted PRE average", "Valid baseline PRE average", "Valid baseline students", "Excluded baseline students", "Average official POST", "POST pass rate", "Average submitted POST attempts", "Submitted POST attempts", "Learning gain", "valid-baseline paired students", "Enrollment denominator unavailable"]) {
     assert.equal(source.includes(marker), true, marker);
   }
+});
+
+test("PRE rows and history expose accessible provenance labels without ranking", () => {
+  for (const marker of [
+    "Valid baseline",
+    "Retroactive — game activity preceded PRE",
+    "Unknown — legacy baseline timing",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.equal(source.toLowerCase().includes("rank"), false);
 });
 
 test("coding breakdown is question performance without rankings or inferred official grades", () => {

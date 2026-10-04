@@ -191,7 +191,11 @@ function LevelNode({ node, onNodeClick }) {
   const expired = node.status === "expired";
   const completed = node.status === "completed";
   const current = node.status === "current";
-  const statusLabel = completed ? "Completed" : current ? "Current" : expired ? "Deadline Passed" : locked ? "Locked" : "Available";
+  const assessmentRequired = node.status === "assessment-required";
+  const assessmentRecovery = node.status === "assessment-recovery";
+  const assessmentInvalid = node.status === "assessment-invalid";
+  const nonInteractive = locked || assessmentRecovery || assessmentInvalid;
+  const statusLabel = node.actionLabel ?? (completed ? "Completed" : current ? "Current" : expired ? "Deadline Passed" : locked ? "Locked" : "Available");
   const grade =
     node.grade ??
     (node.finalScore >= 90 ? "S" : node.finalScore >= 80 ? "A" : node.finalScore != null ? "B" : null);
@@ -203,20 +207,23 @@ function LevelNode({ node, onNodeClick }) {
       className={`${styles.levelNode} ${styles[node.status]}`}
       style={{ left: node.x, top: node.y }}
       disabled={locked}
+      aria-disabled={nonInteractive || undefined}
       onClick={() => onNodeClick?.(node)}
-      aria-label={`Level ${levelLabel}: ${node.title}. ${statusLabel}.`}
+      aria-label={`Level ${levelLabel}: ${node.title}. ${node.actionLabel ?? statusLabel}.`}
     >
-      {current && <span className={styles.currentFlag}>Kai</span>}
+      {(current || assessmentRequired) && (
+        <span className={styles.currentFlag}>{assessmentRequired ? "Test" : "Kai"}</span>
+      )}
       <span className={styles.nodeShield}>
         <span className={styles.shieldOuter} />
         <span className={styles.shieldInner} />
-        {current && <span className={styles.pulseRing} aria-hidden="true" />}
+        {(current || assessmentRequired) && <span className={styles.pulseRing} aria-hidden="true" />}
         <span className={styles.nodeContent}>
           {completed ? (
             <CheckOutlinedIcon sx={{ fontSize: 17 }} />
           ) : expired ? (
             <AccessTimeOutlinedIcon sx={{ fontSize: 15 }} />
-          ) : locked ? (
+          ) : nonInteractive ? (
             <LockOutlinedIcon sx={{ fontSize: 14 }} />
           ) : (
             levelLabel
@@ -227,7 +234,7 @@ function LevelNode({ node, onNodeClick }) {
       {node.effectiveDueAt ? (
         <span className={styles.dueBadge}>{expired ? "Deadline Passed" : `${node.hasExtension ? "Extension · " : ""}Due ${formatDue(node.effectiveDueAt)}`}</span>
       ) : null}
-      {completed && node.finalScore != null && (
+      {node.completed && node.finalScore != null && (
         <span
           className={`${styles.scoreBadge} ${styles[`grade${grade}`] ?? ""}`}
           aria-label={`Grade ${grade}, score ${node.finalScore}`}
@@ -355,7 +362,7 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
       setSelectedNode(node);
       return;
     }
-    onNodeClick?.(node);
+    if (!node.disabled) onNodeClick?.(node);
   };
 
   return (
@@ -391,11 +398,19 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
       {selectedNode && (
         <aside className={styles.mobileDetails} aria-label={`${selectedNode.title} details`}>
           <button type="button" className={styles.detailsClose} onClick={() => setSelectedNode(null)} aria-label="Close level details">×</button>
-          <span className={styles.detailsStatus}>{selectedNode.status}</span>
+          <span className={styles.detailsStatus}>{selectedNode.actionLabel ?? selectedNode.status}</span>
           <strong>{selectedNode.title}</strong>
           <p>{selectedNode.topic || "Open this level to view its learning objective."}</p>
           {selectedNode.effectiveDueAt && <p>{selectedNode.hasExtension ? "Extension granted · " : ""}Due {formatDue(selectedNode.effectiveDueAt)}</p>}
-          <button type="button" className={styles.detailsPlay} onClick={() => onNodeClick?.(selectedNode)}>{selectedNode.status === "expired" ? "View deadline" : "Play"}</button>
+          <button
+            type="button"
+            className={styles.detailsPlay}
+            disabled={selectedNode.disabled}
+            aria-disabled={selectedNode.disabled || undefined}
+            onClick={() => { if (!selectedNode.disabled) onNodeClick?.(selectedNode); }}
+          >
+            {selectedNode.actionLabel ?? (selectedNode.status === "expired" ? "View deadline" : "Play")}
+          </button>
         </aside>
       )}
     </div>

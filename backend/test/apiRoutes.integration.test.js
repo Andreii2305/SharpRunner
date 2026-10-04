@@ -824,7 +824,7 @@ test("first-submission completion records one successful academic attempt and re
   });
 });
 
-test("completed Arrays replay remains immutable while required PRE and canonical lesson gates still block new work", async () => {
+test("completed Arrays work remains immutable while required PRE blocks same-lesson replay and new work", async () => {
   const user = activeUser({ xpTotal: 125 });
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
   const completedAt = new Date("2026-09-20T00:00:00Z");
@@ -932,20 +932,20 @@ test("completed Arrays replay remains immutable while required PRE and canonical
       body: { sessionId: "functions_session_123" },
     });
 
-    assert.equal(startReplay.response.status, 200);
-    assert.equal(startReplay.payload.ephemeral, true);
-    assert.equal(completionReplay.response.status, 200);
-    assert.equal(completionReplay.payload.xpAward, null);
-    assert.equal(laterArrays.response.status, 403);
-    assert.equal(laterArrays.payload.code, "PRE_ASSESSMENT_REQUIRED");
-    assert.deepEqual(laterArrays.payload, {
+    const expectedPreRestriction = {
       code: "PRE_ASSESSMENT_REQUIRED",
       effectiveDueAt: null,
       message: "Complete the required pre-test before opening this lesson.",
       lessonKey: "arrays",
+      assessmentRequired: true,
+      assessmentType: "PRE",
       assessmentId: 81,
-      nextAction: "TAKE_PRE",
-    });
+      assessmentAction: "TAKE_PRE",
+    };
+    for (const result of [startReplay, completionReplay, laterArrays]) {
+      assert.equal(result.response.status, 403);
+      assert.deepEqual(result.payload, expectedPreRestriction);
+    }
     assert.equal(laterLesson.response.status, 403);
     assert.equal(laterLesson.payload.code, "LESSON_PREREQUISITE_REQUIRED");
     assert.equal(laterLesson.payload.lessonKey, "functions");

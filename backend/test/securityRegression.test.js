@@ -40,6 +40,7 @@ const ASSESSMENT_FORBIDDEN_KEYS = new Set([
   "isCorrect",
   "passingPercentage",
   "passingPercentageApplied",
+  "preBaselineStatus",
   "pointsAwarded",
   "questionOrder",
   "studentId",
@@ -80,8 +81,10 @@ test("game access restrictions expose only safe lesson progression context", () 
     reason: "PRE_ASSESSMENT_REQUIRED",
     effectiveDueAt: null,
     lessonKey: "arrays",
+    assessmentRequired: true,
+    assessmentType: "PRE",
     assessmentId: 81,
-    nextAction: "TAKE_PRE",
+    assessmentAction: "TAKE_PRE",
     passingThreshold: 75,
     requirePassingForCompletion: true,
     percentage: 0,
@@ -92,8 +95,10 @@ test("game access restrictions expose only safe lesson progression context", () 
     effectiveDueAt: null,
     message: "Complete the required pre-test before opening this lesson.",
     lessonKey: "arrays",
+    assessmentRequired: true,
+    assessmentType: "PRE",
     assessmentId: 81,
-    nextAction: "TAKE_PRE",
+    assessmentAction: "TAKE_PRE",
   });
 
   const lessonRestriction = restrictionPayload({

@@ -7,8 +7,10 @@ const {
   ATTEMPT_STATUSES,
   GRADE_CALCULATIONS,
   OBJECTIVE_KEY_PATTERN,
+  PRE_BASELINE_STATUSES,
   QUESTION_TYPES,
 } = require("../constants/assessmentConfig");
+const { effectivePreBaselineStatus } = require("./assessmentBaselineService");
 const { validateCodingQuestion } = require("./codingAssessmentService");
 const {
   resolveCodingParameterNames,
@@ -346,7 +348,8 @@ const calculateLearningGain = (preAttempt, postAttempts = []) => {
   const firstPost = Array.isArray(postAttempts)
     ? selectFirstSubmittedPostAttempt(postAttempts)
     : plain(postAttempts);
-  if (!pre || !firstPost || !Number.isFinite(Number(pre.percentage))
+  if (!pre || effectivePreBaselineStatus(pre) !== PRE_BASELINE_STATUSES.VALID
+    || !firstPost || !Number.isFinite(Number(pre.percentage))
     || !Number.isFinite(Number(firstPost.percentage))) return null;
   const value = roundPercentage(Number(firstPost.percentage) - Number(pre.percentage));
   const label = `${value > 0 ? "+" : ""}${value} percentage points`;

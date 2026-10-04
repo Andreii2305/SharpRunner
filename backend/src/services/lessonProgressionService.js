@@ -92,6 +92,109 @@ const nextActionFor = ({
   return LESSON_NEXT_ACTIONS.LESSON_COMPLETE;
 };
 
+const invalidAssessmentDebt = (lessonKey) => ({
+  kind: "invalid",
+  lessonKey,
+  accessReason: "ASSESSMENT_STATE_INVALID",
+  routable: false,
+});
+
+const positiveAssessmentId = (value) => {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+};
+
+const resolveRequiredAssessmentDebt = (lessonState) => {
+  const state = lessonState || {};
+  const { lessonKey, nextAction } = state;
+  if (!GATED_LESSON_KEY_SET.has(lessonKey)) return null;
+
+  const preUnsatisfied = state.preRequired === true && state.preCompleted !== true;
+  const postSatisfied = state.postRequired !== true || (
+    state.postCompleted === true
+    && (state.postPassingRequired !== true || state.postPassed === true)
+  );
+  const postEligible = state.curriculumPrerequisiteSatisfied === true
+    && !preUnsatisfied
+    && state.gameCompleted === true;
+  const postUnsatisfied = state.postRequired === true && !postSatisfied;
+
+  if ([LESSON_NEXT_ACTIONS.TAKE_PRE, LESSON_NEXT_ACTIONS.RESUME_PRE].includes(nextAction)) {
+    const assessmentId = positiveAssessmentId(state.preAssessmentId);
+    const resumeMatches = state.preAttemptInProgress === (
+      nextAction === LESSON_NEXT_ACTIONS.RESUME_PRE
+    );
+    if (!preUnsatisfied || state.curriculumPrerequisiteSatisfied !== true
+      || !assessmentId || !resumeMatches) {
+      return invalidAssessmentDebt(lessonKey);
+    }
+    return {
+      kind: "required-assessment",
+      lessonKey,
+      assessmentType: ASSESSMENT_TYPES.PRE,
+      assessmentId,
+      assessmentAction: nextAction,
+      accessReason: "PRE_ASSESSMENT_REQUIRED",
+      routable: true,
+    };
+  }
+
+  const postActions = [
+    LESSON_NEXT_ACTIONS.TAKE_POST,
+    LESSON_NEXT_ACTIONS.RESUME_POST,
+    LESSON_NEXT_ACTIONS.RETRY_POST,
+    LESSON_NEXT_ACTIONS.POST_RECOVERY_REQUIRED,
+  ];
+  if (postActions.includes(nextAction)) {
+    const assessmentId = positiveAssessmentId(state.postAssessmentId);
+    const active = state.postAttemptInProgress === true;
+    const remaining = Number(state.postAttemptsRemaining);
+    const actionMatches = (
+      (nextAction === LESSON_NEXT_ACTIONS.TAKE_POST && !active && state.postCompleted !== true)
+      || (nextAction === LESSON_NEXT_ACTIONS.RESUME_POST && active)
+      || (nextAction === LESSON_NEXT_ACTIONS.RETRY_POST
+        && !active
+        && state.postCompleted === true
+        && state.postPassingRequired === true
+        && state.postPassed !== true
+        && remaining > 0)
+      || (nextAction === LESSON_NEXT_ACTIONS.POST_RECOVERY_REQUIRED
+        && !active
+        && state.postCompleted === true
+        && state.postPassingRequired === true
+        && state.postPassed !== true
+        && remaining === 0)
+    );
+    if (!postEligible || !postUnsatisfied || !assessmentId || !actionMatches) {
+      return invalidAssessmentDebt(lessonKey);
+    }
+    return {
+      kind: "required-assessment",
+      lessonKey,
+      assessmentType: ASSESSMENT_TYPES.POST,
+      assessmentId,
+      assessmentAction: nextAction,
+      accessReason: "POST_ASSESSMENT_REQUIRED",
+      routable: nextAction !== LESSON_NEXT_ACTIONS.POST_RECOVERY_REQUIRED,
+    };
+  }
+
+  const consistentNoDebt = (
+    (nextAction === LESSON_NEXT_ACTIONS.COMPLETE_PREREQUISITE_LESSON
+      && state.curriculumPrerequisiteSatisfied !== true)
+    || (nextAction === LESSON_NEXT_ACTIONS.PLAY_GAME
+      && state.curriculumPrerequisiteSatisfied === true
+      && !preUnsatisfied
+      && state.gameCompleted !== true)
+    || (nextAction === LESSON_NEXT_ACTIONS.LESSON_COMPLETE
+      && state.curriculumPrerequisiteSatisfied === true
+      && !preUnsatisfied
+      && state.gameCompleted === true
+      && postSatisfied)
+  );
+  return consistentNoDebt ? null : invalidAssessmentDebt(lessonKey);
+};
+
 const buildLessonProgressionStates = ({
   publishedAssessments = [],
   attempts = [],
@@ -499,5 +602,6 @@ module.exports = {
   createLessonProgressionService,
   evaluateAssessmentInteraction,
   LessonProgressionError,
+  resolveRequiredAssessmentDebt,
   ...defaultService,
 };

@@ -5,7 +5,10 @@ import {
   buildMapHref,
   buildModuleHref,
   createLessonProgressionViewModel,
+  createLevelEntryViewModel,
+  isLevelAssessmentRestriction,
   loadExactProgress,
+  resolveLevelAssessmentAction,
   withExactClassroom,
 } from "./lessonProgressionNavigation.js";
 
@@ -215,4 +218,166 @@ test("progress loading rejects malformed or substituted explicit classrooms", as
     loadExactProgress({ requestedClassroomId: "7", getProgress: async () => ({ classroomId: 8 }), resolvePrimary() {} }),
     /classroom mismatch/,
   );
+});
+
+test("level assessment actions accept only the six canonical action/type pairs", () => {
+  const cases = [
+    ["TAKE_PRE", "PRE", "Take Pre-Test"],
+    ["RESUME_PRE", "PRE", "Continue Pre-Test"],
+    ["TAKE_POST", "POST", "Take Post-Test"],
+    ["RESUME_POST", "POST", "Continue Post-Test"],
+    ["RETRY_POST", "POST", "Retry Post-Test"],
+  ];
+  for (const [assessmentAction, assessmentType, label] of cases) {
+    assert.deepEqual(resolveLevelAssessmentAction({
+      classroomId: 7,
+      level: {
+        lessonKey: "arrays",
+        assessmentRequired: true,
+        assessmentType,
+        assessmentId: 81,
+        assessmentAction,
+      },
+    }), {
+      kind: "assessment",
+      href: `/classrooms/7/lessons/arrays/assessment/${assessmentType.toLowerCase()}`,
+      label,
+      routable: true,
+    }, assessmentAction);
+  }
+
+  assert.deepEqual(resolveLevelAssessmentAction({
+    classroomId: 7,
+    level: {
+      lessonKey: "functions-with-arrays",
+      assessmentRequired: true,
+      assessmentType: "POST",
+      assessmentId: 82,
+      assessmentAction: "POST_RECOVERY_REQUIRED",
+    },
+  }), {
+    kind: "recovery",
+    href: null,
+    label: "Post-Test attempts exhausted — contact your teacher",
+    routable: false,
+  });
+});
+
+test("level assessment actions fail closed for malformed or injected metadata", () => {
+  const valid = {
+    lessonKey: "arrays",
+    assessmentRequired: true,
+    assessmentType: "PRE",
+    assessmentId: 81,
+    assessmentAction: "TAKE_PRE",
+  };
+  for (const overrides of [
+    { classroomId: 0 },
+    { classroomId: "bad" },
+    { level: { ...valid, lessonKey: "tutorial" } },
+    { level: { ...valid, lessonKey: "final" } },
+    { level: { ...valid, assessmentId: null } },
+    { level: { ...valid, assessmentAction: "TAKE_POST" } },
+    { level: { ...valid, assessmentType: "POST" } },
+    { level: { ...valid, assessmentAction: "UNKNOWN" } },
+    { level: { ...valid, assessmentRequired: false } },
+    { level: { ...valid, redirectUrl: "https://evil.example" } },
+  ]) {
+    const input = {
+      classroomId: 7,
+      level: valid,
+      ...overrides,
+    };
+    if (overrides.level?.redirectUrl) {
+      assert.equal(resolveLevelAssessmentAction(input)?.href.includes("evil.example"), false);
+    } else {
+      assert.equal(resolveLevelAssessmentAction(input), null);
+    }
+  }
+});
+
+test("stale restriction payloads use exact-classroom canonical routes and ignore server navigation text", () => {
+  const restriction = {
+    lessonKey: "functions-with-arrays",
+    assessmentRequired: true,
+    assessmentType: "POST",
+    assessmentId: 82,
+    assessmentAction: "RESUME_POST",
+    accessReason: "POST_ASSESSMENT_REQUIRED",
+    message: "Open https://evil.example instead",
+    redirectUrl: "https://evil.example/steal",
+  };
+
+  assert.deepEqual(resolveLevelAssessmentAction({ classroomId: 41, level: restriction }), {
+    kind: "assessment",
+    href: "/classrooms/41/lessons/functions-with-arrays/assessment/post",
+    label: "Continue Post-Test",
+    routable: true,
+  });
+  assert.equal(
+    resolveLevelAssessmentAction({
+      classroomId: 41,
+      level: { ...restriction, lessonKey: "tutorial" },
+    }),
+    null,
+  );
+  assert.equal(
+    resolveLevelAssessmentAction({
+      classroomId: 41,
+      level: { ...restriction, assessmentType: "PRE" },
+    }),
+    null,
+  );
+
+  const recovery = resolveLevelAssessmentAction({
+    classroomId: 41,
+    level: {
+      ...restriction,
+      assessmentAction: "POST_RECOVERY_REQUIRED",
+      redirectUrl: "https://evil.example/recovery",
+    },
+  });
+  assert.equal(recovery?.kind, "recovery");
+  assert.equal(recovery?.routable, false);
+  assert.equal(recovery?.href, null);
+});
+
+test("stale invalid-state payloads recognize the backend code field", () => {
+  assert.equal(isLevelAssessmentRestriction({
+    code: "ASSESSMENT_STATE_INVALID",
+    assessmentRequired: false,
+    assessmentType: null,
+    assessmentId: null,
+    assessmentAction: null,
+  }), true);
+  assert.equal(isLevelAssessmentRestriction({ code: "LEVEL_LOCKED" }), false);
+});
+
+test("level entry view model makes debt authoritative without losing completion", () => {
+  const debt = createLevelEntryViewModel({
+    classroomId: 7,
+    level: {
+      lessonKey: "arrays",
+      isCompleted: true,
+      isAccessible: false,
+      assessmentRequired: true,
+      assessmentType: "PRE",
+      assessmentId: 81,
+      assessmentAction: "TAKE_PRE",
+    },
+    gameHref: "/array/level/1?classroomId=7",
+  });
+  assert.equal(debt.kind, "assessment");
+  assert.equal(debt.visualStatus, "assessment-required");
+  assert.equal(debt.completed, true);
+  assert.equal(debt.href, "/classrooms/7/lessons/arrays/assessment/pre");
+
+  const replay = createLevelEntryViewModel({
+    classroomId: 7,
+    level: { lessonKey: "arrays", isCompleted: true, isAccessible: true },
+    gameHref: "/array/level/1?classroomId=7",
+  });
+  assert.equal(replay.kind, "game");
+  assert.equal(replay.visualStatus, "completed");
+  assert.equal(replay.href, "/array/level/1?classroomId=7");
 });

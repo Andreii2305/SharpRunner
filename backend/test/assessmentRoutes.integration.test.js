@@ -14,6 +14,7 @@ const sequelize = require("../src/config/database");
 const productionApp = require("../src/app");
 const { createAssessmentAuthorizationService } = require("../src/services/assessmentAuthorizationService");
 const { TERMS_VERSION, PRIVACY_POLICY_VERSION } = require("../src/constants/policyVersions");
+const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
 
 const restorations = [];
 let server;
@@ -90,7 +91,19 @@ const mutationHarness = (overrides = {}, {
     requirePassingForCompletion: true, ...overrides });
   const store = { assessments: [graph], attempts: [], responses: [],
     memberships: [{ classroomId: 7, studentId: 42, status: "active" }], saves: 0,
-    graphReads: 0, responseReads: 0, siblingQueries: [] };
+    graphReads: 0, responseReads: 0, siblingQueries: [],
+    progress: DEFAULT_LEVEL_PROGRESS.map((level) => ({
+      userId: 42,
+      ...level,
+      progressPercent: 0,
+      attemptCount: 0,
+      timeSpentSeconds: 0,
+      isCompleted: false,
+      completedAt: null,
+      finalScore: null,
+      latestFailureMetadata: {},
+      xpAwarded: 0,
+    })) };
   let tail = Promise.resolve();
   const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => row[key] === value);
   const persisted = (value, isAttempt = false) => {
@@ -148,6 +161,10 @@ const mutationHarness = (overrides = {}, {
     store.graphReads += 1;
     return store.assessments.find((row) => row.id === where.assessmentId)?.questions || [];
   });
+  stub(models.UserProgress, "bulkCreate", async () => []);
+  stub(models.UserProgress, "findAll", async () => store.progress.filter(
+    (row) => row.userId === 42 && row.levelKey.startsWith(`${graph.lessonKey}-level-`),
+  ));
   const call = (path, options = {}) => request(`/api/assessments${path}`, { authToken: token(42), ...options });
   const start = () => call(`/${graph.id}/attempts`, { method: "POST", body: {} });
   const save = (id, choice = 1001) => call(`/attempts/${id}/responses/101`, { method: "PUT", body: { selectedChoiceId: choice } });
@@ -230,7 +247,7 @@ test("autosave accepts one selectedChoiceId or null and returns no grading field
 
 test("mutation bodies reject unknown and score-like fields", async () => {
   const h = mutationHarness();
-  for (const field of ["studentId", "classroomId", "percentage", "passed", "isCorrect", "pointsEarned", "submissionKey"]) {
+  for (const field of ["studentId", "classroomId", "percentage", "passed", "isCorrect", "pointsEarned", "submissionKey", "preBaselineStatus"]) {
     for (const [path, method, body] of [
       ["/12/attempts", "POST", { [field]: 7 }],
       ["/attempts/1/submit", "POST", { [field]: 7 }],
@@ -410,7 +427,7 @@ test("PRE result is diagnostic and omits passed", async () => {
 test("POST result marks highest official attempt and computes gain from first POST", async () => {
   const h = mutationHarness();
   h.store.assessments.push(assessment({ id: 11, type: "PRE" }));
-  h.store.attempts.push({ id: 50, assessmentId: 11, classroomId: 7, studentId: 42, status: "SUBMITTED", attemptNumber: 1, percentage: 40 });
+  h.store.attempts.push({ id: 50, assessmentId: 11, classroomId: 7, studentId: 42, status: "SUBMITTED", attemptNumber: 1, percentage: 40, preBaselineStatus: "VALID" });
   const first = await h.completed(1002);
   const second = await h.completed(1001);
   assert.deepEqual(second.payload.officialGrade, { attemptId: second.id, attemptNumber: 2, percentage: 100, submittedAt: h.store.attempts[2].submittedAt.toISOString() });

@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import axios from "axios";
+import { useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Button from "../../Components/Button/Button.jsx";
 import GamePage from "./GamePage.jsx";
@@ -11,9 +10,15 @@ import {
   getLevelConfigByRoute,
   getLevelRoute,
 } from "./levels/levelConfigs";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { bgmManager } from "./audio/bgmManager";
-import { buildExactClassroomProgressUrl } from "./gameCompletionNavigation.js";
+import { fetchPrimaryClassroomId } from "../../services/builtInLessonContentService.js";
+import { getProgress } from "../../services/studentAssessmentService.js";
+import {
+  buildMapHref,
+  createLevelEntryViewModel,
+  loadExactProgress,
+  withExactClassroom,
+} from "../../utils/lessonProgressionNavigation.js";
 
 const AVAILABLE_ROUTES = getAvailableLessonRoutes();
 const formatDeadline = (value) => new Intl.DateTimeFormat("en-PH", {
@@ -27,9 +32,10 @@ const formatDeadline = (value) => new Intl.DateTimeFormat("en-PH", {
 
 function LevelRoutePage() {
   const navigate = useNavigate();
+  const accessPanelRef = useRef(null);
   const { lessonSlug, levelNumber } = useParams();
   const [searchParams] = useSearchParams();
-  const classroomId = searchParams.get("classroomId");
+  const requestedClassroomId = searchParams.get("classroomId");
   const parsedLevelNumber = Number(levelNumber);
   const levelConfig = lessonSlug
     ? getLevelConfigByRoute(lessonSlug, parsedLevelNumber)
@@ -41,6 +47,8 @@ function LevelRoutePage() {
     message: "",
     prerequisiteLevelKey: null,
     effectiveDueAt: null,
+    classroomId: null,
+    entry: null,
   });
 
   useEffect(() => {
@@ -54,17 +62,36 @@ function LevelRoutePage() {
       };
     }
 
-    setAccessCheck({ levelKey, status: "loading" });
-    axios
-      .get(buildApiUrl(buildExactClassroomProgressUrl("/api/progress/me", classroomId)), { headers: getAuthHeaders() })
-      .then((response) => {
+    const controller = new AbortController();
+    setAccessCheck({ levelKey, status: "loading", classroomId: null, entry: null });
+    loadExactProgress({
+      requestedClassroomId,
+      getProgress,
+      resolvePrimary: fetchPrimaryClassroomId,
+      signal: controller.signal,
+    })
+      .then((progress) => {
         if (!isMounted) return;
-        const level = response.data?.levels?.find((row) => row.levelKey === levelKey);
+        const level = progress?.levels?.find((row) => row.levelKey === levelKey);
+        const gameHref = withExactClassroom(getLevelRoute(levelConfig.levelNumber), progress.classroomId);
+        const entry = createLevelEntryViewModel({
+          classroomId: progress.classroomId,
+          level,
+          gameHref,
+        });
         const isScheduled = level?.lockReason === "scheduled";
         const isExpired = level?.lockReason === "deadline";
         setAccessCheck({
           levelKey,
-          status: level?.isAccessible || level?.isCompleted ? "allowed" : isExpired ? "expired" : "locked",
+          status: entry.kind === "game"
+            ? "allowed"
+            : entry.kind === "assessment"
+              ? "assessment"
+              : entry.kind === "recovery"
+                ? "recovery"
+                : entry.kind === "invalid"
+                  ? "invalid"
+                  : isExpired ? "expired" : "locked",
           message: !level
             ? "Your teacher has disabled this level for the classroom."
             : isExpired
@@ -74,6 +101,8 @@ function LevelRoutePage() {
               : "Complete the previous assigned level before opening this level.",
           prerequisiteLevelKey: level?.prerequisiteLevelKey ?? null,
           effectiveDueAt: level?.effectiveDueAt ?? null,
+          classroomId: progress.classroomId,
+          entry,
         });
       })
       .catch(() => {
@@ -82,13 +111,20 @@ function LevelRoutePage() {
 
     return () => {
       isMounted = false;
+      controller.abort();
     };
-  }, [checkVersion, classroomId, lessonSlug, levelConfig]);
+  }, [checkVersion, requestedClassroomId, lessonSlug, levelConfig]);
 
   const accessStatus =
     accessCheck.levelKey === levelConfig?.progressKey
       ? accessCheck.status
       : "loading";
+
+  useEffect(() => {
+    if (["recovery", "invalid"].includes(accessStatus)) {
+      accessPanelRef.current?.focus();
+    }
+  }, [accessStatus]);
 
   useEffect(() => {
     if (accessStatus === "allowed" && levelConfig) {
@@ -99,11 +135,15 @@ function LevelRoutePage() {
   useEffect(() => () => bgmManager.leaveGameplay(), []);
 
   if (!lessonSlug && levelConfig) {
-    return <Navigate to={getLevelRoute(levelConfig.levelNumber)} replace />;
+    return <Navigate to={withExactClassroom(getLevelRoute(levelConfig.levelNumber), requestedClassroomId)} replace />;
+  }
+
+  if (levelConfig && accessStatus === "assessment" && accessCheck.entry?.href) {
+    return <Navigate to={accessCheck.entry.href} replace />;
   }
 
   if (Number.isInteger(parsedLevelNumber) && levelConfig && accessStatus === "allowed") {
-    return <GamePage levelConfig={levelConfig} />;
+    return <GamePage levelConfig={levelConfig} classroomId={accessCheck.classroomId} />;
   }
 
   if (levelConfig && accessStatus === "loading") {
@@ -132,16 +172,36 @@ function LevelRoutePage() {
                 label="Go to Previous Assigned Level"
                 variant="primary"
                 size="md"
-                onClick={() => navigate(getLevelRoute(prerequisiteConfig.levelNumber))}
+                onClick={() => navigate(withExactClassroom(
+                  getLevelRoute(prerequisiteConfig.levelNumber),
+                  accessCheck.classroomId,
+                ))}
               />
             ) : null}
             <Button
               label="Back to Map"
               variant="outline"
               size="md"
-              onClick={() => navigate("/Map")}
+              onClick={() => navigate(buildMapHref(accessCheck.classroomId))}
             />
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (levelConfig && ["recovery", "invalid"].includes(accessStatus)) {
+    return (
+      <div className={styles.placeholderPage}>
+        <div ref={accessPanelRef} className={styles.placeholderCard} role="alert" tabIndex={-1}>
+          <h1>{accessStatus === "recovery" ? "Post-Test attempts exhausted" : "Level access changed"}</h1>
+          <p>{accessCheck.entry?.label}</p>
+          <Button
+            label="Back to Map"
+            variant="primary"
+            size="md"
+            onClick={() => navigate(buildMapHref(accessCheck.classroomId))}
+          />
         </div>
       </div>
     );
@@ -156,7 +216,7 @@ function LevelRoutePage() {
             <p>Due: {formatDeadline(accessCheck.effectiveDueAt)} (Philippine Time)</p>
           ) : null}
           <p>{accessCheck.message}</p>
-          <Button label="Back to Map" variant="primary" size="md" onClick={() => navigate("/Map")} />
+          <Button label="Back to Map" variant="primary" size="md" onClick={() => navigate(buildMapHref(accessCheck.classroomId))} />
         </div>
       </div>
     );
@@ -179,7 +239,7 @@ function LevelRoutePage() {
               label="Back to Map"
               variant="outline"
               size="md"
-              onClick={() => navigate("/Map")}
+              onClick={() => navigate(buildMapHref(accessCheck.classroomId))}
             />
           </div>
         </div>
@@ -206,7 +266,7 @@ function LevelRoutePage() {
             label="Back to Map"
             variant="primary"
             size="md"
-            onClick={() => navigate("/Map")}
+            onClick={() => navigate(buildMapHref(accessCheck.classroomId))}
           />
           <Button
             label="Dashboard"

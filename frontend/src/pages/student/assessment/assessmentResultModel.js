@@ -24,6 +24,49 @@ const lessonFor = (progression, lessonKey) => progression?.lessons?.find(
   (lesson) => lesson?.lessonKey === lessonKey,
 ) ?? null;
 
+const createPreContinuation = ({ lesson, route, moduleHref }) => {
+  const nextAction = lesson?.nextAction;
+  const labels = {
+    TAKE_POST: "Continue to Post-Test",
+    RESUME_POST: "Continue Post-Test",
+    RETRY_POST: "Retry Post-Test",
+  };
+  if (labels[nextAction]) {
+    return {
+      kind: "assessment",
+      label: labels[nextAction],
+      href: resolveAssessmentNextHref({
+        nextAction,
+        nextActionLessonKey: route?.lessonKey,
+        route,
+      }),
+      disabled: false,
+    };
+  }
+  if (nextAction === "PLAY_GAME" && lesson?.moduleUnlocked === true) {
+    return {
+      kind: "module",
+      label: "Continue to module",
+      href: moduleHref,
+      disabled: false,
+    };
+  }
+  if (nextAction === "POST_RECOVERY_REQUIRED") {
+    return {
+      kind: "recovery",
+      label: "Post-Test attempts exhausted — contact your teacher",
+      href: null,
+      disabled: true,
+    };
+  }
+  return {
+    kind: "map",
+    label: "Return to lesson map",
+    href: mapHref(route?.classroomId),
+    disabled: false,
+  };
+};
+
 export const createAssessmentResultModel = ({ envelope, progression, route }) => {
   const result = envelope?.result ?? {};
   const lesson = lessonFor(progression, route?.lessonKey);
@@ -57,6 +100,8 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
       }
     : null;
   const summary = progression?.summary ?? {};
+  const moduleHref = `/lesson/built-in/${encodeURIComponent(route?.lessonKey ?? "")}`
+    + `?classroomId=${encodeURIComponent(route?.classroomId ?? "")}`;
 
   return {
     type,
@@ -72,11 +117,12 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
     review: envelope?.reviewAvailable === true && Array.isArray(envelope?.review)
       ? envelope.review
       : [],
+    baselineEligible: isPre && result.baselineEligible === true,
     moduleUnlocked: isPre && lesson?.moduleUnlocked === true,
     retakeAllowed: state === "RETRY_AVAILABLE",
     returnHref: mapHref(route?.classroomId),
-    moduleHref: `/lesson/built-in/${encodeURIComponent(route?.lessonKey ?? "")}`
-      + `?classroomId=${encodeURIComponent(route?.classroomId ?? "")}`,
+    moduleHref,
+    continuation: isPre ? createPreContinuation({ lesson, route, moduleHref }) : null,
     nextHref: resolveAssessmentNextHref({
       nextAction: summary.nextAction ?? lesson?.nextAction,
       nextActionLessonKey: summary.nextActionLessonKey,

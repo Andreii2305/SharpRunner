@@ -26,6 +26,10 @@ const parameterNamesMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261003000000_method_parameter_names.sql",
 );
+const baselineStatusMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261003010000_historical_assessment_baseline_status.sql",
+);
 
 test("assessment models keep results normalized and out of level progress", () => {
   for (const name of [
@@ -58,7 +62,7 @@ test("assessment models keep results normalized and out of level progress", () =
       "assessmentVersion", "startedAt", "submittedAt", "pointsEarned", "maxPoints",
       "percentage", "correctCount", "questionCount", "passed",
       "passingPercentageApplied", "questionOrder", "choiceOrder", "submissionKey",
-      "gradingLeaseToken", "gradingLeaseExpiresAt",
+      "gradingLeaseToken", "gradingLeaseExpiresAt", "preBaselineStatus",
     ],
     AssessmentResponse: [
       "attemptId", "questionId", "selectedChoiceId", "sourceCode", "isCorrect", "pointsAwarded",
@@ -73,7 +77,7 @@ test("assessment models keep results normalized and out of level progress", () =
     }
   }
 
-  for (const forbidden of ["preTestScore", "postTestScore", "assessmentId"]) {
+  for (const forbidden of ["preTestScore", "postTestScore", "assessmentId", "preBaselineStatus"]) {
     assert.equal(models.UserProgress.rawAttributes[forbidden], undefined);
     assert.equal(models.ClassroomLessonProgress.rawAttributes[forbidden], undefined);
   }
@@ -200,8 +204,8 @@ test("coding assessment migration is additive, protected, and registered after t
   assert.match(sql, /assessment_coding_tests_question_order/);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-5), "20261001000000_coding_assessments");
-  assert.equal(names.at(-6), "20260925000000_lesson_assessments");
+  const index = names.indexOf("20261001000000_coding_assessments");
+  assert.equal(names[index - 1], "20260925000000_lesson_assessments");
 });
 
 test("teacher-only coding reference solution migration is additive and size-bounded", () => {
@@ -211,8 +215,8 @@ test("teacher-only coding reference solution migration is additive and size-boun
   assert.match(sql, /octet_length\("referenceSolution"\) <= 16384/);
   assert.doesNotMatch(sql, /DROP COLUMN|DROP TABLE/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-4), "20261001010000_coding_reference_solution");
-  assert.equal(names.at(-5), "20261001000000_coding_assessments");
+  const index = names.indexOf("20261001010000_coding_reference_solution");
+  assert.equal(names[index - 1], "20261001000000_coding_assessments");
 });
 
 test("grading lease migration is additive, constrained, and registered last", () => {
@@ -225,8 +229,8 @@ test("grading lease migration is additive, constrained, and registered last", ()
   assert.match(sql, /"status" = 'GRADING'[\s\S]*"submissionKey" IS NOT NULL[\s\S]*"gradingLeaseToken" IS NOT NULL[\s\S]*"gradingLeaseExpiresAt" IS NOT NULL/);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-3), "20261001020000_assessment_grading_lease");
-  assert.equal(names.at(-4), "20261001010000_coding_reference_solution");
+  const index = names.indexOf("20261001020000_assessment_grading_lease");
+  assert.equal(names[index - 1], "20261001010000_coding_reference_solution");
 });
 
 test("coding execution mode migration backfills CODING as METHOD without changing non-coding rows", () => {
@@ -238,16 +242,38 @@ test("coding execution mode migration backfills CODING as METHOD without changin
   assert.match(sql, /"questionType" <> 'CODING'[\s\S]*"codingExecutionMode" IS NULL/);
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-2), "20261002000000_coding_execution_modes");
+  const index = names.indexOf("20261002000000_coding_execution_modes");
+  assert.equal(names[index - 1], "20261001020000_assessment_grading_lease");
 });
 
-test("METHOD parameter-name migration is nullable additive and registered last", () => {
+test("METHOD parameter-name migration is nullable additive and precedes baseline status", () => {
   assert.equal(fs.existsSync(parameterNamesMigrationPath), true);
   const sql = fs.readFileSync(parameterNamesMigrationPath, "utf8");
   assert.match(sql, /ADD COLUMN IF NOT EXISTS "codingParameterNames" JSONB/);
   assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|TRUNCATE|DROP)\b/i);
   assert.doesNotMatch(sql, /NOT NULL|DEFAULT/i);
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261003000000_method_parameter_names");
-  assert.equal(names.at(-2), "20261002000000_coding_execution_modes");
+  const index = names.indexOf("20261003000000_method_parameter_names");
+  assert.equal(names[index - 1], "20261002000000_coding_execution_modes");
+  assert.equal(names[index + 1], "20261003010000_historical_assessment_baseline_status");
+});
+
+test("PRE baseline status migration is nullable, additive, constrained, and registered last", () => {
+  const attribute = models.AssessmentAttempt.rawAttributes.preBaselineStatus;
+  assert.ok(attribute, "AssessmentAttempt.preBaselineStatus must be modeled");
+  assert.equal(attribute.allowNull, true);
+  assert.equal(attribute.defaultValue, undefined);
+
+  assert.equal(fs.existsSync(baselineStatusMigrationPath), true);
+  const sql = fs.readFileSync(baselineStatusMigrationPath, "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "preBaselineStatus" VARCHAR\(16\)/);
+  assert.match(sql, /assessment_attempt_pre_baseline_status_valid/);
+  assert.match(sql, /CHECK \("preBaselineStatus" IS NULL OR "preBaselineStatus" IN \('VALID', 'RETROACTIVE', 'UNKNOWN'\)\)/);
+  assert.match(sql, /pg_constraint/);
+  assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|TRUNCATE|DROP|DEFAULT|NOT NULL)\b/i);
+  assert.doesNotMatch(sql, /CREATE\s+(?:UNIQUE\s+)?INDEX/i);
+
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261003010000_historical_assessment_baseline_status");
+  assert.equal(names.at(-2), "20261003000000_method_parameter_names");
 });

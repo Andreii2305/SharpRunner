@@ -1,6 +1,37 @@
 /* Level.css */
 
 
+.accessChangedPage {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #07111f;
+  color: #f8fafc;
+}
+
+.accessChangedPanel {
+  width: min(100%, 560px);
+  display: grid;
+  gap: 16px;
+  padding: clamp(24px, 5vw, 40px);
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+  text-align: center;
+}
+
+.accessChangedPanel:focus-visible {
+  outline: 3px solid #fbbf24;
+  outline-offset: 4px;
+}
+
+.accessChangedPanel h1,
+.accessChangedPanel p {
+  margin: 0;
+}
+
 .gameContainer {
   background-color: #f0f4f8;
   min-height: 100vh;

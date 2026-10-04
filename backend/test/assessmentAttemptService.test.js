@@ -6,6 +6,12 @@ const servicePath = require.resolve("../src/services/assessmentAttemptService");
 const allowAllProgression = Object.freeze({
   assertAssessmentInteractionAllowed: async () => ({ allowed: true, reason: null }),
 });
+const defaultBaselineService = Object.freeze({
+  classifyAtCreation: async ({ assessment }) => assessment.type === "PRE" ? "VALID" : null,
+  classifyAtSubmission: async ({ assessment, attempt }) => assessment.type === "PRE"
+    ? (attempt.preBaselineStatus ?? "UNKNOWN")
+    : null,
+});
 
 const clone = (value) => structuredClone(value);
 
@@ -70,6 +76,7 @@ const makeGraph = ({
 
 const makeHarness = (assessmentOptions = {}, {
   progressionService = allowAllProgression,
+  baselineService = defaultBaselineService,
   secureCodingExecution = { runSecureMethodExecution: async () => ({ category: "INFRASTRUCTURE_ERROR" }) },
   environment = { CODING_ASSESSMENT_PLAYER_ENABLED: "true" },
 } = {}) => {
@@ -196,6 +203,7 @@ const makeHarness = (assessmentOptions = {}, {
     random: () => 0,
     now: () => new Date(clock += 1000),
     progressionService,
+    baselineService,
     secureCodingExecution,
     environment,
   });
@@ -596,6 +604,94 @@ test("persists deterministic display order when shuffling is disabled", async ()
   const { attempt } = await service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
   assert.deepEqual(attempt.questionOrder, [101, 102]);
   assert.deepEqual(attempt.choiceOrder, { 101: [1001, 1002], 102: [1003, 1004] });
+});
+
+test("new PRE classification is server-owned, persisted, and omitted from player output", async () => {
+  const calls = [];
+  const baselineService = {
+    classifyAtCreation: async (input) => {
+      calls.push(input);
+      assert.equal(input.assessment.type, "PRE");
+      assert.equal(input.studentId, 42);
+      assert.equal(input.transaction.LOCK.UPDATE, "UPDATE");
+      return "RETROACTIVE";
+    },
+    classifyAtSubmission: defaultBaselineService.classifyAtSubmission,
+  };
+  const h = makeHarness({ type: "PRE" }, { baselineService });
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+
+  assert.equal(calls.length, 1);
+  assert.equal(h.store.attempts[0].preBaselineStatus, "RETROACTIVE");
+  assert.equal(Object.hasOwn(started.attempt, "preBaselineStatus"), false);
+  assert.equal(JSON.stringify(started).includes("RETROACTIVE"), false);
+});
+
+test("resuming PRE preserves its persisted or legacy baseline status", async () => {
+  for (const status of ["VALID", "RETROACTIVE", null]) {
+    let creationCalls = 0;
+    const h = makeHarness({ type: "PRE" }, {
+      baselineService: {
+        classifyAtCreation: async () => { creationCalls += 1; return "VALID"; },
+        classifyAtSubmission: defaultBaselineService.classifyAtSubmission,
+      },
+    });
+    const seeded = seedActiveAttempt(h.store);
+    seeded.preBaselineStatus = status;
+    const resumed = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+    assert.equal(creationCalls, 0, String(status));
+    assert.equal(h.store.attempts[0].preBaselineStatus, status);
+    assert.equal(Object.hasOwn(resumed.attempt, "preBaselineStatus"), false);
+  }
+});
+
+test("successful PRE finalization reclassifies before submission and keeps status private", async () => {
+  let observed;
+  const h = makeHarness({ type: "PRE" }, {
+    baselineService: {
+      classifyAtCreation: async () => "VALID",
+      classifyAtSubmission: async ({ assessment, attempt, studentId, transaction }) => {
+        observed = {
+          type: assessment.type,
+          status: attempt.status,
+          lease: attempt.gradingLeaseToken,
+          studentId,
+          lock: transaction.LOCK.UPDATE,
+        };
+        return "RETROACTIVE";
+      },
+    },
+  });
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  const result = await h.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "baseline-finalize",
+  });
+
+  assert.equal(observed.type, "PRE");
+  assert.equal(observed.status, "GRADING");
+  assert.ok(observed.lease.length >= 32);
+  assert.equal(observed.studentId, 42);
+  assert.equal(observed.lock, "UPDATE");
+  assert.equal(h.store.attempts[0].preBaselineStatus, "RETROACTIVE");
+  assert.equal(Object.hasOwn(result, "preBaselineStatus"), false);
+});
+
+test("POST attempts never invoke baseline classification and persist null", async () => {
+  const baselineService = {
+    classifyAtCreation: async () => assert.fail("POST creation must not classify"),
+    classifyAtSubmission: async () => assert.fail("POST submission must not classify"),
+  };
+  const h = makeHarness({ type: "POST" }, { baselineService });
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  assert.equal(h.store.attempts[0].preBaselineStatus ?? null, null);
+  await h.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "post-no-baseline",
+  });
+  assert.equal(h.store.attempts[0].preBaselineStatus ?? null, null);
 });
 
 test("serializes duplicate starts into one active attempt", async () => {
@@ -1054,6 +1150,86 @@ test("authoritative PROGRAM execution occurs outside the reservation transaction
   assert.equal(depthDuringExecution, 0);
   assert.equal(result.status, "SUBMITTED");
   assert.equal(result.pointsEarned, 10);
+});
+
+for (const transientCode of ["40001", "40P01"]) {
+  test(`transient ${transientCode} retries finalization without rerunning secure grading`, async () => {
+    let executions = 0;
+    let finalizations = 0;
+    const observedLeases = [];
+    const harness = makeHarness({ type: "PRE" }, {
+      baselineService: {
+        classifyAtCreation: async () => "VALID",
+        classifyAtSubmission: async ({ attempt }) => {
+          finalizations += 1;
+          observedLeases.push(attempt.gradingLeaseToken);
+          if (finalizations === 1) {
+            const error = new Error("retry finalization");
+            error.code = transientCode;
+            throw error;
+          }
+          return "VALID";
+        },
+      },
+      secureCodingExecution: {
+        runSecureMethodExecution: async () => {
+          executions += 1;
+          return {
+            category: "SUCCESS",
+            invocations: [
+              { category: "SUCCESS", output: 3 },
+              { category: "SUCCESS", output: 12 },
+            ],
+          };
+        },
+      },
+    });
+    useCodingGraph(harness.store);
+    const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+    await harness.service.saveResponse({
+      attemptId: started.attempt.id,
+      studentId: 42,
+      questionId: 201,
+      sourceCode: harness.store.assessments[0].questions[0].starterCode,
+    });
+    const result = await harness.service.submitAttempt({
+      attemptId: started.attempt.id,
+      studentId: 42,
+      submissionKey: `transient-${transientCode}`,
+    });
+
+    assert.equal(result.status, "SUBMITTED");
+    assert.equal(executions, 1);
+    assert.equal(finalizations, 2);
+    assert.equal(observedLeases[0], observedLeases[1]);
+    assert.equal(harness.store.responses.length, 1);
+    assert.equal(harness.store.attempts[0].preBaselineStatus, "VALID");
+  });
+}
+
+test("non-transient baseline finalization failure is not retried and releases reservation", async () => {
+  let finalizations = 0;
+  const harness = makeHarness({ type: "PRE" }, {
+    baselineService: {
+      classifyAtCreation: async () => "VALID",
+      classifyAtSubmission: async () => {
+        finalizations += 1;
+        throw new Error("classification unavailable");
+      },
+    },
+  });
+  const started = await harness.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  await assert.rejects(harness.service.submitAttempt({
+    attemptId: started.attempt.id,
+    studentId: 42,
+    submissionKey: "baseline-failure",
+  }), /classification unavailable/);
+
+  assert.equal(finalizations, 1);
+  assert.equal(harness.store.attempts[0].status, "IN_PROGRESS");
+  assert.equal(harness.store.attempts[0].submissionKey, null);
+  assert.equal(harness.store.attempts[0].preBaselineStatus, "VALID");
+  assert.equal(harness.store.responses.length, 0);
 });
 
 test("PROGRAM infrastructure failure releases grading without recording a zero", async () => {

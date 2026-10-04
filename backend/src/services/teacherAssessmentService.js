@@ -292,6 +292,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         "maxPoints",
         "percentage",
         "passed",
+        ...(plain(assessment).type === ASSESSMENT_TYPES.PRE ? ["preBaselineStatus"] : []),
       ],
       include: [{
         model: User,

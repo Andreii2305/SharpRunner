@@ -19,6 +19,7 @@ const result = (studentValue, overrides = {}) => ({
   passed: overrides.passed ?? null,
   isOfficial: overrides.isOfficial ?? false,
   isFirstSubmittedPost: overrides.isFirstSubmittedPost ?? false,
+  preBaselineStatus: overrides.preBaselineStatus ?? "VALID",
 });
 
 const prePayload = (results, codingQuestions = []) => ({ assessment: { id: 1, lessonKey: "arrays", type: "PRE", title: "Arrays diagnostic", passingPercentage: null, maxAttempts: 1 }, results, codingQuestions });
@@ -59,9 +60,50 @@ test("analytics deduplicates submitted students and keeps first versus official 
 test("PRE is diagnostic and never receives inferred pass/fail semantics", () => {
   const alan = student(1, "Alan", "Turing");
   const model = buildAssessmentAnalytics({ prePayload: prePayload([result(alan, { percentage: 100, passed: true })]) });
-  assert.equal(model.students[0].preStatus, "Diagnostic submitted");
+  assert.equal(model.students[0].preStatus, "Valid baseline");
   assert.equal(model.students[0].preAttempt.passed, null);
   assert.equal(model.metrics.postPassRate, null);
+});
+
+test("mixed baseline provenance separates diagnostic averages, counts, and paired gain", () => {
+  const validNegative = student(1, "Valid", "Negative");
+  const validZero = student(2, "Valid", "Zero");
+  const retroactive = student(3, "Retro", "Active");
+  const unknown = student(4, "Unknown", "Legacy");
+  const missing = student(5, "Missing", "Legacy");
+  const preOnly = student(6, "Pre", "Only");
+  const postOnly = student(7, "Post", "Only");
+  const model = buildAssessmentAnalytics({
+    prePayload: prePayload([
+      result(validNegative, { percentage: 80, preBaselineStatus: "VALID" }),
+      result(validZero, { percentage: 60, preBaselineStatus: "VALID" }),
+      result(retroactive, { percentage: 100, preBaselineStatus: "RETROACTIVE" }),
+      result(unknown, { percentage: 40, preBaselineStatus: "UNKNOWN" }),
+      { ...result(missing, { percentage: 20 }), preBaselineStatus: undefined },
+      result(preOnly, { percentage: 0, preBaselineStatus: "VALID" }),
+    ]),
+    postPayload: postPayload([
+      result(validNegative, { percentage: 70, isOfficial: true, isFirstSubmittedPost: true }),
+      result(validZero, { percentage: 60, isOfficial: true, isFirstSubmittedPost: true }),
+      result(retroactive, { percentage: 90, isOfficial: true, isFirstSubmittedPost: true }),
+      result(unknown, { percentage: 90, isOfficial: true, isFirstSubmittedPost: true }),
+      result(missing, { percentage: 90, isOfficial: true, isFirstSubmittedPost: true }),
+      result(postOnly, { percentage: 90, isOfficial: true, isFirstSubmittedPost: true }),
+    ]),
+  });
+
+  assert.equal(model.metrics.averageAllPrePercentage, 50);
+  assert.equal(model.metrics.averagePrePercentage, 50);
+  assert.equal(model.metrics.averageValidBaselinePrePercentage, 46.7);
+  assert.equal(model.metrics.validBaselineStudents, 3);
+  assert.equal(model.metrics.excludedBaselineStudents, 3);
+  assert.equal(model.metrics.pairedStudents, 2);
+  assert.equal(model.metrics.averageLearningGain, -5);
+  assert.equal(model.students.find((row) => row.student.id === 3).preStatus, "Retroactive — game activity preceded PRE");
+  assert.equal(model.students.find((row) => row.student.id === 4).preStatus, "Unknown — legacy baseline timing");
+  assert.equal(model.students.find((row) => row.student.id === 5).preStatus, "Unknown — legacy baseline timing");
+  assert.equal(model.students.find((row) => row.student.id === 3).learningGain, null);
+  assert.equal(model.students.find((row) => row.student.id === 4).learningGain, null);
 });
 
 test("POST without a passing policy is submitted, never failed, and has no pass rate", () => {

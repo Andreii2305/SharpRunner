@@ -224,6 +224,24 @@ test("teacher editor serializer includes answer keys only after authorization", 
   });
   assert.equal(results.results[0].student.email, undefined);
   assert.equal(results.results[0].isOfficial, true);
+
+  for (const [preBaselineStatus, expected] of [
+    ["VALID", "VALID"],
+    ["RETROACTIVE", "RETROACTIVE"],
+    ["UNKNOWN", "UNKNOWN"],
+    [null, "UNKNOWN"],
+  ]) {
+    const preResults = serializers.serializeTeacherResults({
+      assessment: assessment({ type: "PRE" }),
+      results: [{
+        student: { id: 99, firstName: "Ada", lastName: "Learner", username: "ada" },
+        attempt: submittedAttempt({ preBaselineStatus }),
+      }],
+    });
+    assert.equal(preResults.results[0].preBaselineStatus, expected);
+  }
+
+  assert.equal("preBaselineStatus" in results.results[0], false);
 });
 
 test("teacher recovery serializer exposes only the eight approved attempt fields", () => {
@@ -316,13 +334,30 @@ test("unavailable discovery cannot become an unlocked progression resource", () 
   assert.equal(output.assessment, null);
 });
 
-test("PRE student results omit passed", () => {
+test("PRE student results expose only derived baseline eligibility and omit passed", () => {
   const result = serializers.serializeStudentResult({
     assessment: assessment({ type: "PRE", passingPercentage: null }),
-    attempt: submittedAttempt({ passed: null }),
+    attempt: submittedAttempt({ passed: null, preBaselineStatus: "VALID" }),
   });
   assert.equal("passed" in result.result, false);
   assert.equal(result.result.percentage, 80);
+  assert.equal(result.result.baselineEligible, true);
+  assert.equal("preBaselineStatus" in result.result, false);
+
+  for (const preBaselineStatus of ["RETROACTIVE", "UNKNOWN", null, undefined]) {
+    const diagnostic = serializers.serializeStudentResult({
+      assessment: assessment({ type: "PRE", passingPercentage: null }),
+      attempt: submittedAttempt({ passed: null, preBaselineStatus }),
+    });
+    assert.equal(diagnostic.result.baselineEligible, false);
+    assert.equal("preBaselineStatus" in diagnostic.result, false);
+  }
+
+  const post = serializers.serializeStudentResult({
+    assessment: assessment({ type: "POST" }),
+    attempt: submittedAttempt({ preBaselineStatus: "VALID" }),
+  });
+  assert.equal("baselineEligible" in post.result, false);
 });
 
 test("hidden-score POST retains passed and omits every score and comparison field", () => {

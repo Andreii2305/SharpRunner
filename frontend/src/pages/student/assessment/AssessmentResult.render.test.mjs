@@ -64,18 +64,19 @@ const renderResult = (overrides = {}) => renderToStaticMarkup(React.createElemen
   },
 ));
 
-test("PRE result is diagnostic and neutral with optional authoritative baseline score", () => {
+test("valid PRE result uses honest starting-point and baseline wording", () => {
   const html = renderResult({
     route: { ...route, type: "PRE" },
     envelope: envelope({
       type: "PRE",
       diagnosticCompleted: true,
+      baselineEligible: true,
       passed: undefined,
       percentage: 45,
       pointsEarned: 4.5,
       maxPoints: 10,
     }, { attempts: { used: 1, max: 1, remaining: 0 } }),
-    progression: progression({ moduleUnlocked: true }),
+    progression: progression({ moduleUnlocked: true, nextAction: "PLAY_GAME" }),
   });
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Diagnostic complete<[\/]h1>/);
   assert.match(html, /Diagnostic complete/);
@@ -83,6 +84,50 @@ test("PRE result is diagnostic and neutral with optional authoritative baseline 
   assert.match(html, /45%/);
   assert.match(html, /Continue to module/);
   assert.doesNotMatch(html, /failed|did not pass|Retake|XP|reward/i);
+});
+
+test("retroactive or unknown PRE uses neutral diagnostic wording and target-lesson POST continuation", () => {
+  const html = renderResult({
+    route: { ...route, type: "PRE" },
+    envelope: envelope({
+      type: "PRE",
+      diagnosticCompleted: true,
+      baselineEligible: false,
+      passed: undefined,
+      percentage: 45,
+      pointsEarned: 4.5,
+      maxPoints: 10,
+    }),
+    progression: progression(
+      { nextAction: "TAKE_POST", moduleUnlocked: true },
+      { nextAction: "TAKE_PRE", nextActionLessonKey: "functions" },
+    ),
+  });
+  assert.match(html, /Diagnostic score[^<]*45%/);
+  assert.match(html, /diagnostic result has been recorded/i);
+  assert.match(html, /Continue to Post-Test/);
+  assert.match(html, /classrooms\/47\/lessons\/arrays\/assessment\/post/);
+  assert.doesNotMatch(html, /starting point|Baseline score|Continue to module/i);
+});
+
+test("PRE recovery is non-routable and refresh failure exposes no speculative continuation", () => {
+  const recovery = renderResult({
+    route: { ...route, type: "PRE" },
+    envelope: envelope({ type: "PRE", baselineEligible: false, passed: undefined }),
+    progression: progression({ nextAction: "POST_RECOVERY_REQUIRED" }),
+  });
+  assert.match(recovery, /Post-Test attempts exhausted/);
+  assert.match(recovery, /contact your teacher/i);
+  assert.doesNotMatch(recovery, /Continue to Post-Test|href="[^"]*assessment\/post/);
+
+  const failedRefresh = renderResult({
+    route: { ...route, type: "PRE" },
+    envelope: envelope({ type: "PRE", baselineEligible: false, passed: undefined }),
+    progression: progression({ nextAction: "TAKE_POST" }),
+    progressionError: new Error("offline"),
+  });
+  assert.match(failedRefresh, /Retry next-step refresh/);
+  assert.doesNotMatch(failedRefresh, /Continue to Post-Test|Continue Post-Test|Retry Post-Test/);
 });
 
 test("hidden-score POST shows authoritative pass status but no numeric or comparison fields", () => {

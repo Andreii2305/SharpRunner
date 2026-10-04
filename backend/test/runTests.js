@@ -21,6 +21,7 @@ require("./teacherAnalyticsExport.test");
 require("./learningAnalyticsEvents.test");
 require("./assessmentPolicyService.test");
 require("./assessmentMigration.test");
+require("./assessmentBaselineService.test");
 require("./assessmentAttemptService.test");
 require("./assessmentSerialization.test");
 require("./assessmentRoutes.integration.test");

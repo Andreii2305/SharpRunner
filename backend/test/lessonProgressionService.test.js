@@ -450,6 +450,127 @@ test("all disabled playable keys form an intentionally complete empty game requi
   assert.equal(state.nextAction, "LESSON_COMPLETE");
 });
 
+const requiredDebtState = (overrides = {}) => ({
+  lessonKey: "arrays",
+  curriculumPrerequisiteSatisfied: true,
+  preRequired: true,
+  preAssessmentId: 101,
+  preAttemptInProgress: false,
+  preCompleted: false,
+  gameCompleted: false,
+  postRequired: false,
+  postAssessmentId: null,
+  postAttemptInProgress: false,
+  postCompleted: false,
+  postPassingRequired: false,
+  postPassed: false,
+  postAttemptsRemaining: 0,
+  nextAction: "TAKE_PRE",
+  ...overrides,
+});
+
+test("required assessment debt resolver maps only the six closed same-lesson actions", () => {
+  const cases = [
+    ["TAKE_PRE", "PRE", "PRE_ASSESSMENT_REQUIRED", true],
+    ["RESUME_PRE", "PRE", "PRE_ASSESSMENT_REQUIRED", true],
+    ["TAKE_POST", "POST", "POST_ASSESSMENT_REQUIRED", true],
+    ["RESUME_POST", "POST", "POST_ASSESSMENT_REQUIRED", true],
+    ["RETRY_POST", "POST", "POST_ASSESSMENT_REQUIRED", true],
+    ["POST_RECOVERY_REQUIRED", "POST", "POST_ASSESSMENT_REQUIRED", false],
+  ];
+  for (const [action, assessmentType, accessReason, routable] of cases) {
+    const isPre = assessmentType === "PRE";
+    const state = requiredDebtState({
+      nextAction: action,
+      preRequired: isPre,
+      preCompleted: !isPre,
+      preAttemptInProgress: action === "RESUME_PRE",
+      gameCompleted: !isPre,
+      postRequired: !isPre,
+      postAssessmentId: isPre ? null : 202,
+      postAttemptInProgress: action === "RESUME_POST",
+      postCompleted: ["RETRY_POST", "POST_RECOVERY_REQUIRED"].includes(action),
+      postPassingRequired: !isPre,
+      postPassed: false,
+      postAttemptsRemaining: action === "POST_RECOVERY_REQUIRED" ? 0 : 2,
+    });
+    assert.deepEqual(progression.resolveRequiredAssessmentDebt(state), {
+      kind: "required-assessment",
+      lessonKey: "arrays",
+      assessmentType,
+      assessmentId: isPre ? 101 : 202,
+      assessmentAction: action,
+      accessReason,
+      routable,
+    }, action);
+  }
+});
+
+test("required assessment debt resolver returns null for consistent non-debt states", () => {
+  const states = [
+    requiredDebtState({ preRequired: false, preAssessmentId: null, nextAction: "PLAY_GAME" }),
+    requiredDebtState({ preCompleted: true, nextAction: "PLAY_GAME" }),
+    requiredDebtState({
+      curriculumPrerequisiteSatisfied: false,
+      nextAction: "COMPLETE_PREREQUISITE_LESSON",
+    }),
+    requiredDebtState({
+      preCompleted: true,
+      gameCompleted: true,
+      postRequired: false,
+      nextAction: "LESSON_COMPLETE",
+    }),
+    requiredDebtState({ lessonKey: "tutorial", nextAction: "TAKE_PRE" }),
+    requiredDebtState({ lessonKey: "final", nextAction: "TAKE_PRE" }),
+  ];
+  for (const state of states) {
+    assert.equal(progression.resolveRequiredAssessmentDebt(state), null, state.lessonKey);
+  }
+});
+
+test("required assessment debt resolver fails closed for contradictory target state", () => {
+  const invalidCases = [
+    requiredDebtState({ preAssessmentId: null }),
+    requiredDebtState({ preAssessmentId: 0 }),
+    requiredDebtState({ preCompleted: true }),
+    requiredDebtState({ nextAction: "TAKE_POST" }),
+    requiredDebtState({ nextAction: "PLAY_GAME" }),
+    requiredDebtState({
+      preCompleted: true,
+      gameCompleted: false,
+      postRequired: false,
+      nextAction: "LESSON_COMPLETE",
+    }),
+    requiredDebtState({
+      preRequired: false,
+      preAssessmentId: null,
+      preCompleted: true,
+      gameCompleted: true,
+      postRequired: true,
+      postAssessmentId: 202,
+      postCompleted: false,
+      nextAction: "PLAY_GAME",
+    }),
+    requiredDebtState({
+      preRequired: false,
+      preAssessmentId: null,
+      preCompleted: true,
+      gameCompleted: true,
+      postRequired: true,
+      postAssessmentId: -1,
+      nextAction: "TAKE_POST",
+    }),
+  ];
+  for (const state of invalidCases) {
+    assert.deepEqual(progression.resolveRequiredAssessmentDebt(state), {
+      kind: "invalid",
+      lessonKey: "arrays",
+      accessReason: "ASSESSMENT_STATE_INVALID",
+      routable: false,
+    });
+  }
+});
+
 const createLoaderHarness = ({
   publishedAssessments = [],
   attempts = [],

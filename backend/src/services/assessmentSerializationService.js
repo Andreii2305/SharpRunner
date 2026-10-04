@@ -2,6 +2,7 @@ const plain = (value) => value?.toJSON ? value.toJSON() : (value || {});
 const numberOrNull = (value) => value == null ? null : Number(value);
 const codingExecutionMode = (question) => question.codingExecutionMode || "METHOD";
 const { resolveCodingParameterNames } = require("./codingParameterNameService");
+const { effectivePreBaselineStatus } = require("./assessmentBaselineService");
 const DISCOVERY_LOCK_REASONS = new Set([
   "LESSON_PREREQUISITE_REQUIRED",
   "PRE_ASSESSMENT_REQUIRED",
@@ -167,6 +168,9 @@ const serializeStudentResult = (input = {}) => {
   const attempt = plain(input.attempt);
   const result = serializeSafeAttempt(attempt);
   if (assessment.type === "POST" && attempt.passed != null) result.passed = Boolean(attempt.passed);
+  if (assessment.type === "PRE") {
+    result.baselineEligible = attempt.preBaselineStatus === "VALID";
+  }
   if (assessment.showScoreAfterSubmission === true) {
     Object.assign(result, serializeScore(attempt));
   }
@@ -343,6 +347,9 @@ const serializeTeacherResults = (input = {}) => {
         passed: attempt.passed == null ? null : Boolean(attempt.passed),
         isOfficial: Boolean(item.isOfficial),
         isFirstSubmittedPost: Boolean(item.isFirstSubmittedPost),
+        ...(assessment.type === "PRE" ? {
+          preBaselineStatus: effectivePreBaselineStatus(attempt),
+        } : {}),
       };
     }),
     codingQuestions: (input.codingQuestions || []).map((questionInput) => {

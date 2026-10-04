@@ -4,7 +4,10 @@ const StudentLevelExtension = require("../models/StudentLevelExtension");
 const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const { findPrimaryActiveMembership } = require("./studentClassService");
 const { getClassroomLevelSettings } = require("./classroomLevelSettingsService");
-const { getLessonProgressionState } = require("./lessonProgressionService");
+const {
+  getLessonProgressionState,
+  resolveRequiredAssessmentDebt,
+} = require("./lessonProgressionService");
 const { CANONICAL_LESSON_ORDER } = require("../constants/lessonProgressionConfig");
 
 const PLAYABLE_LEVEL_KEY_SET = new Set(PLAYABLE_LEVEL_KEYS);
@@ -73,7 +76,35 @@ const evaluateStudentLevelAccess = ({
   const progress = progressByKey.get(levelKey);
   const deadlines = deadlineFields(target?.dueAt, extensionDueAt);
 
-  // Completion is permanent. A later policy edit must never invalidate it.
+  if (target?.isEnabled && lessonProgressionState) {
+    const debt = resolveRequiredAssessmentDebt(lessonProgressionState);
+    if (debt?.kind === "required-assessment") {
+      return {
+        allowed: false,
+        reason: debt.accessReason,
+        completed: Boolean(progress?.isCompleted),
+        lessonKey: debt.lessonKey,
+        assessmentRequired: true,
+        assessmentType: debt.assessmentType,
+        assessmentId: debt.assessmentId,
+        assessmentAction: debt.assessmentAction,
+        routable: debt.routable,
+        ...deadlines,
+      };
+    }
+    if (debt?.kind === "invalid") {
+      return {
+        allowed: false,
+        reason: debt.accessReason,
+        completed: Boolean(progress?.isCompleted),
+        lessonKey: debt.lessonKey,
+        assessmentRequired: false,
+        ...deadlines,
+      };
+    }
+  }
+
+  // Historical completion remains permanent except for target-lesson assessment debt above.
   if (progress?.isCompleted) {
     return { allowed: true, reason: "COMPLETED", completed: true, ...deadlines };
   }
@@ -91,18 +122,6 @@ const evaluateStudentLevelAccess = ({
       ...deadlines,
     };
   }
-  if (lessonProgressionState?.preRequired && !lessonProgressionState.preCompleted) {
-    return {
-      allowed: false,
-      reason: "PRE_ASSESSMENT_REQUIRED",
-      completed: false,
-      lessonKey: lessonProgressionState.lessonKey,
-      assessmentId: lessonProgressionState.preAssessmentId,
-      nextAction: lessonProgressionState.nextAction,
-      ...deadlines,
-    };
-  }
-
   const enabledSettings = orderedEnabledSettings(
     settings,
     lessonProgressionState?.lessonKey ?? lessonKeyForLevel(levelKey),
@@ -227,8 +246,33 @@ const restrictionPayload = (access) => {
       ...common,
       message: "Complete the required pre-test before opening this lesson.",
       lessonKey: access.lessonKey,
+      assessmentRequired: true,
+      assessmentType: access.assessmentType,
       assessmentId: access.assessmentId,
-      nextAction: access.nextAction,
+      assessmentAction: access.assessmentAction,
+    };
+  }
+  if (access.reason === "POST_ASSESSMENT_REQUIRED") {
+    return {
+      ...common,
+      message: access.assessmentAction === "POST_RECOVERY_REQUIRED"
+        ? "Post-test attempts are exhausted. Contact your teacher for help."
+        : "Complete the required post-test before opening this lesson.",
+      lessonKey: access.lessonKey,
+      assessmentRequired: true,
+      assessmentType: access.assessmentType,
+      assessmentId: access.assessmentId,
+      assessmentAction: access.assessmentAction,
+    };
+  }
+  if (access.reason === "ASSESSMENT_STATE_INVALID") {
+    return {
+      ...common,
+      message: "Level access changed. Return to the lesson map and try again.",
+      assessmentRequired: false,
+      assessmentType: null,
+      assessmentId: null,
+      assessmentAction: null,
     };
   }
   return {

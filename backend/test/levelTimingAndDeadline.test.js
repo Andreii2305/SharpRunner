@@ -15,6 +15,7 @@ const {
   evaluateStudentLevelAccess,
   getEffectiveDueAt,
   getStudentLevelAccess,
+  restrictionPayload,
 } = require("../src/services/levelAccessService");
 
 const progressRow = (overrides = {}) => ({
@@ -344,8 +345,17 @@ const lessonState = (lessonKey, overrides = {}) => ({
   prerequisiteLessonKey: lessonKey === "tutorial" ? null : "tutorial",
   curriculumPrerequisiteSatisfied: true,
   preRequired: false,
+  preAttemptInProgress: false,
   preCompleted: false,
   preAssessmentId: null,
+  gameCompleted: false,
+  postRequired: false,
+  postAssessmentId: null,
+  postAttemptInProgress: false,
+  postCompleted: false,
+  postPassingRequired: false,
+  postPassed: false,
+  postAttemptsRemaining: 0,
   nextAction: "PLAY_GAME",
   ...overrides,
 });
@@ -375,8 +385,10 @@ test("required PRE blocks both first and later incomplete lesson levels before s
     assert.equal(access.allowed, false);
     assert.equal(access.reason, "PRE_ASSESSMENT_REQUIRED");
     assert.equal(access.lessonKey, "arrays");
+    assert.equal(access.assessmentRequired, true);
+    assert.equal(access.assessmentType, "PRE");
     assert.equal(access.assessmentId, 81);
-    assert.equal(access.nextAction, "TAKE_PRE");
+    assert.equal(access.assessmentAction, "TAKE_PRE");
   }
 });
 
@@ -586,28 +598,113 @@ test("completed non-playable target replay is included beside the playable canon
   ]);
 });
 
-test("completed level replay wins before disabled, canonical, PRE, schedule, and deadline gates", () => {
+test("same-lesson PRE debt wins before completed replay", () => {
   const access = evaluateStudentLevelAccess({
     levelKey: "arrays-level-1",
-    settings: [levelSetting("arrays-level-1", 1, {
-      isEnabled: false,
-      unlockAt: new Date("2026-10-01T00:00:00Z"),
-      dueAt: new Date("2026-09-01T00:00:00Z"),
-    })],
+    settings: [levelSetting("arrays-level-1", 1)],
     progressByKey: new Map([
       ["arrays-level-1", progressRow({ levelKey: "arrays-level-1", isCompleted: true })],
     ]),
     lessonProgressionState: lessonState("arrays", {
-      curriculumPrerequisiteSatisfied: false,
       preRequired: true,
       preAssessmentId: 81,
+      preAttemptInProgress: false,
+      preCompleted: false,
+      gameCompleted: true,
+      nextAction: "TAKE_PRE",
     }),
-    now: new Date("2026-09-15T00:00:00Z"),
   });
 
-  assert.equal(access.allowed, true);
-  assert.equal(access.reason, "COMPLETED");
+  assert.equal(access.allowed, false);
+  assert.equal(access.reason, "PRE_ASSESSMENT_REQUIRED");
   assert.equal(access.completed, true);
+  assert.equal(access.assessmentAction, "TAKE_PRE");
+});
+
+test("same-lesson POST actions including recovery win before completed replay", () => {
+  for (const action of ["TAKE_POST", "RESUME_POST", "RETRY_POST", "POST_RECOVERY_REQUIRED"]) {
+    const access = evaluateStudentLevelAccess({
+      levelKey: "arrays-level-1",
+      settings: [levelSetting("arrays-level-1", 1)],
+      progressByKey: new Map([
+        ["arrays-level-1", progressRow({ levelKey: "arrays-level-1", isCompleted: true })],
+      ]),
+      lessonProgressionState: lessonState("arrays", {
+        preCompleted: true,
+        gameCompleted: true,
+        postRequired: true,
+        postAssessmentId: 92,
+        postAttemptInProgress: action === "RESUME_POST",
+        postCompleted: ["RETRY_POST", "POST_RECOVERY_REQUIRED"].includes(action),
+        postPassingRequired: true,
+        postPassed: false,
+        postAttemptsRemaining: action === "POST_RECOVERY_REQUIRED" ? 0 : 2,
+        nextAction: action,
+      }),
+    });
+    assert.equal(access.allowed, false, action);
+    assert.equal(access.reason, "POST_ASSESSMENT_REQUIRED", action);
+    assert.equal(access.completed, true, action);
+    assert.equal(access.assessmentType, "POST", action);
+    assert.equal(access.assessmentAction, action, action);
+    assert.equal(access.routable, action !== "POST_RECOVERY_REQUIRED", action);
+  }
+});
+
+test("unrelated earlier debt preserves completed later replay but blocks unfinished progression", () => {
+  const state = lessonState("functions", {
+    prerequisiteLessonKey: "arrays",
+    curriculumPrerequisiteSatisfied: false,
+    nextAction: "COMPLETE_PREREQUISITE_LESSON",
+  });
+  const input = {
+    levelKey: "functions-level-1",
+    settings: [levelSetting("functions-level-1", 1)],
+    progressByKey: new Map([
+      ["functions-level-1", progressRow({ levelKey: "functions-level-1", isCompleted: true })],
+    ]),
+    lessonProgressionState: state,
+  };
+  assert.equal(evaluateStudentLevelAccess(input).reason, "COMPLETED");
+  input.progressByKey.get("functions-level-1").isCompleted = false;
+  assert.equal(evaluateStudentLevelAccess(input).reason, "LESSON_PREREQUISITE_REQUIRED");
+
+  state.curriculumPrerequisiteSatisfied = true;
+  Object.assign(state, {
+    preRequired: true,
+    preAssessmentId: 93,
+    preCompleted: false,
+    nextAction: "TAKE_PRE",
+  });
+  input.progressByKey.get("functions-level-1").isCompleted = true;
+  assert.equal(evaluateStudentLevelAccess(input).reason, "PRE_ASSESSMENT_REQUIRED");
+});
+
+test("invalid assessment state fails closed without routable metadata", () => {
+  const access = evaluateStudentLevelAccess({
+    levelKey: "arrays-level-1",
+    settings: [levelSetting("arrays-level-1", 1)],
+    progressByKey: new Map([
+      ["arrays-level-1", progressRow({ levelKey: "arrays-level-1", isCompleted: true })],
+    ]),
+    lessonProgressionState: lessonState("arrays", {
+      preRequired: true,
+      preAssessmentId: null,
+      nextAction: "TAKE_PRE",
+    }),
+  });
+  assert.equal(access.reason, "ASSESSMENT_STATE_INVALID");
+  assert.equal(access.assessmentId, undefined);
+  assert.equal(access.assessmentAction, undefined);
+  assert.deepEqual(restrictionPayload(access), {
+    code: "ASSESSMENT_STATE_INVALID",
+    effectiveDueAt: null,
+    message: "Level access changed. Return to the lesson map and try again.",
+    assessmentRequired: false,
+    assessmentType: null,
+    assessmentId: null,
+    assessmentAction: null,
+  });
 });
 
 test("disabled, scheduled, deadline, extension, and completion precedence remains unchanged", () => {

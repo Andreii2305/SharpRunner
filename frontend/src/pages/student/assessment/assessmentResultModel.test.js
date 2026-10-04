@@ -116,3 +116,53 @@ test("next-action routing maps only known server actions and fails safely to the
   assert.equal(resolveAssessmentNextHref({ nextAction: "UNKNOWN", route }), "/Map?classroomId=47");
   assert.equal(resolveAssessmentNextHref({ nextAction: "PLAY_GAME", route }), "/Map?classroomId=47");
 });
+
+test("PRE continuation uses only the refreshed target lesson action", () => {
+  const preRoute = { ...route, type: "PRE" };
+  const preEnvelope = resultEnvelope({
+    result: { type: "PRE", passed: undefined, baselineEligible: false },
+  });
+  for (const [nextAction, label] of [
+    ["TAKE_POST", "Continue to Post-Test"],
+    ["RESUME_POST", "Continue Post-Test"],
+    ["RETRY_POST", "Retry Post-Test"],
+  ]) {
+    const model = createAssessmentResultModel({
+      envelope: preEnvelope,
+      progression: progression(
+        { nextAction, moduleUnlocked: true },
+        { nextAction: "TAKE_PRE", nextActionLessonKey: "functions" },
+      ),
+      route: preRoute,
+    });
+    assert.deepEqual(model.continuation, {
+      kind: "assessment",
+      label,
+      href: "/classrooms/47/lessons/arrays/assessment/post",
+      disabled: false,
+    });
+  }
+
+  const ordinary = createAssessmentResultModel({
+    envelope: preEnvelope,
+    progression: progression(
+      { nextAction: "PLAY_GAME", moduleUnlocked: true },
+      { nextAction: "TAKE_POST", nextActionLessonKey: "functions" },
+    ),
+    route: preRoute,
+  });
+  assert.equal(ordinary.continuation.kind, "module");
+  assert.equal(ordinary.continuation.label, "Continue to module");
+
+  const recovery = createAssessmentResultModel({
+    envelope: preEnvelope,
+    progression: progression({ nextAction: "POST_RECOVERY_REQUIRED" }),
+    route: preRoute,
+  });
+  assert.deepEqual(recovery.continuation, {
+    kind: "recovery",
+    label: "Post-Test attempts exhausted — contact your teacher",
+    href: null,
+    disabled: true,
+  });
+});

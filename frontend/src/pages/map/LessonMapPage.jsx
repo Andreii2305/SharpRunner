@@ -7,6 +7,7 @@ import LessonProgressionPanel from "../../Components/LessonProgression/LessonPro
 import { fetchPrimaryClassroomId } from "../../services/builtInLessonContentService.js";
 import { getProgress } from "../../services/studentAssessmentService.js";
 import {
+  createLevelEntryViewModel,
   createLessonProgressionViewModel,
   loadExactProgress,
   withExactClassroom,
@@ -25,12 +26,6 @@ const FUNCTIONS_LEVEL_COUNT = 11;
 const FUNCTIONS_ARRAYS_ROUTE_START = 26;
 const FUNCTIONS_ARRAYS_NODE_COUNT = 5;
 const LAST_REGION_KEY = "sharprunner:last-map-region";
-const getNodeStatus = (row) => {
-  if (row?.isCompleted) return "completed";
-  if (row?.lockReason === "deadline") return "expired";
-  if (row?.isAccessible) return "current";
-  return "locked";
-};
 const getDeadlineProps = (row) => ({
   effectiveDueAt: row?.effectiveDueAt ?? null,
   hasExtension: Boolean(row?.hasExtension),
@@ -102,10 +97,15 @@ function LessonMapPage() {
   const mapNodes = useMemo(() => {
     return LESSON_ONE_MAP_CONFIG.nodes.map((node) => {
       const row = progressByKey.get(getProgressKeyForMapNode(node));
+      const gameRoute = withExactClassroom(`/tutorial/level/${node.levelNumber}`, classroomId);
+      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
       return {
         ...node,
-        status: getNodeStatus(row),
-        route: withExactClassroom(`/tutorial/level/${node.levelNumber}`, classroomId),
+        status: entry.visualStatus,
+        route: entry.href,
+        actionLabel: entry.label,
+        disabled: entry.disabled,
+        completed: row?.isCompleted === true,
         finalScore: row?.finalScore ?? null,
         ...getDeadlineProps(row),
       };
@@ -119,13 +119,18 @@ function LessonMapPage() {
     return rows.map((row, index) => {
       const levelNumber = ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
+      const gameRoute = withExactClassroom(`/array/level/${index + 1}`, classroomId);
+      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
       return {
         id: `arrays-level-${index + 1}`,
         levelNumber,
         title: config?.title ?? `Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Arrays",
-        route: withExactClassroom(`/array/level/${index + 1}`, classroomId),
-        status: getNodeStatus(row),
+        route: entry.href,
+        status: entry.visualStatus,
+        actionLabel: entry.label,
+        disabled: entry.disabled,
+        completed: row?.isCompleted === true,
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
         attemptCount: row?.attemptCount ?? 0,
@@ -143,14 +148,19 @@ function LessonMapPage() {
     return rows.map((row, index) => {
       const levelNumber = FUNCTIONS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
+      const gameRoute = withExactClassroom(`/function/level/${index + 1}`, classroomId);
+      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
       return {
         id: `functions-level-${index + 1}`,
         levelNumber,
         displayLevelNumber: config?.mapLevelLabel ?? levelNumber,
         title: config?.title ?? `Functions ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions and Methods",
-        route: withExactClassroom(`/function/level/${index + 1}`, classroomId),
-        status: getNodeStatus(row),
+        route: entry.href,
+        status: entry.visualStatus,
+        actionLabel: entry.label,
+        disabled: entry.disabled,
+        completed: row?.isCompleted === true,
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
         attemptCount: row?.attemptCount ?? 0,
@@ -171,13 +181,18 @@ function LessonMapPage() {
     return rows.map((row, index) => {
       const levelNumber = FUNCTIONS_ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
+      const gameRoute = withExactClassroom(`/function-with-array/level/${index + 1}`, classroomId);
+      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
       return {
         id: index < 4 ? `functions-with-arrays-level-${index + 1}` : "final-level-1",
         levelNumber,
         title: config?.title ?? `Functions with Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions with Arrays",
-        route: withExactClassroom(`/function-with-array/level/${index + 1}`, classroomId),
-        status: getNodeStatus(row),
+        route: entry.href,
+        status: entry.visualStatus,
+        actionLabel: entry.label,
+        disabled: entry.disabled,
+        completed: row?.isCompleted === true,
         finalScore: row?.finalScore ?? null,
         grade: row?.grade ?? null,
         attemptCount: row?.attemptCount ?? 0,
@@ -228,14 +243,12 @@ function LessonMapPage() {
       0,
     ) / FUNCTIONS_ARRAYS_NODE_COUNT,
   );
-  const arraysCompletedCount = arrayNodes.filter(
-    (node) => node.status === "completed",
-  ).length;
+  const arraysCompletedCount = arrayNodes.filter((node) => node.completed).length;
   const functionsCompletedCount = functionNodes.filter(
-    (node) => node.status === "completed",
+    (node) => node.completed,
   ).length;
   const functionsArraysCompletedCount = functionsArraysNodes.filter(
-    (node) => node.status === "completed",
+    (node) => node.completed,
   ).length;
 
   const continueRoute = useMemo(() => {
@@ -248,8 +261,9 @@ function LessonMapPage() {
           ? arrayNodes
           : mapNodes;
     return (
+      candidates.find((node) => node.status === "assessment-required")?.route ??
       candidates.find((node) => node.status === "current")?.route ??
-      [...candidates].reverse().find((node) => node.status === "completed")?.route ??
+      [...candidates].reverse().find((node) => node.completed)?.route ??
       "/tutorial/level/1"
     );
   }, [activeRegion, arrayNodes, functionNodes, functionsArraysNodes, mapNodes]);
@@ -412,7 +426,7 @@ function LessonMapPage() {
             backgroundImageSrc={LEVEL_ONE_BG_SRC}
             onContinue={() => navigate(continueRoute)}
             onExit={() => navigate("/dashboard")}
-            onNodeClick={(node) => navigate(node.route)}
+            onNodeClick={(node) => { if (node.route) navigate(node.route); }}
             continueDisabled={isLoading}
           />
         ) : (
@@ -477,7 +491,7 @@ function LessonMapPage() {
                 mapUrl={tiledRegion.mapUrl}
                 nodes={tiledRegion.nodes}
                 mapMarkerToLevel={tiledRegion.markerToLevel}
-                onNodeClick={(node) => navigate(node.route)}
+                onNodeClick={(node) => { if (node.route) navigate(node.route); }}
               />
             </section>
           </div>

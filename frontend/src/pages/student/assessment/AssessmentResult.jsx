@@ -57,7 +57,11 @@ export default function AssessmentResult({
           {resultHeading(model)}
         </h1>
         {isPre ? (
-          <p>Your starting point has been recorded. This helps show your learning progress after the lesson.</p>
+          model.baselineEligible ? (
+            <p>Your starting point has been recorded. This helps show your learning progress after the lesson.</p>
+          ) : (
+            <p>Your diagnostic result has been recorded.</p>
+          )
         ) : model.state === "PASSED" ? (
           <p>You passed this post-test.</p>
         ) : model.state === "EXHAUSTED" ? (
@@ -77,7 +81,9 @@ export default function AssessmentResult({
 
         {model.score && (
           <div className={styles.scoreList} aria-label="Assessment score">
-            <p>{isPre ? "Baseline score" : "Latest attempt score"}: {model.score.percentage}%</p>
+            <p>{isPre
+              ? model.baselineEligible ? "Baseline score" : "Diagnostic score"
+              : "Latest attempt score"}: {model.score.percentage}%</p>
             <p>Points: {model.score.pointsEarned} of {model.score.maxPoints}</p>
             {!isPre && model.officialGrade?.percentage !== undefined && (
               <p>Official grade (best): {model.officialGrade.percentage}%</p>
@@ -137,7 +143,12 @@ export default function AssessmentResult({
         {retakeError && <p role="alert">The retake could not be started. Please try again.</p>}
 
         <nav className={styles.resultActions} aria-label="Assessment result actions">
-          {model.moduleUnlocked && <a href={model.moduleHref}>Continue to module</a>}
+          {isPre && !progressionError && model.continuation?.href && !model.continuation.disabled && (
+            <a href={model.continuation.href}>{model.continuation.label}</a>
+          )}
+          {isPre && !progressionError && model.continuation?.disabled && (
+            <p role="status">{model.continuation.label}</p>
+          )}
           {!isPre && ["PASSED", "COMPLETED"].includes(model.state) && (
             <a href={model.nextHref}>Continue</a>
           )}

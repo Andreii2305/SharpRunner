@@ -34,6 +34,111 @@ export const buildAssessmentHref = ({ classroomId, lessonKey, type }) => (
   + `/lessons/${segment(lessonKey)}/assessment/${segment(String(type).toLowerCase())}`
 );
 
+const LEVEL_ASSESSMENT_LESSONS = new Set([
+  "arrays",
+  "functions",
+  "functions-with-arrays",
+]);
+const LEVEL_ASSESSMENT_ACTIONS = Object.freeze({
+  TAKE_PRE: { type: "PRE", label: "Take Pre-Test" },
+  RESUME_PRE: { type: "PRE", label: "Continue Pre-Test" },
+  TAKE_POST: { type: "POST", label: "Take Post-Test" },
+  RESUME_POST: { type: "POST", label: "Continue Post-Test" },
+  RETRY_POST: { type: "POST", label: "Retry Post-Test" },
+});
+
+export const isLevelAssessmentRestriction = (payload) => {
+  if (!payload || typeof payload !== "object") return false;
+  const reason = payload.code ?? payload.accessReason;
+  return payload.assessmentRequired === true
+    || [
+      "ASSESSMENT_STATE_INVALID",
+      "PRE_ASSESSMENT_REQUIRED",
+      "POST_ASSESSMENT_REQUIRED",
+    ].includes(reason);
+};
+
+export const resolveLevelAssessmentAction = ({ classroomId, level } = {}) => {
+  const resolvedClassroomId = positiveId(classroomId);
+  const assessmentId = positiveId(level?.assessmentId);
+  if (!resolvedClassroomId
+    || level?.assessmentRequired !== true
+    || !LEVEL_ASSESSMENT_LESSONS.has(level?.lessonKey)
+    || !assessmentId) return null;
+
+  if (level.assessmentAction === "POST_RECOVERY_REQUIRED") {
+    if (level.assessmentType !== "POST") return null;
+    return {
+      kind: "recovery",
+      href: null,
+      label: "Post-Test attempts exhausted — contact your teacher",
+      routable: false,
+    };
+  }
+
+  const action = LEVEL_ASSESSMENT_ACTIONS[level.assessmentAction];
+  if (!action || level.assessmentType !== action.type) return null;
+  return {
+    kind: "assessment",
+    href: buildAssessmentHref({
+      classroomId: resolvedClassroomId,
+      lessonKey: level.lessonKey,
+      type: action.type,
+    }),
+    label: action.label,
+    routable: true,
+  };
+};
+
+export const createLevelEntryViewModel = ({ classroomId, level, gameHref } = {}) => {
+  const completed = level?.isCompleted === true;
+  const assessment = resolveLevelAssessmentAction({ classroomId, level });
+  if (assessment) {
+    return {
+      ...assessment,
+      visualStatus: assessment.routable ? "assessment-required" : "assessment-recovery",
+      completed,
+      disabled: !assessment.routable,
+    };
+  }
+
+  const malformedAssessment = level?.accessReason === "ASSESSMENT_STATE_INVALID"
+    || level?.assessmentRequired === true
+    || ["PRE_ASSESSMENT_REQUIRED", "POST_ASSESSMENT_REQUIRED"].includes(level?.accessReason);
+  if (malformedAssessment) {
+    return {
+      kind: "invalid",
+      href: null,
+      label: "Level access changed — return to the map",
+      routable: false,
+      visualStatus: "assessment-invalid",
+      completed,
+      disabled: true,
+    };
+  }
+
+  if (level?.isAccessible === true) {
+    return {
+      kind: "game",
+      href: gameHref,
+      label: completed ? "Replay level" : "Play level",
+      routable: true,
+      visualStatus: completed ? "completed" : "current",
+      completed,
+      disabled: false,
+    };
+  }
+  return {
+    kind: "locked",
+    href: null,
+    label: level?.lockReason === "deadline" ? "Deadline passed" : "Level locked",
+    routable: false,
+    visualStatus: level?.lockReason === "deadline" ? "expired" : "locked",
+    completed,
+    disabled: true,
+  };
+};
+
 const step = (id, label, state) => ({ id, label, state });
 
 const stepState = (lesson) => {

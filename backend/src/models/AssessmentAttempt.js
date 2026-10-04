@@ -1,6 +1,10 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const { ASSESSMENT_LIMITS, ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
+const {
+  ASSESSMENT_LIMITS,
+  ATTEMPT_STATUSES,
+  PRE_BASELINE_STATUSES,
+} = require("../constants/assessmentConfig");
 
 const AssessmentAttempt = sequelize.define("AssessmentAttempt", {
   assessmentId: { type: DataTypes.INTEGER, allowNull: false },
@@ -32,6 +36,11 @@ const AssessmentAttempt = sequelize.define("AssessmentAttempt", {
   submissionKey: { type: DataTypes.STRING(ASSESSMENT_LIMITS.submissionKeyLength), allowNull: true },
   gradingLeaseToken: { type: DataTypes.STRING(96), allowNull: true },
   gradingLeaseExpiresAt: { type: DataTypes.DATE, allowNull: true },
+  preBaselineStatus: {
+    type: DataTypes.STRING(16),
+    allowNull: true,
+    validate: { isIn: [Object.values(PRE_BASELINE_STATUSES)] },
+  },
 }, {
   indexes: [
     {

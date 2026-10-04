@@ -367,9 +367,13 @@ test("final required game completion unlocks POST discovery and start only after
   assert.equal((await start()).allowed, true);
 });
 
-const withProgressRoute = async (callback) => {
+const withProgressRoute = async (callback, {
+  attempts: suppliedAttempts = null,
+  configureRows = null,
+} = {}) => {
   stateCalls.length = 0;
   const rows = progressRows();
+  configureRows?.(rows);
   const membership = { id: 3, classroomId: 9, studentId: 7, status: "active" };
   const queries = { assessments: [], attempts: [], progress: [], settings: [], memberships: [] };
   const stubs = [
@@ -396,7 +400,7 @@ const withProgressRoute = async (callback) => {
     }],
     [AssessmentAttempt, "findAll", async (options) => {
       queries.attempts.push(options);
-      return [{
+      return suppliedAttempts ?? [{
         id: 101, classroomId: 9, studentId: 7, assessmentId: 91,
         status: "SUBMITTED", submittedAt: "2026-09-27T00:00:00Z", attemptNumber: 1,
         percentage: 95, pointsEarned: 19, passed: true,
@@ -411,14 +415,112 @@ const withProgressRoute = async (callback) => {
   for (const [target, key, replacement] of stubs) target[key] = replacement;
   try {
     const token = jwt.sign({ id: 7, role: "student" }, process.env.JWT_SECRET, { expiresIn: "5m" });
-    const response = await fetch(`${baseUrl}/api/progress/me`, { headers: { Authorization: `Bearer ${token}` } });
-    const payload = await response.json();
-    assert.equal(response.status, 200);
-    await callback({ payload, queries, membership, rows });
+    const request = async () => {
+      const response = await fetch(`${baseUrl}/api/progress/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = await response.json();
+      assert.equal(response.status, 200);
+      return payload;
+    };
+    const payload = await request();
+    await callback({ payload, queries, membership, request, rows });
   } finally {
     for (const [target, key, original] of originals) target[key] = original;
   }
 };
+
+test("historical completed lesson advances PRE to POST to replay", async () => {
+  const attempts = [];
+  await withProgressRoute(async ({ payload: prePayload, request }) => {
+    const arraysLevels = (payload) => payload.levels.filter(
+      (level) => level.levelKey.startsWith("arrays-level-"),
+    );
+    const arraysLesson = (payload) => payload.lessons.find(
+      (lesson) => lesson.lessonKey === "arrays",
+    );
+    assert.deepEqual({
+      gameCompleted: arraysLesson(prePayload).gameCompleted,
+      preCompleted: arraysLesson(prePayload).preCompleted,
+      postCompleted: arraysLesson(prePayload).postCompleted,
+      lessonCompleted: arraysLesson(prePayload).lessonCompleted,
+      nextAction: arraysLesson(prePayload).nextAction,
+    }, {
+      gameCompleted: true,
+      preCompleted: false,
+      postCompleted: false,
+      lessonCompleted: false,
+      nextAction: "TAKE_PRE",
+    });
+    assert.equal(arraysLevels(prePayload).length, 8);
+    for (const level of arraysLevels(prePayload)) {
+      assert.deepEqual({
+        reason: level.accessReason,
+        type: level.assessmentType,
+        action: level.assessmentAction,
+        accessible: level.isAccessible,
+      }, {
+        reason: "PRE_ASSESSMENT_REQUIRED",
+        type: "PRE",
+        action: "TAKE_PRE",
+        accessible: false,
+      }, level.levelKey);
+    }
+
+    attempts.push({
+      id: 101,
+      classroomId: 9,
+      studentId: 7,
+      assessmentId: 91,
+      status: "SUBMITTED",
+      submittedAt: "2026-09-27T00:00:00Z",
+      attemptNumber: 1,
+    });
+    const postPayload = await request();
+    assert.equal(arraysLesson(postPayload).nextAction, "TAKE_POST");
+    for (const level of arraysLevels(postPayload)) {
+      assert.deepEqual({
+        reason: level.accessReason,
+        type: level.assessmentType,
+        action: level.assessmentAction,
+        accessible: level.isAccessible,
+      }, {
+        reason: "POST_ASSESSMENT_REQUIRED",
+        type: "POST",
+        action: "TAKE_POST",
+        accessible: false,
+      }, level.levelKey);
+    }
+
+    attempts.push({
+      id: 102,
+      classroomId: 9,
+      studentId: 7,
+      assessmentId: 92,
+      status: "SUBMITTED",
+      submittedAt: "2026-09-28T00:00:00Z",
+      attemptNumber: 1,
+      passed: true,
+    });
+    const replayPayload = await request();
+    assert.equal(arraysLesson(replayPayload).lessonCompleted, true);
+    for (const level of arraysLevels(replayPayload)) {
+      assert.deepEqual({
+        reason: level.accessReason,
+        required: level.assessmentRequired,
+        accessible: level.isAccessible,
+      }, { reason: "COMPLETED", required: false, accessible: true }, level.levelKey);
+    }
+  }, {
+    attempts,
+    configureRows(rows) {
+      Object.assign(rows.find((row) => row.levelKey === "functions-level-1"), {
+        progressPercent: 100,
+        isCompleted: true,
+      });
+    },
+  });
+});
 
 const withMultipleClassroomProgressRoutes = async (callback) => {
   stateCalls.length = 0;
@@ -585,10 +687,18 @@ test("progress me reports selected classroom and an allowlisted canonical progre
     const blockedFunctionsLevel = payload.levels.find(
       (level) => level.levelKey === "functions-level-1",
     );
-    assert.equal(completedArraysLevel.isAccessible, true);
-    assert.equal(completedArraysLevel.accessReason, "COMPLETED");
+    assert.equal(completedArraysLevel.isAccessible, false);
+    assert.equal(completedArraysLevel.accessReason, "POST_ASSESSMENT_REQUIRED");
+    assert.equal(completedArraysLevel.assessmentRequired, true);
+    assert.equal(completedArraysLevel.assessmentType, "POST");
+    assert.equal(completedArraysLevel.assessmentId, 92);
+    assert.equal(completedArraysLevel.assessmentAction, "TAKE_POST");
     assert.equal(blockedFunctionsLevel.isAccessible, false);
     assert.equal(blockedFunctionsLevel.accessReason, "LESSON_PREREQUISITE_REQUIRED");
+    assert.equal(blockedFunctionsLevel.assessmentRequired, false);
+    assert.equal(blockedFunctionsLevel.assessmentType, null);
+    assert.equal(blockedFunctionsLevel.assessmentId, null);
+    assert.equal(blockedFunctionsLevel.assessmentAction, null);
     assertCanonicalProgressionEnvelope(payload);
   });
 });

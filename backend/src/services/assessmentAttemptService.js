@@ -2,6 +2,7 @@ const { randomBytes } = require("crypto");
 const defaultSequelize = require("../config/database");
 const defaultModels = require("../models");
 const defaultProgressionService = require("./lessonProgressionService");
+const { createAssessmentBaselineService } = require("./assessmentBaselineService");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
 const {
@@ -12,6 +13,7 @@ const {
   shapePublicCodingExecutionResult,
 } = require("./codingAssessmentService");
 const {
+  ASSESSMENT_TYPES,
   ATTEMPT_STATUSES,
 } = require("../constants/assessmentConfig");
 const {
@@ -123,6 +125,7 @@ const createAssessmentAttemptService = ({
   random = Math.random,
   now = () => new Date(),
   progressionService = defaultProgressionService,
+  baselineService = createAssessmentBaselineService({ models }),
   secureCodingExecution = defaultSecureCodingExecution,
   environment = process.env,
   createLeaseToken = () => randomBytes(32).toString("base64url"),
@@ -356,6 +359,9 @@ const createAssessmentAttemptService = ({
       0,
     ) + 1;
     const order = buildOrder(assessment);
+    const preBaselineStatus = assessment.type === ASSESSMENT_TYPES.PRE
+      ? await baselineService.classifyAtCreation({ assessment, studentId, transaction })
+      : null;
     const created = await AssessmentAttempt.create({
       assessmentId: assessment.id,
       classroomId: assessment.classroomId,
@@ -366,6 +372,7 @@ const createAssessmentAttemptService = ({
       startedAt: now(),
       questionOrder: order.questionOrder,
       choiceOrder: order.choiceOrder,
+      preBaselineStatus,
     }, { transaction });
 
     return {
@@ -657,7 +664,7 @@ const createAssessmentAttemptService = ({
     return true;
   });
 
-  const finalizeSubmission = (reservation, score) => sequelize.transaction(async (transaction) => {
+  const finalizeSubmissionOnce = (reservation, score) => sequelize.transaction(async (transaction) => {
     const attempt = await requireOwnedAttempt(reservation.attemptId, reservation.studentId, transaction);
     if (attempt.status === ATTEMPT_STATUSES.SUBMITTED
       && attempt.submissionKey === reservation.submissionKey) return safeSubmittedResult(attempt);
@@ -709,6 +716,14 @@ const createAssessmentAttemptService = ({
       }
     }
 
+    if (assessment.type === ASSESSMENT_TYPES.PRE) {
+      attempt.preBaselineStatus = await baselineService.classifyAtSubmission({
+        assessment,
+        attempt,
+        studentId: reservation.studentId,
+        transaction,
+      });
+    }
     attempt.status = ATTEMPT_STATUSES.SUBMITTED;
     attempt.submittedAt = now();
     attempt.pointsEarned = score.pointsEarned;
@@ -725,6 +740,21 @@ const createAssessmentAttemptService = ({
     await attempt.save({ transaction });
     return safeSubmittedResult(attempt);
   });
+
+  const transientFinalizationCode = (error) => (
+    error?.code ?? error?.original?.code ?? error?.parent?.code
+  );
+  const finalizeSubmission = async (reservation, score) => {
+    for (let attemptNumber = 1; attemptNumber <= 3; attemptNumber += 1) {
+      try {
+        return await finalizeSubmissionOnce(reservation, score);
+      } catch (error) {
+        const transient = ["40001", "40P01"].includes(transientFinalizationCode(error));
+        if (!transient || attemptNumber === 3) throw error;
+      }
+    }
+    throw new Error("Assessment finalization retry loop exhausted");
+  };
 
   const submitAttempt = async ({ attemptId, studentId, submissionKey }) => {
     const reservation = await reserveSubmission({ attemptId, studentId, submissionKey });

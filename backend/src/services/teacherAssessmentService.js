@@ -124,6 +124,7 @@ const readAggregate = (row, field) => {
 };
 
 const roundMetric = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+const cloneJson = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
 
 const createTeacherAssessmentService = (dependencies = {}) => {
   const {
@@ -182,6 +183,52 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     ],
     ...(transaction ? { transaction } : {}),
   });
+
+  const createQuestionGraph = async ({ assessmentId, questions, transaction }) => {
+    for (let questionIndex = 0; questionIndex < questions.length; questionIndex += 1) {
+      const question = plain(questions[questionIndex]);
+      const createdQuestion = await AssessmentQuestion.create({
+        assessmentId,
+        questionText: String(question.questionText).trim(),
+        questionType: question.questionType,
+        displayOrder: questionIndex,
+        points: Number(question.points),
+        explanation: question.explanation ?? null,
+        objectiveKey: question.objectiveKey || null,
+        starterCode: question.questionType === QUESTION_TYPES.CODING ? question.starterCode ?? "" : null,
+        referenceSolution: question.questionType === QUESTION_TYPES.CODING ? question.referenceSolution ?? "" : null,
+        codingExecutionMode: question.questionType === QUESTION_TYPES.CODING
+          ? question.codingExecutionMode || "METHOD" : null,
+        codingTypeName: question.questionType === QUESTION_TYPES.CODING ? question.codingTypeName ?? null : null,
+        codingMethodName: question.questionType === QUESTION_TYPES.CODING ? question.codingMethodName ?? null : null,
+        codingParameterTypes: question.questionType === QUESTION_TYPES.CODING
+          ? cloneJson(question.codingParameterTypes) : null,
+        codingParameterNames: question.questionType === QUESTION_TYPES.CODING
+          ? cloneJson(question.codingParameterNames) : null,
+        codingReturnType: question.questionType === QUESTION_TYPES.CODING ? question.codingReturnType ?? null : null,
+      }, { transaction });
+      for (let choiceIndex = 0; choiceIndex < (question.choices || []).length; choiceIndex += 1) {
+        const choice = plain(question.choices[choiceIndex]);
+        await AssessmentChoice.create({
+          questionId: createdQuestion.id,
+          choiceText: String(choice.choiceText).trim(),
+          displayOrder: choiceIndex,
+          isCorrect: choice.isCorrect ?? false,
+        }, { transaction });
+      }
+      for (let testIndex = 0; testIndex < (question.codingTestCases || []).length; testIndex += 1) {
+        const testCase = plain(question.codingTestCases[testIndex]);
+        await AssessmentCodingTestCase.create({
+          questionId: createdQuestion.id,
+          displayOrder: testIndex,
+          visibility: testCase.visibility,
+          input: cloneJson(testCase.input),
+          expectedOutput: cloneJson(testCase.expectedOutput),
+          weight: Number(testCase.weight),
+        }, { transaction });
+      }
+    }
+  };
 
   const assertCodingExecutionAvailable = async (questions = []) => {
     if (!questions.some((question) => question.questionType === QUESTION_TYPES.CODING)) return;
@@ -262,6 +309,99 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       };
     },
   );
+
+  const copyAssessment = async ({
+    destinationClassroomId,
+    sourceClassroomId,
+    sourceAssessmentId,
+    lessonKey,
+    type,
+    actorId,
+    actorRole,
+  }) => sequelize.transaction(async (transaction) => {
+    if (!Object.values(ASSESSMENT_TYPES).includes(type)) {
+      throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+    }
+    authorization.assertAcademicLessonKey(lessonKey);
+    await authorization.requireManagedClassroom({
+      classroomId: destinationClassroomId,
+      actorId,
+      actorRole,
+      transaction,
+      lock: true,
+    });
+    await authorization.requireManagedClassroom({
+      classroomId: sourceClassroomId,
+      actorId,
+      actorRole,
+      transaction,
+    });
+    const sourceAssessment = await authorization.requireAssessmentInClassroom({
+      classroomId: sourceClassroomId,
+      assessmentId: sourceAssessmentId,
+      transaction,
+      lock: true,
+    });
+    if (sourceAssessment.type !== type) {
+      throw new AssessmentApiError(
+        409,
+        "ASSESSMENT_TYPE_MISMATCH",
+        "Source assessment type does not match destination type",
+      );
+    }
+    const destinationExists = await LessonAssessment.findOne({
+      where: { classroomId: destinationClassroomId, lessonKey, type },
+      attributes: ["id"],
+      transaction,
+    });
+    if (destinationExists) {
+      throw new AssessmentApiError(
+        409,
+        "ASSESSMENT_TYPE_EXISTS",
+        "An assessment of this type already exists",
+      );
+    }
+    const sourceGraph = await loadGraph(sourceAssessmentId, transaction);
+    const source = plain(sourceGraph);
+    const questions = source.questions || [];
+    try {
+      policy.validateAssessmentDraft({ assessment: source, questions });
+    } catch (error) {
+      throw new AssessmentApiError(
+        422,
+        "SOURCE_ASSESSMENT_INVALID",
+        "Source assessment graph is invalid",
+      );
+    }
+    const created = await LessonAssessment.create({
+      classroomId: destinationClassroomId,
+      lessonKey,
+      type,
+      title: source.title,
+      instructions: source.instructions ?? null,
+      isRequired: source.isRequired,
+      isPublished: false,
+      publishedAt: null,
+      passingPercentage: source.passingPercentage,
+      maxAttempts: source.maxAttempts,
+      gradeCalculation: source.gradeCalculation,
+      requirePassingForCompletion: source.requirePassingForCompletion,
+      showScoreAfterSubmission: source.showScoreAfterSubmission,
+      answerReviewPolicy: source.answerReviewPolicy,
+      shuffleQuestions: source.shuffleQuestions,
+      shuffleChoices: source.shuffleChoices,
+      createdBy: actorId,
+      version: 1,
+    }, { transaction });
+    await createQuestionGraph({ assessmentId: created.id, questions, transaction });
+    const copiedGraph = await loadGraph(created.id, transaction);
+    return {
+      assessment: serialization.serializeTeacherEditor(copiedGraph, {
+        attemptsExist: false,
+        structureLocked: false,
+      }),
+    };
+  });
 
   const getEditorAssessment = async ({ classroomId, assessmentId, actorId, actorRole }) => {
     await authorization.requireManagedClassroom({ classroomId, actorId, actorRole });
@@ -639,46 +779,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     }
     await AssessmentQuestion.destroy({ where: { assessmentId }, transaction });
 
-    for (let questionIndex = 0; questionIndex < normalizedQuestions.length; questionIndex += 1) {
-      const question = normalizedQuestions[questionIndex];
-      const createdQuestion = await AssessmentQuestion.create({
-        assessmentId,
-        questionText: String(question.questionText).trim(),
-        questionType: question.questionType,
-        displayOrder: questionIndex,
-        points: Number(question.points),
-        explanation: question.explanation ?? null,
-        objectiveKey: question.objectiveKey || null,
-        starterCode: question.questionType === "CODING" ? question.starterCode : null,
-        referenceSolution: question.questionType === "CODING" ? question.referenceSolution : null,
-        codingExecutionMode: question.questionType === "CODING" ? question.codingExecutionMode : null,
-        codingTypeName: question.questionType === "CODING" ? question.codingTypeName : null,
-        codingMethodName: question.questionType === "CODING" ? question.codingMethodName : null,
-        codingParameterTypes: question.questionType === "CODING" ? question.codingParameterTypes : null,
-        codingParameterNames: question.questionType === "CODING" ? question.codingParameterNames : null,
-        codingReturnType: question.questionType === "CODING" ? question.codingReturnType : null,
-      }, { transaction });
-      for (let choiceIndex = 0; choiceIndex < (question.choices || []).length; choiceIndex += 1) {
-        const choice = question.choices[choiceIndex];
-        await AssessmentChoice.create({
-          questionId: createdQuestion.id,
-          choiceText: String(choice.choiceText).trim(),
-          displayOrder: choiceIndex,
-          isCorrect: choice.isCorrect ?? false,
-        }, { transaction });
-      }
-      for (let testIndex = 0; testIndex < (question.codingTestCases || []).length; testIndex += 1) {
-        const testCase = question.codingTestCases[testIndex];
-        await AssessmentCodingTestCase.create({
-          questionId: createdQuestion.id,
-          displayOrder: testIndex,
-          visibility: testCase.visibility,
-          input: testCase.input,
-          expectedOutput: testCase.expectedOutput,
-          weight: Number(testCase.weight),
-        }, { transaction });
-      }
-    }
+    await createQuestionGraph({ assessmentId, questions: normalizedQuestions, transaction });
 
     for (const field of SETTING_FIELDS) {
       if (Object.hasOwn(input.settings, field)) assessment[field] = normalized[field];
@@ -818,6 +919,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
 
   return {
     listAssessments,
+    copyAssessment,
     createAssessment,
     deleteAssessment,
     getAssessmentResults,

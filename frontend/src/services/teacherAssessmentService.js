@@ -78,6 +78,15 @@ export const createTeacherAssessment = async ({ classroomId, signal, ...input })
   return normalizeEditorPayload(response.data);
 };
 
+export const copyTeacherAssessment = async ({ destinationClassroomId, signal, ...input }) => {
+  const response = await axios.post(
+    buildApiUrl(`${base(destinationClassroomId)}/copy`),
+    input,
+    config(signal),
+  );
+  return normalizeEditorPayload(response.data);
+};
+
 export const loadTeacherAssessment = async ({ classroomId, assessmentId, signal }) => {
   const response = await axios.get(
     buildApiUrl(`${base(classroomId)}/${segment(assessmentId)}`),
@@ -125,6 +134,8 @@ const SAFE_MESSAGES = Object.freeze({
   VERSION_CONFLICT: "This assessment changed elsewhere. Reload it before continuing.",
   ASSESSMENT_LOCKED: "This assessment is locked because a student attempt exists.",
   ASSESSMENT_PUBLISHED: "Unpublish this assessment before deleting it.",
+  ASSESSMENT_TYPE_MISMATCH: "Only assessments of the same type can be copied.",
+  SOURCE_ASSESSMENT_INVALID: "The source assessment cannot be copied in its current state.",
   ASSESSMENT_INVALID: "Complete the assessment before publishing it.",
   CODING_EXECUTION_UNAVAILABLE: "Coding assessments can be saved as drafts, but publishing is unavailable until secure coding execution is available.",
   INVALID_QUESTION: "Check the question text, points, objective key, and choices.",

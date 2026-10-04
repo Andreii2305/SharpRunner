@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { FiArrowDown, FiArrowUp, FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiArrowDown, FiArrowUp, FiCopy, FiPlus, FiTrash2 } from "react-icons/fi";
 import Sidebar from "../../../Components/SideBar/Sidebar.jsx";
 import ConfirmModal from "../../../Components/ConfirmModal/ConfirmModal.jsx";
 import CodingQuestionEditor from "./CodingQuestionEditor.jsx";
 import { StudentCodingPreview, TeacherCodingConfigurationPreview } from "./CodingQuestionPreview.jsx";
+import TeacherAssessmentCopyDialog from "./TeacherAssessmentCopyDialog.jsx";
 import { EditorActionBar, QuestionNavigator } from "./TeacherAssessmentBuilderChrome.jsx";
 import {
-  createTeacherAssessment, deleteTeacherAssessment, listTeacherAssessments,
+  copyTeacherAssessment, createTeacherAssessment, deleteTeacherAssessment, listTeacherAssessments,
   listTeacherClassrooms, loadTeacherAssessment, normalizeTeacherAssessmentError,
   publishTeacherAssessment, saveTeacherAssessment, unpublishTeacherAssessment,
 } from "../../../services/teacherAssessmentService.js";
@@ -85,7 +86,17 @@ export default function TeacherAssessmentBuilderPage() {
   const [preview, setPreview] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
   const [activeQuestionId, setActiveQuestionId] = useState("");
+  const [copyTarget, setCopyTarget] = useState("");
+  const [copySourceClassroomId, setCopySourceClassroomId] = useState("");
+  const [copySourceLessonKey, setCopySourceLessonKey] = useState("");
+  const [copySourceSummary, setCopySourceSummary] = useState(null);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [copyError, setCopyError] = useState("");
+  const [copyNotice, setCopyNotice] = useState("");
   const requestId = useRef(0);
+  const copyRequestId = useRef(0);
+  const copyingRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -112,6 +123,34 @@ export default function TeacherAssessmentBuilderPage() {
   useEffect(() => { loadSlots(); }, [loadSlots]);
 
   useEffect(() => {
+    const id = ++copyRequestId.current;
+    const controller = new AbortController();
+    setCopySourceSummary(null);
+    setCopyError("");
+    if (!copyTarget || !copySourceClassroomId || !copySourceLessonKey) {
+      setCopyLoading(false);
+      return () => controller.abort();
+    }
+    setCopyLoading(true);
+    listTeacherAssessments({
+      classroomId: copySourceClassroomId,
+      lessonKey: copySourceLessonKey,
+      signal: controller.signal,
+    }).then((payload) => {
+      if (id !== copyRequestId.current) return;
+      const summary = payload.assessments?.[copyTarget];
+      setCopySourceSummary(summary?.exists ? summary : null);
+    }).catch((source) => {
+      if (id === copyRequestId.current && source?.code !== "ERR_CANCELED") {
+        setCopyError(normalizeTeacherAssessmentError(source).message);
+      }
+    }).finally(() => {
+      if (id === copyRequestId.current) setCopyLoading(false);
+    });
+    return () => controller.abort();
+  }, [copySourceClassroomId, copySourceLessonKey, copyTarget]);
+
+  useEffect(() => {
     const beforeUnload = (event) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } };
     const guardLink = (event) => {
       const link = event.target.closest?.("a[href]");
@@ -130,6 +169,7 @@ export default function TeacherAssessmentBuilderPage() {
   };
   const updateRoute = (next) => guard(() => {
     setDirty(false); setDraft(null); setValidationAttempted(false);
+    setCopyTarget(""); setCopyNotice("");
     setSearchParams({ ...(next.classroomId ? { classroomId: next.classroomId } : {}), ...(next.lessonKey ? { lessonKey: next.lessonKey } : {}) });
   });
 
@@ -147,7 +187,7 @@ export default function TeacherAssessmentBuilderPage() {
   });
 
   const create = async (type) => {
-    setError(""); setLoading(true);
+    setError(""); setCopyNotice(""); setLoading(true);
     const lessonTitle = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title ?? "Lesson";
     try {
       const payload = await createTeacherAssessment({ classroomId, lessonKey, type, title: `${lessonTitle} ${type === "PRE" ? "Pre-Test" : "Post-Test"}` });
@@ -155,6 +195,47 @@ export default function TeacherAssessmentBuilderPage() {
       await loadSlots({ preserveDraft: true });
     } catch (source) { setError(normalizeTeacherAssessmentError(source).message); }
     finally { setLoading(false); }
+  };
+
+  const openCopyDialog = (type) => {
+    setCopyTarget(type);
+    setCopySourceClassroomId("");
+    setCopySourceLessonKey(lessonKey);
+    setCopySourceSummary(null);
+    setCopyError("");
+    setCopyNotice("");
+  };
+
+  const closeCopyDialog = useCallback(() => {
+    if (!copyingRef.current) setCopyTarget("");
+  }, []);
+
+  const copyAsDraft = async () => {
+    if (copyingRef.current || !copySourceSummary?.id || !copyTarget) return;
+    copyingRef.current = true;
+    setCopying(true); setCopyError("");
+    try {
+      const payload = await copyTeacherAssessment({
+        destinationClassroomId: classroomId,
+        sourceClassroomId: copySourceClassroomId,
+        sourceAssessmentId: copySourceSummary.id,
+        lessonKey,
+        type: copyTarget,
+      });
+      setActiveType(copyTarget);
+      setDraft(hydrateAssessmentDraft(payload.assessment));
+      setDirty(false); setValidationAttempted(false); setSaveState("saved");
+      setCopyNotice(`${copyTarget === "PRE" ? "Pre-Test" : "Post-Test"} copied as a draft.`);
+      setCopyTarget("");
+      await loadSlots({ preserveDraft: true });
+    } catch (source) {
+      const normalized = normalizeTeacherAssessmentError(source);
+      setCopyError(normalized.message);
+      if (normalized.code === "ASSESSMENT_TYPE_EXISTS") await loadSlots();
+    } finally {
+      copyingRef.current = false;
+      setCopying(false);
+    }
   };
 
   const changeDraft = (transform) => {
@@ -250,7 +331,8 @@ export default function TeacherAssessmentBuilderPage() {
       <label>Academic lesson<select value={lessonKey} disabled={!classroomId} onChange={(event) => updateRoute({ classroomId, lessonKey: event.target.value })}><option value="">Select lesson</option>{ACADEMIC_LESSONS.map((lesson) => <option key={lesson.key} value={lesson.key}>{lesson.title}</option>)}</select></label>
     </div>{selectedClassroom && lessonKey && <p>Managing <strong>{selectedClassroom.className}</strong> · {ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title}</p>}</section>
     {error && <div className={styles.errorBanner} role="alert">{error}</div>}
-    {classroomId && lessonKey && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => <article key={type} className={activeType === type ? styles.activeSlot : ""}><div><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "One-attempt diagnostic" : "Mastery check with highest grade"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <button type="button" disabled={loading} onClick={() => create(type)}><FiPlus /> Create {type === "PRE" ? "Pre-Test" : "Post-Test"}</button>}</article>)}</section>}
+    {copyNotice && <div className={styles.successBanner} role="status">{copyNotice}</div>}
+    {classroomId && lessonKey && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "One-attempt diagnostic" : "Mastery check with highest grade"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading} onClick={() => create(type)}><FiPlus /> Create new</button><button type="button" disabled={loading} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button></div>}</article>)}</section>}
     {loading && <p role="status" className={styles.loading}>Loading assessment…</p>}
     {!draft && classroomId && lessonKey && !loading && <section className={styles.emptyState}><h2>Select an assessment</h2><p>Open an existing assessment or explicitly create one type above.</p></section>}
     {draft && <>
@@ -278,6 +360,24 @@ export default function TeacherAssessmentBuilderPage() {
       </div>
     </>}
     {preview && draft && <PreviewDialog draft={draft} onClose={() => setPreview(false)} />}
+    <TeacherAssessmentCopyDialog
+      open={Boolean(copyTarget)}
+      classrooms={classrooms}
+      destinationClassroom={selectedClassroom}
+      destinationLesson={selectedLesson}
+      type={copyTarget}
+      sourceClassroomId={copySourceClassroomId}
+      sourceLessonKey={copySourceLessonKey}
+      sourceSummary={copySourceSummary}
+      loading={copyLoading}
+      submitting={copying}
+      error={copyError}
+      onSourceClassroomChange={setCopySourceClassroomId}
+      onSourceLessonChange={setCopySourceLessonKey}
+      onAssessmentChange={() => {}}
+      onSubmit={copyAsDraft}
+      onClose={closeCopyDialog}
+    />
     <ConfirmModal open={Boolean(confirmAction)} title={confirmCopy.title} message={confirmCopy.message} confirmLabel={confirmCopy.label} danger={confirmCopy.danger} confirmDisabled={loading} onConfirm={runAction} onCancel={() => setConfirmAction(null)} />
   </main></div>;
 }

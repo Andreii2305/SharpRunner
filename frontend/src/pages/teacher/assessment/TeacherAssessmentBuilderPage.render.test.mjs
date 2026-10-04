@@ -35,6 +35,77 @@ test("question navigation identifies the current question and keeps add question
   assert.match(html, /Add question/);
 });
 
+test("copy dialog clearly separates source and destination and warns without blocking cross-lesson copy", async () => {
+  const { default: TeacherAssessmentCopyDialog } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentCopyDialog.jsx");
+  const html = renderToStaticMarkup(React.createElement(TeacherAssessmentCopyDialog, {
+    open: true,
+    classrooms: [
+      { id: 7, className: "C# Fundamentals", section: "BSIT 3A" },
+      { id: 10, className: "C# Fundamentals", section: "BSIT 3B" },
+    ],
+    destinationClassroom: { id: 10, className: "C# Fundamentals", section: "BSIT 3B" },
+    destinationLesson: { key: "arrays", title: "Arrays" },
+    type: "PRE",
+    sourceClassroomId: "7",
+    sourceLessonKey: "functions",
+    sourceSummary: { exists: true, id: 12, title: "Functions diagnostic", questionCount: 1, published: true },
+    onClose() {}, onSubmit() {}, onSourceClassroomChange() {}, onSourceLessonChange() {},
+  }));
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /aria-modal="true"/);
+  assert.match(html, /Copy existing Pre-Test/);
+  assert.match(html, /Copy from/);
+  assert.match(html, /Copy to/);
+  assert.match(html, /C# Fundamentals/);
+  assert.match(html, /<option value="12" selected="">Functions diagnostic<\/option>/);
+  assert.match(html, /1 question/);
+  assert.doesNotMatch(html, /1 questions/);
+  assert.match(html, /Published/);
+  assert.match(html, /Arrays/);
+  assert.match(html, /This assessment comes from a different lesson\. Review its questions before publishing\./);
+  assert.match(html, /Copy as draft/);
+  assert.doesNotMatch(html, /disabled=""[^>]*>Copy as draft/);
+});
+
+test("copy dialog gives an untitled candidate a non-blank contextual fallback and plural metadata", async () => {
+  const { default: TeacherAssessmentCopyDialog } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentCopyDialog.jsx");
+  const html = renderToStaticMarkup(React.createElement(TeacherAssessmentCopyDialog, {
+    open: true,
+    classrooms: [{ id: 7, className: "C# Fundamentals", section: "BSIT 3A" }],
+    destinationClassroom: { id: 10, className: "C# Fundamentals", section: "BSIT 3B" },
+    destinationLesson: { key: "arrays", title: "Arrays" },
+    type: "POST",
+    sourceClassroomId: "7",
+    sourceLessonKey: "arrays",
+    sourceSummary: { exists: true, id: 12, title: "   ", questionCount: 2, published: false },
+    onClose() {}, onSubmit() {}, onSourceClassroomChange() {}, onSourceLessonChange() {},
+  }));
+  assert.match(html, /<option value="12" selected="">Arrays Post-Test<\/option>/);
+  assert.match(html, /<strong>Arrays Post-Test<\/strong>/);
+  assert.match(html, /2 questions/);
+  assert.match(html, /Draft/);
+  assert.doesNotMatch(html, /<option value="12" selected="">\s*<\/option>/);
+});
+
+test("copy dialog prevents a duplicate submission while copying", async () => {
+  const { default: TeacherAssessmentCopyDialog } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentCopyDialog.jsx");
+  const html = renderToStaticMarkup(React.createElement(TeacherAssessmentCopyDialog, {
+    open: true,
+    classrooms: [],
+    destinationClassroom: { id: 10, className: "Class B", section: "" },
+    destinationLesson: { key: "arrays", title: "Arrays" },
+    type: "POST",
+    sourceClassroomId: "7",
+    sourceLessonKey: "arrays",
+    sourceSummary: { exists: true, id: 12, title: "Arrays post-test", questionCount: 4, published: false },
+    submitting: true,
+    onClose() {}, onSubmit() {}, onSourceClassroomChange() {}, onSourceLessonChange() {},
+  }));
+  assert.match(html, /Copying…/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Copying…<\/button>/);
+  assert.doesNotMatch(html, /different lesson/);
+});
+
 test("sticky editor actions preserve lesson, assessment, status, and save context", async () => {
   const { EditorActionBar } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentBuilderChrome.jsx");
   const html = renderToStaticMarkup(React.createElement(EditorActionBar, {
@@ -69,6 +140,12 @@ test("builder exposes labelled settings, question controls, preview, and lifecyc
   assert.doesNotMatch(source, />Explanation\s*</);
   assert.match(source, /role="dialog"/);
   assert.match(source, /aria-modal="true"/);
+});
+
+test("empty assessment slots expose restrained create and copy actions", () => {
+  assert.match(source, /Create new/);
+  assert.match(source, /Copy existing/);
+  assert.doesNotMatch(source, /Copy assessment dashboard/);
 });
 
 test("preview remains teacher-local and answer keys are never persisted in browser storage", () => {

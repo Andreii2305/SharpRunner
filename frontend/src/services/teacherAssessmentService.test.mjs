@@ -25,6 +25,61 @@ test("teacher assessment service preserves exact classroom, lesson, assessment, 
   assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
 });
 
+test("teacher assessment candidate discovery preserves the canonical assessment ID", async () => {
+  calls.length = 0;
+  const originalGet = axios.get;
+  axios.get = async (...args) => {
+    calls.push(["get", ...args]);
+    return { data: { lessonKey: "arrays", assessments: {
+      PRE: { exists: true, id: 12, title: "Arrays Pre-Test", published: true,
+        questionCount: 1, attemptsExist: false },
+      POST: { exists: false },
+    } } };
+  };
+  try {
+    const payload = await service.listTeacherAssessments({ classroomId: 7, lessonKey: "arrays" });
+    assert.equal(payload.assessments.PRE.id, 12);
+    assert.equal(payload.assessments.PRE.title, "Arrays Pre-Test");
+    assert.match(calls[0][1], /classrooms\/7\/assessments\?lessonKey=arrays$/);
+  } finally {
+    axios.get = originalGet;
+  }
+});
+
+test("teacher assessment copy posts exact source and destination identity and normalizes the draft", async () => {
+  calls.length = 0;
+  const originalPost = axios.post;
+  axios.post = async (...args) => {
+    calls.push(["post", ...args]);
+    return { data: { assessment: {
+      id: 92, classroomId: 10, lessonKey: "arrays", type: "PRE", title: "Functions diagnostic",
+      isPublished: false, version: 1, questions: [], unexpected: "drop",
+    } } };
+  };
+  try {
+    const payload = await service.copyTeacherAssessment({
+      destinationClassroomId: 10,
+      sourceClassroomId: 7,
+      sourceAssessmentId: 12,
+      lessonKey: "arrays",
+      type: "PRE",
+    });
+    assert.match(calls[0][1], /classrooms\/10\/assessments\/copy$/);
+    assert.deepEqual(calls[0][2], {
+      sourceClassroomId: 7,
+      sourceAssessmentId: 12,
+      lessonKey: "arrays",
+      type: "PRE",
+    });
+    assert.equal(calls[0].at(-1)?.headers?.Authorization, "Bearer teacher-token");
+    assert.equal(payload.assessment.id, 92);
+    assert.equal(payload.assessment.isPublished, false);
+    assert.equal(payload.assessment.unexpected, undefined);
+  } finally {
+    axios.post = originalPost;
+  }
+});
+
 test("teacher assessment service uses versioned save and explicit lifecycle endpoints", async () => {
   calls.length = 0;
   const graph = { version: 3, settings: { title: "Post" }, questions: [] };
@@ -50,6 +105,8 @@ test("safe teacher errors never expose transport internals", () => {
   const error = { message: "secret stack", stack: "ORM password", config: { headers: { Authorization: "token" } }, response: { status: 409, data: { error: { code: "VERSION_CONFLICT", message: "Version conflict" } } } };
   assert.deepEqual(service.normalizeTeacherAssessmentError(error), { code: "VERSION_CONFLICT", message: "This assessment changed elsewhere. Reload it before continuing.", status: 409 });
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_PUBLISHED" } } }).message, "Unpublish this assessment before deleting it.");
+  assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_TYPE_MISMATCH" } } }).message, "Only assessments of the same type can be copied.");
+  assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 422, data: { code: "SOURCE_ASSESSMENT_INVALID" } } }).message, "The source assessment cannot be copied in its current state.");
   assert.deepEqual(
     service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "CODING_EXECUTION_UNAVAILABLE" } } }),
     {

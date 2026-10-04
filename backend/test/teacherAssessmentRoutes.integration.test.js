@@ -145,7 +145,7 @@ const matches = (row, where = {}) => Object.entries(where).every(([key, value]) 
 
 const harness = ({ assessments, questions, choices, codingTests, attempts, responses, memberships, progress } = {}) => {
   const store = {
-    classrooms: [{ id: 7, teacherId: 5 }, { id: 8, teacherId: 6 }],
+    classrooms: [{ id: 7, teacherId: 5 }, { id: 8, teacherId: 6 }, { id: 10, teacherId: 5 }],
     assessments: cloneRows(assessments || [baseAssessment()]),
     questions: cloneRows(questions || [baseQuestion()]),
     choices: cloneRows(choices || baseChoices()),
@@ -165,6 +165,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
     events: [],
     failChoiceCreate: false,
     failGraphReload: false,
+    failGraphReloadForAssessmentId: null,
     duplicateOnCreate: false,
     savedAssessmentStates: [],
   };
@@ -230,13 +231,15 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
       throw error;
     }
   });
-  stub(models.Classroom, "findByPk", async (id) => (
-    store.classrooms.find((row) => row.id === Number(id)) || null
-  ));
+  stub(models.Classroom, "findByPk", async (id, options = {}) => {
+    if (options.lock) store.events.push("classroom-lock");
+    return store.classrooms.find((row) => row.id === Number(id)) || null;
+  });
   stub(models.LessonAssessment, "findOne", async (options = {}) => {
     if (options.lock) store.events.push("assessment-lock");
     const found = store.assessments.find((row) => matches(row, options.where)) || null;
-    if (found && options.include && store.failGraphReload) {
+    if (found && options.include && (store.failGraphReload
+      || Number(store.failGraphReloadForAssessmentId) === Number(found.id))) {
       throw new Error("final graph reload failed");
     }
     return found && options.include ? graph(found) : persistedAssessment(found);
@@ -376,6 +379,14 @@ const postDraft = (overrides = {}) => ({
   lessonKey: "arrays",
   type: "POST",
   title: "Arrays post-test",
+  ...overrides,
+});
+
+const copyBody = (overrides = {}) => ({
+  sourceClassroomId: 7,
+  sourceAssessmentId: 12,
+  lessonKey: "arrays",
+  type: "PRE",
   ...overrides,
 });
 
@@ -798,8 +809,8 @@ test("lesson assessment list returns PRE and POST slots with bounded counts", as
   const result = await h.call("/classrooms/7/assessments?lessonKey=arrays");
   assert.equal(result.response.status, 200);
   assert.deepEqual(result.payload, { lessonKey: "arrays", assessments: {
-    PRE: { exists: true, id: 11, published: true, questionCount: 2, attemptsExist: true },
-    POST: { exists: true, id: 12, published: false, questionCount: 3, attemptsExist: true,
+    PRE: { exists: true, id: 11, title: "Arrays post-test", published: true, questionCount: 2, attemptsExist: true },
+    POST: { exists: true, id: 12, title: "Arrays post-test", published: false, questionCount: 3, attemptsExist: true,
       passingPercentage: 75, maxAttempts: 3, requirePassingForCompletion: true },
   } });
   assert.equal(h.store.listQueries, 1);
@@ -865,6 +876,243 @@ test("duplicate classroom lesson type maps to ASSESSMENT_TYPE_EXISTS", async () 
     code: "ASSESSMENT_TYPE_EXISTS",
     message: "An assessment of this type already exists",
   });
+});
+
+test("copy creates an independent cross-lesson PRE draft with new authoring IDs and no runtime state", async () => {
+  const source = preAssessment({
+    id: 12,
+    lessonKey: "functions",
+    title: "Functions diagnostic",
+    instructions: "Read every question.",
+    isPublished: true,
+    publishedAt: new Date("2026-10-01T08:00:00.000Z"),
+    version: 4,
+  });
+  const h = harness({
+    assessments: [source],
+    questions: [
+      baseQuestion({ assessmentId: 12, explanation: "Persisted explanation", objectiveKey: "function-call" }),
+      codingQuestionRow("METHOD", { assessmentId: 12, displayOrder: 1 }),
+    ],
+    choices: baseChoices(),
+    codingTests: [codingTestRow("METHOD")],
+    attempts: [submittedAttempt({ assessmentId: 12, classroomId: 7 })],
+    responses: [{ id: 501, attemptId: 44, questionId: 101, selectedChoiceId: 1001,
+      isCorrect: true, pointsAwarded: 2 }],
+  });
+  const sourceSnapshot = JSON.parse(JSON.stringify({
+    assessment: h.store.assessments[0],
+    questions: h.store.questions,
+    choices: h.store.choices,
+    codingTests: h.store.codingTests,
+    attempts: h.store.attempts,
+    responses: h.store.responses,
+  }));
+
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody(),
+  });
+
+  assert.equal(result.response.status, 201);
+  assert.equal(result.payload.assessment.classroomId, 10);
+  assert.equal(result.payload.assessment.lessonKey, "arrays");
+  assert.equal(result.payload.assessment.type, "PRE");
+  assert.equal(result.payload.assessment.title, "Functions diagnostic");
+  assert.equal(result.payload.assessment.isPublished, false);
+  assert.equal(result.payload.assessment.publishedAt, null);
+  assert.equal(result.payload.assessment.version, 1);
+  assert.equal(result.payload.assessment.attemptsExist, false);
+  assert.equal(result.payload.assessment.structureLocked, false);
+  assert.notEqual(result.payload.assessment.id, 12);
+  assert.deepEqual(result.payload.assessment.questions.map(({ displayOrder }) => displayOrder), [0, 1]);
+  assert.equal(result.payload.assessment.questions[0].explanation, "Persisted explanation");
+  assert.equal(result.payload.assessment.questions[0].objectiveKey, "function-call");
+  assert.equal(result.payload.assessment.questions[1].referenceSolution,
+    "public static class Solution { public static int Add(int value) => value + 1; }");
+  assert.equal(result.payload.assessment.questions[1].codingTestCases[0].visibility, "HIDDEN");
+  assert.equal(result.payload.assessment.questions[1].methodContract.parameterNames[0], "value");
+  assert.equal(result.payload.assessment.questions.every((question) => ![101, 201].includes(question.id)), true);
+  assert.equal(result.payload.assessment.questions[0].choices.every((choice) => ![1001, 1002].includes(choice.id)), true);
+  assert.notEqual(result.payload.assessment.questions[1].codingTestCases[0].id, 2001);
+
+  const destinationId = result.payload.assessment.id;
+  assert.equal(h.store.assessments.find(({ id }) => id === destinationId).createdBy, 5);
+  assert.equal(h.store.attempts.some(({ assessmentId }) => assessmentId === destinationId), false);
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    assessment: h.store.assessments.find(({ id }) => id === 12),
+    questions: h.store.questions.filter(({ assessmentId }) => assessmentId === 12),
+    choices: h.store.choices.filter(({ questionId }) => questionId === 101),
+    codingTests: h.store.codingTests.filter(({ questionId }) => questionId === 201),
+    attempts: h.store.attempts.filter(({ assessmentId }) => assessmentId === 12),
+    responses: h.store.responses,
+  })), sourceSnapshot);
+  assert.deepEqual(h.store.events.filter((event) => event === "attempt-create"), []);
+  assert.equal(h.store.events.includes("classroom-lock"), true);
+  assert.equal(h.store.events.includes("assessment-lock"), true);
+});
+
+test("published PRE candidate discovery returns the canonical ID used to copy from classroom A to B", async () => {
+  const source = preAssessment({
+    id: 12,
+    classroomId: 7,
+    lessonKey: "arrays",
+    title: "Arrays Pre-Test",
+    isPublished: true,
+    publishedAt: new Date("2026-10-01T08:00:00.000Z"),
+    version: 4,
+  });
+  const h = harness({ assessments: [source] });
+  const sourceSnapshot = JSON.parse(JSON.stringify(h.store.assessments[0]));
+
+  const candidates = await h.call("/classrooms/7/assessments?lessonKey=arrays");
+  assert.equal(candidates.response.status, 200);
+  assert.equal(candidates.payload.assessments.PRE.id, 12);
+  assert.equal(candidates.payload.assessments.PRE.published, true);
+
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody({
+      sourceClassroomId: 7,
+      sourceAssessmentId: candidates.payload.assessments.PRE.id,
+      lessonKey: "arrays",
+      type: "PRE",
+    }),
+  });
+
+  assert.equal(result.response.status, 201);
+  assert.equal(result.payload.assessment.classroomId, 10);
+  assert.equal(result.payload.assessment.lessonKey, "arrays");
+  assert.equal(result.payload.assessment.type, "PRE");
+  assert.equal(result.payload.assessment.isPublished, false);
+  assert.notEqual(result.payload.assessment.id, candidates.payload.assessments.PRE.id);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.store.assessments.find(({ id }) => id === 12))), sourceSnapshot);
+});
+
+test("copy preserves POST settings while resetting publication state", async () => {
+  const h = harness({ assessments: [baseAssessment({ isPublished: true, version: 8 })] });
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody({ type: "POST" }),
+  });
+  assert.equal(result.response.status, 201);
+  assert.equal(result.payload.assessment.type, "POST");
+  assert.equal(result.payload.assessment.passingPercentage, 75);
+  assert.equal(result.payload.assessment.maxAttempts, 3);
+  assert.equal(result.payload.assessment.gradeCalculation, "HIGHEST");
+  assert.equal(result.payload.assessment.isPublished, false);
+  assert.equal(result.payload.assessment.version, 1);
+});
+
+test("copy rejects unauthorized source and destination classrooms", async () => {
+  harness();
+  const unauthorizedSource = await request("/api/teacher/classrooms/10/assessments/copy", {
+    actorId: 5,
+    method: "POST",
+    body: copyBody({ sourceClassroomId: 8 }),
+  });
+  assert.equal(unauthorizedSource.response.status, 403);
+  assert.equal(unauthorizedSource.payload.code, "FORBIDDEN");
+
+  const unauthorizedDestination = await request("/api/teacher/classrooms/8/assessments/copy", {
+    actorId: 5,
+    method: "POST",
+    body: copyBody(),
+  });
+  assert.equal(unauthorizedDestination.response.status, 403);
+  assert.equal(unauthorizedDestination.payload.code, "FORBIDDEN");
+});
+
+test("copy rejects PRE and POST conversion without creating a destination", async () => {
+  const h = harness({ assessments: [preAssessment()] });
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody({ type: "POST" }),
+  });
+  assert.equal(result.response.status, 409);
+  assert.equal(result.payload.code, "ASSESSMENT_TYPE_MISMATCH");
+  assert.equal(h.store.assessments.length, 1);
+});
+
+test("copy never overwrites an existing destination assessment", async () => {
+  const h = harness({ assessments: [preAssessment(), preAssessment({ id: 13, classroomId: 10 })] });
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody(),
+  });
+  assert.equal(result.response.status, 409);
+  assert.equal(result.payload.code, "ASSESSMENT_TYPE_EXISTS");
+  assert.equal(h.store.assessments.length, 2);
+});
+
+test("copy maps a destination unique-index race to conflict and rolls back", async () => {
+  const h = harness({ assessments: [preAssessment()] });
+  h.store.duplicateOnCreate = true;
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody(),
+  });
+  assert.equal(result.response.status, 409);
+  assert.equal(result.payload.code, "ASSESSMENT_TYPE_EXISTS");
+  assert.equal(h.store.assessments.length, 1);
+  assert.equal(h.store.questions.length, 1);
+  assert.equal(h.store.choices.length, 2);
+});
+
+test("copy rolls back the entire destination graph when a child insert fails", async () => {
+  const h = harness({ assessments: [preAssessment()] });
+  h.store.failChoiceCreate = true;
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody(),
+  });
+  assert.equal(result.response.status, 500);
+  assert.equal(result.payload.code, "SERVER_ERROR");
+  assert.equal(h.store.assessments.length, 1);
+  assert.equal(h.store.questions.length, 1);
+  assert.equal(h.store.choices.length, 2);
+});
+
+test("copy rolls back when the completed destination graph cannot be reloaded", async () => {
+  const h = harness({ assessments: [preAssessment()] });
+  h.store.failGraphReloadForAssessmentId = 13;
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody(),
+  });
+  assert.equal(result.response.status, 500);
+  assert.equal(result.payload.code, "SERVER_ERROR");
+  assert.equal(h.store.assessments.length, 1);
+  assert.equal(h.store.questions.length, 1);
+  assert.equal(h.store.choices.length, 2);
+});
+
+test("copy requires the source assessment to belong to the authorized source classroom", async () => {
+  const h = harness({ assessments: [preAssessment()] });
+  const result = await h.call("/classrooms/10/assessments/copy", {
+    method: "POST",
+    body: copyBody({ sourceClassroomId: 10 }),
+  });
+  assert.equal(result.response.status, 404);
+  assert.equal(result.payload.code, "ASSESSMENT_NOT_FOUND");
+  assert.equal(h.store.assessments.length, 1);
+});
+
+test("copy validates its exact request contract", async () => {
+  harness({ assessments: [preAssessment()] });
+  for (const body of [
+    { ...copyBody(), extra: true },
+    { ...copyBody(), sourceAssessmentId: 0 },
+    { ...copyBody(), lessonKey: "tutorial" },
+    { ...copyBody(), type: "QUIZ" },
+  ]) {
+    const result = await request("/api/teacher/classrooms/10/assessments/copy", {
+      actorId: 5,
+      method: "POST",
+      body,
+    });
+    assert.equal(result.response.status, 400, JSON.stringify(body));
+  }
 });
 
 for (const action of ["create", "save"]) {

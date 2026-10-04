@@ -234,6 +234,7 @@ const serializeTeacherSummary = (input = {}) => {
   const output = {
     exists: true,
     id: assessment.id,
+    title: assessment.title,
     published: Boolean(assessment.isPublished),
     questionCount: Number(input.questionCount ?? assessment.questionCount ?? assessment.questions?.length ?? 0),
     attemptsExist: Boolean(input.attemptsExist),

@@ -18,6 +18,7 @@ const CREATE_FIELDS = new Set([
   "shuffleQuestions",
   "shuffleChoices",
 ]);
+const COPY_FIELDS = new Set(["sourceClassroomId", "sourceAssessmentId", "lessonKey", "type"]);
 
 const parsePositiveId = (value) => {
   if (!/^[1-9][0-9]*$/.test(String(value || ""))) {
@@ -96,6 +97,27 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
       const payload = await service.createAssessment({
         classroomId: parsePositiveId(req.params.classroomId),
         input,
+        ...actor(req),
+      });
+      return res.status(201).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.post("/classrooms/:classroomId/assessments/copy", async (req, res) => {
+    try {
+      const body = readObjectBody(req);
+      if (Object.keys(body).length !== COPY_FIELDS.size
+        || Object.keys(body).some((key) => !COPY_FIELDS.has(key))) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const payload = await service.copyAssessment({
+        destinationClassroomId: parsePositiveId(req.params.classroomId),
+        sourceClassroomId: parsePositiveId(body.sourceClassroomId),
+        sourceAssessmentId: parsePositiveId(body.sourceAssessmentId),
+        lessonKey: body.lessonKey,
+        type: body.type,
         ...actor(req),
       });
       return res.status(201).json(payload);

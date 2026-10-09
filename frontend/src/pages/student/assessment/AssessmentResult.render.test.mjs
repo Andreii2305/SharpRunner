@@ -97,6 +97,7 @@ test("valid PRE result uses honest starting-point and baseline wording", () => {
   assert.match(html, /Continue to module/);
   assert.match(html, /Back to Lesson Map/);
   assert.doesNotMatch(html, /failed|did not pass|Retake|XP|reward/i);
+  assert.match(html, /aria-label="Result summary"/);
 });
 
 test("retroactive or unknown PRE uses neutral diagnostic wording and target-lesson POST continuation", () => {
@@ -162,6 +163,28 @@ test("hidden-score POST shows authoritative pass status but no numeric or compar
   assert.match(html, /Post-test complete/);
   assert.match(html, /passed/i);
   assert.doesNotMatch(html, /Attempt score|Official grade|Baseline score|Learning gain|points|%/i);
+  assert.match(html, /Attempts used/);
+});
+
+test("authorized correct review shows identical selected and correct text only once", () => {
+  const html = renderResult({
+    envelope: envelope({}, {
+      reviewAvailable: true,
+      review: [{
+        questionId: 101,
+        questionText: "Which declaration is valid?",
+        questionType: "MULTIPLE_CHOICE",
+        studentAnswer: "int[] values",
+        correctAnswer: "int[] values",
+        isCorrect: true,
+        pointsAwarded: 1,
+      }],
+    }),
+  });
+  assert.equal(html.match(/int\[\] values/g)?.length, 1);
+  assert.match(html, /Your answer/);
+  assert.match(html, /Correct/);
+  assert.doesNotMatch(html, /Correct answer/);
 });
 
 test("failed historical POST stays failed when another attempt completed the requirement", () => {

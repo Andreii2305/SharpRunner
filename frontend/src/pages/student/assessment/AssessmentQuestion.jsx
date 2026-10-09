@@ -25,7 +25,12 @@ export function AssessmentQuestion({
         {question.choices.map((choice) => {
           const inputId = `${groupName}-choice-${choice.id}`;
           return (
-            <label className={styles.choice} htmlFor={inputId} key={choice.id}>
+            <label
+              className={styles.choice}
+              htmlFor={inputId}
+              key={choice.id}
+              data-state={selectedChoiceId === choice.id ? "selected" : "unselected"}
+            >
               <input
                 id={inputId}
                 name={groupName}

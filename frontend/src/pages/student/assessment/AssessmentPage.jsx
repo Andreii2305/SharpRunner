@@ -20,6 +20,7 @@ import {
 import AssessmentPlayer from "./AssessmentPlayer.jsx";
 import AssessmentResult from "./AssessmentResult.jsx";
 import AssessmentSubmitReview from "./AssessmentSubmitReview.jsx";
+import styles from "./AssessmentPlayer.module.css";
 import { createAssessmentPlayerController } from "./assessmentPlayerController.js";
 import {
   createAssessmentSubmissionController,
@@ -112,21 +113,29 @@ export function AssessmentStatusView({ outcome, onRetry }) {
 
   return (
     <main
+      className={`${styles.page} ${styles.statusPage}`}
       role={copy.role}
       aria-live="polite"
+      data-view="assessment-status"
       data-latest-submitted-attempt-id={latestSubmittedAttemptId}
-      style={{ maxWidth: "48rem", margin: "4rem auto", padding: "2rem" }}
     >
-      <h1>{copy.title}</h1>
-      <p>{copy.message}</p>
-      {["ERROR", "RESULT_ERROR"].includes(visibleOutcome?.kind) && (
-        <button type="button" onClick={onRetry}>Try again</button>
-      )}
-      {visibleOutcome?.kind === "AUTH_REQUIRED" ? (
-        <p><a href="/login">Sign in</a></p>
-      ) : visibleOutcome?.kind !== "LOADING" && (
-        <p><a href={returnHref(visibleOutcome)}>Return to lesson map</a></p>
-      )}
+      <section className={styles.statusCard}>
+        <span className={styles.statusEyebrow}>Student assessment</span>
+        <h1>{copy.title}</h1>
+        <p>{copy.message}</p>
+        {visibleOutcome?.kind !== "LOADING" && (
+          <div className={styles.statusActions}>
+            {["ERROR", "RESULT_ERROR"].includes(visibleOutcome?.kind) && (
+              <button type="button" onClick={onRetry}>Try again</button>
+            )}
+            {visibleOutcome?.kind === "AUTH_REQUIRED" ? (
+              <a href="/login">Sign in</a>
+            ) : (
+              <a href={returnHref(visibleOutcome)}>Return to lesson map</a>
+            )}
+          </div>
+        )}
+      </section>
     </main>
   );
 }
@@ -176,12 +185,16 @@ export function AssessmentPageContent({
     if (["recovering-result", "recovery-error"].includes(assessmentState.submitStatus)) {
       const failed = assessmentState.submitStatus === "recovery-error";
       return (
-        <main className="assessment-page" role={failed ? "alert" : "status"} aria-live="polite">
-          <h1>{failed ? "Unable to load submitted result" : "Loading submitted result"}</h1>
-          <p>Your assessment is already submitted and can no longer be edited.</p>
-          {failed && (
-            <button type="button" onClick={onRetryResultRecovery}>Try loading result again</button>
-          )}
+        <main className={`${styles.page} ${styles.statusPage}`} role={failed ? "alert" : "status"} aria-live="polite">
+          <section className={styles.statusCard}>
+            <h1>{failed ? "Unable to load submitted result" : "Loading submitted result"}</h1>
+            <p>Your assessment is already submitted and can no longer be edited.</p>
+            {failed && (
+              <div className={styles.statusActions}>
+                <button type="button" onClick={onRetryResultRecovery}>Try loading result again</button>
+              </div>
+            )}
+          </section>
         </main>
       );
     }
@@ -189,16 +202,20 @@ export function AssessmentPageContent({
       const failed = assessmentState.submitStatus === "grading-error";
       const pending = assessmentState.submitStatus === "grading-pending";
       return (
-        <main className="assessment-page" role={failed ? "alert" : "status"} aria-live="polite">
-          <h1>{failed ? "Unable to check grading" : "Grading your assessment..."}</h1>
-          <p>
-            {failed
-              ? "Your answers remain saved. Check the grading status again when your connection is available."
-              : "Keep this page open while authoritative grading completes. Your answers cannot be edited during grading."}
-          </p>
-          {(failed || pending) && (
-            <button type="button" onClick={onRetryGrading}>Check grading status</button>
-          )}
+        <main className={`${styles.page} ${styles.statusPage}`} role={failed ? "alert" : "status"} aria-live="polite">
+          <section className={styles.statusCard}>
+            <h1>{failed ? "Unable to check grading" : "Grading your assessment..."}</h1>
+            <p>
+              {failed
+                ? "Your answers remain saved. Check the grading status again when your connection is available."
+                : "Keep this page open while authoritative grading completes. Your answers cannot be edited during grading."}
+            </p>
+            {(failed || pending) && (
+              <div className={styles.statusActions}>
+                <button type="button" onClick={onRetryGrading}>Check grading status</button>
+              </div>
+            )}
+          </section>
         </main>
       );
     }

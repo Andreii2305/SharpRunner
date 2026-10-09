@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { getAnswerSummary, getCurrentQuestion } from "./assessmentState.js";
 import AssessmentQuestion from "./AssessmentQuestion.jsx";
 import AssessmentCodingQuestion from "./AssessmentCodingQuestion.jsx";
+import AssessmentQuestionNavigator from "./AssessmentQuestionNavigator.jsx";
 import styles from "./AssessmentPlayer.module.css";
 
 const statusCopy = (saveState, hasSelection) => {
@@ -86,6 +87,9 @@ export function AssessmentPlayer({
   const firstUnansweredIndex = state.orderedQuestions.findIndex(
     ({ id }) => id === firstUnansweredId,
   );
+  const progressPercent = summary.total > 0
+    ? Math.round(((currentIndex + 1) / summary.total) * 100)
+    : 0;
 
   useEffect(() => {
     questionContainer.current?.focus();
@@ -112,16 +116,38 @@ export function AssessmentPlayer({
   return (
     <main className={styles.page}>
       <header className={styles.header}>
-        <p className={styles.eyebrow}>
-          {state.assessment.type === "PRE" ? "Diagnostic assessment" : "Lesson assessment"}
-        </p>
+        <div className={styles.identityRow}>
+          <span className={styles.typeBadge}>{state.assessment.type}-Test</span>
+          <span className={styles.assessmentKind}>
+            {state.assessment.type === "PRE" ? "Diagnostic assessment" : "Lesson assessment"}
+          </span>
+          <span className={styles.attemptBadge}>Attempt {state.attempt.attemptNumber}</span>
+        </div>
         <h1>{state.assessment.title}</h1>
-        {state.assessment.instructions && <p>{state.assessment.instructions}</p>}
+        {state.assessment.instructions && <p className={styles.instructions}>{state.assessment.instructions}</p>}
         <div className={styles.progressRow} aria-live="polite">
           <span>Question {currentIndex + 1} of {summary.total}</span>
           <span>Answered {summary.answered} of {summary.total}</span>
         </div>
+        <div
+          className={styles.progressTrack}
+          role="progressbar"
+          aria-label="Assessment progress"
+          aria-valuemin="1"
+          aria-valuemax={summary.total}
+          aria-valuenow={currentIndex + 1}
+        >
+          <span className={styles.progressFill} style={{ width: `${progressPercent}%` }} />
+        </div>
       </header>
+
+      <AssessmentQuestionNavigator
+        questions={state.orderedQuestions}
+        currentIndex={currentIndex}
+        unansweredQuestionIds={summary.unansweredQuestionIds}
+        disabled={syncBlocking}
+        onGoToQuestion={onGoToQuestion}
+      />
 
       {currentQuestion.questionType === "CODING" ? (
         <AssessmentCodingQuestion
@@ -145,6 +171,7 @@ export function AssessmentPlayer({
 
       <section
         className={styles.saveArea}
+        data-tone={syncRequired || syncFailed || hasSaveError || hasConflict ? "error" : "neutral"}
         aria-label="Answer save status"
         role={syncRequired || syncFailed || hasSaveError || hasConflict ? "alert" : undefined}
       >

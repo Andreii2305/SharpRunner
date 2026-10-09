@@ -48,6 +48,8 @@ test("assessment shell renders accessible, non-blank route states", () => {
     });
     assert.match(html, new RegExp(`<h1>${heading}</h1>`), kind);
     assert.match(html, /<(?:main|section)[^>]+(?:role="status"|role="alert")/, kind);
+    assert.match(html, /data-view="assessment-status"/, kind);
+    assert.doesNotMatch(html, /style="/, kind);
   }
 });
 

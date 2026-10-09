@@ -73,6 +73,7 @@ const renderPlayer = (state, overrides = {}) => renderToStaticMarkup(React.creat
 
 test("player renders title, instructions, progress, answered count, and one MCQ in server order", () => {
   const html = renderPlayer(stateAt(0));
+  assert.match(html, /POST-Test/);
   assert.match(html, /<h1[^>]*>Arrays post-test<\/h1>/);
   assert.match(html, /Choose the best answer\./);
   assert.match(html, /Question 1 of 2/);
@@ -84,6 +85,27 @@ test("player renders title, instructions, progress, answered count, and one MCQ 
   assert.doesNotMatch(html, /Array indexes start at zero|Not so|Indeed/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>Previous<\/button>/);
   assert.match(html, /<button[^>]*>Next<\/button>/);
+  assert.match(html, /<nav[^>]*aria-label="Question navigator"/);
+  assert.match(html, /aria-current="step"[^>]*data-state="current"[^>]*>1<\/button>/);
+  assert.match(html, /data-state="answered"[^>]*>2<\/button>/);
+  assert.doesNotMatch(html, /data-state="correct"|data-state="incorrect"/);
+});
+
+test("PRE identity and navigator expose progress status without correctness", () => {
+  const html = renderPlayer(stateAt(1, {
+    assessment: {
+      id: 90,
+      title: "Arrays diagnostic",
+      instructions: "Answer what you know.",
+      type: "PRE",
+    },
+  }));
+  assert.match(html, /PRE-Test/);
+  assert.match(html, /Diagnostic assessment/);
+  assert.match(html, /<details[^>]*open=""[^>]*>/);
+  assert.match(html, /data-state="unanswered"[^>]*>1<\/button>/);
+  assert.match(html, /aria-current="step"[^>]*data-state="current"[^>]*>2<\/button>/);
+  assert.doesNotMatch(html, /Correct|Incorrect|Passed|Failed/);
 });
 
 test("player fails safely when the authoritative attempt contains no questions", () => {
@@ -103,6 +125,8 @@ test("TRUE_FALSE uses server labels and restores the server-saved selection", ()
   assert.ok(html.indexOf("Not so") < html.indexOf("Indeed"));
   assert.doesNotMatch(html, />True<|>False</);
   assert.match(html, /<input[^>]*(?:checked=""[^>]*value="2001"|value="2001"[^>]*checked="")[^>]*>/);
+  assert.match(html, /data-state="selected"[^>]*>[\s\S]*value="2001"/);
+  assert.match(html, /data-state="unselected"/);
   assert.match(html, /<button[^>]*>Previous<\/button>/);
   assert.match(html, /<button[^>]*>Review answers<\/button>/);
 });
@@ -204,4 +228,9 @@ test("responsive page and dialog sizing include padding within the viewport widt
   assert.match(css, /\.dialogPanel\s*\{[^}]*box-sizing:\s*border-box/s);
   assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*\.runArea\s*\{[^}]*flex-direction:\s*column/s);
   assert.match(css, /\.runResults\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(css, /\.questionNavigatorGrid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,/s);
+  assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*\.questionNavigatorSummary\s*\{[^}]*display:\s*flex/s);
+  assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*details:not\(\[open\]\)[^}]*display:\s*none/s);
+  assert.match(css, /\.choice\[data-state="selected"\]/);
+  assert.match(css, /\.choice:has\(input:disabled\)/);
 });

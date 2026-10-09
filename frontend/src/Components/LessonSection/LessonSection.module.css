@@ -92,13 +92,30 @@
 .btnGame:hover { background:#eef4f8; }
 .openModuleBtn { align-self:center;display:flex;align-items:center;gap:8px;min-height:42px;border:1px solid #8ca9be;background:#fff;color:#26547c;border-radius:10px;padding:10px 15px;font-size:14px;font-weight:750;cursor:pointer;white-space:nowrap; }
 .openModuleBtn:hover { background:#eaf3f9; }
-.lessonCard[role="link"] { cursor:pointer; }
-.lessonCard[role="link"]:focus-visible { outline:3px solid #80b8e5;outline-offset:2px; }
+.openModuleBtn:focus-visible { outline:3px solid #80b8e5;outline-offset:2px; }
+
+.assessmentStrip { margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0; }
+.assessmentHeading { display:block;margin-bottom:7px;color:#718397;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase; }
+.assessmentStrip ul { display:grid;gap:6px;margin:0;padding:0;list-style:none; }
+.assessmentRow { display:grid;grid-template-columns:minmax(68px,auto) minmax(76px,1fr);align-items:center;gap:7px 10px;min-width:0; }
+.assessmentName { color:#334f68;font-size:13px;font-weight:750; }
+.assessmentStatus { justify-self:start;padding:3px 7px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:800;white-space:nowrap; }
+.assessmentStatus[data-status="completed"] { background:#e1f5ee;color:#0f6e56; }
+.assessmentStatus[data-status="available"],.assessmentStatus[data-status="in-progress"] { background:#eef4fb;color:#26547c; }
+.assessmentActions { grid-column:1 / -1;display:flex;justify-content:flex-start;align-items:center;flex-wrap:wrap;gap:8px;min-width:0; }
+.assessmentAction { color:#365f83;font-size:12px;font-weight:800;text-decoration:underline;text-underline-offset:2px;white-space:nowrap; }
+.assessmentPrimaryAction { padding:5px 8px;border:1px solid #8ca9be;border-radius:7px;background:#fff;text-decoration:none; }
+.assessmentAction:focus-visible { outline:3px solid #80b8e5;outline-offset:2px; }
 
 @media (max-width: 640px) {
   .currentActions { width:100%; }
   .currentActions button { flex:1;justify-content:center;padding-left:8px;padding-right:8px; }
   .openModuleBtn { justify-content:center; }
+  .lessonCard { flex-wrap:wrap;padding:18px;align-items:flex-start; }
+  .cardBody { min-width:calc(100% - 76px); }
+  .openModuleBtn { width:100%; }
+  .assessmentRow { grid-template-columns:minmax(64px,auto) 1fr; }
+  .assessmentActions { grid-column:1 / -1;justify-content:flex-start;flex-wrap:wrap; }
 }
 
 /* ── Section heading ──────────────────── */
@@ -147,7 +164,6 @@
   box-shadow: 0 8px 20px rgba(30, 58, 95, 0.11);
   border-color: #bdd2e8;
   transform: translateY(-1px);
-  cursor: pointer;
 }
 
 .cardActive {
@@ -158,7 +174,6 @@
 .cardLocked {
   border-color: #dce4ec;
   background: #f8fafc;
-  cursor: not-allowed;
 }
 
 .cardLocked .cardTitle { color: #64778b; }

@@ -6,6 +6,7 @@ import {
   buildAssessmentResultHref,
   buildMapHref,
   buildModuleHref,
+  createLessonAssessmentAccessViewModel,
   createLessonProgressionViewModel,
   createLevelEntryViewModel,
   isLevelAssessmentRestriction,
@@ -235,6 +236,117 @@ test("unpublished historical assessments keep result actions without restoring t
 
   assert.deepEqual(model.steps.filter(({ resultAction }) => resultAction).map(({ id }) => id), ["pre", "post"]);
   assert.equal(model.action.kind, "module");
+});
+
+test("lesson cards expose stable submitted PRE and POST results without score data", () => {
+  const model = createLessonAssessmentAccessViewModel({
+    lesson: lesson({
+      preRequired: false,
+      preAssessmentId: null,
+      preCompleted: false,
+      preLatestSubmittedAttemptId: 201,
+      postRequired: false,
+      postAssessmentId: null,
+      postCompleted: false,
+      postLatestSubmittedAttemptId: 302,
+      nextAction: "PLAY_GAME",
+      score: 99,
+      percentage: 99,
+      postPassed: true,
+    }),
+    classroomId: 7,
+  });
+
+  assert.deepEqual(model, {
+    rows: [
+      {
+        type: "PRE",
+        label: "Pre-Test",
+        status: "Completed",
+        action: null,
+        resultAction: {
+          label: "View Result",
+          href: "/classrooms/7/lessons/arrays/assessment/pre/results/201",
+        },
+      },
+      {
+        type: "POST",
+        label: "Post-Test",
+        status: "Completed",
+        action: null,
+        resultAction: {
+          label: "View Result",
+          href: "/classrooms/7/lessons/arrays/assessment/post/results/302",
+        },
+      },
+    ],
+  });
+  assert.equal(JSON.stringify(model).includes("99"), false);
+  assert.equal(JSON.stringify(model).includes("passed"), false);
+});
+
+test("lesson card assessment actions follow authoritative nextAction and attempt state", () => {
+  const available = createLessonAssessmentAccessViewModel({ lesson: lesson(), classroomId: 7 });
+  assert.deepEqual(available.rows.find(({ type }) => type === "PRE"), {
+    type: "PRE",
+    label: "Pre-Test",
+    status: "Available",
+    resultAction: null,
+    action: {
+      label: "Take Test",
+      href: "/classrooms/7/lessons/arrays/assessment/pre",
+    },
+  });
+  assert.equal(available.rows.find(({ type }) => type === "POST").status, "Locked");
+
+  const inProgress = createLessonAssessmentAccessViewModel({
+    lesson: lesson({ preAttemptInProgress: true, nextAction: "RESUME_PRE" }),
+    classroomId: 7,
+  });
+  assert.equal(inProgress.rows[0].status, "In Progress");
+  assert.equal(inProgress.rows[0].action.label, "Continue");
+
+  const retry = createLessonAssessmentAccessViewModel({
+    lesson: lesson({
+      preCompleted: true,
+      postUnlocked: true,
+      postCompleted: true,
+      postLatestSubmittedAttemptId: 301,
+      postAttemptsRemaining: 2,
+      nextAction: "RETRY_POST",
+    }),
+    classroomId: 7,
+  });
+  const post = retry.rows.find(({ type }) => type === "POST");
+  assert.equal(post.status, "Available");
+  assert.equal(post.action.label, "Retry");
+  assert.equal(post.resultAction.href, "/classrooms/7/lessons/arrays/assessment/post/results/301");
+});
+
+test("lesson card assessment model fails closed for absent or incomplete progression", () => {
+  assert.deepEqual(createLessonAssessmentAccessViewModel({
+    lesson: lesson({
+      preRequired: false,
+      preAssessmentId: null,
+      postRequired: false,
+      postAssessmentId: null,
+      nextAction: "PLAY_GAME",
+    }),
+    classroomId: 7,
+  }), { rows: [] });
+
+  const incomplete = createLessonAssessmentAccessViewModel({
+    lesson: lesson({
+      preAssessmentId: null,
+      preUnlocked: true,
+      nextAction: "TAKE_PRE",
+    }),
+    classroomId: 7,
+  });
+  assert.equal(incomplete.rows[0].status, "Not Started");
+  assert.equal(incomplete.rows[0].action, null);
+  assert.equal(incomplete.rows[0].resultAction, null);
+  assert.equal(JSON.stringify(incomplete).includes("null/lessons"), false);
 });
 
 test("assessment-exempt tutorial and final never gain fake assessment steps", () => {

@@ -273,3 +273,96 @@ export const createLessonProgressionViewModel = ({ lesson, classroomId, gameHref
   steps: stepState({ ...(lesson ?? {}), classroomId }),
   action: actionFor({ lesson: lesson ?? {}, classroomId, gameHref }),
 });
+
+const ASSESSMENT_CARD_CONFIG = Object.freeze({
+  PRE: {
+    label: "Pre-Test",
+    assessmentId: "preAssessmentId",
+    required: "preRequired",
+    unlocked: "preUnlocked",
+    inProgress: "preAttemptInProgress",
+    completed: "preCompleted",
+    resultAttemptId: "preLatestSubmittedAttemptId",
+    actions: {
+      TAKE_PRE: "Take Test",
+      RESUME_PRE: "Continue",
+    },
+  },
+  POST: {
+    label: "Post-Test",
+    assessmentId: "postAssessmentId",
+    required: "postRequired",
+    unlocked: "postUnlocked",
+    inProgress: "postAttemptInProgress",
+    completed: "postCompleted",
+    resultAttemptId: "postLatestSubmittedAttemptId",
+    actions: {
+      TAKE_POST: "Take Test",
+      RESUME_POST: "Continue",
+      RETRY_POST: "Retry",
+    },
+  },
+});
+
+const canUseAssessmentAction = ({ lesson, type, config }) => {
+  const action = lesson?.nextAction;
+  if (!config.actions[action]
+    || !positiveId(lesson?.[config.assessmentId])
+    || lesson?.[config.unlocked] !== true) return false;
+  if (action === `RESUME_${type}`) return lesson?.[config.inProgress] === true;
+  if (action === `TAKE_${type}`) {
+    return lesson?.[config.inProgress] !== true && lesson?.[config.completed] !== true;
+  }
+  return type === "POST"
+    && action === "RETRY_POST"
+    && lesson?.postCompleted === true
+    && Number(lesson?.postAttemptsRemaining) > 0;
+};
+
+export const createLessonAssessmentAccessViewModel = ({ lesson, classroomId } = {}) => {
+  const resolvedClassroomId = positiveId(classroomId);
+  const lessonKey = typeof lesson?.lessonKey === "string" ? lesson.lessonKey.trim() : "";
+  if (!lessonKey) return { rows: [] };
+
+  const rows = Object.entries(ASSESSMENT_CARD_CONFIG).flatMap(([type, config]) => {
+    const resultAttemptId = positiveId(lesson?.[config.resultAttemptId]);
+    const exists = lesson?.[config.required] === true
+      || positiveId(lesson?.[config.assessmentId]) != null
+      || lesson?.[config.inProgress] === true
+      || lesson?.[config.completed] === true
+      || resultAttemptId != null;
+    if (!exists) return [];
+
+    const actionAllowed = resolvedClassroomId != null
+      && canUseAssessmentAction({ lesson, type, config });
+    const action = actionAllowed ? {
+      label: config.actions[lesson.nextAction],
+      href: buildAssessmentHref({ classroomId: resolvedClassroomId, lessonKey, type }),
+    } : null;
+    const resultAction = resolvedClassroomId != null && resultAttemptId != null ? {
+      label: "View Result",
+      href: buildAssessmentResultHref({
+        classroomId: resolvedClassroomId,
+        lessonKey,
+        type,
+        attemptId: resultAttemptId,
+      }),
+    } : null;
+
+    let status = "Not Started";
+    if (action?.label === "Continue") status = "In Progress";
+    else if (action) status = "Available";
+    else if (resultAttemptId != null || lesson?.[config.completed] === true) status = "Completed";
+    else if (lesson?.[config.unlocked] === false) status = "Locked";
+
+    return [{
+      type,
+      label: config.label,
+      status,
+      resultAction,
+      action,
+    }];
+  });
+
+  return { rows };
+};

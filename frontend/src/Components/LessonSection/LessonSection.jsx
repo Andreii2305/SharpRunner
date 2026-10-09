@@ -9,6 +9,7 @@ import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { FiArrowRight, FiPaperclip } from "react-icons/fi";
 import { withClassroomIdQuery } from "../../pages/student/builtInModuleContentState.js";
+import { createLessonAssessmentAccessViewModel } from "../../utils/lessonProgressionNavigation.js";
 
 const DEFAULT_LESSON_META = [
   {
@@ -140,7 +141,7 @@ function buildOrderedLessonMeta(seedLessons = []) {
   return orderedKeys.map((key) => mergedMetaByKey.get(key)).filter(Boolean);
 }
 
-function buildLessonsFromData({ lessonMeta = [], progressLessons = [] }) {
+function buildLessonsFromData({ lessonMeta = [], progressLessons = [], classroomId = null }) {
   const progressByKey = new Map(
     progressLessons.map((lesson) => [lesson.lessonKey, lesson])
   );
@@ -169,6 +170,10 @@ function buildLessonsFromData({ lessonMeta = [], progressLessons = [] }) {
       progress: clampProgress(progressRow?.progressPercent),
       status: "locked",
       route: meta?.route ?? "/Map",
+      assessmentModel: createLessonAssessmentAccessViewModel({
+        lesson: progressRow,
+        classroomId,
+      }),
     };
   });
 
@@ -227,23 +232,36 @@ function LessonIcon({ status }) {
 }
 
 function ActionBtn({ onClick }) {
-  return <button className={styles.openModuleBtn} onClick={onClick}>Open Module <FiArrowRight /></button>;
+  return <button type="button" className={styles.openModuleBtn} onClick={onClick}>Open Module <FiArrowRight /></button>;
 }
 
-function LessonCard({ lesson, onPlay }) {
+export function LessonAssessmentStrip({ lessonTitle, model }) {
+  if (!model?.rows?.length) return null;
+  return <section className={styles.assessmentStrip} aria-label={`${lessonTitle} assessments`}>
+    <span className={styles.assessmentHeading}>Assessments</span>
+    <ul>
+      {model.rows.map((row) => <li className={styles.assessmentRow} key={row.type}>
+        <span className={styles.assessmentName}>{row.label}</span>
+        <span className={styles.assessmentStatus} data-status={row.status.toLowerCase().replace(" ", "-")}>{row.status}</span>
+        <span className={styles.assessmentActions}>
+          {row.resultAction?.href && <a className={styles.assessmentAction} href={row.resultAction.href}>{row.resultAction.label}</a>}
+          {row.action?.href && <a className={`${styles.assessmentAction} ${styles.assessmentPrimaryAction}`} href={row.action.href}>{row.action.label}</a>}
+        </span>
+      </li>)}
+    </ul>
+  </section>;
+}
+
+export function LessonCard({ lesson, onPlay }) {
   const cfg = STATUS_CONFIG[lesson.status];
   const isLocked = lesson.status === "locked";
 
   return (
-    <div
+    <article
       className={`${styles.lessonCard}
         ${lesson.status === "active" ? styles.cardActive : ""}
         ${isLocked ? styles.cardLocked : ""}
       `}
-      role="link"
-      tabIndex={0}
-      onClick={() => onPlay(lesson)}
-      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onPlay(lesson); }}
     >
       <div className={`${styles.cardIcon} ${styles[cfg.iconWrapClass]}`}>
         <LessonIcon status={lesson.status} />
@@ -273,10 +291,11 @@ function LessonCard({ lesson, onPlay }) {
             {lesson.progress}%
           </span>
         </div>
+        <LessonAssessmentStrip lessonTitle={lesson.title} model={lesson.assessmentModel} />
       </div>
 
-      <ActionBtn onClick={(event) => { event.stopPropagation(); onPlay(lesson); }} />
-    </div>
+      <ActionBtn onClick={() => onPlay(lesson)} />
+    </article>
   );
 }
 
@@ -364,8 +383,9 @@ function LessonSection() {
     return buildLessonsFromData({
       lessonMeta: orderedMeta,
       progressLessons,
+      classroomId,
     });
-  }, [lessonSeed, progressLessons]);
+  }, [classroomId, lessonSeed, progressLessons]);
 
   const activeLesson = lessons.find((lesson) => lesson.status === "active") ?? lessons[0];
 

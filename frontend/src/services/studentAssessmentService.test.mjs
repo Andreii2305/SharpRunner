@@ -76,7 +76,7 @@ test("assessment and attempt reads return server DTOs without reshaping them", a
   const assessment = { id: 91, questions: [{ id: 3 }] };
   const attempt = { attemptId: 312, responses: [] };
   const result = { attemptId: 312, result: { passed: true } };
-  const expected = [assessment, attempt, result];
+  const expected = [assessment, attempt, result, result];
   const calls = [];
 
   await withAxiosMethod("get", async (url, config) => {
@@ -86,12 +86,20 @@ test("assessment and attempt reads return server DTOs without reshaping them", a
     assert.strictEqual(await service.getAssessment({ assessmentId: 91, signal: controller.signal }), assessment);
     assert.strictEqual(await service.getAttempt({ attemptId: 312, signal: controller.signal }), attempt);
     assert.strictEqual(await service.getAttemptResult({ attemptId: 312, signal: controller.signal }), result);
+    assert.strictEqual(await service.getAttemptResult({
+      classroomId: 47,
+      lessonKey: "functions-with-arrays",
+      type: "post",
+      attemptId: 312,
+      signal: controller.signal,
+    }), result);
   });
 
   assert.deepEqual(calls.map(([url]) => url), [
     "http://localhost:5000/api/assessments/91",
     "http://localhost:5000/api/assessments/attempts/312",
     "http://localhost:5000/api/assessments/attempts/312/result",
+    "http://localhost:5000/api/assessments/classrooms/47/lessons/functions-with-arrays/POST/attempts/312/result",
   ]);
   calls.forEach(([, config]) => assertAuthorizedConfig(config, controller.signal));
 });

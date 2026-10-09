@@ -372,7 +372,7 @@ test("recoverable failure exposes a retry action without backend internals", () 
   assert.doesNotMatch(html, /database password|internal-secret/);
 });
 
-test("App registers one lazy, student-only, class-membership assessment route", async () => {
+test("App registers student-only assessment and stable result routes", async () => {
   const appSource = await readFile(new URL("../../../App.jsx", import.meta.url), "utf8");
   assert.match(appSource, /lazy\(\(\) => import\("\.\/pages\/student\/assessment\/AssessmentPage\.jsx"\)\)/);
   assert.match(
@@ -381,7 +381,11 @@ test("App registers one lazy, student-only, class-membership assessment route", 
   );
   assert.equal(
     (appSource.match(/classrooms\/:classroomId\/lessons\/:lessonKey\/assessment\/:type/g) ?? []).length,
-    1,
+    2,
+  );
+  assert.match(
+    appSource,
+    /path="\/classrooms\/:classroomId\/lessons\/:lessonKey\/assessment\/:type\/results\/:attemptId"[\s\S]{0,260}<ProtectedRoute[^>]*allowedRoles=\{\["student"\]\}[^>]*requireClassMembership>/,
   );
 });
 
@@ -402,5 +406,7 @@ test("page owns abort and generation fencing and delegates policy orchestration"
   assert.match(source, /getAttemptResult/);
   assert.match(source, /codingRunInFlight/);
   assert.match(source, /assessmentReducer/);
+  assert.match(source, /buildAssessmentPageHref/);
+  assert.match(source, /window\.history\.replaceState/);
   assert.doesNotMatch(source, /pointsEarned|percentage|passingScore|isCorrect/);
 });

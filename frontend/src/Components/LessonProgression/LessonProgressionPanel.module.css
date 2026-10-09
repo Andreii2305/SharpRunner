@@ -7,6 +7,10 @@
 .steps li { position: relative; display: grid; grid-template-columns: auto auto; align-items: center; gap: .1rem .35rem; min-width: 0; padding: .25rem .5rem; border-radius: 7px; }
 .steps li:not(:last-child)::after { content: "→"; position: absolute; right: -.35rem; color: #8b6f3f; }
 .steps small { grid-column: 2; color: #66543d; font-size: .65rem; }
+.stepMeta { grid-column: 2; display: flex; align-items: center; gap: .35rem; }
+.stepMeta small { grid-column: auto; }
+.resultAction { color: #513092; font-size: .68rem; font-weight: 900; white-space: nowrap; }
+.resultAction:focus-visible { outline: 2px solid #6740b5; outline-offset: 2px; }
 .marker { grid-row: 1 / span 2; color: #756b5b; font-size: .9rem; font-weight: 900; }
 .steps li[data-state="completed"] .marker, .steps li[data-state="complete"] .marker { color: #17643a; }
 .steps li[data-state="current"] { background: rgba(118, 80, 197, .12); }

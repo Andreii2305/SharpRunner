@@ -63,6 +63,49 @@ test("POST policy states come only from authoritative passed and progression fie
   }).state, "COMPLETED");
 });
 
+test("historical POST attempt outcome stays separate from a later lesson pass", () => {
+  const failedHistorical = createAssessmentResultModel({
+    envelope: resultEnvelope({ result: { passed: false, percentage: 40 } }),
+    progression: progression({
+      postPassed: true,
+      postAttemptsRemaining: 1,
+      lessonCompleted: true,
+      nextAction: "LESSON_COMPLETE",
+    }, { nextAction: "LESSON_COMPLETE" }),
+    route,
+  });
+  assert.equal(failedHistorical.attemptOutcome, "FAILED");
+  assert.equal(failedHistorical.requirementCompletedOnAnotherAttempt, true);
+  assert.equal(failedHistorical.state, "REQUIREMENT_COMPLETED");
+  assert.equal(failedHistorical.retakeAllowed, false);
+
+  const passed = createAssessmentResultModel({
+    envelope: resultEnvelope({ result: { passed: true } }),
+    progression: progression({ postPassed: true }),
+    route,
+  });
+  assert.equal(passed.attemptOutcome, "PASSED");
+  assert.equal(passed.requirementCompletedOnAnotherAttempt, false);
+  assert.equal(passed.state, "PASSED");
+
+  const unknown = createAssessmentResultModel({
+    envelope: resultEnvelope({ result: { passed: undefined } }),
+    progression: progression({ postPassed: true, lessonCompleted: true }),
+    route,
+  });
+  assert.equal(unknown.attemptOutcome, "UNKNOWN");
+  assert.equal(unknown.requirementCompletedOnAnotherAttempt, false);
+  assert.equal(unknown.state, "REQUIREMENT_COMPLETED");
+
+  const diagnostic = createAssessmentResultModel({
+    envelope: resultEnvelope({ result: { type: "PRE", passed: false, baselineEligible: false } }),
+    progression: progression(),
+    route: { ...route, type: "PRE" },
+  });
+  assert.equal(diagnostic.attemptOutcome, "DIAGNOSTIC");
+  assert.equal(diagnostic.state, "DIAGNOSTIC_COMPLETE");
+});
+
 test("hidden numeric fields stay absent while the server passed boolean remains usable", () => {
   const envelope = resultEnvelope({
     result: {
@@ -79,6 +122,7 @@ test("hidden numeric fields stay absent while the server passed boolean remains 
     route,
   });
   assert.equal(model.state, "PASSED");
+  assert.equal(model.attemptOutcome, "PASSED");
   assert.equal(model.score, null);
 });
 

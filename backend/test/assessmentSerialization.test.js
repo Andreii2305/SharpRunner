@@ -149,6 +149,7 @@ test("coding player and review DTOs expose public contract/source without mixed 
   assert.deepEqual(review.review[0], {
     questionId: 202,
     questionText: "Add two values.",
+    questionType: "CODING",
     sourceCode: "return left + right;",
   });
 
@@ -387,9 +388,35 @@ test("review serialization emits keys only for an explicitly allowed review", ()
     responses: [{ questionId: 101, selectedChoiceId: 1001, pointsAwarded: 2 }],
   });
   assert.equal(review.reviewAvailable, true);
+  assert.equal(review.review[0].questionText, "Which array declaration is valid?");
+  assert.equal(review.review[0].questionType, "MULTIPLE_CHOICE");
+  assert.equal(review.review[0].studentAnswer, "int[] values");
+  assert.equal(review.review[0].correctAnswer, "int[] values");
   assert.equal(review.review[0].correctChoiceId, 1001);
   assert.equal(review.review[0].explanation, "Brackets follow the type.");
   assert.equal(review.review[0].pointsAwarded, 2);
+});
+
+test("authorized hidden-score review exposes answers but no numeric grading fields", () => {
+  const review = serializers.serializeAllowedReview({
+    reviewAvailable: true,
+    scoreVisible: false,
+    questions: assessment().questions,
+    responses: [{ questionId: 101, selectedChoiceId: 1002, pointsAwarded: 0 }],
+  });
+
+  assert.deepEqual(review.review[0], {
+    questionId: 101,
+    questionText: "Which array declaration is valid?",
+    questionType: "MULTIPLE_CHOICE",
+    selectedChoiceId: 1002,
+    studentAnswer: "int values[]",
+    correctChoiceId: 1001,
+    correctAnswer: "int[] values",
+    isCorrect: false,
+    explanation: "Brackets follow the type.",
+  });
+  assert.equal("pointsAwarded" in review.review[0], false);
 });
 
 test("assessment errors translate Phase B and Sequelize conflicts without leaking internals", () => {

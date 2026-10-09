@@ -174,6 +174,22 @@ const createAssessmentRouter = ({
     }
   });
 
+  router.get("/classrooms/:classroomId/lessons/:lessonKey/:type/attempts/:attemptId/result", async (req, res) => {
+    try {
+      const lessonKey = req.params.lessonKey;
+      const payload = await readService.getStudentResult({
+        attemptId: parsePositiveId(req.params.attemptId),
+        studentId: req.userId,
+        expectedClassroomId: parsePositiveId(req.params.classroomId),
+        expectedLessonKey: lessonKey,
+        expectedType: normalizeType(req.params.type),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
   router.get("/classrooms/:classroomId/lessons/:lessonKey/:type", async (req, res) => {
     try {
       const payload = await readService.discoverAssessment({

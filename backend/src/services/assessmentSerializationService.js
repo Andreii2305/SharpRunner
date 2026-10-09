@@ -174,7 +174,16 @@ const serializeStudentResult = (input = {}) => {
   if (assessment.showScoreAfterSubmission === true) {
     Object.assign(result, serializeScore(attempt));
   }
-  const output = { result };
+  const output = {
+    assessment: {
+      id: assessment.id,
+      classroomId: assessment.classroomId,
+      lessonKey: assessment.lessonKey,
+      type: assessment.type,
+      title: assessment.title,
+    },
+    result,
+  };
   if (assessment.showScoreAfterSubmission === true) {
     if (assessment.type === "POST" && input.officialGrade) {
       output.officialGrade = serializeGradeReference(input.officialGrade);
@@ -209,19 +218,30 @@ const serializeAllowedReview = (input = {}) => {
       const response = responses.get(String(question.id));
       const selectedChoiceId = response?.selectedChoiceId ?? null;
       const correctChoice = (question.choices || []).map(plain).find((choice) => choice.isCorrect === true);
+      const selectedChoice = (question.choices || []).map(plain).find(
+        (choice) => String(choice.id) === String(selectedChoiceId),
+      );
+      const isCoding = question.questionType === "CODING";
       return {
         questionId: question.id,
         questionText: question.questionText,
-        ...(question.questionType === "CODING"
+        questionType: question.questionType,
+        ...(isCoding
           ? { sourceCode: response?.sourceCode ?? "" }
-          : { selectedChoiceId }),
-        ...(input.scoreVisible !== false ? {
-          correctChoiceId: correctChoice?.id ?? null,
-          isCorrect: question.questionType === "CODING"
-            ? response?.isCorrect === true
+          : {
+              selectedChoiceId,
+              studentAnswer: selectedChoice?.choiceText ?? null,
+              correctChoiceId: correctChoice?.id ?? null,
+              correctAnswer: correctChoice?.choiceText ?? null,
+            }),
+        ...(!isCoding || typeof response?.isCorrect === "boolean" ? {
+          isCorrect: isCoding
+            ? response.isCorrect === true
             : Boolean(correctChoice && String(selectedChoiceId) === String(correctChoice.id)),
+        } : {}),
+        ...(question.explanation != null ? { explanation: question.explanation } : {}),
+        ...(input.scoreVisible !== false ? {
           pointsAwarded: numberOrNull(response?.pointsAwarded),
-          explanation: question.explanation ?? null,
         } : {}),
       };
     }),

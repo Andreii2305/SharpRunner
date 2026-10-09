@@ -119,6 +119,14 @@ function App() {
           }
         />
         <Route
+          path="/classrooms/:classroomId/lessons/:lessonKey/assessment/:type/results/:attemptId"
+          element={
+            <ProtectedRoute allowedRoles={["student"]} requireClassMembership>
+              <AssessmentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/:lessonSlug/level/:levelNumber"
           element={
             <ProtectedRoute requireClassMembership>

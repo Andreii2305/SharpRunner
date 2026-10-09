@@ -42,8 +42,10 @@ const LEGACY_LESSON_FIELDS = new Set([
 const CANONICAL_LESSON_OVERLAY_FIELDS = [
   "prerequisiteLessonKey", "curriculumPrerequisiteSatisfied", "preRequired",
   "preAssessmentId", "preUnlocked", "preAttemptInProgress", "preCompleted",
+  "preLatestSubmittedAttemptId",
   "moduleUnlocked", "gameUnlocked", "gameStarted", "gameCompleted", "postRequired",
   "postAssessmentId", "postUnlocked", "postAttemptInProgress", "postCompleted",
+  "postLatestSubmittedAttemptId",
   "postPassingRequired", "postPassed", "postAttemptsUsed", "postAttemptsRemaining",
   "postAttemptsExhausted", "assessmentCompleted", "lessonCompleted", "nextAction",
 ].sort();
@@ -719,7 +721,7 @@ test("progress me batches one state map instead of querying assessments per leve
     assert.equal(queries.progress.length, 2, "only existing-key and full progress reads");
     assert.equal(queries.memberships.length, 2, "middleware and selected membership only");
     assert.equal(queries.assessments[0].where.classroomId, 9);
-    assert.equal(queries.assessments[0].where.isPublished, true);
+    assert.equal(queries.assessments[0].where.isPublished, undefined);
     assert.equal(queries.assessments[0].include, undefined);
     assert.equal(queries.attempts[0].where.classroomId, 9);
     assert.equal(queries.attempts[0].where.studentId, 7);

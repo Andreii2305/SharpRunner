@@ -52,6 +52,17 @@ const attemptsFor = (assessment, attemptsByAssessmentId) => assessment
   ? attemptsByAssessmentId.get(String(assessment.id)) || []
   : [];
 
+const submittedTime = (attempt) => {
+  const value = new Date(attempt?.submittedAt || 0).getTime();
+  return Number.isFinite(value) ? value : 0;
+};
+
+const newestSubmittedAttempt = (attempts = []) => attempts
+  .filter((attempt) => attempt?.status === ATTEMPT_STATUSES.SUBMITTED)
+  .sort((left, right) => submittedTime(right) - submittedTime(left)
+    || Number(right.id) - Number(left.id))[0]
+  ?? null;
+
 const hasGameActivity = (progress) => Boolean(
   progress?.isCompleted
   || progress?.startedAt
@@ -197,6 +208,7 @@ const resolveRequiredAssessmentDebt = (lessonState) => {
 
 const buildLessonProgressionStates = ({
   publishedAssessments = [],
+  historicalAssessments = publishedAssessments,
   attempts = [],
   progressRows = [],
   levelSettings = [],
@@ -214,6 +226,21 @@ const buildLessonProgressionStates = ({
     if (!attemptsByAssessmentId.has(key)) attemptsByAssessmentId.set(key, []);
     attemptsByAssessmentId.get(key).push(attempt);
   }
+
+  const historicalIdsByLessonAndType = new Map();
+  for (const assessment of list(historicalAssessments)) {
+    if (!GATED_LESSON_KEY_SET.has(assessment?.lessonKey)) continue;
+    const key = `${assessment.lessonKey}:${assessment.type}`;
+    if (!historicalIdsByLessonAndType.has(key)) historicalIdsByLessonAndType.set(key, []);
+    historicalIdsByLessonAndType.get(key).push(String(assessment.id));
+  }
+
+  const latestHistoricalAttempt = (lessonKey, type) => {
+    const assessmentIds = historicalIdsByLessonAndType.get(`${lessonKey}:${type}`) || [];
+    return newestSubmittedAttempt(assessmentIds.flatMap(
+      (assessmentId) => attemptsByAssessmentId.get(assessmentId) || [],
+    ));
+  };
 
   const progressByKey = new Map(list(progressRows).map((row) => [row.levelKey, row]));
   const settingsByKey = new Map(list(levelSettings).map((setting) => [setting.levelKey, setting]));
@@ -233,6 +260,8 @@ const buildLessonProgressionStates = ({
       : null;
     const preAttempts = attemptsFor(preAssessment, attemptsByAssessmentId);
     const postAttempts = attemptsFor(postAssessment, attemptsByAssessmentId);
+    const latestHistoricalPre = latestHistoricalAttempt(lessonKey, ASSESSMENT_TYPES.PRE);
+    const latestHistoricalPost = latestHistoricalAttempt(lessonKey, ASSESSMENT_TYPES.POST);
     const preAttemptInProgress = preAttempts.some(
       (attempt) => attempt.status === ATTEMPT_STATUSES.IN_PROGRESS,
     );
@@ -311,6 +340,8 @@ const buildLessonProgressionStates = ({
       postAttemptsExhausted,
       assessmentCompleted,
       lessonCompleted,
+      preLatestSubmittedAttemptId: assessmentGated ? latestHistoricalPre?.id ?? null : null,
+      postLatestSubmittedAttemptId: assessmentGated ? latestHistoricalPost?.id ?? null : null,
       nextAction: null,
     };
     state.nextAction = nextActionFor(state);
@@ -455,7 +486,6 @@ const createLessonProgressionService = ({
       LessonAssessment.findAll({
         where: {
           classroomId,
-          isPublished: true,
           lessonKey: { [Op.in]: relevantLessonKeys },
           type: { [Op.in]: [ASSESSMENT_TYPES.PRE, ASSESSMENT_TYPES.POST] },
         },
@@ -473,13 +503,15 @@ const createLessonProgressionService = ({
     ]);
 
     const lessonKeySet = new Set(relevantLessonKeys);
-    const exactAssessments = list(assessmentRows).filter((assessment) => (
+    const exactHistoricalAssessments = list(assessmentRows).filter((assessment) => (
       sameId(assessment.classroomId, classroomId)
-      && assessment.isPublished === true
       && lessonKeySet.has(assessment.lessonKey)
       && (assessment.type === ASSESSMENT_TYPES.PRE || assessment.type === ASSESSMENT_TYPES.POST)
     ));
-    const assessmentIds = exactAssessments.map((assessment) => assessment.id);
+    const exactAssessments = exactHistoricalAssessments.filter(
+      (assessment) => assessment.isPublished === true,
+    );
+    const assessmentIds = exactHistoricalAssessments.map((assessment) => assessment.id);
     let exactAttempts = [];
     if (assessmentIds.length > 0) {
       const assessmentIdSet = new Set(assessmentIds.map(String));
@@ -501,6 +533,7 @@ const createLessonProgressionService = ({
 
     return buildLessonProgressionStates({
       publishedAssessments: exactAssessments,
+      historicalAssessments: exactHistoricalAssessments,
       attempts: exactAttempts,
       progressRows: loadedProgressRows,
       levelSettings: loadedLevelSettings,

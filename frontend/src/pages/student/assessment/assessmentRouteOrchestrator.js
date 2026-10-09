@@ -92,6 +92,13 @@ export const assessmentActionsForOutcome = (outcome, {
       ...actionContext,
     });
   }
+  if (outcome?.progressionError) {
+    actions.push({
+      type: "PROGRESSION_REFRESH_FAILED",
+      error: outcome.progressionError,
+      ...actionContext,
+    });
+  }
   return actions;
 };
 
@@ -131,11 +138,16 @@ const verifyAttemptEnvelope = (route, assessmentId, envelope, expectedAttemptId 
 
 const verifyResultEnvelope = (route, attemptId, envelope) => {
   const result = envelope?.result;
+  const assessment = envelope?.assessment;
   if (
     !result
+    || !assessment
     || Number(result.attemptId) !== Number(attemptId)
     || String(result.type).toUpperCase() !== route.type
     || result.status !== "SUBMITTED"
+    || Number(assessment.classroomId) !== route.classroomId
+    || assessment.lessonKey !== route.lessonKey
+    || String(assessment.type).toUpperCase() !== route.type
   ) {
     throw stateMismatch();
   }
@@ -173,6 +185,9 @@ export const createAssessmentRouteOrchestrator = (services) => {
     try {
       const resultEnvelope = await services.getAttemptResult({
         attemptId: latestSubmittedAttemptId,
+        classroomId: route.classroomId,
+        lessonKey: route.lessonKey,
+        type: route.type,
         signal,
       });
       if (!isCurrent()) return { kind: "STALE" };
@@ -207,6 +222,24 @@ export const createAssessmentRouteOrchestrator = (services) => {
     const route = parseAssessmentPageRoute(params);
     if (!route) return { kind: "INVALID_ROUTE" };
     if (!isCurrent()) return { kind: "STALE" };
+    if (isPositiveInteger(route.attemptId)) {
+      let progression = null;
+      let progressionError = null;
+      try {
+        progression = await services.getProgress({ classroomId: route.classroomId, signal });
+        if (Number(progression?.classroomId) !== route.classroomId) throw stateMismatch();
+      } catch (error) {
+        progressionError = error;
+      }
+      return loadSubmittedResult({
+        route,
+        latestSubmittedAttemptId: route.attemptId,
+        resultDisposition: "SUBMITTED",
+        signal,
+        isCurrent,
+        shared: { route, progression, progressionError },
+      });
+    }
 
     try {
       const progression = await services.getProgress({

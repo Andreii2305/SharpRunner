@@ -123,7 +123,20 @@ const attemptEnvelope = ({
   },
 });
 
-const submittedResult = ({ type = "PRE", attemptId = 401, passed } = {}) => ({
+const submittedResult = ({
+  type = "PRE",
+  attemptId = 401,
+  passed,
+  classroomId = 47,
+  lessonKey = "arrays",
+} = {}) => ({
+  assessment: {
+    id: type === "PRE" ? 91 : 92,
+    classroomId,
+    lessonKey,
+    type,
+    title: type === "PRE" ? "Arrays diagnostic" : "Arrays post-test",
+  },
   result: {
     attemptId,
     type,
@@ -194,6 +207,7 @@ test("assessment routes accept canonical PRE/POST paths and reject malformed par
     routeKey: "47:arrays:pre",
   });
   assert.equal(parseAssessmentPageRoute(routeParams({ type: "post" })).type, "POST");
+  assert.equal(parseAssessmentPageRoute(routeParams({ attemptId: "401" })).attemptId, 401);
 
   const invalidRoutes = [
     routeParams({ classroomId: "0" }),
@@ -213,6 +227,51 @@ test("assessment routes accept canonical PRE/POST paths and reject malformed par
     assert.equal(result.kind, "INVALID_ROUTE");
     assert.deepEqual(harness.calls, []);
   }
+});
+
+test("stable attempt result route loads the exact result and progression without discovery or attempt creation", async () => {
+  const attemptId = 401;
+  const harness = createHarness({
+    progress: progressDto({ lesson: lessonProgression({ preCompleted: true }) }),
+    result: submittedResult({ attemptId }),
+  });
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  const outcome = await createAssessmentRouteOrchestrator(harness.services).load({
+    params: routeParams({ attemptId: String(attemptId) }),
+    generation: 1,
+    isCurrent: () => true,
+  });
+
+  assert.equal(outcome.kind, "RESULT");
+  assert.equal(outcome.resultEnvelope.result.attemptId, attemptId);
+  assert.equal(outcome.progression.classroomId, 47);
+  assert.equal(harness.calls.some(({ name }) => name === "discoverAssessment"), false);
+  assert.equal(harness.calls.some(({ name }) => name === "startOrResumeAttempt"), false);
+  assert.deepEqual(
+    harness.calls.find(({ name }) => name === "getAttemptResult").args,
+    { attemptId, classroomId: 47, lessonKey: "arrays", type: "PRE", signal: undefined },
+  );
+});
+
+test("stable attempt result route rejects an envelope from another lesson or classroom", async () => {
+  const harness = createHarness({ result: {
+    ...submittedResult({ attemptId: 401 }),
+    assessment: {
+      id: 91,
+      classroomId: 99,
+      lessonKey: "functions",
+      type: "PRE",
+      title: "Wrong result",
+    },
+  } });
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  const outcome = await createAssessmentRouteOrchestrator(harness.services).load({
+    params: routeParams({ attemptId: "401" }),
+    generation: 1,
+    isCurrent: () => true,
+  });
+  assert.equal(outcome.kind, "RESULT_ERROR");
+  assert.equal(outcome.error.code, "ASSESSMENT_STATE_MISMATCH");
 });
 
 test("explicit classroom identity is used for progression and discovery without primary substitution", async () => {
@@ -334,6 +393,7 @@ test("submitted final POST uses only discovery-visible state and never auto-star
           type: "POST",
           attemptId: latestSubmittedAttemptId,
           passed: fixture.status.latestSubmitted?.passed ?? false,
+          lessonKey: "final",
         }),
       });
 

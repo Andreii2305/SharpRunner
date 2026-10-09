@@ -600,8 +600,18 @@ test("AFTER_SUBMISSION answer review joins persisted responses and answer choice
   const h = mutationHarness({ answerReviewPolicy: "AFTER_SUBMISSION" });
   const submitted = await h.completed();
   assert.equal(submitted.payload.reviewAvailable, true);
-  assert.deepEqual(submitted.payload.review, [{ questionId: 101, selectedChoiceId: 1001,
-    correctChoiceId: 1001, isCorrect: true, pointsAwarded: 2, explanation: "Arrays use brackets." }]);
+  assert.deepEqual(submitted.payload.review, [{
+    questionId: 101,
+    questionText: "Which declaration is valid?",
+    questionType: "MULTIPLE_CHOICE",
+    selectedChoiceId: 1001,
+    studentAnswer: "int[] values",
+    correctChoiceId: 1001,
+    correctAnswer: "int[] values",
+    isCorrect: true,
+    pointsAwarded: 2,
+    explanation: "Arrays use brackets.",
+  }]);
 });
 
 test("AFTER_FINAL_ATTEMPT requires exhaustion and no active attempt", async () => {
@@ -1108,13 +1118,27 @@ test("discovery submitted-attempt ID supports authorized result revisit without 
   assert.equal(revisited.payload.result.attemptId, submitted.id);
   assert.equal(revisited.payload.result.scoreVisible, false);
   assert.equal(revisited.payload.result.passed, true);
+  assert.deepEqual(revisited.payload.assessment, {
+    id: 12,
+    classroomId: 7,
+    lessonKey: "arrays",
+    type: "POST",
+    title: "Arrays post-test",
+  });
   assert.equal(revisited.payload.reviewAvailable, true);
   assert.deepEqual(revisited.payload.review, [{
     questionId: 101,
+    questionText: "Which declaration is valid?",
+    questionType: "MULTIPLE_CHOICE",
     selectedChoiceId: 1001,
+    studentAnswer: "int[] values",
+    correctChoiceId: 1001,
+    correctAnswer: "int[] values",
+    isCorrect: true,
+    explanation: "Arrays use brackets.",
   }]);
   assertNoKeys(revisited.payload.review, new Set([
-    "correctChoiceId", "isCorrect", "pointsAwarded", "explanation",
+    "pointsAwarded", "pointsEarned", "maxPoints", "percentage",
   ]));
   for (const key of ["pointsEarned", "maxPoints", "percentage"]) {
     assert.equal(key in revisited.payload.result, false);
@@ -1133,6 +1157,34 @@ test("discovery submitted-attempt ID supports authorized result revisit without 
   const formerMember = await h.call(`/attempts/${submitted.id}/result`);
   assert.equal(formerMember.response.status, 403);
   assert.deepEqual(formerMember.payload, { code: "FORBIDDEN", message: "Forbidden" });
+});
+
+test("context result route preserves unpublished history and rejects classroom, lesson, and type mismatches", async () => {
+  const h = mutationHarness({ answerReviewPolicy: "AFTER_SUBMISSION" });
+  const submitted = await h.completed();
+  h.graph.isPublished = false;
+
+  const exact = await h.call(
+    `/classrooms/7/lessons/arrays/POST/attempts/${submitted.id}/result`,
+  );
+  assert.equal(exact.response.status, 200);
+  assert.equal(exact.payload.result.attemptId, submitted.id);
+
+  for (const path of [
+    `/classrooms/8/lessons/arrays/POST/attempts/${submitted.id}/result`,
+    `/classrooms/7/lessons/functions/POST/attempts/${submitted.id}/result`,
+    `/classrooms/7/lessons/arrays/PRE/attempts/${submitted.id}/result`,
+  ]) {
+    const mismatch = await h.call(path);
+    assert.equal(mismatch.response.status, 403, path);
+    assert.deepEqual(mismatch.payload, { code: "FORBIDDEN", message: "Forbidden" });
+  }
+
+  const foreign = await h.call(
+    `/classrooms/7/lessons/arrays/POST/attempts/${submitted.id}/result`,
+    { authToken: token(99) },
+  );
+  assert.equal(foreign.response.status, 403);
 });
 
 test("published player graph is available only to an exact classroom member", async () => {

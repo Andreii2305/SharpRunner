@@ -208,7 +208,13 @@ const createAssessmentReadService = ({
     "pointsEarned", "maxPoints", "percentage", "passed", "preBaselineStatus",
   ];
 
-  const getStudentResult = async ({ attemptId, studentId }) => {
+  const getStudentResult = async ({
+    attemptId,
+    studentId,
+    expectedClassroomId = null,
+    expectedLessonKey = null,
+    expectedType = null,
+  }) => {
     // Authorize metadata first. Scores and answer graphs are loaded only after
     // ownership, exact current membership, and submitted status are established.
     const identity = plain(await AssessmentAttempt.findByPk(attemptId, {
@@ -218,6 +224,9 @@ const createAssessmentReadService = ({
       throw new AssessmentApiError(404, "ATTEMPT_NOT_FOUND", "Assessment attempt was not found");
     }
     if (String(identity.studentId) !== String(studentId)) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
+    if (expectedClassroomId != null && String(identity.classroomId) !== String(expectedClassroomId)) {
       throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
     }
     await authorizationService.requireActiveStudentMembership({
@@ -237,13 +246,17 @@ const createAssessmentReadService = ({
       throw new AssessmentApiError(409, "ATTEMPT_IN_PROGRESS", "Assessment attempt has not been submitted");
     }
     const assessment = plain(await LessonAssessment.findByPk(identity.assessmentId, {
-      attributes: ["id", "classroomId", "lessonKey", "type", "maxAttempts",
+      attributes: ["id", "classroomId", "lessonKey", "type", "title", "maxAttempts",
         "showScoreAfterSubmission", "answerReviewPolicy"],
     }));
     if (!assessment) {
       throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
     }
     if (String(assessment.classroomId) !== String(identity.classroomId)) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
+    if ((expectedLessonKey != null && assessment.lessonKey !== expectedLessonKey)
+      || (expectedType != null && assessment.type !== expectedType)) {
       throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
     }
     // One scoped sibling query supports both centralized selectors and review
@@ -284,6 +297,7 @@ const createAssessmentReadService = ({
     });
     const scoreVisible = assessment.showScoreAfterSubmission === true;
     const output = {
+      assessment: safe.assessment,
       result: {
         attemptId: attempt.id,
         type: assessment.type,
@@ -341,14 +355,20 @@ const createAssessmentReadService = ({
     if (review.reviewAvailable) {
       output.review = review.review.map((row) => ({
         questionId: row.questionId,
+        questionText: row.questionText,
+        questionType: row.questionType,
         ...(Object.hasOwn(row, "sourceCode")
           ? { sourceCode: row.sourceCode }
-          : { selectedChoiceId: row.selectedChoiceId }),
+          : {
+              selectedChoiceId: row.selectedChoiceId,
+              studentAnswer: row.studentAnswer,
+              correctChoiceId: row.correctChoiceId,
+              correctAnswer: row.correctAnswer,
+            }),
+        ...(Object.hasOwn(row, "isCorrect") ? { isCorrect: row.isCorrect } : {}),
+        ...(Object.hasOwn(row, "explanation") ? { explanation: row.explanation } : {}),
         ...(scoreVisible ? {
-          correctChoiceId: row.correctChoiceId,
-          isCorrect: row.isCorrect,
           pointsAwarded: row.pointsAwarded,
-          explanation: row.explanation,
         } : {}),
       }));
     }

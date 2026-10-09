@@ -16,7 +16,10 @@ test("renders a compact ordered status strip with an exact-classroom semantic ac
     title: "Arrays",
     model: {
       steps: [
-        { key: "pre", label: "Pre-Test", state: "completed" },
+        { key: "pre", label: "Pre-Test", state: "completed", resultAction: {
+          label: "View Result",
+          href: "/classrooms/7/lessons/arrays/assessment/pre/results/201",
+        } },
         { key: "module", label: "Module", state: "current" },
         { key: "game", label: "Game Levels", state: "locked" },
       ],
@@ -30,6 +33,7 @@ test("renders a compact ordered status strip with an exact-classroom semantic ac
   assert.match(html, /Completed/);
   assert.match(html, /Current/);
   assert.match(html, /Locked/);
+  assert.match(html, /href="\/classrooms\/7\/lessons\/arrays\/assessment\/pre\/results\/201"[^>]*>View Result<\/a>/);
   assert.match(html, /<a[^>]+href="\/lesson\/built-in\/arrays\?classroomId=7"[^>]*>Open Module<\/a>/);
 });
 
@@ -56,13 +60,36 @@ test("suppresses a redundant game action while preserving progression status", (
 test("renders exhausted POST as status text without a bypass link", () => {
   const html = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
     model: {
-      steps: [{ key: "post", label: "Post-Test", state: "blocked" }],
+      steps: [{ key: "post", label: "Post-Test", state: "blocked", resultAction: {
+        label: "View Result",
+        href: "/classrooms/7/lessons/arrays/assessment/post/results/303",
+      } }],
       action: { label: "Post-Test attempts exhausted", href: null, disabled: true },
     },
   }));
   assert.match(html, /Post-Test attempts exhausted/);
   assert.match(html, /role="status"/);
-  assert.doesNotMatch(html, /<a/);
+  assert.match(html, />View Result<\/a>/);
+  assert.doesNotMatch(html, /href="[^"]*\/assessment\/post"/);
+});
+
+test("keeps retry and View Result as separate POST actions", () => {
+  const html = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
+    model: {
+      steps: [{ key: "post", label: "Post-Test", state: "current", resultAction: {
+        label: "View Result",
+        href: "/classrooms/7/lessons/arrays/assessment/post/results/301",
+      } }],
+      action: {
+        kind: "assessment",
+        label: "Retry Post-Test",
+        href: "/classrooms/7/lessons/arrays/assessment/post",
+        disabled: false,
+      },
+    },
+  }));
+  assert.match(html, />View Result<\/a>/);
+  assert.match(html, />Retry Post-Test<\/a>/);
 });
 
 test("map uses canonical lesson titles, contextual actions, and compact responsive styling", async () => {

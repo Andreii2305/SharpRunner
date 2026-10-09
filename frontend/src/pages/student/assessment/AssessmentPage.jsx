@@ -31,6 +31,7 @@ import {
   parseAssessmentPageRoute,
 } from "./assessmentRouteOrchestrator.js";
 import { createAssessmentSessionGuard } from "./assessmentSessionGuard.js";
+import { buildAssessmentPageHref } from "../../../utils/lessonProgressionNavigation.js";
 
 const shellCopy = {
   LOADING: {
@@ -276,10 +277,10 @@ function AssessmentPage() {
     startOrResumeAttempt,
   }), []);
 
-  const { classroomId, lessonKey, type } = params;
+  const { classroomId, lessonKey, type, attemptId } = params;
   const parsedRoute = useMemo(
-    () => parseAssessmentPageRoute({ classroomId, lessonKey, type }),
-    [classroomId, lessonKey, type],
+    () => parseAssessmentPageRoute({ classroomId, lessonKey, type, attemptId }),
+    [attemptId, classroomId, lessonKey, type],
   );
   const routeKey = parsedRoute?.routeKey
     ?? `invalid:${classroomId ?? ""}:${lessonKey ?? ""}:${type ?? ""}`;
@@ -289,6 +290,18 @@ function AssessmentPage() {
   const syncIdentity = syncAttemptId && assessmentState.routeKey
     ? `${assessmentState.routeKey}:${assessmentState.requestGeneration}:${syncAttemptId}`
     : null;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const historyHref = buildAssessmentPageHref({
+      route: parsedRoute,
+      screen: assessmentState.screen,
+      resultAttemptId: syncAttemptId,
+    });
+    if (historyHref && window.location.pathname !== historyHref) {
+      window.history.replaceState(window.history.state, "", historyHref);
+    }
+  }, [assessmentState.screen, parsedRoute, syncAttemptId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -310,7 +323,7 @@ function AssessmentPage() {
 
     const loadAssessment = async () => {
       const nextOutcome = await orchestrator.load({
-        params: { classroomId, lessonKey, type },
+        params: { classroomId, lessonKey, type, attemptId },
         generation,
         signal: controller.signal,
         isCurrent,
@@ -328,7 +341,7 @@ function AssessmentPage() {
 
     loadAssessment();
     return () => controller.abort();
-  }, [classroomId, lessonKey, orchestrator, parsedRoute, retryGeneration, routeKey, type]);
+  }, [attemptId, classroomId, lessonKey, orchestrator, parsedRoute, retryGeneration, routeKey, type]);
 
   const revalidateAssessment = useCallback(async ({ isActive = () => true } = {}) => {
     const current = latestState.current;

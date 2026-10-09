@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildAssessmentHref,
+  buildAssessmentPageHref,
+  buildAssessmentResultHref,
   buildMapHref,
   buildModuleHref,
   createLessonProgressionViewModel,
@@ -38,6 +40,19 @@ const lesson = (overrides = {}) => ({
   ...overrides,
 });
 
+test("assessment page history uses stable results and returns retakes to the editable route", () => {
+  const route = { classroomId: 7, lessonKey: "arrays", type: "POST" };
+  assert.equal(
+    buildAssessmentPageHref({ route, screen: "result", resultAttemptId: 302 }),
+    "/classrooms/7/lessons/arrays/assessment/post/results/302",
+  );
+  assert.equal(
+    buildAssessmentPageHref({ route, screen: "active", resultAttemptId: 302 }),
+    "/classrooms/7/lessons/arrays/assessment/post",
+  );
+  assert.equal(buildAssessmentPageHref({ route, screen: "loading", resultAttemptId: 302 }), null);
+});
+
 test("exact-classroom routes encode PRE, POST, module, map, and existing game queries", () => {
   assert.equal(
     buildAssessmentHref({ classroomId: 7, lessonKey: "functions-with-arrays", type: "PRE" }),
@@ -46,6 +61,10 @@ test("exact-classroom routes encode PRE, POST, module, map, and existing game qu
   assert.equal(
     buildAssessmentHref({ classroomId: 7, lessonKey: "arrays", type: "post" }),
     "/classrooms/7/lessons/arrays/assessment/post",
+  );
+  assert.equal(
+    buildAssessmentResultHref({ classroomId: 7, lessonKey: "arrays", type: "POST", attemptId: 302 }),
+    "/classrooms/7/lessons/arrays/assessment/post/results/302",
   );
   assert.equal(buildModuleHref(7, "arrays"), "/lesson/built-in/arrays?classroomId=7");
   assert.equal(buildMapHref(7), "/Map?classroomId=7");
@@ -78,6 +97,7 @@ test("completed PRE leads to module before game starts and then to the current g
   const moduleModel = createLessonProgressionViewModel({
     lesson: lesson({
       preCompleted: true,
+      preLatestSubmittedAttemptId: 201,
       moduleUnlocked: true,
       gameUnlocked: true,
       nextAction: "PLAY_GAME",
@@ -88,6 +108,10 @@ test("completed PRE leads to module before game starts and then to the current g
   assert.equal(moduleModel.action.label, "Open Module");
   assert.equal(moduleModel.action.href, "/lesson/built-in/arrays?classroomId=7");
   assert.equal(moduleModel.steps.find(({ id }) => id === "module").state, "current");
+  assert.deepEqual(moduleModel.steps.find(({ id }) => id === "pre").resultAction, {
+    label: "View Result",
+    href: "/classrooms/7/lessons/arrays/assessment/pre/results/201",
+  });
 
   const gameModel = createLessonProgressionViewModel({
     lesson: lesson({
@@ -120,6 +144,7 @@ test("game completion exposes authoritative POST actions without score inference
         postUnlocked: true,
         postAttemptInProgress: nextAction === "RESUME_POST",
         postCompleted: nextAction === "RETRY_POST",
+        postLatestSubmittedAttemptId: nextAction === "RETRY_POST" ? 301 : null,
         nextAction,
       }),
       classroomId: 7,
@@ -128,6 +153,12 @@ test("game completion exposes authoritative POST actions without score inference
     assert.equal(model.action.label, expectedLabel);
     assert.equal(model.action.href, "/classrooms/7/lessons/arrays/assessment/post");
     assert.equal(model.steps.find(({ id }) => id === "post").state, "current");
+    if (nextAction === "RETRY_POST") {
+      assert.deepEqual(model.steps.find(({ id }) => id === "post").resultAction, {
+        label: "View Result",
+        href: "/classrooms/7/lessons/arrays/assessment/post/results/301",
+      });
+    }
   }
 });
 
@@ -143,6 +174,7 @@ test("lesson completion and exhausted required POST remain distinct", () => {
       postCompleted: true,
       postPassed: true,
       postAttemptsRemaining: 2,
+      postLatestSubmittedAttemptId: 302,
       lessonCompleted: true,
       nextAction: "LESSON_COMPLETE",
     }),
@@ -154,6 +186,10 @@ test("lesson completion and exhausted required POST remain distinct", () => {
     href: "/Map?classroomId=7",
     disabled: false,
   });
+  assert.equal(
+    complete.steps.find(({ id }) => id === "post").resultAction.href,
+    "/classrooms/7/lessons/arrays/assessment/post/results/302",
+  );
 
   const exhausted = createLessonProgressionViewModel({
     lesson: lesson({
@@ -166,6 +202,7 @@ test("lesson completion and exhausted required POST remain distinct", () => {
       postCompleted: true,
       postAttemptsRemaining: 0,
       postAttemptsExhausted: true,
+      postLatestSubmittedAttemptId: 303,
       nextAction: "POST_RECOVERY_REQUIRED",
     }),
     classroomId: 7,
@@ -174,6 +211,30 @@ test("lesson completion and exhausted required POST remain distinct", () => {
   assert.equal(exhausted.action.href, null);
   assert.equal(exhausted.action.disabled, true);
   assert.equal(exhausted.lessonCompleted, false);
+  assert.equal(exhausted.steps.find(({ id }) => id === "post").resultAction.label, "View Result");
+});
+
+test("unpublished historical assessments keep result actions without restoring take actions", () => {
+  const model = createLessonProgressionViewModel({
+    lesson: lesson({
+      preRequired: false,
+      preAssessmentId: null,
+      preCompleted: false,
+      preLatestSubmittedAttemptId: 201,
+      postRequired: false,
+      postAssessmentId: null,
+      postCompleted: false,
+      postLatestSubmittedAttemptId: 302,
+      moduleUnlocked: true,
+      gameUnlocked: true,
+      nextAction: "PLAY_GAME",
+    }),
+    classroomId: 7,
+    gameHref: "/array/level/1?classroomId=7",
+  });
+
+  assert.deepEqual(model.steps.filter(({ resultAction }) => resultAction).map(({ id }) => id), ["pre", "post"]);
+  assert.equal(model.action.kind, "module");
 });
 
 test("assessment-exempt tutorial and final never gain fake assessment steps", () => {

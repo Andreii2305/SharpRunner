@@ -138,9 +138,19 @@ export const submitAttempt = ({ attemptId, idempotencyKey, signal }) => request(
   ),
 );
 
-export const getAttemptResult = ({ attemptId, signal }) => request(
+export const getAttemptResult = ({
+  attemptId,
+  classroomId,
+  lessonKey,
+  type,
+  signal,
+}) => request(
   () => axios.get(
-    buildApiUrl(`/api/assessments/attempts/${segment(attemptId)}/result`),
+    buildApiUrl(classroomId && lessonKey && type
+      ? `/api/assessments/classrooms/${segment(classroomId)}`
+        + `/lessons/${segment(lessonKey)}/${segment(String(type).toUpperCase())}`
+        + `/attempts/${segment(attemptId)}/result`
+      : `/api/assessments/attempts/${segment(attemptId)}/result`),
     authorizedConfig(signal),
   ),
 );

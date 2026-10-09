@@ -45,6 +45,7 @@ const attempt = (overrides = {}) => ({
 
 const build = ({
   publishedAssessments = [],
+  historicalAssessments = publishedAssessments,
   attempts = [],
   progressRows = [],
   levelSettings = [],
@@ -53,11 +54,60 @@ const build = ({
   assert.ok(progression, "lessonProgressionService must exist");
   return progression.buildLessonProgressionStates({
     publishedAssessments,
+    historicalAssessments,
     attempts,
     progressRows,
     levelSettings,
   });
 };
+
+test("historical submitted attempts expose stable result IDs without restoring unpublished gates", () => {
+  const unpublishedPre = assessment({ id: 11, isPublished: false });
+  const unpublishedPost = assessment({ id: 12, type: "POST", isPublished: false, maxAttempts: 3 });
+  const olderUnpublishedPost = assessment({ id: 13, type: "POST", isPublished: false, maxAttempts: 7 });
+  const states = build({
+    publishedAssessments: [],
+    historicalAssessments: [unpublishedPre, unpublishedPost, olderUnpublishedPost],
+    attempts: [
+      attempt({ id: 201, assessmentId: 11, attemptNumber: 1 }),
+      attempt({
+        id: 250,
+        assessmentId: 13,
+        attemptNumber: 7,
+        submittedAt: new Date("2026-08-01T00:00:00.000Z"),
+      }),
+      attempt({ id: 301, assessmentId: 12, attemptNumber: 1, passed: false }),
+      attempt({ id: 302, assessmentId: 12, attemptNumber: 2, passed: true }),
+      attempt({ id: 303, assessmentId: 12, attemptNumber: 3, status: "IN_PROGRESS", submittedAt: null }),
+    ],
+    progressRows: playableRows("tutorial", 5),
+  }).get("arrays");
+
+  assert.equal(states.preLatestSubmittedAttemptId, 201);
+  assert.equal(states.postLatestSubmittedAttemptId, 302);
+  assert.equal(states.preAssessmentId, null);
+  assert.equal(states.postAssessmentId, null);
+  assert.equal(states.preRequired, false);
+  assert.equal(states.postRequired, false);
+  assert.equal(states.nextAction, "PLAY_GAME");
+});
+
+test("historical result tie-break prefers global attempt ID across assessment records", () => {
+  const submittedAt = new Date("2026-09-01T00:00:00.000Z");
+  const states = build({
+    publishedAssessments: [],
+    historicalAssessments: [
+      assessment({ id: 21, type: "POST", isPublished: false }),
+      assessment({ id: 22, type: "POST", isPublished: false }),
+    ],
+    attempts: [
+      attempt({ id: 401, assessmentId: 21, attemptNumber: 7, submittedAt }),
+      attempt({ id: 402, assessmentId: 22, attemptNumber: 1, submittedAt }),
+    ],
+  }).get("arrays");
+
+  assert.equal(states.postLatestSubmittedAttemptId, 402);
+});
 
 test("absent draft and unpublished assessments do not gate legacy progression", () => {
   assert.ok(config, "lessonProgressionConfig must exist");
@@ -415,6 +465,8 @@ test("tutorial and final remain assessment-exempt with approved completion seman
     postAttemptsExhausted: false,
     assessmentCompleted: true,
     lessonCompleted: true,
+    preLatestSubmittedAttemptId: null,
+    postLatestSubmittedAttemptId: null,
     nextAction: "LESSON_COMPLETE",
   });
   assert.equal(final.prerequisiteLessonKey, "functions-with-arrays");
@@ -691,7 +743,6 @@ test("full-map loading batches exact-class assessments and attempts with safe co
   assert.equal(calls.settings.length, 1);
   assert.deepEqual(calls.assessments[0].where, {
     classroomId: 7,
-    isPublished: true,
     lessonKey: { [Op.in]: ["arrays", "functions", "functions-with-arrays"] },
     type: { [Op.in]: ["PRE", "POST"] },
   });

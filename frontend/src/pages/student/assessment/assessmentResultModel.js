@@ -24,6 +24,13 @@ const lessonFor = (progression, lessonKey) => progression?.lessons?.find(
   (lesson) => lesson?.lessonKey === lessonKey,
 ) ?? null;
 
+const LESSON_TITLES = {
+  arrays: "Arrays",
+  functions: "Functions & Methods",
+  "functions-with-arrays": "Functions with Arrays",
+  final: "Final Challenge",
+};
+
 const createPreContinuation = ({ lesson, route, moduleHref }) => {
   const nextAction = lesson?.nextAction;
   const labels = {
@@ -61,7 +68,7 @@ const createPreContinuation = ({ lesson, route, moduleHref }) => {
   }
   return {
     kind: "map",
-    label: "Return to lesson map",
+    label: "Back to Lesson Map",
     href: mapHref(route?.classroomId),
     disabled: false,
   };
@@ -72,14 +79,22 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
   const lesson = lessonFor(progression, route?.lessonKey);
   const type = String(result.type ?? route?.type ?? "").toUpperCase();
   const isPre = type === "PRE";
+  const attemptOutcome = isPre
+    ? "DIAGNOSTIC"
+    : result.passed === true ? "PASSED" : result.passed === false ? "FAILED" : "UNKNOWN";
+  const requirementCompletedOnAnotherAttempt = !isPre
+    && attemptOutcome === "FAILED"
+    && lesson?.postPassed === true;
   let state = "SUBMITTED";
 
   if (isPre) {
     state = "DIAGNOSTIC_COMPLETE";
+  } else if (attemptOutcome === "PASSED") {
+    state = "PASSED";
+  } else if (lesson?.postPassed === true) {
+    state = "REQUIREMENT_COMPLETED";
   } else if (lesson?.postPassingRequired === false && lesson?.postCompleted === true) {
     state = "COMPLETED";
-  } else if (result.passed === true || lesson?.postPassed === true) {
-    state = "PASSED";
   } else if (lesson?.postAttemptsExhausted === true) {
     state = "EXHAUSTED";
   } else if (
@@ -106,7 +121,12 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
   return {
     type,
     state,
+    attemptOutcome,
+    requirementCompletedOnAnotherAttempt,
     result,
+    assessment: envelope?.assessment ?? null,
+    lessonTitle: lesson?.lessonTitle ?? LESSON_TITLES[route?.lessonKey] ?? route?.lessonKey ?? "Lesson",
+    assessmentTitle: envelope?.assessment?.title ?? `${type} assessment`,
     attempts: envelope?.attempts ?? null,
     score,
     officialGrade: score ? (envelope?.officialGrade ?? null) : null,

@@ -34,6 +34,17 @@ export const buildAssessmentHref = ({ classroomId, lessonKey, type }) => (
   + `/lessons/${segment(lessonKey)}/assessment/${segment(String(type).toLowerCase())}`
 );
 
+export const buildAssessmentResultHref = ({ classroomId, lessonKey, type, attemptId }) => (
+  `${buildAssessmentHref({ classroomId, lessonKey, type })}/results/${segment(positiveId(attemptId))}`
+);
+
+export const buildAssessmentPageHref = ({ route, screen, resultAttemptId }) => {
+  if (!route || !["active", "result"].includes(screen)) return null;
+  if (screen === "active") return buildAssessmentHref(route);
+  if (!positiveId(resultAttemptId)) return null;
+  return buildAssessmentResultHref({ ...route, attemptId: resultAttemptId });
+};
+
 const LEVEL_ASSESSMENT_LESSONS = new Set([
   "arrays",
   "functions",
@@ -139,7 +150,12 @@ export const createLevelEntryViewModel = ({ classroomId, level, gameHref } = {})
   };
 };
 
-const step = (id, label, state) => ({ id, label, state });
+const step = (id, label, state, resultAction = null) => ({
+  id,
+  label,
+  state,
+  ...(resultAction ? { resultAction } : {}),
+});
 
 const stepState = (lesson) => {
   const currentAction = lesson.nextAction;
@@ -148,11 +164,22 @@ const stepState = (lesson) => {
     .includes(currentAction);
   const steps = [];
 
-  if (lesson.preRequired || lesson.preAssessmentId != null) {
+  const preResultAttemptId = positiveId(lesson.preLatestSubmittedAttemptId);
+  const postResultAttemptId = positiveId(lesson.postLatestSubmittedAttemptId);
+  if (lesson.preRequired || lesson.preAssessmentId != null || preResultAttemptId) {
     steps.push(step(
       "pre",
       "Pre-Test",
-      lesson.preCompleted ? "complete" : preCurrent ? "current" : "locked",
+      lesson.preCompleted || preResultAttemptId ? "complete" : preCurrent ? "current" : "locked",
+      preResultAttemptId ? {
+        label: "View Result",
+        href: buildAssessmentResultHref({
+          classroomId: lesson.classroomId,
+          lessonKey: lesson.lessonKey,
+          type: "PRE",
+          attemptId: preResultAttemptId,
+        }),
+      } : null,
     ));
   }
 
@@ -173,7 +200,7 @@ const stepState = (lesson) => {
       : lesson.gameUnlocked && currentAction === "PLAY_GAME" ? "current" : "locked",
   ));
 
-  if (lesson.postRequired || lesson.postAssessmentId != null) {
+  if (lesson.postRequired || lesson.postAssessmentId != null || postResultAttemptId) {
     const postSatisfied = lesson.postPassed === true
       || (lesson.postCompleted === true && lesson.postPassingRequired === false)
       || lesson.lessonCompleted === true;
@@ -183,6 +210,15 @@ const stepState = (lesson) => {
       postSatisfied
         ? "complete"
         : postCurrent ? "current" : lesson.postUnlocked ? "available" : "locked",
+      postResultAttemptId ? {
+        label: "View Result",
+        href: buildAssessmentResultHref({
+          classroomId: lesson.classroomId,
+          lessonKey: lesson.lessonKey,
+          type: "POST",
+          attemptId: postResultAttemptId,
+        }),
+      } : null,
     ));
   }
 
@@ -234,6 +270,6 @@ const actionFor = ({ lesson, classroomId, gameHref }) => {
 export const createLessonProgressionViewModel = ({ lesson, classroomId, gameHref }) => ({
   lessonKey: lesson?.lessonKey ?? null,
   lessonCompleted: lesson?.lessonCompleted === true,
-  steps: stepState(lesson ?? {}),
+  steps: stepState({ ...(lesson ?? {}), classroomId }),
   action: actionFor({ lesson: lesson ?? {}, classroomId, gameHref }),
 });

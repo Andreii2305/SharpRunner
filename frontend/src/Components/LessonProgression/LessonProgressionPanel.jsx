@@ -34,7 +34,14 @@ export default function LessonProgressionPanel({ title = "Lesson progression", m
       {model.steps.map((step) => <li key={step.id ?? step.key} data-state={step.state}>
         <span className={styles.marker} aria-hidden="true">{STATE_MARKERS[step.state] ?? "○"}</span>
         <span>{step.label}</span>
-        <small>{STATE_LABELS[step.state] ?? step.state}</small>
+        <span className={styles.stepMeta}>
+          <small>{STATE_LABELS[step.state] ?? step.state}</small>
+          {step.resultAction?.href && (
+            <a className={styles.resultAction} href={step.resultAction.href}>
+              {step.resultAction.label}
+            </a>
+          )}
+        </span>
       </li>)}
     </ol>
     {renderAction && (model.action.disabled || !model.action.href

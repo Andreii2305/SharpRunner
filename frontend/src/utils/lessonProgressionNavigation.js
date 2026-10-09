@@ -3,6 +3,20 @@ const positiveId = (value) => {
   return Number.isSafeInteger(number) && number > 0 ? number : null;
 };
 
+const MODULE_UNLOCK_HINTS = Object.freeze({
+  TAKE_PRE: "Complete the Pre-Test to unlock this module.",
+  RESUME_PRE: "Finish the Pre-Test to unlock this module.",
+  COMPLETE_PREREQUISITE_LESSON: "Complete the previous lesson to unlock this module.",
+});
+
+export const getLessonModuleAccess = (lesson) => {
+  const canOpenModule = lesson?.moduleUnlocked !== false;
+  return {
+    canOpenModule,
+    unlockHint: canOpenModule ? null : MODULE_UNLOCK_HINTS[lesson?.nextAction] ?? null,
+  };
+};
+
 export const loadExactProgress = async ({ requestedClassroomId, getProgress, resolvePrimary, signal }) => {
   const hasExplicitClassroom = requestedClassroomId != null;
   const classroomId = hasExplicitClassroom

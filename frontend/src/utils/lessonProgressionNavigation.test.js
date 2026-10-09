@@ -9,6 +9,7 @@ import {
   createLessonAssessmentAccessViewModel,
   createLessonProgressionViewModel,
   createLevelEntryViewModel,
+  getLessonModuleAccess,
   isLevelAssessmentRestriction,
   loadExactProgress,
   resolveLevelAssessmentAction,
@@ -39,6 +40,21 @@ const lesson = (overrides = {}) => ({
   lessonCompleted: false,
   nextAction: "TAKE_PRE",
   ...overrides,
+});
+
+test("lesson module access disables only an authoritative lock and avoids invented hints", () => {
+  assert.deepEqual(getLessonModuleAccess({ moduleUnlocked: false, nextAction: "TAKE_PRE" }), {
+    canOpenModule: false,
+    unlockHint: "Complete the Pre-Test to unlock this module.",
+  });
+  assert.deepEqual(getLessonModuleAccess({ moduleUnlocked: false, nextAction: "UNKNOWN_ACTION" }), {
+    canOpenModule: false,
+    unlockHint: null,
+  });
+  assert.deepEqual(getLessonModuleAccess({ progressPercent: 100 }), {
+    canOpenModule: true,
+    unlockHint: null,
+  });
 });
 
 test("assessment page history uses stable results and returns retakes to the editable route", () => {

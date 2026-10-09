@@ -9,7 +9,10 @@ import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { FiArrowRight, FiPaperclip } from "react-icons/fi";
 import { withClassroomIdQuery } from "../../pages/student/builtInModuleContentState.js";
-import { createLessonAssessmentAccessViewModel } from "../../utils/lessonProgressionNavigation.js";
+import {
+  createLessonAssessmentAccessViewModel,
+  getLessonModuleAccess,
+} from "../../utils/lessonProgressionNavigation.js";
 
 const DEFAULT_LESSON_META = [
   {
@@ -160,6 +163,7 @@ function buildLessonsFromData({ lessonMeta = [], progressLessons = [], classroom
     const progressRow = progressByKey.get(lessonKey);
     const title =
       progressRow?.lessonTitle ?? meta?.fallbackTitle ?? titleFromKey(lessonKey);
+    const moduleAccess = getLessonModuleAccess(progressRow);
 
     return {
       id: lessonKey,
@@ -170,6 +174,7 @@ function buildLessonsFromData({ lessonMeta = [], progressLessons = [], classroom
       progress: clampProgress(progressRow?.progressPercent),
       status: "locked",
       route: meta?.route ?? "/Map",
+      ...moduleAccess,
       assessmentModel: createLessonAssessmentAccessViewModel({
         lesson: progressRow,
         classroomId,
@@ -231,8 +236,29 @@ function LessonIcon({ status }) {
   );
 }
 
-function ActionBtn({ onClick }) {
-  return <button type="button" className={styles.openModuleBtn} onClick={onClick}>Open Module <FiArrowRight /></button>;
+function ActionBtn({ disabled = false, onClick }) {
+  return <button
+    type="button"
+    className={styles.openModuleBtn}
+    disabled={disabled}
+    onClick={disabled ? undefined : onClick}
+  >
+    {disabled ? "Module Locked" : "Open Module"} {!disabled && <FiArrowRight />}
+  </button>;
+}
+
+export function CurrentLessonActions({ activeLesson, onContinue, onContinueGame }) {
+  const moduleLocked = activeLesson?.canOpenModule === false;
+
+  return <div className={styles.currentActions}>
+    <button
+      type="button"
+      className={styles.btnContinue}
+      disabled={moduleLocked}
+      onClick={moduleLocked ? undefined : () => onContinue(activeLesson)}
+    ><FiArrowRight /> Continue Learning</button>
+    <button type="button" className={styles.btnGame} onClick={onContinueGame}><PlayArrowIcon sx={{ fontSize: 16 }} /> Continue Game</button>
+  </div>;
 }
 
 export function LessonAssessmentStrip({ lessonTitle, model }) {
@@ -241,11 +267,21 @@ export function LessonAssessmentStrip({ lessonTitle, model }) {
     <span className={styles.assessmentHeading}>Assessments</span>
     <ul>
       {model.rows.map((row) => <li className={styles.assessmentRow} key={row.type}>
-        <span className={styles.assessmentName}>{row.label}</span>
-        <span className={styles.assessmentStatus} data-status={row.status.toLowerCase().replace(" ", "-")}>{row.status}</span>
+        <span className={styles.assessmentIdentity}>
+          <strong className={styles.assessmentName}>{row.label}</strong>
+          <span className={styles.assessmentStatus} data-status={row.status.toLowerCase().replace(" ", "-")}>{row.status}</span>
+        </span>
         <span className={styles.assessmentActions}>
-          {row.resultAction?.href && <a className={styles.assessmentAction} href={row.resultAction.href}>{row.resultAction.label}</a>}
-          {row.action?.href && <a className={`${styles.assessmentAction} ${styles.assessmentPrimaryAction}`} href={row.action.href}>{row.action.label}</a>}
+          {row.resultAction?.href && <a
+            className={`${styles.assessmentAction} ${styles.assessmentResultAction}`}
+            href={row.resultAction.href}
+            aria-label={`${row.resultAction.label} for ${lessonTitle} ${row.label}`}
+          >{row.resultAction.label}</a>}
+          {row.action?.href && <a
+            className={`${styles.assessmentAction} ${styles.assessmentPrimaryAction}`}
+            href={row.action.href}
+            aria-label={`${row.action.label} ${lessonTitle} ${row.label}`}
+          >{row.action.label}</a>}
         </span>
       </li>)}
     </ul>
@@ -258,27 +294,43 @@ export function LessonCard({ lesson, onPlay }) {
 
   return (
     <article
-      className={`${styles.lessonCard}
+      className={`${styles.lessonCard} ${styles.builtInLessonCard}
         ${lesson.status === "active" ? styles.cardActive : ""}
         ${isLocked ? styles.cardLocked : ""}
       `}
     >
-      <div className={`${styles.cardIcon} ${styles[cfg.iconWrapClass]}`}>
-        <LessonIcon status={lesson.status} />
-      </div>
-
-      <div className={styles.cardBody}>
+      <header className={styles.builtInCardHeader}>
+        <div className={`${styles.cardIcon} ${styles[cfg.iconWrapClass]}`}>
+          <LessonIcon status={lesson.status} />
+        </div>
+        <div className={styles.builtInCardHeading}>
         <div className={styles.cardTop}>
-          <span className={styles.cardTitle}>{lesson.title}</span>
+          <h3 className={styles.cardTitle}>{lesson.title}</h3>
           <span className={`${styles.cardBadge} ${styles[cfg.badgeClass]}`}>
             {cfg.badgeLabel}
           </span>
         </div>
         <p className={styles.cardRegion}>{lesson.region}</p>
-        <p className={styles.cardDesc}>{lesson.description}</p>
-        <div className={styles.progressRow}>
+        </div>
+      </header>
+
+      <p className={styles.cardDesc}>{lesson.description}</p>
+      <div className={styles.progressBlock}>
+        <div className={styles.progressMeta}>
           <span className={styles.progressLabel}>Progress</span>
-          <div className={styles.progressTrack}>
+          <span className={`${styles.progressPct} ${styles[cfg.pctClass]}`}>
+            {lesson.progress}%
+          </span>
+        </div>
+        <div className={styles.progressRow}>
+          <div
+            className={styles.progressTrack}
+            role="progressbar"
+            aria-label={`${lesson.title} progress`}
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={lesson.progress}
+          >
             <div
               className={styles.progressFill}
               style={{
@@ -287,14 +339,14 @@ export function LessonCard({ lesson, onPlay }) {
               }}
             />
           </div>
-          <span className={`${styles.progressPct} ${styles[cfg.pctClass]}`}>
-            {lesson.progress}%
-          </span>
         </div>
-        <LessonAssessmentStrip lessonTitle={lesson.title} model={lesson.assessmentModel} />
       </div>
+      <LessonAssessmentStrip lessonTitle={lesson.title} model={lesson.assessmentModel} />
 
-      <ActionBtn onClick={() => onPlay(lesson)} />
+      <footer className={styles.builtInCardFooter}>
+        {lesson.unlockHint && <p className={styles.unlockHint}>{lesson.unlockHint}</p>}
+        <ActionBtn disabled={!lesson.canOpenModule} onClick={() => onPlay(lesson)} />
+      </footer>
     </article>
   );
 }
@@ -419,10 +471,11 @@ function LessonSection() {
             <div className={styles.topTitle}>{activeLesson.title}</div>
             <div className={styles.topSub}>{activeLesson.region}</div>
           </div>
-          <div className={styles.currentActions}>
-            <button className={styles.btnContinue} onClick={() => handlePlay(activeLesson)}><FiArrowRight /> Continue Learning</button>
-            <button className={styles.btnGame} onClick={() => navigate("/Map")}><PlayArrowIcon sx={{ fontSize: 16 }} /> Continue Game</button>
-          </div>
+          <CurrentLessonActions
+            activeLesson={activeLesson}
+            onContinue={handlePlay}
+            onContinueGame={() => navigate("/Map")}
+          />
         </div>
 
         <div className={styles.sectionHead}>
@@ -432,7 +485,7 @@ function LessonSection() {
           </div>
         </div>
 
-        <div className={styles.lessonsGrid}>
+        <div className={`${styles.lessonsGrid} ${styles.builtInLessonsGrid}`}>
           {lessons.map((lesson) => (
             <LessonCard
               key={lesson.id}

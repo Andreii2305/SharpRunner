@@ -19,7 +19,8 @@
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
 }
 
-.sidebar:hover {
+.sidebar:hover,
+.sidebar:focus-within {
   width: 220px;
 }
 
@@ -70,7 +71,8 @@
   letter-spacing: -0.01em;
 }
 
-.sidebar:hover .brandName {
+.sidebar:hover .brandName,
+.sidebar:focus-within .brandName {
   opacity: 1;
 }
 
@@ -132,7 +134,8 @@
   text-overflow: ellipsis;
 }
 
-.sidebar:hover .navLabel {
+.sidebar:hover .navLabel,
+.sidebar:focus-within .navLabel {
   opacity: 1;
 }
 
@@ -192,7 +195,8 @@
   transition: opacity 0.2s ease;
 }
 
-.sidebar:hover .accountInfo {
+.sidebar:hover .accountInfo,
+.sidebar:focus-within .accountInfo {
   opacity: 1;
 }
 
@@ -242,6 +246,13 @@
 .logoutBtn:hover {
   background: #fef2f2;
   color: #ef4444;
+}
+
+.brandLink:focus-visible,
+.navItem:focus-visible,
+.logoutBtn:focus-visible {
+  outline: 3px solid #76c5ea;
+  outline-offset: -2px;
 }
 
 /* ── Mobile: fixed bottom nav ─────────── */

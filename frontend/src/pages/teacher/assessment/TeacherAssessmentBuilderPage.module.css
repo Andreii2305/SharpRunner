@@ -4,12 +4,13 @@
 .pageHeader { margin-bottom: 14px; align-items: center; }
 .pageHeader h1 { margin: 2px 0; color: #173f5f; font-size: clamp(25px, 3vw, 32px); font-weight: 600; line-height: 1.15; }
 .pageHeader p, .pageHeader span, .selectorCard > p { margin: 0; color: #66788a; }
-button, input, textarea, select { font: inherit; }
-button { min-height: 44px; border: 1px solid #b8c6d4; border-radius: 8px; background: white; color: #264b68; padding: 8px 14px; font-weight: 600; cursor: pointer; }
-button:hover:not(:disabled) { border-color: #24739b; background: #f2f9fc; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid #76c5ea; outline-offset: 2px; }
-button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: not-allowed; opacity: .62; }
+.main :where(button, input, textarea, select) { font: inherit; }
+.main :where(button) { min-height: 44px; border: 1px solid #b8c6d4; border-radius: 8px; background: white; color: #264b68; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+.main :where(button:hover:not(:disabled)) { border-color: #24739b; background: #f2f9fc; }
+.main :where(button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible) { outline: 3px solid #76c5ea; outline-offset: 2px; }
+.main :where(button:disabled, input:disabled, textarea:disabled, select:disabled) { cursor: not-allowed; opacity: .62; }
 .primaryButton { border-color: #176d93; background: #176d93; color: white; }
+.main .primaryButton:hover:not(:disabled) { border-color: #145b7c; background: #145b7c; color: white; }
 .dangerButton, .dangerIcon { color: #a72b2b; }
 .selectorCard, .editorCard, .questionCard, .publishCard, .emptyState { border: 1px solid #dce4eb; border-radius: 9px; background: white; }
 .selectorCard { padding: 16px 18px; margin-bottom: 12px; }
@@ -17,10 +18,10 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { cursor: no
 .selectorCard h2, .editorCard h2, .publishCard h2, .questionsSection h2 { margin: 0 0 12px; color: #193f5f; }
 .selectorCard > div, .settingsGrid, .fieldGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
 .selectorCard > p { margin-top: 8px; }
-label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #365269; font-weight: 500; }
-label small { color: #74869a; font-weight: 400; }
-input, textarea, select { box-sizing: border-box; width: 100%; border: 1px solid #bfcbd6; border-radius: 8px; background: white; color: #243b53; padding: 10px 11px; }
-textarea { min-height: 82px; resize: vertical; }
+.main :where(label) { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #365269; font-weight: 500; }
+.main :where(label small) { color: #74869a; font-weight: 400; }
+.main :where(input, textarea, select) { box-sizing: border-box; width: 100%; border: 1px solid #bfcbd6; border-radius: 8px; background: white; color: #243b53; padding: 10px 11px; }
+.main :where(textarea) { min-height: 82px; resize: vertical; }
 .wide { grid-column: 1 / -1; }
 .slotGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
 .slotGrid article { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "heading action" "summary action"; align-items: center; gap: 4px 14px; border: 1px solid #cbd8e2; border-radius: 12px; background: white; padding: 12px 14px; }

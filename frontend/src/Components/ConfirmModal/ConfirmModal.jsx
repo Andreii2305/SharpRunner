@@ -1,5 +1,11 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef } from "react";
+import {
+  focusDialog,
+  handleDialogKeyDown,
+  requestDialogDismiss,
+  restoreDialogFocus,
+} from "../../utils/dialogFocus.js";
 import s from "./ConfirmModal.module.css";
 
 /**
@@ -24,19 +30,44 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
 }) {
+  const dialogRef = useRef(null);
   const cancelRef = useRef(null);
+  const onCancelRef = useRef(onCancel);
+  const disabledRef = useRef(confirmDisabled);
+  onCancelRef.current = onCancel;
+  disabledRef.current = confirmDisabled;
+
   useEffect(() => {
     if (!open) return undefined;
-    cancelRef.current?.focus();
-    const onKeyDown = (event) => { if (event.key === "Escape" && !confirmDisabled) onCancel?.(); };
+    const previousFocus = document.activeElement;
+    focusDialog(dialogRef.current, cancelRef.current);
+    const onKeyDown = (event) => handleDialogKeyDown({
+      event,
+      dialog: dialogRef.current,
+      disabled: disabledRef.current,
+      onDismiss: () => onCancelRef.current?.(),
+    });
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [confirmDisabled, onCancel, open]);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      restoreDialogFocus(previousFocus);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open && confirmDisabled) focusDialog(dialogRef.current);
+  }, [confirmDisabled, open]);
+
   if (!open) return null;
 
+  const requestCancel = () => requestDialogDismiss({
+    disabled: confirmDisabled,
+    onDismiss: onCancel,
+  });
+
   return createPortal(
-    <div className={s.backdrop} onClick={onCancel}>
-      <div className={s.dialog} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" onClick={(e) => e.stopPropagation()}>
+    <div className={s.backdrop} onClick={requestCancel}>
+      <div ref={dialogRef} className={s.dialog} role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" tabIndex={-1} onClick={(e) => e.stopPropagation()}>
         <div className={s.iconWrap}>
           <span className={`${s.icon} ${danger ? s.iconDanger : s.iconInfo}`}>
             {danger ? "!" : "?"}
@@ -45,7 +76,7 @@ export default function ConfirmModal({
         <div className={s.title} id="confirm-modal-title">{title}</div>
         {message && <div className={s.message}>{message}</div>}
         <div className={s.actions}>
-          <button ref={cancelRef} type="button" className={s.cancelBtn} onClick={onCancel} disabled={confirmDisabled}>
+          <button ref={cancelRef} type="button" className={s.cancelBtn} onClick={requestCancel} disabled={confirmDisabled}>
             {cancelLabel}
           </button>
           <button

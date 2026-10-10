@@ -215,7 +215,7 @@ test("coding controls stack responsively and preserve usable editor height", () 
   assert.match(styles, /\.testValues\s*\{[^}]*min-width:\s*0/s);
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.parameterFields/);
   assert.match(styles, /@media\s*\(max-width:\s*640px\)[\s\S]*\.parameterActions/);
-  assert.match(styles, /button\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(styles, /\.main\s+:where\(button\)\s*\{[^}]*min-height:\s*44px/s);
   assert.match(sharedCodeEditor, /minWidth:\s*0/);
   assert.match(sharedCodeEditor, /overflow:\s*"hidden"/);
 });

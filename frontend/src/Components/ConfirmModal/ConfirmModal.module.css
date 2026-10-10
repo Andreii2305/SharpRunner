@@ -26,6 +26,13 @@
   font-family: "Segoe UI", system-ui, sans-serif;
 }
 
+.dialog:focus-visible,
+.cancelBtn:focus-visible,
+.confirmBtn:focus-visible {
+  outline: 3px solid #76c5ea;
+  outline-offset: 3px;
+}
+
 /* ── Icon ──────────────────────────────────────── */
 .iconWrap {
   margin-bottom: 4px;

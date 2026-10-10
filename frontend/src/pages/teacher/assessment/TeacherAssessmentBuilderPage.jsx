@@ -17,6 +17,7 @@ import {
   hydrateAssessmentDraft, moveChoice, moveQuestion, publishIssues, removeChoice,
   removeQuestion, selectCorrectChoice, updateQuestionType,
 } from "./teacherAssessmentBuilderState.js";
+import { focusDialog, handleDialogKeyDown, restoreDialogFocus } from "../../../utils/dialogFocus.js";
 import styles from "./TeacherAssessmentBuilderPage.module.css";
 
 const emptySlots = () => ({ PRE: { exists: false }, POST: { exists: false } });
@@ -28,9 +29,30 @@ function Status({ summary }) {
 }
 
 function PreviewDialog({ draft, onClose }) {
+  const dialogRef = useRef(null);
+  const closeRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previousFocus = document.activeElement;
+    focusDialog(dialogRef.current, closeRef.current);
+    const onKeyDown = (event) => handleDialogKeyDown({
+      event,
+      dialog: dialogRef.current,
+      disabled: false,
+      onDismiss: () => onCloseRef.current?.(),
+    });
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      restoreDialogFocus(previousFocus);
+    };
+  }, []);
+
   return <div className={styles.backdrop} onClick={onClose}>
-    <section className={styles.previewDialog} role="dialog" aria-modal="true" aria-labelledby="assessment-preview-title" onClick={(event) => event.stopPropagation()}>
-      <header><div><span>Teacher Preview</span><h2 id="assessment-preview-title">{draft.title || "Untitled assessment"}</h2></div><button type="button" onClick={onClose} aria-label="Close preview">×</button></header>
+    <section ref={dialogRef} className={styles.previewDialog} role="dialog" aria-modal="true" aria-labelledby="assessment-preview-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
+      <header><div><span>Teacher Preview</span><h2 id="assessment-preview-title">{draft.title || "Untitled assessment"}</h2></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Close preview">×</button></header>
       {draft.instructions && <p>{draft.instructions}</p>}
       <h3 className={styles.previewSectionLabel}>STUDENT PREVIEW</h3>
       {draft.questions.length ? draft.questions.map((question, index) => <article key={question.clientId}>

@@ -1,80 +1,30 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
+import { getProgress } from "../../services/studentAssessmentService.js";
 import { buildApiUrl, getAuthHeaders, getUser, setUser as persistUser } from "../../utils/auth";
 import {
   normalizePreferences,
   resolvePreferenceModes,
 } from "./preferencePersonalization.js";
+import {
+  createDashboardNextStepViewModel,
+  dashboardProgressionReducer,
+  fulfilledDashboardSections,
+  initialDashboardProgressionState,
+} from "./dashboardNextStep.js";
+import {
+  DASHBOARD_GAME_REGIONS,
+  createDashboardProgressDisplay,
+} from "./dashboardProgressDisplay.js";
+import {
+  DashboardGameProgressPanel,
+  DashboardGameProgressStat,
+} from "./DashboardProgressDisplay.jsx";
 import styles from "./Dashboard.module.css";
 
-/* ─── Region config ───────────────────────────────────────────── */
-const REGIONS = [
-  {
-    key: "tutorial",
-    label: "First Compile Trial",
-    topic: "Tutorial",
-    accent: "#5f5e5a",
-    fill: "#D3D1C7",
-    totalLevels: 5,
-    pixelColor: "#888780",
-    letter: "T",
-  },
-  {
-    key: "arrays",
-    label: "Barangay Malumay",
-    topic: "Arrays",
-    accent: "#854F0B",
-    fill: "#FAC775",
-    totalLevels: 8,
-    pixelColor: "#EF9F27",
-    letter: "A",
-  },
-  {
-    key: "functions",
-    label: "Kapre's Trail",
-    topic: "Functions and Methods",
-    accent: "#534AB7",
-    fill: "#CECBF6",
-    totalLevels: 12,
-    pixelColor: "#AFA9EC",
-    letter: "F",
-  },
-  {
-    key: "functions-with-arrays",
-    label: "Tikbalang Crossing",
-    topic: "Functions with Arrays",
-    accent: "#185FA5",
-    fill: "#B5D4F4",
-    totalLevels: 4,
-    pixelColor: "#85B7EB",
-    letter: "FA",
-  },
-  {
-    key: "final",
-    label: "Bakunawa Eclipse",
-    topic: "Final Challenge",
-    accent: "#0F6E56",
-    fill: "#C8EFE2",
-    totalLevels: 1,
-    pixelColor: "#5FC99F",
-    letter: "B",
-  },
-];
-
-const FALLBACK_LESSONS = REGIONS.map((r) => ({
-  lessonKey: r.key,
-  lessonTitle: r.label,
-  progressPercent: 0,
-  levelsCleared: 0,
-}));
-
-const LEVEL_BACKGROUND_BY_NUMBER = {
-  1: "game/assets/backgrounds/level1_bg.png",
-  2: "game/assets/backgrounds/level1_bg.png",
-};
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
 
 /* ─── Helpers ─────────────────────────────────────────────────── */
@@ -114,14 +64,6 @@ function formatDuration(totalSeconds) {
   }
 
   return parts.join(" ");
-}
-
-function parseLevelNumberFromLabel(label = "") {
-  const match = String(label).match(/\d+/g);
-  if (!match || match.length === 0) return null;
-
-  const parsed = Number.parseInt(match[match.length - 1], 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function parseAnnouncementPayload(rawMessage = "") {
@@ -263,48 +205,6 @@ function XpBar({ current, max }) {
   );
 }
 
-function RegionTile({ region, levelsCleared, locked }) {
-  const pct =
-    region.totalLevels > 0
-      ? Math.round((levelsCleared / region.totalLevels) * 100)
-      : 0;
-  const done = levelsCleared >= region.totalLevels;
-
-  return (
-    <div className={`${styles.regionTile} ${locked ? styles.locked : ""}`}>
-      <div
-        className={styles.regionIcon}
-        style={{ background: region.fill, color: region.accent }}
-      >
-        {region.letter}
-      </div>
-      <div className={styles.regionName}>{region.label}</div>
-      <div className={styles.regionTopic}>{region.topic}</div>
-      <div className={styles.miniBarTrack}>
-        <div
-          className={styles.miniBarFill}
-          style={{ width: `${pct}%`, background: region.accent }}
-        />
-      </div>
-      <div
-        className={`${styles.regionStatus} ${
-          locked
-            ? styles.statusLocked
-            : done
-              ? styles.statusDone
-              : styles.statusProgress
-        }`}
-      >
-        {locked
-          ? "🔒 Locked"
-          : done
-            ? `✓ ${levelsCleared} / ${region.totalLevels} · Completed`
-            : `${levelsCleared} / ${region.totalLevels} · In progress`}
-      </div>
-    </div>
-  );
-}
-
 function MistakeRow({ label, type, count, typeColor, typeBg }) {
   return (
     <div className={styles.mistakeRow}>
@@ -380,8 +280,12 @@ function StudentDashboardPage() {
   const toast = useToast();
   const [user, setProfileUser] = useState(() => getUser());
 
-  const [progressData, setProgressData] = useState(null);
-  const [classroomData, setClassroomData] = useState(null);
+  const [progressionState, dispatchProgression] = useReducer(
+    dashboardProgressionReducer,
+    initialDashboardProgressionState,
+  );
+  const progressionGenerationRef = useRef(0);
+  const progressionControllerRef = useRef(null);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [leaderboardMeta, setLeaderboardMeta] = useState({
     classSize: null,
@@ -400,15 +304,77 @@ function StudentDashboardPage() {
   const [preferenceStatus, setPreferenceStatus] = useState("");
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
+  const loadProgression = useCallback(async () => {
+    const generation = progressionGenerationRef.current + 1;
+    progressionGenerationRef.current = generation;
+    progressionControllerRef.current?.abort();
+    const controller = new AbortController();
+    progressionControllerRef.current = controller;
+    dispatchProgression({ type: "load-started", generation });
+
+    let confirmedClassroom = null;
+    try {
+      const classroomResponse = await axios.get(
+        buildApiUrl("/api/classrooms/me"),
+        { headers: getAuthHeaders(), signal: controller.signal },
+      );
+      if (generation !== progressionGenerationRef.current) return;
+
+      const classroomPayload = classroomResponse.data;
+      confirmedClassroom = classroomPayload?.primaryClassroom ?? null;
+      if (classroomPayload?.hasActiveMembership === false && !confirmedClassroom) {
+        dispatchProgression({ type: "load-unenrolled", generation });
+        return;
+      }
+      if (!Number.isSafeInteger(Number(confirmedClassroom?.id))
+        || Number(confirmedClassroom.id) <= 0) {
+        throw new Error("Your classroom selection could not be confirmed.");
+      }
+
+      const progress = await getProgress({
+        classroomId: confirmedClassroom.id,
+        signal: controller.signal,
+      });
+      if (generation !== progressionGenerationRef.current) return;
+      if (Number(progress?.classroomId) !== Number(confirmedClassroom.id)) {
+        throw new Error("Your classroom progress did not match the selected classroom.");
+      }
+      dispatchProgression({
+        type: "load-succeeded",
+        generation,
+        classroom: confirmedClassroom,
+        progress,
+      });
+    } catch (error) {
+      if (axios.isCancel(error)
+        || error?.name === "CanceledError"
+        || error?.name === "AbortError"
+        || error?.code === "ERR_CANCELED"
+        || generation !== progressionGenerationRef.current) return;
+      dispatchProgression({
+        type: "load-failed",
+        generation,
+        classroom: confirmedClassroom,
+        error: error?.message || "Progress could not be loaded",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProgression();
+    return () => {
+      progressionGenerationRef.current += 1;
+      progressionControllerRef.current?.abort();
+    };
+  }, [loadProgression]);
+
   useEffect(() => {
     let isMounted = true;
     const h = { headers: getAuthHeaders() };
 
     const fetchAll = async () => {
-      const [progressRes, classroomRes, lbRes, annRes, notifRes, profileRes] =
+      const [leaderboard, announcementsResult, notificationsResult, profile] =
         await Promise.allSettled([
-          axios.get(buildApiUrl("/api/progress/me"), h),
-          axios.get(buildApiUrl("/api/classrooms/me"), h),
           axios.get(buildApiUrl("/api/classrooms/leaderboard"), h),
           axios.get(buildApiUrl("/api/classrooms/announcements"), h),
           axios.get(buildApiUrl("/api/notifications/me"), h),
@@ -416,24 +382,18 @@ function StudentDashboardPage() {
         ]);
 
       if (!isMounted) return;
-
-      if (progressRes.status === "fulfilled")
-        setProgressData(progressRes.value.data);
-      if (classroomRes.status === "fulfilled")
-        setClassroomData(classroomRes.value.data);
-      if (lbRes.status === "fulfilled") {
-        setLeaderboardData(lbRes.value.data?.leaderboard ?? []);
-        setLeaderboardMeta({
-          classSize: lbRes.value.data?.classSize ?? null,
-          currentUserRank: lbRes.value.data?.currentUserRank ?? null,
-        });
-      }
-      if (annRes.status === "fulfilled")
-        setAnnouncements(annRes.value.data?.announcements ?? []);
-      if (notifRes.status === "fulfilled")
-        setNotifications(notifRes.value.data?.notifications ?? []);
-      if (profileRes.status === "fulfilled" && profileRes.value.data?.user) {
-        const loadedUser = profileRes.value.data.user;
+      const settled = fulfilledDashboardSections({
+        leaderboard,
+        announcements: announcementsResult,
+        notifications: notificationsResult,
+        profile,
+      });
+      if (settled.leaderboard) setLeaderboardData(settled.leaderboard);
+      if (settled.leaderboardMeta) setLeaderboardMeta(settled.leaderboardMeta);
+      if (settled.announcements) setAnnouncements(settled.announcements);
+      if (settled.notifications) setNotifications(settled.notifications);
+      if (settled.profile) {
+        const loadedUser = settled.profile;
         setProfileUser(loadedUser);
         persistUser(loadedUser);
         setPreferenceForm(normalizePreferences(loadedUser));
@@ -563,28 +523,19 @@ function StudentDashboardPage() {
   };
 
   /* ── Derived values ── */
-  const lessons = useMemo(
-    () =>
-      progressData?.lessons?.length > 0
-        ? progressData.lessons
-        : FALLBACK_LESSONS,
-    [progressData],
-  );
-
-  const overallPct = progressData?.summary?.overallProgress ?? 0;
+  const progressData = progressionState.progress;
+  const classroom = progressionState.classroom;
+  const nextStep = createDashboardNextStepViewModel(progressionState);
+  const progressDisplay = createDashboardProgressDisplay(progressData);
+  const overallPct = progressDisplay.progressPercent ?? 0;
   const totalCleared =
     progressData?.summary?.totalLevelsCleared ??
     progressData?.summary?.completedLevels ??
     0;
   const currentLessonLabel =
-    progressData?.summary?.currentLesson ?? REGIONS[0].label;
+    progressData?.summary?.currentLesson ?? DASHBOARD_GAME_REGIONS[0].label;
   const currentLevelLabel =
     progressData?.summary?.currentLevelName ?? "Level 1-1";
-  const currentLevelHint =
-    progressData?.summary?.currentLevelHint ??
-    "Open the map to continue your journey.";
-
-  const classroom = classroomData?.primaryClassroom ?? null;
   const xpCurrent = progressData?.summary?.xp ?? 0;
   const xpNext =
     progressData?.summary?.xpToNextLevel ??
@@ -622,37 +573,15 @@ function StudentDashboardPage() {
         .toLowerCase();
     const target = normalize(currentLessonLabel);
 
-    const matchedRegion = REGIONS.find(
+    const matchedRegion = DASHBOARD_GAME_REGIONS.find(
       (region) =>
         normalize(region.key) === target ||
         normalize(region.label) === target ||
         normalize(region.topic) === target,
     );
 
-    return matchedRegion?.key ?? REGIONS[0].key;
+    return matchedRegion?.key ?? DASHBOARD_GAME_REGIONS[0].key;
   }, [progressData, currentLessonLabel]);
-
-  const currentLevelNumber = useMemo(() => {
-    const levelRows =
-      progressData?.levels
-        ?.filter((level) => level.lessonKey === currentLessonKey)
-        .sort((a, b) => a.levelNumber - b.levelNumber) ?? [];
-
-    if (levelRows.length > 0) {
-      const firstIncomplete = levelRows.find((level) => !level.isCompleted);
-      return (
-        firstIncomplete?.levelNumber ??
-        levelRows[levelRows.length - 1].levelNumber
-      );
-    }
-
-    return parseLevelNumberFromLabel(currentLevelLabel) ?? 1;
-  }, [progressData, currentLessonKey, currentLevelLabel]);
-
-  const continueCardBackgroundSrc = `${import.meta.env.BASE_URL}${
-    LEVEL_BACKGROUND_BY_NUMBER[currentLevelNumber] ??
-    LEVEL_BACKGROUND_BY_NUMBER[1]
-  }`;
 
   const completedLevelRows =
     progressData?.levels?.filter((level) => level.isCompleted) ?? [];
@@ -662,7 +591,8 @@ function StudentDashboardPage() {
       (a, b) => new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime(),
     )[0];
   const currentRegion =
-    REGIONS.find((region) => region.key === currentLessonKey) ?? REGIONS[0];
+    DASHBOARD_GAME_REGIONS.find((region) => region.key === currentLessonKey)
+    ?? DASHBOARD_GAME_REGIONS[0];
   const preferenceModes = resolvePreferenceModes(user);
   const personalizationData = {
     rank: myRankDisplay,
@@ -705,32 +635,19 @@ function StudentDashboardPage() {
                 Welcome back, {user?.firstName ?? user?.username ?? "Student"}
               </div>
               <div className={styles.headerClass}>
-                {isLoading
+                {["idle", "loading"].includes(progressionState.status)
                   ? "Loading class..."
                   : classroom
                     ? `${classroom.className} · ${classroom.section} · ${classroom.schoolYear}`
-                    : "Not enrolled in a class"}
+                    : progressionState.status === "unenrolled"
+                      ? "Not enrolled in a class"
+                      : "Class information unavailable"}
               </div>
               <XpBar current={xpCurrent} max={xpNext} />
             </div>
           </div>
 
           <div className={styles.headerRight}>
-            <button
-              className={styles.btnContinueHeader}
-              onClick={() => navigate("/Map")}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2 6h8M6 2l4 4-4 4"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span>Continue playing</span>
-            </button>
             <button
               className={styles.bellBtn}
               onClick={() => setActiveTab("notifications")}
@@ -754,6 +671,49 @@ function StudentDashboardPage() {
             </button>
           </div>
         </header>
+
+        <section
+          className={`${styles.nextStepPanel} ${styles[`nextStep_${nextStep.kind}`] ?? ""}`}
+          aria-labelledby="dashboard-next-step-title"
+          aria-live="polite"
+          aria-busy={nextStep.kind === "loading"}
+        >
+          <div className={styles.nextStepCopy}>
+            <div className={styles.nextStepEyebrow}>{nextStep.eyebrow}</div>
+            <h2 id="dashboard-next-step-title">{nextStep.title}</h2>
+            <p>{nextStep.description}</p>
+          </div>
+          <div className={styles.nextStepActions}>
+            {nextStep.action && (
+              <button
+                type="button"
+                className={styles.nextStepPrimary}
+                disabled={nextStep.action.disabled}
+                onClick={() => nextStep.action.href && navigate(nextStep.action.href)}
+              >
+                {nextStep.action.label}
+              </button>
+            )}
+            {nextStep.canRetry && (
+              <button
+                type="button"
+                className={styles.nextStepPrimary}
+                onClick={loadProgression}
+              >
+                Try again
+              </button>
+            )}
+            {nextStep.secondaryAction && (
+              <button
+                type="button"
+                className={styles.nextStepSecondary}
+                onClick={() => navigate(nextStep.secondaryAction.href)}
+              >
+                {nextStep.secondaryAction.label}
+              </button>
+            )}
+          </div>
+        </section>
 
         <section className={styles.preferenceSection} aria-label="Gamification preferences">
           <div className={styles.personalizationGrid} aria-live="polite">
@@ -817,11 +777,7 @@ function StudentDashboardPage() {
 
         {/* ── STAT CARDS ROW ── */}
         <div className={styles.statRow}>
-          <StatCard
-            label="Overall progress"
-            value={`${Math.round(overallPct)}%`}
-            sub={`${totalCleared} of 30 levels done`}
-          />
+          <DashboardGameProgressStat progressData={progressData} />
           <StatCard
             label="Current level"
             value={currentLevelLabel}
@@ -843,98 +799,7 @@ function StudentDashboardPage() {
         {/* ── MAIN GRID ── */}
         <div className={styles.mainGrid}>
           {/* Left: Lesson progress + common mistakes */}
-          <div className={styles.card}>
-            <div className={styles.sectionHead}>
-              <div className={styles.sectionTitle}>Lesson progress</div>
-              <div className={styles.sectionSub}>
-                {totalCleared} / 30 levels
-              </div>
-            </div>
-
-            {/* Overall bar */}
-            <div className={styles.overallBarWrap}>
-              <div className={styles.overallBar}>
-                <div
-                  className={styles.overallFill}
-                  style={{ width: `${overallPct}%` }}
-                />
-              </div>
-              <span className={styles.overallPct}>
-                {Math.round(overallPct)}%
-              </span>
-            </div>
-
-            {/* Region tiles */}
-            <div className={styles.lessonGrid}>
-              {REGIONS.map((region, idx) => {
-                const lessonData = lessons.find(
-                  (l) => l.lessonKey === region.key,
-                );
-                const cleared =
-                  lessonData?.levelsCleared ?? lessonData?.completedLevels ?? 0;
-                const prevPct =
-                  idx === 0
-                    ? 100
-                    : (lessons.find((l) => l.lessonKey === REGIONS[idx - 1].key)
-                        ?.progressPercent ?? 0);
-                const locked = idx > 0 && prevPct < 100;
-                return (
-                  <RegionTile
-                    key={region.key}
-                    region={region}
-                    levelsCleared={cleared}
-                    locked={locked}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Common mistakes */}
-            {/* <div className={styles.divider} />
-              <div className={styles.sectionHead}>
-                <div className={styles.sectionTitle}>Common mistakes</div>
-              </div>
-              {isLoading ? (
-                <div className={styles.loadingText}>Loading...</div>
-              ) : mistakes.length === 0 ? (
-              <>
-                <MistakeRow
-                  label="Wrong data type used"
-                  type="type error"
-                  count={0}
-                  typeBg="#FAECE7"
-                  typeColor="#993C1D"
-                />
-                <MistakeRow
-                  label="Operator precedence"
-                  type="logic error"
-                  count={0}
-                  typeBg="#FAEEDA"
-                  typeColor="#854F0B"
-                />
-                <MistakeRow
-                  label="Missing semicolon"
-                  type="syntax error"
-                  count={0}
-                  typeBg="#E1F5EE"
-                  typeColor="#0F6E56"
-                />
-              </>
-              ) : (
-              mistakes
-                .slice(0, 4)
-                .map((m, i) => (
-                  <MistakeRow
-                    key={i}
-                    label={m.label}
-                    type={m.type}
-                    count={m.count}
-                    typeBg={m.typeBg ?? "#FAECE7"}
-                    typeColor={m.typeColor ?? "#993C1D"}
-                  />
-                ))
-            )} */}
-          </div>
+          <DashboardGameProgressPanel progressData={progressData} />
 
           {/* Right: Leaderboard */}
           <div className={styles.card}>
@@ -1012,47 +877,18 @@ function StudentDashboardPage() {
 
         {/* ── BOTTOM ROW ── */}
         <div className={styles.bottomRow}>
-          {/* Continue playing card */}
-          <div className={styles.continueCard}>
-            <div className={styles.cardLabel}>Continue playing</div>
-            <div className={styles.regionArt}>
-              <img
-                className={styles.regionArtImage}
-                src={continueCardBackgroundSrc}
-                alt={`${currentLevelLabel} scene preview`}
-              />
-            </div>
-
-            <div className={styles.continueMeta}>
-              <span className={styles.regionTag}>{currentLessonLabel}</span>
-              <div className={styles.levelName}>{currentLevelLabel}</div>
-              <div className={styles.levelHint}>{currentLevelHint}</div>
-            </div>
-
-            <div className={styles.continueActions}>
-              <button
-                className={styles.btnContinue}
-                onClick={() => navigate("/Map")}
-              >
-                Continue
-              </button>
-              <button
-                className={styles.btnMap}
-                onClick={() => navigate("/Map")}
-              >
-                View full map
-              </button>
-            </div>
-          </div>
-
           {/* My Grades card */}
           <div className={styles.card}>
             <div className={styles.sectionHead}>
               <div className={styles.sectionTitle}>My grades</div>
               <div className={styles.sectionSub}>Completed levels</div>
             </div>
-            {isLoading ? (
+            {["idle", "loading"].includes(progressionState.status) ? (
               <div className={styles.loadingText}>Loading...</div>
+            ) : progressionState.status === "error" ? (
+              <div className={styles.emptyText}>Grades are unavailable until progress loads successfully.</div>
+            ) : progressionState.status === "unenrolled" ? (
+              <div className={styles.emptyText}>Join a classroom to begin earning grades.</div>
             ) : (() => {
               const gradedLevels = (progressData?.levels ?? [])
                 .filter((l) => l.isCompleted && l.finalScore != null)

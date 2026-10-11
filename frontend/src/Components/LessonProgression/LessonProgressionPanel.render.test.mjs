@@ -57,6 +57,24 @@ test("suppresses a redundant game action while preserving progression status", (
   assert.doesNotMatch(html, /<a/);
 });
 
+test("uses a step-specific status label when completed progression is not reader completion", () => {
+  const html = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
+    title: "Final Review classroom progression",
+    model: {
+      steps: [
+        { key: "module", label: "Module", state: "complete", statusLabel: "Game started" },
+        { key: "game", label: "Game Levels", state: "current" },
+      ],
+      action: { kind: "game", label: "Continue Game", href: "/final/level/1?classroomId=7", disabled: false },
+    },
+  }));
+
+  assert.match(html, /Final Review classroom progression/);
+  assert.match(html, /Module/);
+  assert.match(html, /Game started/);
+  assert.doesNotMatch(html, /Module<\/span>[\s\S]{0,120}<small>Completed<\/small>/);
+});
+
 test("renders exhausted POST as status text without a bypass link", () => {
   const html = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
     model: {

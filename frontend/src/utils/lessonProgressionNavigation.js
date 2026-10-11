@@ -164,11 +164,12 @@ export const createLevelEntryViewModel = ({ classroomId, level, gameHref } = {})
   };
 };
 
-const step = (id, label, state, resultAction = null) => ({
+const step = (id, label, state, resultAction = null, statusLabel = null) => ({
   id,
   label,
   state,
   ...(resultAction ? { resultAction } : {}),
+  ...(statusLabel ? { statusLabel } : {}),
 });
 
 const stepState = (lesson) => {
@@ -205,6 +206,8 @@ const stepState = (lesson) => {
       : lesson.gameStarted || lesson.gameCompleted
         ? "complete"
         : currentAction === "PLAY_GAME" ? "current" : "available",
+    null,
+    lesson.gameStarted || lesson.gameCompleted ? "Game started" : null,
   ));
   steps.push(step(
     "game",

@@ -273,6 +273,8 @@ test("authorized DTO renders all block types as text with stable IDs and safe li
   assert.match(html, /data-practice-id="practice-stable"/);
   assert.match(html, /data-check-id="check-stable"/);
   assert.match(html, /name="check-stable"/);
+  assert.match(html, /Complete each quick check to finish your reading checklist/);
+  assert.doesNotMatch(html, /mark the module complete/);
   assert.match(html, /href="https:\/\/learn\.microsoft\.com\/dotnet\/csharp\/"/);
   assert.match(html, /Next: SharpRunner Barangay Malumay/);
   assert.match(html, /data-game-route="\/Map"/);
@@ -310,6 +312,48 @@ test("authorized module uses the authoritative progression action, not local rea
   assert.match(html, /Play Level/);
   assert.match(html, /href="\/array\/level\/1\?classroomId=7"/);
   assert.doesNotMatch(html, /Lesson Complete/);
+});
+
+test("module header labels the existing percentage as reading progress", () => {
+  const content = {
+    lesson: {
+      lessonKey: "arrays", title: "Arrays", eyebrow: "Arrays", description: "Learn arrays",
+      objectives: [], sections: [{ id: "one", title: "One", blocks: [] }], references: [],
+      game: { title: "Barangay", route: "/Map" },
+    },
+  };
+
+  const html = renderState({ status: "ready", requestKey: "ready", content, error: null });
+
+  assert.match(html, /Reading progress: \d+%/);
+  assert.doesNotMatch(html, />\d+% complete</);
+});
+
+test("module section omits only a first heading that exactly repeats its section title", () => {
+  const content = {
+    lesson: {
+      lessonKey: "functions", title: "Functions", eyebrow: "Functions", description: "Learn methods",
+      objectives: [],
+      sections: [{
+        id: "methods",
+        title: "What is a method?",
+        blocks: [
+          { type: "heading", text: "  What is a method?  " },
+          { type: "paragraph", text: "A method groups reusable instructions." },
+          { type: "heading", text: "Method calls" },
+        ],
+      }],
+      references: [],
+      game: { title: "Mountain", route: "/Map" },
+    },
+  };
+
+  const html = renderState({ status: "ready", requestKey: "ready", content, error: null });
+
+  assert.match(html, /<h2 tabindex="-1">What is a method\?<\/h2>/);
+  assert.doesNotMatch(html, /<h3>\s*What is a method\?\s*<\/h3>/);
+  assert.match(html, /<h3>Method calls<\/h3>/);
+  assert.match(html, /A method groups reusable instructions/);
 });
 
 test("live module mode does not fall back to a local game action without progression", () => {

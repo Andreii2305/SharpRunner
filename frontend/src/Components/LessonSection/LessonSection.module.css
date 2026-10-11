@@ -30,9 +30,10 @@
   justify-content: space-between;
   background: #ffffff;
   border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 16px 22px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  border-left: 4px solid #1e3a5f;
+  border-radius: 9px;
+  padding: 18px 20px;
+  box-shadow: none;
   flex-shrink: 0;
   gap: 16px;
 }
@@ -45,19 +46,19 @@
 }
 
 .topLabel {
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: 13px;
+  color: #52677a;
   font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .topTitle {
   margin: 0;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: #1e3a5f;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -113,8 +114,8 @@
   border: 1px solid #1e3a5f;
   border-radius: 9px;
   padding: 10px 16px;
-  background: #1e3a5f;
-  color: #fff;
+  background: #fff;
+  color: #1e3a5f;
   font-size: 14px;
   font-weight: 750;
   cursor: pointer;
@@ -122,27 +123,27 @@
   transition: background 0.15s, border-color 0.15s;
 }
 
-.openModuleBtn:hover:not(:disabled) { background: #16304f; border-color: #16304f; }
-.openModuleBtn:disabled { border-color: #d7e0e9; background: #edf2f6; color: #8291a1; cursor: not-allowed; }
+.openModuleBtn:hover:not(:disabled) { background: #eaf2f8; border-color: #16304f; color: #16304f; }
+.openModuleBtn:disabled { border-color: #cbd6e0; background: #edf2f6; color: #657589; cursor: not-allowed; opacity: 1; }
 .openModuleBtn:focus-visible { outline:3px solid #80b8e5;outline-offset:2px; }
 
 .assessmentStrip {
-  padding: 11px;
-  border: 1px solid #dbe6ef;
-  border-radius: 11px;
-  background: #f8fbfd;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
-.assessmentHeading { display:block;margin-bottom:8px;color:#718397;font-size:11px;font-weight:800;letter-spacing:.07em;text-transform:uppercase; }
-.assessmentStrip ul { display:grid;gap:7px;margin:0;padding:0;list-style:none; }
-.assessmentRow { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;padding:8px 9px;border:1px solid #e3ebf2;border-radius:9px;background:#fff; }
+.assessmentHeading { display:block;margin:0 0 4px;color:#52677a;font-size:13px;font-weight:800;letter-spacing:0;text-transform:none; }
+.assessmentStrip ul { display:grid;gap:0;margin:0;padding:0;list-style:none; }
+.assessmentRow { display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;padding:7px 0;border:0;border-top:1px solid #e3eaf0;border-radius:0;background:transparent; }
 .assessmentIdentity { display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap; }
 .assessmentName { color:#334f68;font-size:13px;font-weight:750; }
-.assessmentStatus { justify-self:start;padding:3px 7px;border-radius:999px;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:800;white-space:nowrap; }
-.assessmentStatus[data-status="completed"] { background:#e1f5ee;color:#0f6e56; }
-.assessmentStatus[data-status="available"],.assessmentStatus[data-status="in-progress"] { background:#eef4fb;color:#26547c; }
+.assessmentStatus { justify-self:start;padding:0;border-radius:0;background:transparent;color:#607387;font-size:12px;font-weight:800;white-space:nowrap; }
+.assessmentStatus[data-status="completed"] { background:transparent;color:#0f6e56; }
+.assessmentStatus[data-status="available"],.assessmentStatus[data-status="in-progress"] { background:transparent;color:#26547c; }
 .assessmentActions { display:flex;justify-content:flex-end;align-items:center;flex-wrap:wrap;gap:7px;min-width:0; }
-.assessmentAction { min-height:34px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:6px 9px;border:1px solid transparent;border-radius:7px;color:#365f83;font-size:12px;font-weight:800;text-decoration:none;white-space:nowrap; }
+.assessmentAction { min-height:38px;box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;padding:7px 9px;border:1px solid transparent;border-radius:7px;color:#365f83;font-size:13px;font-weight:800;text-decoration:none;white-space:nowrap; }
 .assessmentResultAction { border-color:#b8c9d8;background:#fff; }
 .assessmentPrimaryAction { border-color:#d2e1ed;background:#eaf2f8;color:#244f73; }
 .assessmentAction:hover { border-color:#8ca9be;background:#e3edf5; }
@@ -176,7 +177,14 @@
 }
 
 .builtInLessonsGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
   align-items: start;
+  overflow: hidden;
+  border: 1px solid #d8e2eb;
+  border-radius: 10px;
+  background: #fff;
 }
 
 /* ── Lesson card ──────────────────────── */
@@ -197,9 +205,18 @@
 .builtInLessonCard {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto auto auto auto;
+  grid-template-columns: minmax(250px, 1.05fr) minmax(150px, .55fr) minmax(290px, 1fr) auto;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "header progress assessments action"
+    "description progress assessments action";
   align-items: stretch;
-  gap: 14px;
+  gap: 8px 24px;
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: #fff;
 }
 
 .builtInCardHeader {
@@ -249,18 +266,21 @@
 
 .builtInCardFooter {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  flex-direction: column;
   justify-content: flex-end;
   gap: 12px;
-  padding-top: 13px;
-  border-top: 1px solid #e2e8f0;
+  min-width: 150px;
+  padding: 0;
+  border-top: 0;
 }
 
 .unlockHint {
   min-width: 0;
-  margin: 0 auto 0 0;
-  color: #64748b;
-  font-size: 12px;
+  max-width: 220px;
+  margin: 0;
+  color: #52677a;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -368,11 +388,11 @@
 }
 
 .progressLabel {
-  font-size: 12px;
-  color: #718397;
+  font-size: 13px;
+  color: #52677a;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -513,17 +533,17 @@
 }
 
 .classAttachments > span { display: inline-flex; align-items: center; gap: 6px; color: #5d7185; font-size: 13px; font-weight: 650; }
-.classLessonCard { cursor: pointer; }
+.classLessonCard { border-radius: 10px; box-shadow: none; cursor: pointer; }
 .classLessonCard:focus-visible { outline: 3px solid rgba(38, 84, 124, .2); outline-offset: 2px; }
 .classLessonOpen { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; background: #1e3a5f; color: #fff; flex-shrink: 0; font-size: 18px; }
 .moduleList { display: grid; gap: 16px; }
-.moduleGroup { padding: 18px; border: 1px solid #d6e2ec; border-radius: 14px; background: #f8fbfd; }
-.moduleGroup > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.moduleGroup { padding: 0; border: 0; border-radius: 0; background: transparent; }
+.moduleGroup > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 10px; }
 .moduleGroup > header div { min-width: 0; }
-.moduleGroup > header span { color: #2b7297; font-size: 13px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+.moduleGroup > header span { color: #52677a; font-size: 13px; font-weight: 800; letter-spacing: 0; text-transform: none; }
 .moduleGroup > header h3 { margin: 3px 0 4px; color: #1f4663; font-size: 19px; }
 .moduleGroup > header p { margin: 0; color: #64748b; font-size: 13px; line-height: 1.45; }
-.moduleGroup > header strong { flex: none; padding: 5px 9px; border-radius: 999px; background: #e5eef6; color: #45627a; font-size: 13px; }
+.moduleGroup > header strong { flex: none; padding: 2px 0; border-radius: 0; background: transparent; color: #45627a; font-size: 13px; }
 .moduleEmpty { margin: 0; padding: 18px; border: 1px dashed #ccd9e3; border-radius: 10px; background: #fff; color: #718297; font-size: 13px; text-align: center; }
 
 .classAttachments button {
@@ -548,4 +568,168 @@
 @media (max-width: 768px) {
   .moduleGroup { padding: 13px; }
   .moduleGroup > header { flex-direction: column; gap: 8px; }
+}
+
+/* Phase 3B: compact lesson index */
+.pageBody > * {
+  width: 100%;
+  max-width: 1200px;
+  box-sizing: border-box;
+  margin-inline: auto;
+}
+
+.builtInSection,
+.teacherContent,
+.teacherSection {
+  display: grid;
+  gap: 12px;
+}
+
+.sectionTitle,
+.teacherContentTitle {
+  margin: 0;
+  color: #1e3a5f;
+}
+
+.teacherContent {
+  gap: 24px;
+  margin-top: 12px;
+  padding-top: 26px;
+  border-top: 1px solid #cbd7e2;
+}
+
+.teacherContentTitle {
+  font-size: 21px;
+  line-height: 1.3;
+}
+
+.teacherSection + .teacherSection {
+  padding-top: 22px;
+  border-top: 1px solid #dce4ec;
+}
+
+.builtInLessonCard + .builtInLessonCard {
+  border-top: 1px solid #e2e8f0;
+}
+
+.builtInLessonCard:hover:not(.cardLocked) {
+  border-color: #e2e8f0;
+  box-shadow: none;
+  transform: none;
+  background: #fbfdff;
+}
+
+.builtInCardHeader { grid-area: header; gap: 11px; }
+.builtInLessonCard > .cardDesc { grid-area: description; }
+.builtInLessonCard > .progressBlock { grid-area: progress; align-self: center; }
+.builtInLessonCard > .assessmentStrip { grid-area: assessments; align-self: center; }
+.builtInLessonCard > .builtInCardFooter { grid-area: action; align-self: center; }
+
+.builtInLessonCard .cardIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.builtInLessonCard .cardTitle {
+  font-size: 17px;
+}
+
+.builtInLessonCard .cardRegion {
+  margin: 0;
+  color: #52677a;
+  font-size: 13px;
+  font-style: normal;
+}
+
+.builtInLessonCard .cardDesc {
+  min-height: 0;
+  margin: 0;
+  color: #52677a;
+  font-size: 14px;
+  -webkit-line-clamp: 2;
+}
+
+.cardBadge {
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+
+.cardLocked {
+  background: #fbfcfd;
+}
+
+.cardLocked .cardTitle { color: #43586d; }
+.cardLocked .cardRegion,
+.cardLocked .cardDesc { color: #607387; }
+
+.assessmentName { font-size: 13px; }
+
+.moduleGroup + .moduleGroup {
+  padding-top: 20px;
+  border-top: 1px solid #dce4ec;
+}
+
+.classLessonCard:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+@media (max-width: 1180px) {
+  .builtInLessonCard {
+    grid-template-columns: minmax(0, 1fr) minmax(250px, .85fr);
+    grid-template-areas:
+      "header progress"
+      "description assessments"
+      "action action";
+  }
+
+  .builtInCardFooter {
+    align-items: center;
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .unlockHint {
+    max-width: none;
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .topBar { padding: 16px; }
+
+  .builtInLessonCard {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "header"
+      "description"
+      "progress"
+      "assessments"
+      "action";
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .builtInCardFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .openModuleBtn { width: 100%; }
+  .assessmentAction { min-height: 44px; }
+  .teacherContent { padding-top: 22px; }
+  .moduleGroup { padding: 0; }
+}
+
+@media (max-width: 520px) {
+  .sectionHead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .sectionCount { color: #607387; }
+  .assessmentRow { padding: 9px 0; }
 }

@@ -124,7 +124,10 @@ test("completed PRE leads to module before game starts and then to the current g
   });
   assert.equal(moduleModel.action.label, "Open Module");
   assert.equal(moduleModel.action.href, "/lesson/built-in/arrays?classroomId=7");
-  assert.equal(moduleModel.steps.find(({ id }) => id === "module").state, "current");
+  assert.deepEqual(
+    moduleModel.steps.find(({ id }) => id === "module"),
+    { id: "module", label: "Module", state: "current" },
+  );
   assert.deepEqual(moduleModel.steps.find(({ id }) => id === "pre").resultAction, {
     label: "View Result",
     href: "/classrooms/7/lessons/arrays/assessment/pre/results/201",
@@ -143,6 +146,26 @@ test("completed PRE leads to module before game starts and then to the current g
   });
   assert.equal(gameModel.action.label, "Continue Game");
   assert.equal(gameModel.action.href, "/array/level/4?classroomId=7");
+  assert.deepEqual(
+    gameModel.steps.find(({ id }) => id === "module"),
+    { id: "module", label: "Module", state: "complete", statusLabel: "Game started" },
+  );
+
+  const completedGameModel = createLessonProgressionViewModel({
+    lesson: lesson({
+      preCompleted: true,
+      moduleUnlocked: true,
+      gameUnlocked: true,
+      gameCompleted: true,
+      postUnlocked: true,
+      nextAction: "TAKE_POST",
+    }),
+    classroomId: 7,
+  });
+  assert.deepEqual(
+    completedGameModel.steps.find(({ id }) => id === "module"),
+    { id: "module", label: "Module", state: "complete", statusLabel: "Game started" },
+  );
 });
 
 test("game completion exposes authoritative POST actions without score inference", () => {

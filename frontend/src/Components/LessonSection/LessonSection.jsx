@@ -208,7 +208,7 @@ export function LessonNextStep({ model, onNavigate, onRetry }) {
 export function LessonAssessmentStrip({ lessonTitle, model }) {
   if (!model?.rows?.length) return null;
   return <section className={styles.assessmentStrip} aria-label={`${lessonTitle} assessments`}>
-    <span className={styles.assessmentHeading}>Assessments</span>
+    <h4 className={styles.assessmentHeading}>Assessments</h4>
     <ul>
       {model.rows.map((row) => <li className={styles.assessmentRow} key={row.type}>
         <span className={styles.assessmentIdentity}>
@@ -444,6 +444,11 @@ function LessonSection() {
     lessons: teacherLessons.filter((lesson) => Number(lesson.moduleId) === Number(module.id)),
   }));
   const classLessons = teacherLessons.filter((lesson) => !lesson.moduleId || !moduleTitleById.has(Number(lesson.moduleId)));
+  const hasClassroomContent = contentStatus === "loading"
+    || contentStatus === "error"
+    || moduleGroups.length > 0
+    || classLessons.length > 0
+    || teacherAssignments.length > 0;
 
   return (
     <div className={styles.lessonContainer}>
@@ -452,31 +457,28 @@ function LessonSection() {
       <div className={styles.pageBody}>
         <LessonNextStep model={nextStep} onNavigate={navigate} onRetry={retryProgression} />
 
-        {progressionState.status === "ready" && lessons.length > 0 && <><div className={styles.sectionHead}>
-          <div className={styles.sectionTitle}>Built-in SharpRunner Lessons</div>
-          <div className={styles.sectionCount}>
-            {completedCount} / {lessons.length} completed
+        {progressionState.status === "ready" && lessons.length > 0 && <section className={styles.builtInSection} aria-labelledby="built-in-lessons-heading">
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle} id="built-in-lessons-heading">Built-in SharpRunner Lessons</h2>
+            <div className={styles.sectionCount}>{completedCount} / {lessons.length} completed</div>
           </div>
-        </div>
+          <div className={`${styles.lessonsGrid} ${styles.builtInLessonsGrid}`}>
+            {lessons.map((lesson) => <LessonCard key={lesson.id} lesson={lesson} onPlay={handlePlay} />)}
+          </div>
+        </section>}
 
-        <div className={`${styles.lessonsGrid} ${styles.builtInLessonsGrid}`}>
-          {lessons.map((lesson) => (
-            <LessonCard
-              key={lesson.id}
-              lesson={lesson}
-              onPlay={handlePlay}
-            />
-          ))}
-        </div></>}
+        {hasClassroomContent && <section className={styles.teacherContent} aria-labelledby="classroom-content-heading">
+          <h2 className={styles.teacherContentTitle} id="classroom-content-heading">From your classroom</h2>
 
-        {contentStatus === "loading" && <div className={styles.contentStatus} role="status">Loading classroom content…</div>}
-        {contentStatus === "error" && <div className={styles.contentStatus} role="alert"><span>Classroom content could not be loaded.</span><button type="button" onClick={() => setContentRetryGeneration((generation) => generation + 1)}>Retry classroom content</button></div>}
+          {contentStatus === "loading" && <div className={styles.contentStatus} role="status">Loading classroom content…</div>}
+          {contentStatus === "error" && <div className={styles.contentStatus} role="alert"><span>Classroom content could not be loaded.</span><button type="button" onClick={() => setContentRetryGeneration((generation) => generation + 1)}>Retry classroom content</button></div>}
 
-        {moduleGroups.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Modules from your teacher</div><div className={styles.sectionCount}>{moduleGroups.length} module{moduleGroups.length === 1 ? "" : "s"}</div></div><div className={styles.moduleList}>{moduleGroups.map(({ module, lessons: moduleLessons }) => <ClassroomModuleGroup key={`module-${module.id}`} module={module} lessons={moduleLessons} navigate={navigate} />)}</div></>}
+          {moduleGroups.length > 0 && <section className={styles.teacherSection} aria-labelledby="teacher-modules-heading"><div className={styles.sectionHead}><h3 className={styles.sectionTitle} id="teacher-modules-heading">Modules from your teacher</h3><div className={styles.sectionCount}>{moduleGroups.length} module{moduleGroups.length === 1 ? "" : "s"}</div></div><div className={styles.moduleList}>{moduleGroups.map(({ module, lessons: moduleLessons }) => <ClassroomModuleGroup key={`module-${module.id}`} module={module} lessons={moduleLessons} navigate={navigate} />)}</div></section>}
 
-        {classLessons.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Classroom lessons</div><div className={styles.sectionCount}>{classLessons.length} lesson{classLessons.length === 1 ? "" : "s"}</div></div><div className={styles.lessonsGrid}>{classLessons.map((lesson) => <ClassroomContentCard key={`material-${lesson.id}`} lesson={lesson} navigate={navigate} />)}</div></>}
+          {classLessons.length > 0 && <section className={styles.teacherSection} aria-labelledby="classroom-lessons-heading"><div className={styles.sectionHead}><h3 className={styles.sectionTitle} id="classroom-lessons-heading">Classroom lessons</h3><div className={styles.sectionCount}>{classLessons.length} lesson{classLessons.length === 1 ? "" : "s"}</div></div><div className={styles.lessonsGrid}>{classLessons.map((lesson) => <ClassroomContentCard key={`material-${lesson.id}`} lesson={lesson} navigate={navigate} />)}</div></section>}
 
-        {teacherAssignments.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Assignments and activities</div><div className={styles.sectionCount}>{teacherAssignments.length} assigned</div></div><div className={styles.lessonsGrid}>{teacherAssignments.map((lesson) => <ClassroomContentCard key={`assignment-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(Number(lesson.moduleId))} navigate={navigate} />)}</div></>}
+          {teacherAssignments.length > 0 && <section className={styles.teacherSection} aria-labelledby="teacher-assignments-heading"><div className={styles.sectionHead}><h3 className={styles.sectionTitle} id="teacher-assignments-heading">Assignments and activities</h3><div className={styles.sectionCount}>{teacherAssignments.length} assigned</div></div><div className={styles.lessonsGrid}>{teacherAssignments.map((lesson) => <ClassroomContentCard key={`assignment-${lesson.id}`} lesson={lesson} moduleTitle={moduleTitleById.get(Number(lesson.moduleId))} navigate={navigate} />)}</div></section>}
+        </section>}
       </div>
     </div>
   );

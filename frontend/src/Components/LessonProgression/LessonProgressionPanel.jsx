@@ -35,7 +35,7 @@ export default function LessonProgressionPanel({ title = "Lesson progression", m
         <span className={styles.marker} aria-hidden="true">{STATE_MARKERS[step.state] ?? "○"}</span>
         <span>{step.label}</span>
         <span className={styles.stepMeta}>
-          <small>{STATE_LABELS[step.state] ?? step.state}</small>
+          <small>{step.statusLabel ?? STATE_LABELS[step.state] ?? step.state}</small>
           {step.resultAction?.href && (
             <a className={styles.resultAction} href={step.resultAction.href}>
               {step.resultAction.label}

@@ -100,6 +100,8 @@ const safeReferenceUrl = (value) => {
   }
 };
 
+const normalizedHeadingText = (value) => String(value ?? "").trim().toLowerCase();
+
 function AuthorizedModuleContent({
   lesson,
   onNavigateGame,
@@ -134,6 +136,13 @@ function AuthorizedModuleContent({
 
   const checkIds = useMemo(() => lesson.sections.flatMap((section) => section.blocks.filter(({ type }) => type === "check").map(({ id }) => id)), [lesson]);
   const section = lesson.sections[sectionIndex];
+  const visibleBlocks = section.blocks
+    .map((block, index) => ({ block, index }))
+    .filter(({ block, index }) => !(
+      index === 0
+      && block.type === "heading"
+      && normalizedHeadingText(block.text) === normalizedHeadingText(section.title)
+    ));
   const percent = calculateModulePercent(lesson, progress);
   const allChecksDone = checkIds.every((id) => progress.completedCheckIds.includes(id));
   const game = lesson.game;
@@ -158,7 +167,7 @@ function AuthorizedModuleContent({
     <header className={styles.header}>
       <a href="/lesson" className={styles.back}><FiArrowLeft /> All Lessons</a>
       <div className={styles.heading}><span>{lesson.eyebrow}</span><h1>{lesson.title}</h1></div>
-      <div className={styles.progressSummary}><strong>{percent}% complete</strong><div role="progressbar" aria-label="Module progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}><span style={{ width: `${percent}%` }} /></div></div>
+      <div className={styles.progressSummary}><strong>Reading progress: {percent}%</strong><div role="progressbar" aria-label="Reading progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow={percent}><span style={{ width: `${percent}%` }} /></div></div>
     </header>
     <button type="button" className={styles.mobileContents} onClick={() => setContentsOpen((value) => !value)} aria-expanded={contentsOpen}><span>Module contents · {sectionIndex + 1} of {lesson.sections.length}</span><FiChevronDown /></button>
     <div className={styles.learningLayout}>
@@ -169,13 +178,13 @@ function AuthorizedModuleContent({
       <article className={styles.lesson} id={`module-section-${section.id}`}>
         {sectionIndex === 0 && <div className={styles.intro}><p>{lesson.description}</p><h2>Learning objectives</h2><ul>{lesson.objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul></div>}
         <div className={styles.sectionKicker}>Section {sectionIndex + 1} of {lesson.sections.length}</div><h2 ref={sectionHeadingRef} tabIndex={-1}>{section.title}</h2>
-        <div className={styles.blocks}>{section.blocks.map((block, index) => <ContentBlock key={`${block.type}-${block.id ?? index}`} block={block} progress={progress} onCheckComplete={completeCheck} storageId={`${lesson.lessonKey}:${section.id}:${block.id ?? index}`} />)}</div>
+        <div className={styles.blocks}>{visibleBlocks.map(({ block, index }) => <ContentBlock key={`${block.type}-${block.id ?? index}`} block={block} progress={progress} onCheckComplete={completeCheck} storageId={`${lesson.lessonKey}:${section.id}:${block.id ?? index}`} />)}</div>
         <div className={styles.sectionNav}>
           <button type="button" disabled={sectionIndex === 0} onClick={() => setSectionIndex(sectionIndex - 1)}><FiArrowLeft /> Previous</button>
           <button type="button" className={styles.continue} onClick={finishSection}>{sectionIndex === lesson.sections.length - 1 ? "Finish module" : "Continue"}<FiArrowRight /></button>
         </div>
         {sectionIndex === lesson.sections.length - 1 && <>
-          {!allChecksDone && <p className={styles.completionNote}>Complete each quick check to mark the module complete. You may retry any check.</p>}
+          {!allChecksDone && <p className={styles.completionNote}>Complete each quick check to finish your reading checklist. You may retry any check.</p>}
           {progressionModel
             ? <LessonProgressionPanel title={`${lesson.title} journey`} model={progressionModel} />
             : progressionRequired
@@ -208,7 +217,7 @@ function ContentStatus({
   actionLabel = "Back to lessons",
 }) {
   return <main className={styles.page}>
-    <div className={styles.learningLayout}>
+    <div className={`${styles.learningLayout} ${styles.statusLayout}`}>
       <article className={styles.lesson} role={role} aria-live="polite">
         <h1>{title}</h1>
         <p>{message}</p>

@@ -7,7 +7,9 @@ import {
   getAnswerSummary,
   getAttemptControllerIdentity,
   getCurrentQuestion,
+  getFirstUnresolvedQuestionIndex,
   getSubmissionReadiness,
+  isUnresolvedQuestionIndex,
   parseAssessmentRoute,
 } from "./assessmentState.js";
 
@@ -168,6 +170,30 @@ test("question navigation supports next, previous, direct review, and hard bound
   assert.equal(reviewed.currentQuestionIndex, 1);
 });
 
+test("question navigation preserves local MCQ and code answers with unresolved save state", () => {
+  const failure = new Error("Offline");
+  const state = {
+    ...activeState(),
+    selectedByQuestion: { 101: 1001, 102: 1004 },
+    sourceByQuestion: { 103: "return 42;" },
+    savedByQuestion: { 102: 1004 },
+    savedSourceByQuestion: { 103: "return 0;" },
+    saveStateByQuestion: {
+      101: { status: "error", revision: 1, error: failure },
+      103: { status: "conflict", revision: 2, error: failure },
+    },
+  };
+
+  const navigated = assessmentReducer(state, action("QUESTION_CHANGED", { index: 1 }));
+  assert.strictEqual(navigated.selectedByQuestion, state.selectedByQuestion);
+  assert.strictEqual(navigated.sourceByQuestion, state.sourceByQuestion);
+  assert.strictEqual(navigated.savedByQuestion, state.savedByQuestion);
+  assert.strictEqual(navigated.savedSourceByQuestion, state.savedSourceByQuestion);
+  assert.strictEqual(navigated.saveStateByQuestion, state.saveStateByQuestion);
+  assert.equal(navigated.saveStateByQuestion[101].status, "error");
+  assert.equal(navigated.saveStateByQuestion[103].status, "conflict");
+});
+
 test("local choices become dirty and only the matching save acknowledgement becomes canonical", () => {
   const loaded = activeState();
   const first = assessmentReducer(loaded, action("CHOICE_SELECTED", {
@@ -271,6 +297,49 @@ test("save failures preserve local answers and readiness waits for all dirty or 
     revision: 1,
   }));
   assert.equal(getSubmissionReadiness(saved).ready, true);
+});
+
+test("only failed or conflicted question targets remain navigable after a flush failure", () => {
+  const state = {
+    orderedQuestions: [{ id: 101 }, { id: 102 }, { id: 103 }],
+    saveStateByQuestion: {
+      101: { status: "saving" },
+      102: { status: "error" },
+      103: { status: "conflict" },
+    },
+  };
+
+  assert.equal(isUnresolvedQuestionIndex(state, 0), false);
+  assert.equal(isUnresolvedQuestionIndex(state, 1), true);
+  assert.equal(isUnresolvedQuestionIndex(state, 2), true);
+  assert.equal(isUnresolvedQuestionIndex(state, 3), false);
+});
+
+test("first unresolved navigation prioritizes failed responses over ordinary pending saves", () => {
+  const mixed = {
+    orderedQuestions: [{ id: 101 }, { id: 102 }, { id: 103 }],
+    selectedByQuestion: { 101: 1001, 102: 2001 },
+    savedByQuestion: {},
+    sourceByQuestion: {},
+    savedSourceByQuestion: {},
+    responseExistsByQuestion: {},
+    saveStateByQuestion: {
+      101: { status: "saving" },
+      102: { status: "error" },
+      103: { status: "clean" },
+    },
+  };
+  assert.equal(getFirstUnresolvedQuestionIndex(mixed), 1);
+
+  const pendingOnly = {
+    ...mixed,
+    saveStateByQuestion: {
+      101: { status: "saving" },
+      102: { status: "clean" },
+      103: { status: "clean" },
+    },
+  };
+  assert.equal(getFirstUnresolvedQuestionIndex(pendingOnly), 0);
 });
 
 test("result and progression payloads remain server-authoritative objects", () => {

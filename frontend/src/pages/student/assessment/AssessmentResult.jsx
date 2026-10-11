@@ -45,6 +45,7 @@ export default function AssessmentResult({
   const model = createAssessmentResultModel({ envelope, progression, route });
   const isPre = model.type === "PRE";
   const syncChecking = externalSyncStatus === "checking";
+  const progressionReady = progression != null && !progressionError;
   const reviewByQuestionId = new Map(
     model.review.map((entry) => [String(entry.questionId), entry]),
   );
@@ -201,19 +202,26 @@ export default function AssessmentResult({
         {progressionError && (
           <div role="alert">
             <p>Your result is saved, but the next lesson step could not be refreshed.</p>
-            <button type="button" onClick={onRetryProgression}>Retry next-step refresh</button>
           </div>
+        )}
+        {!progression && !progressionError && (
+          <p role="status">Checking the next lesson step…</p>
         )}
         {retakeError && <p role="alert">The retake could not be started. Please try again.</p>}
 
         <nav className={styles.resultActions} aria-label="Assessment result actions">
-          {isPre && !progressionError && model.continuation?.href && !model.continuation.disabled && (
+          {progressionError && (
+            <button className={styles.primaryAction} type="button" onClick={onRetryProgression}>
+              Retry next-step refresh
+            </button>
+          )}
+          {isPre && progressionReady && model.continuation?.href && !model.continuation.disabled && (
             <a className={styles.primaryAction} href={model.continuation.href}>{model.continuation.label}</a>
           )}
-          {isPre && !progressionError && model.continuation?.disabled && (
+          {isPre && progressionReady && model.continuation?.disabled && (
             <p role="status">{model.continuation.label}</p>
           )}
-          {!isPre && ["PASSED", "COMPLETED", "REQUIREMENT_COMPLETED"].includes(model.state) && (
+          {!isPre && progressionReady && ["PASSED", "COMPLETED", "REQUIREMENT_COMPLETED"].includes(model.state) && (
             <a className={styles.primaryAction} href={model.nextHref}>Continue</a>
           )}
           {model.retakeAllowed && (
@@ -227,7 +235,7 @@ export default function AssessmentResult({
                 : retakeStatus === "starting" ? "Starting retake..." : "Retake Post-Test"}
             </button>
           )}
-          <a href={model.returnHref}>Back to Lesson Map</a>
+          <a className={styles.secondaryAction} href={model.returnHref}>Back to Lesson Map</a>
         </nav>
       </section>
     </main>

@@ -12,8 +12,9 @@ export default function AssessmentSubmitConfirmation({
   const panelRef = useRef(null);
 
   useEffect(() => {
-    confirmRef.current?.focus();
-  }, []);
+    if (submitting) panelRef.current?.focus();
+    else confirmRef.current?.focus();
+  }, [submitting]);
 
   return (
     <div
@@ -29,7 +30,7 @@ export default function AssessmentSubmitConfirmation({
         onCancel,
       })}
     >
-      <section ref={panelRef} className={styles.dialogPanel}>
+      <section ref={panelRef} className={styles.dialogPanel} tabIndex="-1">
         <h2 id="assessment-submit-title">Submit this assessment?</h2>
         <p id="assessment-submit-description">
           {unansweredCount > 0

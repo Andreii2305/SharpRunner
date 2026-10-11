@@ -12,7 +12,11 @@ export const containDialogTabFocus = (event, panel) => {
   const controls = [...panel.querySelectorAll(FOCUSABLE_SELECTOR)].filter(
     (element) => !element.disabled && element.getAttribute?.("aria-hidden") !== "true",
   );
-  if (controls.length === 0) return false;
+  if (controls.length === 0) {
+    event.preventDefault?.();
+    panel.focus?.();
+    return true;
+  }
 
   const first = controls[0];
   const last = controls.at(-1);

@@ -30,6 +30,7 @@ const renderReview = (overrides = {}) => renderToStaticMarkup(React.createElemen
     submitting: false,
     onReturnToQuestions() {},
     onFirstUnanswered() {},
+    onFirstUnresolved() {},
     onOpenConfirmation() {},
     onCancelConfirmation() {},
     onConfirm() {},
@@ -48,11 +49,29 @@ test("final review distinguishes unanswered work from unresolved saves", () => {
   });
   assert.match(html, /<dt>Answered<\/dt><dd>1 of 3<\/dd>/);
   assert.match(html, /<dt>Unanswered<\/dt><dd>2<\/dd>/);
-  assert.match(html, /<dt>Unsaved or errored<\/dt><dd>2<\/dd>/);
+  assert.match(html, /<dt>Pending saves<\/dt><dd>1<\/dd>/);
+  assert.match(html, /<dt>Failed or conflicted<\/dt><dd>1<\/dd>/);
   assert.match(html, /Saving is still in progress/);
   assert.match(html, /Jump to first unanswered question/);
+  assert.match(html, /Review first unresolved response/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>Continue to submission<\/button>/);
   assert.doesNotMatch(html, /Correct|Incorrect|Score|Expected answer/);
+});
+
+test("ordinary autosaving is pending rather than a failed response", () => {
+  const html = renderReview({
+    summary: { total: 3, answered: 3, unansweredQuestionIds: [] },
+    readiness: {
+      ready: false,
+      dirtyQuestionIds: [101],
+      savingQuestionIds: [101],
+      failedQuestionIds: [],
+    },
+  });
+  assert.match(html, /Saving is still in progress/);
+  assert.match(html, /Review first unresolved response/);
+  assert.doesNotMatch(html, /needs attention before submission/);
+  assert.doesNotMatch(html, /response needs attention before submission/);
 });
 
 test("explicit confirmation warns about unanswered questions and uses accessible dialog semantics", () => {

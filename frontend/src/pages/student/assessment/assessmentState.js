@@ -563,3 +563,23 @@ export const getSubmissionReadiness = (state) => {
     failedQuestionIds,
   };
 };
+
+export const isUnresolvedQuestionIndex = (state, index) => {
+  const questionId = state?.orderedQuestions?.[index]?.id;
+  if (questionId == null) return false;
+  const status = state?.saveStateByQuestion?.[questionId]?.status;
+  return status === "error" || status === "conflict";
+};
+
+export const getFirstUnresolvedQuestionIndex = (state) => {
+  const readiness = getSubmissionReadiness(state);
+  const failedIds = new Set(readiness.failedQuestionIds);
+  const failedIndex = state.orderedQuestions.findIndex(({ id }) => failedIds.has(id));
+  if (failedIndex >= 0) return failedIndex;
+
+  const pendingIds = new Set([
+    ...readiness.dirtyQuestionIds,
+    ...readiness.savingQuestionIds,
+  ]);
+  return state.orderedQuestions.findIndex(({ id }) => pendingIds.has(id));
+};

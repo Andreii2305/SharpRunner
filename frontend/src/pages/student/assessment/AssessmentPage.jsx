@@ -15,7 +15,9 @@ import {
   createAssessmentState,
   getAnswerSummary,
   getAttemptControllerIdentity,
+  getFirstUnresolvedQuestionIndex,
   getSubmissionReadiness,
+  isUnresolvedQuestionIndex,
 } from "./assessmentState.js";
 import AssessmentPlayer from "./AssessmentPlayer.jsx";
 import AssessmentResult from "./AssessmentResult.jsx";
@@ -237,6 +239,10 @@ export function AssessmentPageContent({
           onFirstUnanswered={() => {
             const firstQuestionId = summary.unansweredQuestionIds[0];
             const index = assessmentState.orderedQuestions.findIndex(({ id }) => id === firstQuestionId);
+            if (index >= 0) onGoToQuestion(index);
+          }}
+          onFirstUnresolved={() => {
+            const index = getFirstUnresolvedQuestionIndex(assessmentState);
             if (index >= 0) onGoToQuestion(index);
           }}
           onOpenConfirmation={onOpenConfirmation}
@@ -564,9 +570,12 @@ function AssessmentPage() {
     navigateAfterFlush({ type: "NEXT_QUESTION" });
   }, [navigateAfterFlush]);
   const goToQuestion = useCallback(async (index) => {
-    if (!await navigateAfterFlush({ type: "QUESTION_CHANGED", index })) return;
+    if (!await navigateAfterFlush({ type: "QUESTION_CHANGED", index })) {
+      if (!isUnresolvedQuestionIndex(latestState.current, index)) return;
+      dispatchForCurrentAttempt({ type: "QUESTION_CHANGED", index });
+    }
     setReviewReady(false);
-  }, [navigateAfterFlush]);
+  }, [dispatchForCurrentAttempt, navigateAfterFlush]);
   const runCode = useCallback(async (questionId) => {
     const current = latestState.current;
     const attemptId = current.attempt?.attemptId;

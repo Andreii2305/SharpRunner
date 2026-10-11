@@ -144,6 +144,23 @@ test("PRE recovery is non-routable and refresh failure exposes no speculative co
   assert.doesNotMatch(failedRefresh, /Continue to Post-Test|Continue Post-Test|Retry Post-Test/);
 });
 
+test("POST continuation waits for authoritative progression and refresh failure makes Retry primary", () => {
+  const result = envelope({ passed: true });
+  const loading = renderResult({ envelope: result, progression: null });
+  assert.doesNotMatch(loading, /class="[^"]*primaryAction[^"]*"[^>]*>Continue/);
+  assert.match(loading, /Checking the next lesson step/);
+  assert.match(loading, />Back to Lesson Map</);
+
+  const failed = renderResult({
+    envelope: result,
+    progression: null,
+    progressionError: new Error("offline"),
+  });
+  assert.match(failed, /<button[^>]*class="[^"]*primaryAction[^"]*"[^>]*>Retry next-step refresh<\/button>/);
+  assert.match(failed, /<a[^>]*class="[^"]*secondaryAction[^"]*"[^>]*>Back to Lesson Map<\/a>/);
+  assert.doesNotMatch(failed, /class="[^"]*primaryAction[^"]*"[^>]*href="[^"]*Map[^"]*"/);
+});
+
 test("hidden-score POST shows authoritative pass status but no numeric or comparison fields", () => {
   const html = renderResult({
     envelope: envelope({

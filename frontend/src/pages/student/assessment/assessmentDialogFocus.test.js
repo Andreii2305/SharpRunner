@@ -32,7 +32,7 @@ test("confirmation dialog contains forward and reverse Tab focus", () => {
   assert.equal(last.focused, true);
 });
 
-test("dialog focus helper ignores non-boundary keys and safely handles no controls", () => {
+test("dialog focus helper ignores non-boundary keys", () => {
   const first = focusable("cancel");
   const last = focusable("submit");
   const panel = { querySelectorAll: () => [first, last] };
@@ -40,7 +40,23 @@ test("dialog focus helper ignores non-boundary keys and safely handles no contro
   assert.equal(containDialogTabFocus(eventFor({ target: first, key: "Escape" }), panel), false);
   assert.equal(containDialogTabFocus(eventFor({ target: first }), panel), false);
   assert.equal(containDialogTabFocus(eventFor({ target: last, shiftKey: true }), panel), false);
-  assert.equal(containDialogTabFocus(eventFor({ target: first }), {
+});
+
+test("confirmation dialog keeps Tab on a focusable panel when every action is disabled", () => {
+  const panel = {
+    focused: false,
     querySelectorAll: () => [],
-  }), false);
+    focus() { this.focused = true; },
+  };
+  const forward = eventFor({ target: panel });
+  const reverse = eventFor({ target: panel, shiftKey: true });
+
+  assert.equal(containDialogTabFocus(forward, panel), true);
+  assert.equal(forward.prevented, true);
+  assert.equal(panel.focused, true);
+
+  panel.focused = false;
+  assert.equal(containDialogTabFocus(reverse, panel), true);
+  assert.equal(reverse.prevented, true);
+  assert.equal(panel.focused, true);
 });

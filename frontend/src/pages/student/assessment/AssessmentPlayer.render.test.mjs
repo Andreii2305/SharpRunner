@@ -169,6 +169,33 @@ test("save failures and immutable conflicts have accessible, distinct recovery c
   assert.match(conflictOnOtherQuestion, /<button[^>]*disabled=""[^>]*>Review answers<\/button>/);
 });
 
+test("navigator distinguishes pending saves from failed and conflicted responses", () => {
+  const pending = renderPlayer(stateAt(1, {
+    selectedByQuestion: { 101: 1002, 102: 2001 },
+    savedByQuestion: { 102: 2001 },
+    saveStateByQuestion: {
+      101: { status: "saving", revision: 1, error: null },
+      102: { status: "clean", revision: 0, error: null },
+    },
+  }));
+  assert.match(pending, /aria-label="Question 1, answered, save pending"/);
+  assert.match(pending, /data-save-state="pending"/);
+  assert.doesNotMatch(pending, /Question 1, answered, save failed/);
+
+  const failed = renderPlayer(stateAt(1, {
+    selectedByQuestion: { 101: 1002, 102: 2001 },
+    savedByQuestion: { 102: 2001 },
+    saveStateByQuestion: {
+      101: { status: "error", revision: 1, error: new Error("Offline") },
+      102: { status: "conflict", revision: 1, error: new Error("Changed") },
+    },
+  }));
+  assert.match(failed, /aria-label="Question 1, answered, save failed"/);
+  assert.match(failed, /data-save-state="failed"/);
+  assert.match(failed, /aria-label="Question 2, current, answered, reload required"/);
+  assert.match(failed, /data-save-state="conflict"/);
+});
+
 test("cross-tab synchronization blocks stale edits and exposes accessible recovery", () => {
   const required = renderPlayer(stateAt(0, {
     externalSyncRequired: true,

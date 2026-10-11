@@ -10,6 +10,7 @@ export default function AssessmentSubmitReview({
   submissionError,
   onReturnToQuestions,
   onFirstUnanswered,
+  onFirstUnresolved,
   onOpenConfirmation,
   onCancelConfirmation,
   onConfirm,
@@ -21,7 +22,12 @@ export default function AssessmentSubmitReview({
     ...readiness.failedQuestionIds,
   ]);
   const unresolvedCount = unresolvedIds.size;
-  const pending = readiness.savingQuestionIds.length > 0;
+  const failedIds = new Set(readiness.failedQuestionIds);
+  const pendingIds = new Set([
+    ...readiness.dirtyQuestionIds,
+    ...readiness.savingQuestionIds,
+  ].filter((questionId) => !failedIds.has(questionId)));
+  const pending = pendingIds.size > 0;
 
   return (
     <main className={styles.page}>
@@ -31,11 +37,12 @@ export default function AssessmentSubmitReview({
         <dl className={styles.summaryList}>
           <div><dt>Answered</dt><dd>{summary.answered} of {summary.total}</dd></div>
           <div><dt>Unanswered</dt><dd>{summary.unansweredQuestionIds.length}</dd></div>
-          <div><dt>Unsaved or errored</dt><dd>{unresolvedCount}</dd></div>
+          <div><dt>Pending saves</dt><dd>{pendingIds.size}</dd></div>
+          <div><dt>Failed or conflicted</dt><dd>{failedIds.size}</dd></div>
         </dl>
         {pending && <p role="status">Saving is still in progress. Submission will remain unavailable.</p>}
-        {unresolvedCount > 0 && !pending && (
-          <p role="alert">{unresolvedCount} response{unresolvedCount === 1 ? " needs" : "s need"} attention before submission.</p>
+        {failedIds.size > 0 && (
+          <p role="alert">{failedIds.size} response{failedIds.size === 1 ? " needs" : "s need"} attention before submission.</p>
         )}
         {submissionError && (
           <p role="alert">Grading could not complete. Your answers are preserved and this attempt remains available to try again.</p>
@@ -44,6 +51,11 @@ export default function AssessmentSubmitReview({
           <button type="button" onClick={onReturnToQuestions} disabled={submitting}>Back to questions</button>
           {summary.unansweredQuestionIds.length > 0 && (
             <button type="button" onClick={onFirstUnanswered} disabled={submitting}>Jump to first unanswered question</button>
+          )}
+          {unresolvedCount > 0 && (
+            <button type="button" onClick={onFirstUnresolved} disabled={submitting}>
+              Review first unresolved response
+            </button>
           )}
           <button
             ref={openButtonRef}

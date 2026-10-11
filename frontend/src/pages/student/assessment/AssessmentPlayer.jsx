@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
-import { getAnswerSummary, getCurrentQuestion } from "./assessmentState.js";
+import {
+  getAnswerSummary,
+  getCurrentQuestion,
+  getFirstUnresolvedQuestionIndex,
+  getSubmissionReadiness,
+} from "./assessmentState.js";
 import AssessmentQuestion from "./AssessmentQuestion.jsx";
 import AssessmentCodingQuestion from "./AssessmentCodingQuestion.jsx";
 import AssessmentQuestionNavigator from "./AssessmentQuestionNavigator.jsx";
@@ -37,6 +42,7 @@ export function AssessmentPlayer({
   const saveStatusRef = useRef(null);
   const currentQuestion = getCurrentQuestion(state);
   const summary = getAnswerSummary(state);
+  const readiness = getSubmissionReadiness(state);
   const currentIndex = state.currentQuestionIndex;
   const isFirst = currentIndex === 0;
   const isLast = currentIndex === summary.total - 1;
@@ -87,6 +93,11 @@ export function AssessmentPlayer({
   const firstUnansweredIndex = state.orderedQuestions.findIndex(
     ({ id }) => id === firstUnansweredId,
   );
+  const firstUnresolvedIndex = getFirstUnresolvedQuestionIndex(state);
+  const pendingSaveCount = new Set([
+    ...readiness.dirtyQuestionIds,
+    ...readiness.savingQuestionIds,
+  ].filter((id) => !readiness.failedQuestionIds.includes(id))).size;
   const progressPercent = summary.total > 0
     ? Math.round(((currentIndex + 1) / summary.total) * 100)
     : 0;
@@ -145,6 +156,7 @@ export function AssessmentPlayer({
         questions={state.orderedQuestions}
         currentIndex={currentIndex}
         unansweredQuestionIds={summary.unansweredQuestionIds}
+        saveStateByQuestion={state.saveStateByQuestion}
         disabled={syncBlocking}
         onGoToQuestion={onGoToQuestion}
       />
@@ -207,8 +219,18 @@ export function AssessmentPlayer({
             ? "All questions answered"
             : `${summary.unansweredQuestionIds.length} unanswered`}
           {failedCount > 0 ? `; ${failedCount} response${failedCount === 1 ? "" : "s"} need attention` : ""}
+          {pendingSaveCount > 0 ? `; ${pendingSaveCount} save${pendingSaveCount === 1 ? "" : "s"} pending` : ""}
         </p>
-        {firstUnansweredIndex >= 0 && firstUnansweredIndex !== currentIndex && (
+        {firstUnresolvedIndex >= 0 && firstUnresolvedIndex !== currentIndex && (
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => onGoToQuestion(firstUnresolvedIndex)}
+          >
+            Review first unresolved response
+          </button>
+        )}
+        {firstUnresolvedIndex < 0 && firstUnansweredIndex >= 0 && firstUnansweredIndex !== currentIndex && (
           <button
             type="button"
             className={styles.linkButton}

@@ -21,8 +21,8 @@ import {
 } from "./dashboardProgressDisplay.js";
 import {
   DashboardGameProgressPanel,
-  DashboardGameProgressStat,
 } from "./DashboardProgressDisplay.jsx";
+import { revealDashboardNotifications } from "./dashboardInteractions.js";
 import styles from "./Dashboard.module.css";
 
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
@@ -88,23 +88,10 @@ function parseAnnouncementPayload(rawMessage = "") {
   };
 }
 
-/* ─── Sub-components ──────────────────────────────────────────── */
-function StatCard({ label, value, sub, accent }) {
-  return (
-    <div className={styles.statCard}>
-      <div className={styles.statLabel}>{label}</div>
-      <div className={styles.statVal} style={accent ? { color: accent } : {}}>
-        {value}
-      </div>
-      {sub && <div className={styles.statSub}>{sub}</div>}
-    </div>
-  );
-}
-
 function PersonalizedFocusCard({ eyebrow, title, value, detail, progress }) {
   return (
     <article className={styles.focusCard}>
-      <div className={styles.focusEyebrow}>{eyebrow}</div>
+      <div className={styles.focusLabel}>{eyebrow}</div>
       <h3>{title}</h3>
       <strong className={styles.focusValue}>{value}</strong>
       <p>{detail}</p>
@@ -141,7 +128,7 @@ function focusCardFor(mode, data, secondary = false) {
           eyebrow,
           title: secondary ? "Competition" : "Your Classroom Standing",
           value: "Your first rank awaits",
-          detail: "Complete a level to join your classroom ranking.",
+          detail: "Complete a game activity to join your classroom ranking.",
         };
   }
 
@@ -151,8 +138,8 @@ function focusCardFor(mode, data, secondary = false) {
       title: secondary ? "Rewards" : "Your Rewards",
       value: `${data.xp.toLocaleString()} XP earned`,
       detail: data.latestXp > 0
-        ? `Your latest completed level added ${data.latestXp} XP.`
-        : "Complete your first level to earn XP and completion bonuses.",
+        ? `Your latest completed game activity added ${data.latestXp} XP.`
+        : "Complete your first game activity to earn XP and completion bonuses.",
       progress: data.xpNext > 0 ? (data.xp / data.xpNext) * 100 : 0,
     };
   }
@@ -162,7 +149,7 @@ function focusCardFor(mode, data, secondary = false) {
       eyebrow,
       title: secondary ? "Exploration" : "Your Story Journey",
       value: data.region.label,
-      detail: `${data.currentLevel} is your next stop in ${data.region.topic}. ${data.unlockedLevels} levels are currently open to explore.`,
+      detail: `${data.currentLevel} is your next stop in ${data.region.topic}. ${data.unlockedLevels} game activities are currently open to explore.`,
     };
   }
 
@@ -174,35 +161,20 @@ function focusCardFor(mode, data, secondary = false) {
         ? `${data.firstAttemptCompletions} first-attempt ${data.firstAttemptCompletions === 1 ? "win" : "wins"}`
         : "Your first challenge awaits",
       detail: data.completedLevels > 0
-        ? `${data.completedLevels} levels completed across your coding journey.`
-        : "Complete a level to start building your challenge record.",
+        ? `${data.completedLevels} game activities completed across your coding journey.`
+        : "Complete a game activity to start building your challenge record.",
     };
   }
 
   return {
     eyebrow: secondary ? "Next learning goal" : eyebrow,
-    title: secondary ? data.currentLevel : "Your Progress",
-    value: `${data.completedLevels} levels completed`,
+    title: secondary ? data.currentLevel : "Your Game Progress",
+    value: `${data.completedLevels} game activities completed`,
     detail: data.overallPct >= 100
-      ? "Journey complete — you cleared every available level."
-      : `${Math.round(data.overallPct)}% of your coding journey complete. Continue with ${data.currentLevel}.`,
+      ? "Game progress complete — you cleared every available game activity."
+      : `${Math.round(data.overallPct)}% game progress. Continue with ${data.currentLevel}.`,
     progress: data.overallPct,
   };
-}
-
-function XpBar({ current, max }) {
-  const pct = max > 0 ? Math.min(100, Math.round((current / max) * 100)) : 0;
-  return (
-    <div className={styles.xpWrap}>
-      <span className={styles.xpLabel}>XP</span>
-      <div className={styles.xpTrack}>
-        <div className={styles.xpFill} style={{ width: `${pct}%` }} />
-      </div>
-      <span className={styles.xpVal}>
-        {current.toLocaleString()} / {max.toLocaleString()}
-      </span>
-    </div>
-  );
 }
 
 function MistakeRow({ label, type, count, typeColor, typeBg }) {
@@ -294,6 +266,7 @@ function StudentDashboardPage() {
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [activeTab, setActiveTab] = useState("announcements");
+  const [preferencesExpanded, setPreferencesExpanded] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
   const [announcementActionError, setAnnouncementActionError] = useState("");
   const [notificationActionError, setNotificationActionError] = useState("");
@@ -303,6 +276,7 @@ function StudentDashboardPage() {
   );
   const [preferenceStatus, setPreferenceStatus] = useState("");
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
+  const notificationTabRef = useRef(null);
 
   const loadProgression = useCallback(async () => {
     const generation = progressionGenerationRef.current + 1;
@@ -522,6 +496,13 @@ function StudentDashboardPage() {
     if (notification?.route) navigate(notification.route);
   };
 
+  const revealNotifications = () => {
+    revealDashboardNotifications({
+      selectNotifications: () => setActiveTab("notifications"),
+      getDestination: () => notificationTabRef.current,
+    });
+  };
+
   /* ── Derived values ── */
   const progressData = progressionState.progress;
   const classroom = progressionState.classroom;
@@ -626,14 +607,14 @@ function StudentDashboardPage() {
       <Sidebar />
 
       <main className={styles.main}>
-        {/* ── HEADER ── */}
-        <header className={styles.header}>
+        <div className={styles.content}>
+          <header className={styles.header}>
           <div className={styles.headerLeft}>
             <div className={styles.avatar}>{initials(displayName)}</div>
             <div className={styles.headerInfo}>
-              <div className={styles.headerName}>
+              <h1 className={styles.headerName}>
                 Welcome back, {user?.firstName ?? user?.username ?? "Student"}
-              </div>
+              </h1>
               <div className={styles.headerClass}>
                 {["idle", "loading"].includes(progressionState.status)
                   ? "Loading class..."
@@ -643,15 +624,15 @@ function StudentDashboardPage() {
                       ? "Not enrolled in a class"
                       : "Class information unavailable"}
               </div>
-              <XpBar current={xpCurrent} max={xpNext} />
             </div>
           </div>
 
           <div className={styles.headerRight}>
             <button
               className={styles.bellBtn}
-              onClick={() => setActiveTab("notifications")}
-              aria-label="Notifications"
+              onClick={revealNotifications}
+              aria-label={totalUnread > 0 ? `Notifications, ${totalUnread} unread updates` : "Notifications"}
+              aria-controls="dashboard-updates"
             >
               <svg
                 width="16"
@@ -670,16 +651,16 @@ function StudentDashboardPage() {
               {totalUnread > 0 && <span className={styles.bellBadge} />}
             </button>
           </div>
-        </header>
+          </header>
 
-        <section
+          <section
           className={`${styles.nextStepPanel} ${styles[`nextStep_${nextStep.kind}`] ?? ""}`}
           aria-labelledby="dashboard-next-step-title"
           aria-live="polite"
           aria-busy={nextStep.kind === "loading"}
         >
           <div className={styles.nextStepCopy}>
-            <div className={styles.nextStepEyebrow}>{nextStep.eyebrow}</div>
+            <div className={styles.nextStepLabel}>{nextStep.eyebrow}</div>
             <h2 id="dashboard-next-step-title">{nextStep.title}</h2>
             <p>{nextStep.description}</p>
           </div>
@@ -713,91 +694,27 @@ function StudentDashboardPage() {
               </button>
             )}
           </div>
-        </section>
+          </section>
 
-        <section className={styles.preferenceSection} aria-label="Gamification preferences">
-          <div className={styles.personalizationGrid} aria-live="polite">
-            <PersonalizedFocusCard {...primaryFocusCard} />
-            <PersonalizedFocusCard {...secondaryFocusCard} />
-          </div>
-
-          <div className={styles.preferencePanel}>
-            <div className={styles.preferenceIntro}>
-              <strong>Your Learning Game Preferences</strong>
-              <span>Choose what motivates you and what you enjoy. Saved choices change the cards above.</span>
+          <dl className={styles.summaryBar} aria-label="Learning summary">
+            <div className={styles.summaryItem}>
+              <dt>Class rank</dt>
+              <dd>{myRankDisplay ? `#${myRankDisplay}` : "—"}</dd>
+              <span>{classSize ? `of ${classSize} students` : "Not ranked yet"}</span>
             </div>
-            <label>
-              Motivation
-              <select
-                value={preferenceForm.gamificationPreference}
-                onChange={(event) => {
-                  setPreferenceStatus("");
-                  setPreferenceForm((current) => ({
-                    ...current,
-                    gamificationPreference: event.target.value,
-                  }));
-                }}
-              >
-                <option value="progress">Progress</option>
-                <option value="competition">Competition</option>
-                <option value="rewards">Achievement / rewards</option>
-                <option value="story">Story / exploration</option>
-              </select>
-            </label>
-            <label>
-              Game interest
-              <select
-                value={preferenceForm.learningGameInterest}
-                onChange={(event) => {
-                  setPreferenceStatus("");
-                  setPreferenceForm((current) => ({
-                    ...current,
-                    learningGameInterest: event.target.value,
-                  }));
-                }}
-              >
-                <option value="challenges">Challenges</option>
-                <option value="exploration">Exploration</option>
-                <option value="competition">Competition</option>
-                <option value="rewards">Rewards</option>
-              </select>
-            </label>
-            <div className={styles.preferenceAction}>
-              <button
-                type="button"
-                onClick={savePreferences}
-                disabled={isSavingPreferences}
-              >
-                {isSavingPreferences ? "Saving..." : "Save preferences"}
-              </button>
-              {preferenceStatus && <small role="status">{preferenceStatus}</small>}
+            <div className={styles.summaryItem}>
+              <dt>Time played</dt>
+              <dd>{totalTimePlayed}</dd>
+              <span>Across game activities</span>
             </div>
-          </div>
-        </section>
+            <div className={styles.summaryItem}>
+              <dt>XP earned</dt>
+              <dd>{xpCurrent.toLocaleString()}</dd>
+              <span>{xpNext > 0 ? `${xpNext.toLocaleString()} XP milestone` : "Current total"}</span>
+            </div>
+          </dl>
 
-        {/* ── STAT CARDS ROW ── */}
-        <div className={styles.statRow}>
-          <DashboardGameProgressStat progressData={progressData} />
-          <StatCard
-            label="Current level"
-            value={currentLevelLabel}
-            sub={currentLessonLabel}
-          />
-          <StatCard
-            label="Class rank"
-            value={myRankDisplay ? `#${myRankDisplay}` : "—"}
-            sub={classSize ? `of ${classSize} students` : ""}
-            accent="#26547c"
-          />
-          <StatCard
-            label="Total time played"
-            value={totalTimePlayed}
-            sub="across game levels"
-          />
-        </div>
-
-        {/* ── MAIN GRID ── */}
-        <div className={styles.mainGrid}>
+          <div className={styles.mainGrid}>
           {/* Left: Lesson progress + common mistakes */}
           <DashboardGameProgressPanel progressData={progressData} />
 
@@ -873,10 +790,9 @@ function StudentDashboardPage() {
               </div>
             )}
           </div>
-        </div>
+          </div>
 
-        {/* ── BOTTOM ROW ── */}
-        <div className={styles.bottomRow}>
+          <div className={styles.bottomRow}>
           {/* My Grades card */}
           <div className={styles.card}>
             <div className={styles.sectionHead}>
@@ -921,11 +837,19 @@ function StudentDashboardPage() {
           </div>
 
           {/* Announcements + Notifications */}
-          <div className={styles.card}>
-            <div className={styles.notifTabs}>
+          <div className={styles.card} id="dashboard-updates">
+            <div
+              className={styles.notifTabs}
+              role="tablist"
+              aria-label="Class updates"
+            >
               <button
+                type="button"
                 className={`${styles.notifTab} ${activeTab === "announcements" ? styles.notifTabActive : ""}`}
                 onClick={() => setActiveTab("announcements")}
+                role="tab"
+                aria-selected={activeTab === "announcements"}
+                aria-controls="dashboard-updates-panel"
               >
                 Announcements
                 {unreadAnnCount > 0 && (
@@ -933,8 +857,13 @@ function StudentDashboardPage() {
                 )}
               </button>
               <button
+                type="button"
+                ref={notificationTabRef}
                 className={`${styles.notifTab} ${activeTab === "notifications" ? styles.notifTabActive : ""}`}
                 onClick={() => setActiveTab("notifications")}
+                role="tab"
+                aria-selected={activeTab === "notifications"}
+                aria-controls="dashboard-updates-panel"
               >
                 Notifications
                 {unreadNotifCount > 0 && (
@@ -943,7 +872,12 @@ function StudentDashboardPage() {
               </button>
             </div>
 
-            <div className={styles.notifList}>
+            <div
+              className={styles.notifList}
+              id="dashboard-updates-panel"
+              role="tabpanel"
+              aria-live="polite"
+            >
               {activeTab === "announcements" ? (
                 isLoading ? (
                   <div className={styles.loadingText}>Loading...</div>
@@ -1020,6 +954,98 @@ function StudentDashboardPage() {
               <p className={styles.notifError}>{notificationActionError}</p>
             )}
           </div>
+        </div>
+
+          <section
+            className={styles.preferenceSection}
+            aria-labelledby="dashboard-personalization-title"
+          >
+            <div className={styles.preferenceHeader}>
+              <div>
+                <h2 id="dashboard-personalization-title">
+                  Personalized dashboard
+                </h2>
+                <p>
+                  Keep the learning signals that motivate you within easy reach.
+                </p>
+              </div>
+              <button
+                type="button"
+                className={styles.preferenceToggle}
+                aria-expanded={preferencesExpanded}
+                aria-controls="dashboard-preference-editor"
+                onClick={() => setPreferencesExpanded((current) => !current)}
+              >
+                {preferencesExpanded ? "Hide preferences" : "Edit preferences"}
+              </button>
+            </div>
+
+            <div className={styles.personalizationGrid} aria-live="polite">
+              <PersonalizedFocusCard {...primaryFocusCard} />
+              <PersonalizedFocusCard {...secondaryFocusCard} />
+            </div>
+
+            <div
+              id="dashboard-preference-editor"
+              className={styles.preferencePanel}
+              hidden={!preferencesExpanded}
+            >
+              <div className={styles.preferenceIntro}>
+                <strong>Your learning game preferences</strong>
+                <span>
+                  Saved choices update the personalized summaries above.
+                </span>
+              </div>
+              <label>
+                Motivation
+                <select
+                  value={preferenceForm.gamificationPreference}
+                  onChange={(event) => {
+                    setPreferenceStatus("");
+                    setPreferenceForm((current) => ({
+                      ...current,
+                      gamificationPreference: event.target.value,
+                    }));
+                  }}
+                >
+                  <option value="progress">Progress</option>
+                  <option value="competition">Competition</option>
+                  <option value="rewards">Achievement / rewards</option>
+                  <option value="story">Story / exploration</option>
+                </select>
+              </label>
+              <label>
+                Game interest
+                <select
+                  value={preferenceForm.learningGameInterest}
+                  onChange={(event) => {
+                    setPreferenceStatus("");
+                    setPreferenceForm((current) => ({
+                      ...current,
+                      learningGameInterest: event.target.value,
+                    }));
+                  }}
+                >
+                  <option value="challenges">Challenges</option>
+                  <option value="exploration">Exploration</option>
+                  <option value="competition">Competition</option>
+                  <option value="rewards">Rewards</option>
+                </select>
+              </label>
+              <div className={styles.preferenceAction}>
+                <button
+                  type="button"
+                  onClick={savePreferences}
+                  disabled={isSavingPreferences}
+                >
+                  {isSavingPreferences ? "Saving..." : "Save preferences"}
+                </button>
+                {preferenceStatus && (
+                  <small role="status">{preferenceStatus}</small>
+                )}
+              </div>
+            </div>
+          </section>
         </div>
       </main>
 

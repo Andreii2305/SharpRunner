@@ -225,7 +225,13 @@ test("reports missing and zero-applicable progress without implying completion",
       completedLevels: 0,
       totalLevels: 0,
     },
-    lessons: [],
+    lessons: [{
+      lessonKey: "tutorial",
+      totalLevels: 0,
+      completedLevels: 0,
+      progressPercent: null,
+      lessonCompleted: true,
+    }],
   };
   const zeroOverall = createDashboardProgressDisplay(zeroProgress);
   const zeroRegion = createDashboardRegionProgressDisplay(zeroProgress, "tutorial");

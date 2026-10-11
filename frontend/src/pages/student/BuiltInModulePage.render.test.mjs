@@ -50,6 +50,7 @@ const vite = await createServer({
   }],
 });
 const { BuiltInModuleContentView } = await vite.ssrLoadModule("/src/pages/student/BuiltInModulePage.jsx");
+const { createModuleContinuationModel } = await vite.ssrLoadModule("/src/pages/student/builtInModuleContinuation.js");
 
 test.after(async () => { await vite.close(); });
 
@@ -268,6 +269,7 @@ test("authorized DTO renders all block types as text with stable IDs and safe li
   assert.equal(globalThis.__builtInModuleCodeExecuted, undefined);
   assert.doesNotMatch(html, /dangerouslySetInnerHTML/);
   assert.match(html, /id="module-section-section-stable"/);
+  assert.match(html, /<h2 tabindex="-1">All block types<\/h2>/);
   assert.match(html, /data-practice-id="practice-stable"/);
   assert.match(html, /data-check-id="check-stable"/);
   assert.match(html, /name="check-stable"/);
@@ -326,14 +328,70 @@ test("live module mode does not fall back to a local game action without progres
   assert.doesNotMatch(html, /data-game-route/);
 });
 
-test("application routes require active class membership and navigation propagates classroom identity", async () => {
+test("loaded module shows a retryable continuation error when progression fails", () => {
+  const content = {
+    lesson: {
+      lessonKey: "arrays", title: "Arrays", eyebrow: "Arrays", description: "Learn arrays",
+      objectives: [], sections: [{ id: "one", title: "One", blocks: [] }], references: [],
+      game: { title: "Barangay", route: "/Map" },
+    },
+  };
+  const html = renderState(
+    { status: "ready", requestKey: "ready", content, error: null },
+    { progressionRequired: true, progressionStatus: "error", onRetryProgression() {} },
+  );
+
+  assert.match(html, /Next step unavailable/);
+  assert.match(html, /Retry next step/);
+  assert.doesNotMatch(html, /Start Adventure|data-game-route/);
+});
+
+test("loaded module distinguishes progression loading from missing progression", () => {
+  const content = {
+    lesson: {
+      lessonKey: "arrays", title: "Arrays", eyebrow: "Arrays", description: "Learn arrays",
+      objectives: [], sections: [{ id: "one", title: "One", blocks: [] }], references: [],
+      game: { title: "Barangay", route: "/Map" },
+    },
+  };
+  const loading = renderState(
+    { status: "ready", requestKey: "ready", content, error: null },
+    { progressionRequired: true, progressionStatus: "loading", onRetryProgression() {} },
+  );
+  assert.match(loading, /Checking your next step/);
+
+  const missing = renderState(
+    { status: "ready", requestKey: "ready", content, error: null },
+    { progressionRequired: true, progressionStatus: "error", onRetryProgression() {} },
+  );
+  assert.match(missing, /Next step unavailable/);
+});
+
+test("module continuation requires the backend field appropriate to a game action", () => {
+  const gameHref = "/Map?classroomId=7";
+  assert.equal(createModuleContinuationModel({
+    lessonProgression: { lessonKey: "arrays", nextAction: "PLAY_GAME", moduleUnlocked: true },
+    classroomId: 7,
+    gameHref,
+  }), null);
+
+  const model = createModuleContinuationModel({
+    lessonProgression: { lessonKey: "arrays", nextAction: "PLAY_GAME", moduleUnlocked: true, gameUnlocked: true },
+    classroomId: 7,
+    gameHref,
+  });
+  assert.equal(model.action.label, "Play Level");
+  assert.equal(model.action.href, gameHref);
+  assert.equal(model.action.disabled, false);
+});
+
+test("application routes require active class membership", async () => {
   const appSource = await readFile(new URL("../../App.jsx", import.meta.url), "utf8");
   assert.match(appSource, /path="\/lesson"[\s\S]{0,180}<ProtectedRoute requireClassMembership>/);
   assert.match(appSource, /path="\/lesson\/built-in\/:moduleId"[\s\S]{0,180}<ProtectedRoute requireClassMembership>/);
 
-  const sectionSource = await readFile(new URL("../../Components/LessonSection/LessonSection.jsx", import.meta.url), "utf8");
-  assert.match(sectionSource, /progressResult\.value\.data\?\.classroomId/);
-  assert.match(sectionSource, /withClassroomIdQuery\(lesson\.route, classroomId\)/);
+  const moduleSource = await readFile(new URL("./BuiltInModulePage.jsx", import.meta.url), "utf8");
+  assert.match(moduleSource, /generation !== requestGeneration\.current\) return;[\s\S]{0,180}setContentClassroomId\(classroomId\)/);
 });
 
 test("production module page no longer imports the synchronous rich registry", async () => {

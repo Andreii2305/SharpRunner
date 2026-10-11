@@ -186,6 +186,27 @@ test("game-complete required-POST-pending lesson preserves isCompleted but is no
   assertNoProgressionLeaks(payload.lessons);
 });
 
+test("canonical progression retains authoritative access for lessons with no applicable game rows", () => {
+  const rows = progressRows();
+  const states = progressionMap(rows);
+  const arraysState = states.get("arrays");
+  states.set("arrays", {
+    ...arraysState,
+    moduleUnlocked: true,
+    preLatestSubmittedAttemptId: 401,
+  });
+  const activeRows = playableRows(rows).filter((row) => !row.levelKey.startsWith("arrays-"));
+  const payload = buildProgressSummary(activeRows, { lessonProgressionByKey: states });
+  const arrays = payload.lessons.find((lesson) => lesson.lessonKey === "arrays");
+
+  assert.ok(arrays);
+  assert.equal(arrays.totalLevels, 0);
+  assert.equal(arrays.progressPercent, null);
+  assert.equal(arrays.moduleUnlocked, true);
+  assert.equal(arrays.preLatestSubmittedAttemptId, 401);
+  assert.equal(payload.summary.totalLessons, 4);
+});
+
 test("canonical lesson overlays whitelist public fields and exclude injected assessment internals", () => {
   const rows = progressRows();
   const states = progressionMap(rows);

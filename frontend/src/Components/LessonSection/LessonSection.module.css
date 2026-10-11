@@ -53,6 +53,7 @@
 }
 
 .topTitle {
+  margin: 0;
   font-size: 20px;
   font-weight: 700;
   color: #1e3a5f;
@@ -62,6 +63,7 @@
 }
 
 .topSub {
+  margin: 0;
   font-size: 14px;
   color: #64748b;
 }
@@ -94,9 +96,13 @@
   opacity: 0.78;
 }
 
-.currentActions { display: flex; gap: 9px; align-items: center; }
-.btnGame { display:flex;align-items:center;gap:7px;background:#fff;color:#26547c;border:1px solid #9fb4c6;border-radius:10px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap; }
-.btnGame:hover { background:#eef4f8; }
+.btnRetry { min-height: 42px; padding: 9px 16px; border: 1px solid #9fb4c6; border-radius: 9px; background: #fff; color: #26547c; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.btnRetry:hover { background: #eef4f8; }
+.btnRetry:focus-visible, .btnContinue:focus-visible { outline: 3px solid #80b8e5; outline-offset: 2px; }
+.blockedAction { max-width: 260px; color: #762d2d; font-size: 14px; font-weight: 700; text-align: right; }
+.contentStatus { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 16px; border: 1px solid #d8e2eb; border-radius: 10px; background: #fff; color: #52677a; font-size: 14px; }
+.contentStatus button { min-height: 40px; padding: 8px 12px; border: 1px solid #9fb4c6; border-radius: 8px; background: #fff; color: #26547c; font: inherit; font-weight: 700; cursor: pointer; }
+.contentStatus button:focus-visible { outline: 3px solid #80b8e5; outline-offset: 2px; }
 
 .openModuleBtn {
   min-height: 42px;
@@ -289,6 +295,7 @@
 }
 
 .iconWrapActive  { background: #eef4fb; }
+.iconWrapAvailable { background: #eef4fb; }
 .iconWrapDone    { background: #E1F5EE; }
 .iconWrapLocked  { background: #f1f5f9; }
 
@@ -329,6 +336,7 @@
 }
 
 .badgeActive  { background: #eef4fb; color: #26547c; }
+.badgeAvailable { background: #edf3f7; color: #365f83; }
 .badgeDone    { background: #E1F5EE; color: #0F6E56; }
 .badgeLocked  { background: #f1f5f9; color: #94a3b8; }
 
@@ -391,6 +399,7 @@
 }
 
 .pctActive  { color: #26547c; }
+.pctAvailable { color: #365f83; }
 .pctDone    { color: #1D9E75; }
 .pctLocked  { color: #94a3b8; }
 
@@ -436,7 +445,7 @@
 
 @media (max-width: 768px) {
   .pageBody {
-    padding: 14px 16px;
+    padding: 14px 16px calc(76px + env(safe-area-inset-bottom));
   }
 
   .topBar {
@@ -463,8 +472,9 @@
 }
 
 @media (max-width: 640px) {
-  .currentActions { width:100%; }
-  .currentActions button { flex:1;justify-content:center;padding-left:8px;padding-right:8px; }
+  .topBar > button { width: 100%; justify-content: center; }
+  .blockedAction { max-width: none; width: 100%; text-align: left; }
+  .contentStatus { align-items: stretch; flex-direction: column; }
   .classLessonCard { flex-wrap:wrap;padding:18px;align-items:flex-start; }
   .classLessonCard .cardBody { min-width:calc(100% - 76px); }
 }

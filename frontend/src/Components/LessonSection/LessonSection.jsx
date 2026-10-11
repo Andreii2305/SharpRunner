@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import axios from "axios";
 import styles from "./LessonSection.module.css";
 import Sidebar from "../SideBar/Sidebar.jsx";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import LockOutlineIcon from "@mui/icons-material/LockOutline";
 import CheckIcon from "@mui/icons-material/Check";
 import { useNavigate } from "react-router-dom";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import { FiArrowRight, FiPaperclip } from "react-icons/fi";
 import { withClassroomIdQuery } from "../../pages/student/builtInModuleContentState.js";
+import { getProgress } from "../../services/studentAssessmentService.js";
 import {
-  createLessonAssessmentAccessViewModel,
-  getLessonModuleAccess,
-} from "../../utils/lessonProgressionNavigation.js";
+  buildLessonCards,
+  createLessonNextStepViewModel,
+  initialLessonProgressionState,
+  lessonProgressionReducer,
+} from "./lessonSectionState.js";
 
 const DEFAULT_LESSON_META = [
   {
@@ -65,6 +67,13 @@ const STATUS_CONFIG = {
     progressColor: "#26547c",
     pctClass: "pctActive",
   },
+  available: {
+    badgeClass: "badgeAvailable",
+    badgeLabel: "Available",
+    iconWrapClass: "iconWrapAvailable",
+    progressColor: "#557a98",
+    pctClass: "pctAvailable",
+  },
   completed: {
     badgeClass: "badgeDone",
     badgeLabel: "Completed",
@@ -79,16 +88,14 @@ const STATUS_CONFIG = {
     progressColor: "#cbd5e1",
     pctClass: "pctLocked",
   },
+  blocked: {
+    badgeClass: "badgeLocked",
+    badgeLabel: "Blocked",
+    iconWrapClass: "iconWrapLocked",
+    progressColor: "#cbd5e1",
+    pctClass: "pctLocked",
+  },
 };
-
-function clampProgress(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) {
-    return 0;
-  }
-
-  return Math.max(0, Math.min(100, Math.round(parsed)));
-}
 
 function titleFromKey(lessonKey) {
   return String(lessonKey ?? "")
@@ -144,79 +151,12 @@ function buildOrderedLessonMeta(seedLessons = []) {
   return orderedKeys.map((key) => mergedMetaByKey.get(key)).filter(Boolean);
 }
 
-function buildLessonsFromData({ lessonMeta = [], progressLessons = [], classroomId = null }) {
-  const progressByKey = new Map(
-    progressLessons.map((lesson) => [lesson.lessonKey, lesson])
-  );
-
-  const orderedKeys = lessonMeta.map((meta) => meta.lessonKey);
-  for (const row of progressLessons) {
-    if (!orderedKeys.includes(row.lessonKey)) {
-      orderedKeys.push(row.lessonKey);
-    }
-  }
-
-  const metaByKey = new Map(lessonMeta.map((meta) => [meta.lessonKey, meta]));
-
-  const baseLessons = orderedKeys.map((lessonKey) => {
-    const meta = metaByKey.get(lessonKey);
-    const progressRow = progressByKey.get(lessonKey);
-    const title =
-      progressRow?.lessonTitle ?? meta?.fallbackTitle ?? titleFromKey(lessonKey);
-    const moduleAccess = getLessonModuleAccess(progressRow);
-
-    return {
-      id: lessonKey,
-      lessonKey,
-      title,
-      region: meta?.region ?? title,
-      description: meta?.description ?? `Complete all levels in ${title}.`,
-      progress: clampProgress(progressRow?.progressPercent),
-      status: "locked",
-      route: meta?.route ?? "/Map",
-      ...moduleAccess,
-      assessmentModel: createLessonAssessmentAccessViewModel({
-        lesson: progressRow,
-        classroomId,
-      }),
-    };
-  });
-
-  const resolvedLessons = [];
-  let hasActiveLesson = false;
-
-  for (let index = 0; index < baseLessons.length; index += 1) {
-    const lesson = baseLessons[index];
-    const previousLessonCompleted =
-      index === 0 ? true : resolvedLessons[index - 1].status === "completed";
-
-    let status = "locked";
-
-    if (previousLessonCompleted) {
-      if (lesson.progress >= 100) {
-        status = "completed";
-      } else if (!hasActiveLesson) {
-        status = "active";
-        hasActiveLesson = true;
-      }
-    }
-
-    resolvedLessons.push({
-      ...lesson,
-      status,
-      route: lesson.route,
-    });
-  }
-
-  return resolvedLessons;
-}
-
 function LessonIcon({ status }) {
   if (status === "completed") {
     return <CheckIcon sx={{ fontSize: 26, color: "#0F6E56" }} />;
   }
 
-  if (status === "locked") {
+  if (status === "locked" || status === "blocked") {
     return <LockOutlineIcon sx={{ fontSize: 26, color: "#8494a7" }} />;
   }
 
@@ -243,22 +183,26 @@ function ActionBtn({ disabled = false, onClick }) {
     disabled={disabled}
     onClick={disabled ? undefined : onClick}
   >
-    {disabled ? "Module Locked" : "Open Module"} {!disabled && <FiArrowRight />}
+    {disabled ? "Module unavailable" : "Open Module"} {!disabled && <FiArrowRight />}
   </button>;
 }
 
-export function CurrentLessonActions({ activeLesson, onContinue, onContinueGame }) {
-  const moduleLocked = activeLesson?.canOpenModule === false;
-
-  return <div className={styles.currentActions}>
-    <button
+export function LessonNextStep({ model, onNavigate, onRetry }) {
+  const liveRole = model.kind === "error" ? "alert" : model.kind === "loading" ? "status" : undefined;
+  return <section className={styles.topBar} data-state={model.kind} role={liveRole} aria-live={liveRole ? "polite" : undefined}>
+    <div className={styles.topLeft}>
+      <div className={styles.topLabel}>Next step</div>
+      <h1 className={styles.topTitle}>{model.title}</h1>
+      <p className={styles.topSub}>{model.description}</p>
+    </div>
+    {model.action && !model.action.disabled && <button
       type="button"
       className={styles.btnContinue}
-      disabled={moduleLocked}
-      onClick={moduleLocked ? undefined : () => onContinue(activeLesson)}
-    ><FiArrowRight /> Continue Learning</button>
-    <button type="button" className={styles.btnGame} onClick={onContinueGame}><PlayArrowIcon sx={{ fontSize: 16 }} /> Continue Game</button>
-  </div>;
+      onClick={() => onNavigate(model.action.href)}
+    >{model.action.label}<FiArrowRight /></button>}
+    {model.action?.disabled && <div className={styles.blockedAction}>{model.action.label}</div>}
+    {model.canRetry && <button type="button" className={styles.btnRetry} onClick={onRetry}>Retry</button>}
+  </section>;
 }
 
 export function LessonAssessmentStrip({ lessonTitle, model }) {
@@ -290,7 +234,7 @@ export function LessonAssessmentStrip({ lessonTitle, model }) {
 
 export function LessonCard({ lesson, onPlay }) {
   const cfg = STATUS_CONFIG[lesson.status];
-  const isLocked = lesson.status === "locked";
+  const isLocked = lesson.status === "locked" || lesson.status === "blocked";
 
   return (
     <article
@@ -307,7 +251,7 @@ export function LessonCard({ lesson, onPlay }) {
         <div className={styles.cardTop}>
           <h3 className={styles.cardTitle}>{lesson.title}</h3>
           <span className={`${styles.cardBadge} ${styles[cfg.badgeClass]}`}>
-            {cfg.badgeLabel}
+            {lesson.statusLabel ?? cfg.badgeLabel}
           </span>
         </div>
         <p className={styles.cardRegion}>{lesson.region}</p>
@@ -317,12 +261,12 @@ export function LessonCard({ lesson, onPlay }) {
       <p className={styles.cardDesc}>{lesson.description}</p>
       <div className={styles.progressBlock}>
         <div className={styles.progressMeta}>
-          <span className={styles.progressLabel}>Progress</span>
+          <span className={styles.progressLabel}>Game progress</span>
           <span className={`${styles.progressPct} ${styles[cfg.pctClass]}`}>
-            {lesson.progress}%
+            {lesson.progress == null ? "No applicable game activities" : `${lesson.progress}%`}
           </span>
         </div>
-        <div className={styles.progressRow}>
+        {lesson.progress != null && <div className={styles.progressRow}>
           <div
             className={styles.progressTrack}
             role="progressbar"
@@ -339,12 +283,12 @@ export function LessonCard({ lesson, onPlay }) {
               }}
             />
           </div>
-        </div>
+        </div>}
       </div>
       <LessonAssessmentStrip lessonTitle={lesson.title} model={lesson.assessmentModel} />
 
       <footer className={styles.builtInCardFooter}>
-        {lesson.unlockHint && <p className={styles.unlockHint}>{lesson.unlockHint}</p>}
+        {(lesson.availabilityMessage || lesson.unlockHint) && <p className={styles.unlockHint}>{lesson.availabilityMessage || lesson.unlockHint}</p>}
         <ActionBtn disabled={!lesson.canOpenModule} onClick={() => onPlay(lesson)} />
       </footer>
     </article>
@@ -381,71 +325,112 @@ function ClassroomModuleGroup({ module, lessons, navigate }) {
 
 function LessonSection() {
   const navigate = useNavigate();
-  const [progressLessons, setProgressLessons] = useState([]);
-  const [classroomId, setClassroomId] = useState(null);
+  const [progressionState, dispatchProgression] = useReducer(
+    lessonProgressionReducer,
+    initialLessonProgressionState,
+  );
+  const progressionGenerationRef = useRef(0);
+  const progressionControllerRef = useRef(null);
+  const [progressionRetryGeneration, setProgressionRetryGeneration] = useState(0);
   const [lessonSeed, setLessonSeed] = useState([]);
   const [classroomLessons, setClassroomLessons] = useState([]);
+  const [contentStatus, setContentStatus] = useState("loading");
+  const [contentRetryGeneration, setContentRetryGeneration] = useState(0);
+  const contentGenerationRef = useRef(0);
 
   useEffect(() => {
-    let isMounted = true;
+    const generation = progressionGenerationRef.current + 1;
+    progressionGenerationRef.current = generation;
+    progressionControllerRef.current?.abort();
+    const controller = new AbortController();
+    progressionControllerRef.current = controller;
+    dispatchProgression({ type: "load-started", generation });
 
-    const fetchLessonSectionData = async () => {
-      const [progressResult, lessonResult] = await Promise.allSettled([
-        axios.get(buildApiUrl("/api/progress/me"), {
+    const loadProgression = async () => {
+      let classroomId = null;
+      try {
+        const classroomResponse = await axios.get(buildApiUrl("/api/classrooms/me"), {
           headers: getAuthHeaders(),
-        }),
-        axios.get(buildApiUrl("/api/lesson-content"), {
-          headers: getAuthHeaders(),
-        }),
-      ]);
-
-      if (!isMounted) {
-        return;
-      }
-
-      if (progressResult.status === "fulfilled") {
-        setProgressLessons(progressResult.value.data?.lessons ?? []);
-        const nextClassroomId = Number(progressResult.value.data?.classroomId);
-        setClassroomId(Number.isSafeInteger(nextClassroomId) && nextClassroomId > 0 ? nextClassroomId : null);
-      } else {
-        console.error("Failed to load lesson progress", progressResult.reason);
-        setProgressLessons([]);
-        setClassroomId(null);
-      }
-
-      if (lessonResult.status === "fulfilled") {
-        setLessonSeed(lessonResult.value.data?.lessons ?? []);
-        setClassroomLessons(lessonResult.value.data?.classroomLessons ?? []);
-      } else {
-        console.error("Failed to load lesson content", lessonResult.reason);
-        setLessonSeed([]);
-        setClassroomLessons([]);
+          signal: controller.signal,
+        });
+        if (generation !== progressionGenerationRef.current) return;
+        const classroom = classroomResponse.data?.primaryClassroom ?? null;
+        if (classroomResponse.data?.hasActiveMembership === false && !classroom) {
+          dispatchProgression({ type: "load-unenrolled", generation });
+          return;
+        }
+        classroomId = Number(classroom?.id);
+        if (!Number.isSafeInteger(classroomId) || classroomId <= 0) {
+          throw new Error("Your classroom could not be confirmed.");
+        }
+        const progress = await getProgress({ classroomId, signal: controller.signal });
+        if (generation !== progressionGenerationRef.current) return;
+        if (Number(progress?.classroomId) !== classroomId) {
+          throw new Error("Your progress did not match the current classroom.");
+        }
+        dispatchProgression({ type: "load-succeeded", generation, classroomId, progress });
+      } catch (error) {
+        if (controller.signal.aborted || generation !== progressionGenerationRef.current) return;
+        console.error("Failed to load lesson progress", error);
+        dispatchProgression({
+          type: "load-failed",
+          generation,
+          classroomId,
+          error: error?.message || "Learning progress could not be loaded.",
+        });
       }
     };
 
-    fetchLessonSectionData();
+    loadProgression();
+    return () => controller.abort();
+  }, [progressionRetryGeneration]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  useEffect(() => {
+    const generation = contentGenerationRef.current + 1;
+    contentGenerationRef.current = generation;
+    const controller = new AbortController();
+    setContentStatus("loading");
+    axios.get(buildApiUrl("/api/lesson-content"), {
+      headers: getAuthHeaders(),
+      signal: controller.signal,
+    }).then((response) => {
+      if (controller.signal.aborted || generation !== contentGenerationRef.current) return;
+      setLessonSeed(response.data?.lessons ?? []);
+      setClassroomLessons(response.data?.classroomLessons ?? []);
+      setContentStatus("ready");
+    }).catch((error) => {
+      if (controller.signal.aborted || generation !== contentGenerationRef.current) return;
+      console.error("Failed to load lesson content", error);
+      setContentStatus("error");
+    });
+    return () => controller.abort();
+  }, [contentRetryGeneration]);
 
   const lessons = useMemo(() => {
     const orderedMeta = buildOrderedLessonMeta(lessonSeed);
-    return buildLessonsFromData({
+    return buildLessonCards({
       lessonMeta: orderedMeta,
-      progressLessons,
-      classroomId,
+      progressLessons: progressionState.status === "ready"
+        ? progressionState.progress?.lessons ?? []
+        : [],
+      classroomId: progressionState.classroomId,
     });
-  }, [classroomId, lessonSeed, progressLessons]);
-
-  const activeLesson = lessons.find((lesson) => lesson.status === "active") ?? lessons[0];
+  }, [lessonSeed, progressionState]);
+  const nextStep = useMemo(
+    () => createLessonNextStepViewModel(progressionState),
+    [progressionState],
+  );
 
   const handlePlay = (lesson) => {
     if (lesson?.route) {
-      navigate(withClassroomIdQuery(lesson.route, classroomId));
+      navigate(withClassroomIdQuery(lesson.route, progressionState.classroomId));
     }
   };
+
+  const retryProgression = useCallback(
+    () => setProgressionRetryGeneration((generation) => generation + 1),
+    [],
+  );
 
   const completedCount = lessons.filter((lesson) => lesson.status === "completed").length;
   const teacherModules = classroomLessons.filter((lesson) => lesson.contentType === "module");
@@ -465,20 +450,9 @@ function LessonSection() {
       <Sidebar />
 
       <div className={styles.pageBody}>
-        <div className={styles.topBar}>
-          <div className={styles.topLeft}>
-            <div className={styles.topLabel}>Current lesson</div>
-            <div className={styles.topTitle}>{activeLesson.title}</div>
-            <div className={styles.topSub}>{activeLesson.region}</div>
-          </div>
-          <CurrentLessonActions
-            activeLesson={activeLesson}
-            onContinue={handlePlay}
-            onContinueGame={() => navigate("/Map")}
-          />
-        </div>
+        <LessonNextStep model={nextStep} onNavigate={navigate} onRetry={retryProgression} />
 
-        <div className={styles.sectionHead}>
+        {progressionState.status === "ready" && lessons.length > 0 && <><div className={styles.sectionHead}>
           <div className={styles.sectionTitle}>Built-in SharpRunner Lessons</div>
           <div className={styles.sectionCount}>
             {completedCount} / {lessons.length} completed
@@ -493,7 +467,10 @@ function LessonSection() {
               onPlay={handlePlay}
             />
           ))}
-        </div>
+        </div></>}
+
+        {contentStatus === "loading" && <div className={styles.contentStatus} role="status">Loading classroom content…</div>}
+        {contentStatus === "error" && <div className={styles.contentStatus} role="alert"><span>Classroom content could not be loaded.</span><button type="button" onClick={() => setContentRetryGeneration((generation) => generation + 1)}>Retry classroom content</button></div>}
 
         {moduleGroups.length > 0 && <><div className={styles.sectionHead}><div className={styles.sectionTitle}>Modules from your teacher</div><div className={styles.sectionCount}>{moduleGroups.length} module{moduleGroups.length === 1 ? "" : "s"}</div></div><div className={styles.moduleList}>{moduleGroups.map(({ module, lessons: moduleLessons }) => <ClassroomModuleGroup key={`module-${module.id}`} module={module} lessons={moduleLessons} navigate={navigate} />)}</div></>}
 

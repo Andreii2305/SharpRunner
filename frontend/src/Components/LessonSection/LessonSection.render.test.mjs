@@ -7,7 +7,7 @@ import { createServer } from "vite";
 import { getLessonModuleAccess } from "../../utils/lessonProgressionNavigation.js";
 
 const vite = await createServer({ server: { middlewareMode: true }, appType: "custom" });
-const { CurrentLessonActions, LessonAssessmentStrip, LessonCard } = await vite.ssrLoadModule(
+const { LessonNextStep, LessonAssessmentStrip, LessonCard } = await vite.ssrLoadModule(
   "/src/Components/LessonSection/LessonSection.jsx",
 );
 test.after(async () => vite.close());
@@ -102,7 +102,7 @@ test("only authoritative module locks disable the primary lesson action", () => 
     lesson: locked,
     onPlay() { throw new Error("locked navigation must not run"); },
   }));
-  assert.match(lockedHtml, /<button[^>]*disabled=""[^>]*>Module Locked/);
+  assert.match(lockedHtml, /<button[^>]*disabled=""[^>]*>Module unavailable/);
   assert.match(lockedHtml, /Complete the Pre-Test to unlock this module/);
 
   const historical = lessonCard({
@@ -120,35 +120,32 @@ test("only authoritative module locks disable the primary lesson action", () => 
   assert.doesNotMatch(historicalHtml, /disabled=""/);
 });
 
-test("current lesson action blocks explicit locks while preserving unlocked and historical access", () => {
-  const continuedLessons = [];
-  const buildActions = (activeLesson) => CurrentLessonActions({
-    activeLesson,
-    onContinue: (lesson) => continuedLessons.push(lesson.lessonKey),
-    onContinueGame() {},
-  });
+test("next step renders one authoritative action and a retry for failures", () => {
+  const destinations = [];
+  const ready = renderToStaticMarkup(React.createElement(LessonNextStep, {
+    model: {
+      kind: "ready",
+      title: "Arrays",
+      description: "Continue from the point your classroom progress allows.",
+      action: { label: "Take Pre-Test", href: "/classrooms/7/lessons/arrays/assessment/pre", disabled: false },
+      canRetry: false,
+    },
+    onNavigate: (href) => destinations.push(href),
+    onRetry() {},
+  }));
+  assert.match(ready, /Take Pre-Test/);
+  assert.doesNotMatch(ready, /Continue Game|Continue Learning/);
 
-  const lockedActions = buildActions({ lessonKey: "arrays", canOpenModule: false });
-  const [lockedContinue] = React.Children.toArray(lockedActions.props.children);
-  assert.equal(lockedContinue.props.disabled, true);
-  assert.equal(lockedContinue.props.onClick, undefined);
-  assert.match(renderToStaticMarkup(lockedActions), /<button[^>]*disabled=""[^>]*>.*Continue Learning/s);
-
-  for (const activeLesson of [
-    { lessonKey: "functions", canOpenModule: true },
-    { lessonKey: "functions-with-arrays" },
-  ]) {
-    const actions = buildActions(activeLesson);
-    const [continueButton] = React.Children.toArray(actions.props.children);
-    assert.equal(continueButton.props.disabled, false);
-    assert.equal(typeof continueButton.props.onClick, "function");
-    continueButton.props.onClick();
-  }
-
-  assert.deepEqual(continuedLessons, ["functions", "functions-with-arrays"]);
+  const error = renderToStaticMarkup(React.createElement(LessonNextStep, {
+    model: { kind: "error", title: "Learning progress unavailable", description: "Offline", action: null, canRetry: true },
+    onNavigate() {},
+    onRetry() {},
+  }));
+  assert.match(error, /role="alert"/);
+  assert.match(error, />Retry</);
 });
 
-test("disabled current lesson action is visually distinct", async () => {
+test("disabled next lesson action is visually distinct", async () => {
   const css = await readFile(new URL("./LessonSection.module.css", import.meta.url), "utf8");
   assert.match(css, /\.btnContinue:disabled\s*\{[^}]*cursor:\s*not-allowed[^}]*opacity:/s);
   assert.match(css, /\.btnContinue:hover:not\(:disabled\)/);
@@ -171,6 +168,31 @@ test("cards without assessments retain the same progress and action structure", 
   assert.match(html, /aria-valuenow="100"/);
   assert.match(html, />Open Module/);
   assert.doesNotMatch(html, /aria-label="Tutorial assessments"/);
+});
+
+test("cards with no applicable game activities do not imply zero-percent progress", () => {
+  const html = renderToStaticMarkup(React.createElement(LessonCard, {
+    lesson: lessonCard({ progress: null, assessmentModel: { rows: [] } }),
+    onPlay() {},
+  }));
+
+  assert.match(html, /No applicable game activities/);
+  assert.doesNotMatch(html, /role="progressbar"|>0%/);
+});
+
+test("authoritatively blocked cards render a blocked state without an enabled module action", () => {
+  const html = renderToStaticMarkup(React.createElement(LessonCard, {
+    lesson: lessonCard({
+      status: "blocked",
+      statusLabel: "Blocked",
+      canOpenModule: false,
+      availabilityMessage: "Complete the previous lesson to unlock this module.",
+    }),
+    onPlay() { throw new Error("blocked navigation must not run"); },
+  }));
+
+  assert.match(html, />Blocked</);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Module unavailable/);
 });
 
 test("assessment strip hides absent rows and has responsive focus styling", async () => {

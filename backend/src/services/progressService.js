@@ -267,13 +267,10 @@ const buildProgressSummary = (
       nextAction: nextState?.nextAction ?? LESSON_NEXT_ACTIONS.LESSON_COMPLETE,
       nextActionLessonKey: nextState?.lessonKey ?? null,
     });
-    payload.lessons = payload.lessons.map((lesson) => {
-      const state = lessonProgressionByKey.get(lesson.lessonKey);
-      if (!state) return lesson;
-      // isCompleted and progressPercent remain legacy game-only fields.
+    const withProgression = (lesson, state) => ({
+      ...lesson,
       // Copy only the public progression contract, never assessment records.
-      return {
-        ...lesson,
+      ...(state ? {
         prerequisiteLessonKey: state.prerequisiteLessonKey,
         curriculumPrerequisiteSatisfied: state.curriculumPrerequisiteSatisfied,
         preRequired: state.preRequired,
@@ -300,8 +297,29 @@ const buildProgressSummary = (
         assessmentCompleted: state.assessmentCompleted,
         lessonCompleted: state.lessonCompleted,
         nextAction: state.nextAction,
-      };
+      } : {}),
     });
+    payload.lessons = payload.lessons.map((lesson) => (
+      withProgression(lesson, lessonProgressionByKey.get(lesson.lessonKey))
+    ));
+    const projectedLessonKeys = new Set(payload.lessons.map(({ lessonKey }) => lessonKey));
+    for (const state of states) {
+      if (projectedLessonKeys.has(state.lessonKey)) continue;
+      payload.lessons.push(withProgression({
+        lessonKey: state.lessonKey,
+        lessonTitle: LESSON_TITLE_BY_KEY.get(state.lessonKey) ?? state.lessonKey,
+        progressPercent: null,
+        completedLevels: 0,
+        totalLevels: 0,
+        isCompleted: false,
+        levelsCleared: 0,
+        timeSpent: "-",
+      }, state));
+    }
+    payload.lessons.sort((a, b) => (
+      (LESSON_ORDER_BY_KEY.get(a.lessonKey) ?? Number.MAX_SAFE_INTEGER)
+      - (LESSON_ORDER_BY_KEY.get(b.lessonKey) ?? Number.MAX_SAFE_INTEGER)
+    ));
   }
 
   return payload;

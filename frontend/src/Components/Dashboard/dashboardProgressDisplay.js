@@ -119,6 +119,7 @@ export const createDashboardRegionProgressDisplay = (progress, lessonKey) => {
   if (!lesson) return unavailableRegion("No applicable game activities");
 
   const total = nonNegativeInteger(lesson.totalLevels);
+  if (total === 0) return unavailableRegion("No applicable game activities");
   const completed = nonNegativeInteger(
     lesson.completedLevels ?? lesson.levelsCleared,
   );
@@ -126,8 +127,6 @@ export const createDashboardRegionProgressDisplay = (progress, lessonKey) => {
   if (total == null || completed == null || progressPercent == null) {
     return unavailableRegion("Progress unavailable");
   }
-  if (total === 0) return unavailableRegion("No applicable game activities");
-
   return {
     countText: `${completed} / ${total}`,
     progressPercent,

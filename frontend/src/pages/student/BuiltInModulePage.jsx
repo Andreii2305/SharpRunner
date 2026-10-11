@@ -10,7 +10,7 @@ import {
   fetchPrimaryClassroomId,
 } from "../../services/builtInLessonContentService.js";
 import { getProgress } from "../../services/studentAssessmentService.js";
-import { createLessonProgressionViewModel, withExactClassroom } from "../../utils/lessonProgressionNavigation.js";
+import { withExactClassroom } from "../../utils/lessonProgressionNavigation.js";
 import {
   builtInModuleContentReducer,
   classifyBuiltInLessonContentError,
@@ -18,6 +18,7 @@ import {
   parsePositiveClassroomId,
   visibleBuiltInModuleContentState,
 } from "./builtInModuleContentState.js";
+import { createModuleContinuationModel } from "./builtInModuleContinuation.js";
 import styles from "./BuiltInModulePage.module.css";
 
 const keywordPattern = /\b(static|void|int|string|double|bool|class|using|namespace|return|if|else|for|foreach|in|new|true|false)\b/g;
@@ -99,11 +100,20 @@ const safeReferenceUrl = (value) => {
   }
 };
 
-function AuthorizedModuleContent({ lesson, onNavigateGame, progressionModel, progressionRequired }) {
+function AuthorizedModuleContent({
+  lesson,
+  onNavigateGame,
+  progressionModel,
+  progressionRequired,
+  progressionStatus,
+  onRetryProgression,
+}) {
   const [progress, setProgress] = useState(() => readModuleProgress(lesson.lessonKey));
   const initialSection = lesson.sections.findIndex(({ id }) => id === progress.lastSectionId);
   const [sectionIndex, setSectionIndex] = useState(initialSection >= 0 ? initialSection : 0);
   const [contentsOpen, setContentsOpen] = useState(false);
+  const sectionHeadingRef = useRef(null);
+  const focusSectionAfterRenderRef = useRef(false);
 
   useEffect(() => {
     const sectionId = lesson.sections[sectionIndex]?.id;
@@ -116,6 +126,12 @@ function AuthorizedModuleContent({ lesson, onNavigateGame, progressionModel, pro
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [lesson, sectionIndex]);
 
+  useEffect(() => {
+    if (!focusSectionAfterRenderRef.current || contentsOpen) return;
+    focusSectionAfterRenderRef.current = false;
+    sectionHeadingRef.current?.focus();
+  }, [contentsOpen, sectionIndex]);
+
   const checkIds = useMemo(() => lesson.sections.flatMap((section) => section.blocks.filter(({ type }) => type === "check").map(({ id }) => id)), [lesson]);
   const section = lesson.sections[sectionIndex];
   const percent = calculateModulePercent(lesson, progress);
@@ -124,7 +140,11 @@ function AuthorizedModuleContent({ lesson, onNavigateGame, progressionModel, pro
   const hasGameDestination = Boolean(game?.title && game?.route);
 
   const saveProgress = (next) => { setProgress(next); writeModuleProgress(lesson.lessonKey, next); };
-  const openSection = (index) => { setSectionIndex(index); setContentsOpen(false); };
+  const openSection = (index) => {
+    focusSectionAfterRenderRef.current = contentsOpen;
+    setSectionIndex(index);
+    setContentsOpen(false);
+  };
   const finishSection = () => {
     const completedSectionIds = [...new Set([...progress.completedSectionIds, section.id])];
     const isLast = sectionIndex === lesson.sections.length - 1;
@@ -148,7 +168,7 @@ function AuthorizedModuleContent({ lesson, onNavigateGame, progressionModel, pro
       })}</ol></nav>
       <article className={styles.lesson} id={`module-section-${section.id}`}>
         {sectionIndex === 0 && <div className={styles.intro}><p>{lesson.description}</p><h2>Learning objectives</h2><ul>{lesson.objectives.map((objective) => <li key={objective}>{objective}</li>)}</ul></div>}
-        <div className={styles.sectionKicker}>Section {sectionIndex + 1} of {lesson.sections.length}</div><h2>{section.title}</h2>
+        <div className={styles.sectionKicker}>Section {sectionIndex + 1} of {lesson.sections.length}</div><h2 ref={sectionHeadingRef} tabIndex={-1}>{section.title}</h2>
         <div className={styles.blocks}>{section.blocks.map((block, index) => <ContentBlock key={`${block.type}-${block.id ?? index}`} block={block} progress={progress} onCheckComplete={completeCheck} storageId={`${lesson.lessonKey}:${section.id}:${block.id ?? index}`} />)}</div>
         <div className={styles.sectionNav}>
           <button type="button" disabled={sectionIndex === 0} onClick={() => setSectionIndex(sectionIndex - 1)}><FiArrowLeft /> Previous</button>
@@ -158,7 +178,17 @@ function AuthorizedModuleContent({ lesson, onNavigateGame, progressionModel, pro
           {!allChecksDone && <p className={styles.completionNote}>Complete each quick check to mark the module complete. You may retry any check.</p>}
           {progressionModel
             ? <LessonProgressionPanel title={`${lesson.title} journey`} model={progressionModel} />
-            : !progressionRequired && hasGameDestination && <section className={styles.cta}><div><span>Ready to apply what you learned?</span><h2>Next: SharpRunner {game.title}</h2><p>Your learning progress is separate from game score and does not add a new gameplay lock.</p></div><button type="button" data-game-route={game.route} onClick={() => onNavigateGame(game.route)}><FiPlay /> Start Adventure</button></section>}
+            : progressionRequired
+              ? <section className={styles.continuationStatus} role={progressionStatus === "error" ? "alert" : "status"}>
+                  <div>
+                    <h2>{progressionStatus === "error" ? "Next step unavailable" : "Checking your next step"}</h2>
+                    <p>{progressionStatus === "error"
+                      ? "Your module is still available, but current progression could not be confirmed."
+                      : "Loading your classroom progression…"}</p>
+                  </div>
+                  {progressionStatus === "error" && <button type="button" onClick={onRetryProgression}>Retry next step</button>}
+                </section>
+              : hasGameDestination && <section className={styles.cta}><div><span>Ready to apply what you learned?</span><h2>Next: SharpRunner {game.title}</h2><p>Your learning progress is separate from game score and does not add a new gameplay lock.</p></div><button type="button" data-game-route={game.route} onClick={() => onNavigateGame(game.route)}><FiPlay /> Start Adventure</button></section>}
           <footer className={styles.references}><h2>References</h2><ol>{lesson.references.map((reference) => {
             const url = safeReferenceUrl(reference.url);
             return <li key={reference.title}>{url ? <a href={url} target="_blank" rel="noopener noreferrer">{reference.title} <FiExternalLink aria-hidden="true" /></a> : reference.title}</li>;
@@ -189,10 +219,26 @@ function ContentStatus({
   </main>;
 }
 
-export function BuiltInModuleContentView({ state, onRetry, onNavigateGame, progressionModel = null, progressionRequired = false }) {
+export function BuiltInModuleContentView({
+  state,
+  onRetry,
+  onNavigateGame,
+  progressionModel = null,
+  progressionRequired = false,
+  progressionStatus = progressionModel ? "ready" : "loading",
+  onRetryProgression = null,
+}) {
   if (state.status === "ready" && state.content?.lesson) {
     const lesson = state.content.lesson;
-    return <AuthorizedModuleContent key={lesson.lessonKey} lesson={lesson} onNavigateGame={onNavigateGame} progressionModel={progressionModel} progressionRequired={progressionRequired} />;
+    return <AuthorizedModuleContent
+      key={lesson.lessonKey}
+      lesson={lesson}
+      onNavigateGame={onNavigateGame}
+      progressionModel={progressionModel}
+      progressionRequired={progressionRequired}
+      progressionStatus={progressionStatus}
+      onRetryProgression={onRetryProgression}
+    />;
   }
 
   if (state.status === "error") {
@@ -215,6 +261,9 @@ function BuiltInModulePage() {
   const [state, dispatch] = useReducer(builtInModuleContentReducer, initialBuiltInModuleContentState);
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [progressionModel, setProgressionModel] = useState(null);
+  const [progressionStatus, setProgressionStatus] = useState("idle");
+  const [progressionRetryGeneration, setProgressionRetryGeneration] = useState(0);
+  const [contentClassroomId, setContentClassroomId] = useState(null);
   const requestGeneration = useRef(0);
   const hasExplicitClassroomId = searchParams.has("classroomId");
   const explicitClassroomId = searchParams.get("classroomId");
@@ -222,9 +271,13 @@ function BuiltInModulePage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const requestKey = `${requestContext}:${++requestGeneration.current}`;
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
+    const requestKey = `${requestContext}:${generation}`;
     dispatch({ type: "BEGIN_REQUEST", requestKey });
     setProgressionModel(null);
+    setProgressionStatus("idle");
+    setContentClassroomId(null);
 
     const loadContent = async () => {
       try {
@@ -243,26 +296,11 @@ function BuiltInModulePage() {
           lessonKey: moduleId,
           signal: controller.signal,
         });
+        if (controller.signal.aborted || generation !== requestGeneration.current) return;
         dispatch({ type: "REQUEST_SUCCEEDED", requestKey, content });
-        try {
-          const progression = await getProgress({ classroomId, signal: controller.signal });
-          const lessonProgression = progression.lessons?.find((item) => item.lessonKey === moduleId);
-          const gameHref = withExactClassroom(
-            content.lesson?.game?.route ?? "/Map",
-            classroomId,
-          );
-          if (lessonProgression) {
-            const model = createLessonProgressionViewModel({ lesson: lessonProgression, classroomId, gameHref });
-            setProgressionModel(model.action.kind === "module"
-              ? { ...model, action: { kind: "game", label: "Play Level", href: gameHref, disabled: !lessonProgression.gameUnlocked } }
-              : model);
-          } else {
-            setProgressionModel(null);
-          }
-        } catch {
-          setProgressionModel(null);
-        }
+        setContentClassroomId(classroomId);
       } catch (error) {
+        if (controller.signal.aborted || generation !== requestGeneration.current) return;
         dispatch({
           type: "REQUEST_FAILED",
           requestKey,
@@ -275,14 +313,70 @@ function BuiltInModulePage() {
     return () => controller.abort();
   }, [explicitClassroomId, hasExplicitClassroomId, moduleId, requestContext, retryGeneration]);
 
-  const retry = useCallback(() => setRetryGeneration((generation) => generation + 1), []);
   const visibleState = visibleBuiltInModuleContentState(state, requestContext);
+
+  useEffect(() => {
+    if (visibleState.status !== "ready" || !contentClassroomId) return undefined;
+    const controller = new AbortController();
+    let active = true;
+    setProgressionStatus("loading");
+    setProgressionModel(null);
+
+    const loadProgression = async () => {
+      try {
+        const progression = await getProgress({
+          classroomId: contentClassroomId,
+          signal: controller.signal,
+        });
+        if (!active || Number(progression?.classroomId) !== contentClassroomId) {
+          if (active) setProgressionStatus("error");
+          return;
+        }
+        const lessonProgression = progression.lessons?.find((item) => item.lessonKey === moduleId);
+        if (!lessonProgression) {
+          setProgressionStatus("error");
+          return;
+        }
+        const gameHref = withExactClassroom(
+          visibleState.content.lesson?.game?.route ?? "/Map",
+          contentClassroomId,
+        );
+        const model = createModuleContinuationModel({
+          lessonProgression,
+          classroomId: contentClassroomId,
+          gameHref,
+        });
+        if (!model) {
+          setProgressionStatus("error");
+          return;
+        }
+        setProgressionModel(model);
+        setProgressionStatus("ready");
+      } catch {
+        if (active && !controller.signal.aborted) setProgressionStatus("error");
+      }
+    };
+
+    loadProgression();
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [contentClassroomId, moduleId, progressionRetryGeneration, visibleState.content, visibleState.status]);
+
+  const retry = useCallback(() => setRetryGeneration((generation) => generation + 1), []);
+  const retryProgression = useCallback(
+    () => setProgressionRetryGeneration((generation) => generation + 1),
+    [],
+  );
   return <div className={styles.shell}>
     <Sidebar />
     <BuiltInModuleContentView
       state={visibleState}
       progressionModel={progressionModel}
       progressionRequired
+      progressionStatus={progressionStatus}
+      onRetryProgression={retryProgression}
       onRetry={retry}
       onNavigateGame={(route) => navigate(route)}
     />

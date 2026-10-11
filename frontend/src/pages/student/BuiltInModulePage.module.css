@@ -6,3 +6,8 @@
 .expectedOutput{border-top:1px solid #2a4355;background:#0d1c27;color:#d9e8f2;padding:11px 18px}
 .expectedOutput strong{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:#91aabd}
 .expectedOutput pre{padding:5px 0 1px;color:#c4f1de}
+.lesson>h2:focus{outline:3px solid #80b8e5;outline-offset:4px}
+.continuationStatus{margin-top:30px;padding:18px 20px;border:1px solid #d7e1e9;border-radius:10px;background:#f8fafc;color:#334a5f;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.continuationStatus h2{margin:0 0 5px;font-size:18px;color:#214f75}.continuationStatus p{margin:0;font-size:14px;line-height:1.5;color:#5d7082}
+.continuationStatus button{flex:none;min-height:42px;padding:9px 14px;border:1px solid #26547c;border-radius:8px;background:#26547c;color:#fff;font:inherit;font-size:14px;font-weight:750;cursor:pointer}.continuationStatus button:focus-visible{outline:3px solid #80b8e5;outline-offset:2px}
+@media(max-width:600px){.continuationStatus{align-items:stretch;flex-direction:column}.continuationStatus button{width:100%;justify-content:center}}

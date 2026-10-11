@@ -85,9 +85,21 @@ test("reports loading, retryable failure, confirmed unenrollment, and confirmed 
   });
 
   const newStudentProgress = progression("TAKE_PRE", {}, { totalLevelsCleared: 0 });
+  newStudentProgress.lessons.unshift({
+    lessonKey: "tutorial",
+    totalLevels: 0,
+    progressPercent: null,
+    gameCompleted: true,
+    lessonCompleted: true,
+    nextAction: "LESSON_COMPLETE",
+  });
   const newStudent = createDashboardNextStepViewModel(readyState(newStudentProgress));
   assert.equal(newStudent.kind, "new");
   assert.equal(newStudent.action.label, "Take Pre-Test");
+
+  newStudentProgress.lessons[0].preCompleted = true;
+  const returningStudent = createDashboardNextStepViewModel(readyState(newStudentProgress));
+  assert.equal(returningStudent.kind, "ready");
 });
 
 test("reports blocked and completed progress without inventing a playable action", () => {

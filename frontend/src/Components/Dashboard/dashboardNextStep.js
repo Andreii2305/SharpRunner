@@ -91,6 +91,16 @@ const hasStartedLesson = (lesson) => [
   "lessonCompleted",
 ].some((field) => lesson?.[field] === true);
 
+const hasApplicableLessonActivity = (lesson) => {
+  if (lesson?.totalLevels !== 0) return hasStartedLesson(lesson);
+  return [
+    "preAttemptInProgress",
+    "preCompleted",
+    "postAttemptInProgress",
+    "postCompleted",
+  ].some((field) => lesson?.[field] === true);
+};
+
 const validatedReadyProgression = (state) => {
   const classroomId = positiveId(state.classroom?.id);
   if (!classroomId || positiveId(state.progress?.classroomId) !== classroomId) return null;
@@ -180,7 +190,7 @@ export const createDashboardNextStepViewModel = (state) => {
   const isUnstartedAction = ["TAKE_PRE", "PLAY_GAME"].includes(lesson.nextAction);
   const isNew = isUnstartedAction
     && Number(summary.totalLevelsCleared) === 0
-    && !state.progress.lessons.some(hasStartedLesson);
+    && !state.progress.lessons.some(hasApplicableLessonActivity);
   const lessonName = lesson.lessonTitle
     || (action.kind === "assessment" ? "Your next assessment" : "Your next lesson");
   const recoveryRequired = lesson.nextAction === "POST_RECOVERY_REQUIRED";

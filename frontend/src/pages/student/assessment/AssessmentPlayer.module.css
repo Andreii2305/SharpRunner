@@ -465,6 +465,8 @@
   .questionNavigator details[open] .questionNavigatorGrid { margin-top: 0.8rem; }
   .questionNavigatorGrid { grid-template-columns: repeat(auto-fit, minmax(2.6rem, 1fr)); }
   .questionNavigatorGrid button { width: 100%; min-height: 2.75rem; }
+  .navigatorLegend { gap: 0.5rem 0.75rem; flex-wrap: wrap; }
+  .navigatorLegend span { white-space: nowrap; }
   .summaryList { grid-template-columns: 1fr; }
   .awareness, .resultActions { align-items: stretch; flex-direction: column; }
   .runArea { align-items: stretch; flex-direction: column; }

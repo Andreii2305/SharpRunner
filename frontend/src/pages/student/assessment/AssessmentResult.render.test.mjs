@@ -97,7 +97,14 @@ test("valid PRE result uses honest starting-point and baseline wording", () => {
   assert.match(html, /Continue to module/);
   assert.match(html, /Back to Lesson Map/);
   assert.doesNotMatch(html, /failed|did not pass|Retake|XP|reward/i);
-  assert.match(html, /aria-label="Result summary"/);
+  assert.match(html, /aria-label="Score summary"/);
+  assert.match(html, /aria-label="Attempt details"/);
+});
+
+test("visible score and points share a semantic group while attempt details stay separate", () => {
+  const html = renderResult();
+  assert.match(html, /<dl[^>]*aria-label="Score summary"[^>]*>[\s\S]*<dt>Attempt score<\/dt>[\s\S]*<dd>70%<\/dd>[\s\S]*<dt>Points<\/dt>[\s\S]*<dd>7 of 10<\/dd>[\s\S]*<\/dl>/);
+  assert.match(html, /<dl[^>]*aria-label="Attempt details"[^>]*>[\s\S]*<dt>Attempt<\/dt>[\s\S]*<dd>2<\/dd>[\s\S]*<dt>Attempts used<\/dt>[\s\S]*<dd>2 of 3<\/dd>[\s\S]*<dt>Remaining attempts<\/dt>[\s\S]*<dd>1<\/dd>[\s\S]*<dt>Submitted<\/dt>/);
 });
 
 test("retroactive or unknown PRE uses neutral diagnostic wording and target-lesson POST continuation", () => {
@@ -117,7 +124,7 @@ test("retroactive or unknown PRE uses neutral diagnostic wording and target-less
       { nextAction: "TAKE_PRE", nextActionLessonKey: "functions" },
     ),
   });
-  assert.match(html, /Diagnostic score[^<]*45%/);
+  assert.match(html, /Diagnostic score[\s\S]*45%/);
   assert.match(html, /diagnostic result has been recorded/i);
   assert.match(html, /Continue to Post-Test/);
   assert.match(html, /classrooms\/47\/lessons\/arrays\/assessment\/post/);
@@ -181,6 +188,8 @@ test("hidden-score POST shows authoritative pass status but no numeric or compar
   assert.match(html, /passed/i);
   assert.doesNotMatch(html, /Attempt score|Official grade|Baseline score|Learning gain|points|%/i);
   assert.match(html, /Attempts used/);
+  assert.doesNotMatch(html, /aria-label="(?:Score summary|Score comparisons)"/);
+  assert.match(html, /aria-label="Attempt details"/);
 });
 
 test("authorized correct review shows identical selected and correct text only once", () => {
@@ -217,7 +226,7 @@ test("failed historical POST stays failed when another attempt completed the req
 
   assert.match(html, /This attempt did not pass/);
   assert.match(html, /completed on another attempt/);
-  assert.match(html, /Attempt score[^<]*40%/);
+  assert.match(html, /Attempt score[\s\S]*40%/);
   assert.doesNotMatch(html, /You passed this post-test|Latest attempt score/);
 });
 
@@ -247,10 +256,10 @@ test("POST result labels the viewed attempt and official-best separately and ren
       },
     }),
   });
-  assert.match(html, /Attempt score[^<]*70%/);
-  assert.match(html, /Official grade \(best\)[^<]*90%/);
-  assert.match(html, /Learning-gain comparison attempt[^<]*90%/);
-  assert.match(html, /Learning gain from PRE to first POST[^<]*50 percentage points/);
+  assert.match(html, /Attempt score[\s\S]*70%/);
+  assert.match(html, /Official grade \(best\)[\s\S]*90%/);
+  assert.match(html, /Learning-gain comparison attempt[\s\S]*90%/);
+  assert.match(html, /Learning gain from PRE to first POST[\s\S]*50 percentage points/);
 });
 
 test("POST retry, exhaustion, and passing-not-required actions use progression authority", () => {
@@ -293,6 +302,7 @@ test("answer review renders only returned policy fields and explanations as esca
   assert.match(html, /Incorrect/);
   assert.match(html, /Use &lt;brackets&gt;, never scripts\./);
   assert.doesNotMatch(html, /1001|correctChoiceId|selectedChoiceId/);
+  assert.ok(html.indexOf('aria-label="Assessment result actions"') < html.indexOf('id="answer-review-title"'));
 
   const restricted = renderResult({ envelope: envelope({}, { reviewAvailable: false }) });
   assert.match(restricted, /Answer review is not available/i);

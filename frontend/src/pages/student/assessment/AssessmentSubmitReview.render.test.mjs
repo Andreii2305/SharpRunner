@@ -51,11 +51,21 @@ test("final review distinguishes unanswered work from unresolved saves", () => {
   assert.match(html, /<dt>Unanswered<\/dt><dd>2<\/dd>/);
   assert.match(html, /<dt>Pending saves<\/dt><dd>1<\/dd>/);
   assert.match(html, /<dt>Failed or conflicted<\/dt><dd>1<\/dd>/);
+  assert.match(html, /<dl[^>]*aria-label="Response summary"/);
+  assert.match(html, /<div[^>]*data-tone="pending"[^>]*><dt>Pending saves/);
+  assert.match(html, /<div[^>]*data-tone="error"[^>]*><dt>Failed or conflicted/);
   assert.match(html, /Saving is still in progress/);
   assert.match(html, /Jump to first unanswered question/);
   assert.match(html, /Review first unresolved response/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>Continue to submission<\/button>/);
   assert.doesNotMatch(html, /Correct|Incorrect|Score|Expected answer/);
+});
+
+test("resolved response counts do not receive pending or error emphasis", () => {
+  const html = renderReview();
+  assert.match(html, /<dt>Pending saves<\/dt><dd>0<\/dd>/);
+  assert.match(html, /<dt>Failed or conflicted<\/dt><dd>0<\/dd>/);
+  assert.doesNotMatch(html, /data-tone="(?:pending|error)"/);
 });
 
 test("ordinary autosaving is pending rather than a failed response", () => {

@@ -93,48 +93,99 @@ export default function AssessmentResult({
             {resultHeading(model)}
           </h1>
           <h2>{model.assessmentTitle}</h2>
-          <p className={styles.resultMeta}>Submitted{submittedAt ? ` · ${submittedAt}` : ""}</p>
           <p className={styles.resultMessage}>{resultMessage}</p>
         </header>
 
-        <div className={styles.resultSummary} aria-label="Result summary">
-          <div className={styles.summaryCard}>
-            <p>Attempt: {model.result.attemptNumber}</p>
-          </div>
-          {model.attempts && (
-            <div className={styles.summaryCard}>
-              <p>Attempts used: {model.attempts.used} of {model.attempts.max}</p>
-              {model.attempts.remaining !== undefined && <small>{model.attempts.remaining} remaining</small>}
-            </div>
-          )}
+        <div className={styles.resultSummary}>
           {model.score && (
-            <>
-              <div className={styles.summaryCard}>
-                <p>{isPre
+            <dl className={styles.scoreSummary} aria-label="Score summary">
+              <div>
+                <dt>{isPre
                   ? model.baselineEligible ? "Baseline score" : "Diagnostic score"
-                  : "Attempt score"}: {model.score.percentage}%</p>
+                  : "Attempt score"}</dt>
+                <dd>{model.score.percentage}%</dd>
               </div>
-              <div className={styles.summaryCard}>
-                <p>Points: {model.score.pointsEarned} of {model.score.maxPoints}</p>
+              <div>
+                <dt>Points</dt>
+                <dd>{model.score.pointsEarned} of {model.score.maxPoints}</dd>
               </div>
-              {!isPre && model.officialGrade?.percentage !== undefined && (
-                <div className={styles.summaryCard}>
-                  <p>Official grade (best): {model.officialGrade.percentage}%</p>
-                </div>
+            </dl>
+          )}
+
+          <dl className={styles.resultMetadata} aria-label="Attempt details">
+            <div><dt>Attempt</dt><dd>{model.result.attemptNumber}</dd></div>
+            {model.attempts && (
+              <>
+                <div><dt>Attempts used</dt><dd>{model.attempts.used} of {model.attempts.max}</dd></div>
+                {model.attempts.remaining !== undefined && (
+                  <div><dt>Remaining attempts</dt><dd>{model.attempts.remaining}</dd></div>
+                )}
+              </>
+            )}
+            <div><dt>Submitted</dt><dd>{submittedAt ?? "Time unavailable"}</dd></div>
+          </dl>
+
+          {model.score && !isPre && (
+            model.officialGrade?.percentage !== undefined
+            || model.firstPost?.percentage !== undefined
+            || model.learningGain?.value !== undefined
+          ) && (
+            <dl className={styles.comparisonSummary} aria-label="Score comparisons">
+              {model.officialGrade?.percentage !== undefined && (
+                <div><dt>Official grade (best)</dt><dd>{model.officialGrade.percentage}%</dd></div>
               )}
-              {!isPre && model.firstPost?.percentage !== undefined && (
-                <div className={styles.summaryCard}>
-                  <p>Learning-gain comparison attempt: {model.firstPost.percentage}%</p>
-                </div>
+              {model.firstPost?.percentage !== undefined && (
+                <div><dt>Learning-gain comparison attempt</dt><dd>{model.firstPost.percentage}%</dd></div>
               )}
-              {!isPre && model.learningGain?.value !== undefined && (
-                <div className={styles.summaryCard}>
-                  <p>{model.learningGain.label}: {percentagePoints(model.learningGain)}</p>
-                </div>
+              {model.learningGain?.value !== undefined && (
+                <div><dt>{model.learningGain.label}</dt><dd>{percentagePoints(model.learningGain)}</dd></div>
               )}
-            </>
+            </dl>
           )}
         </div>
+
+        {progressionError && (
+          <div className={styles.resultStatus} data-tone="error" role="alert">
+            <p>Your result is saved, but the next lesson step could not be refreshed.</p>
+          </div>
+        )}
+        {!progression && !progressionError && (
+          <p className={styles.resultStatus} role="status">Checking the next lesson step…</p>
+        )}
+        {retakeError && (
+          <p className={styles.resultStatus} data-tone="error" role="alert">
+            The retake could not be started. Please try again.
+          </p>
+        )}
+
+        <nav className={styles.resultActions} aria-label="Assessment result actions">
+          {progressionError && (
+            <button className={styles.primaryAction} type="button" onClick={onRetryProgression}>
+              Retry next-step refresh
+            </button>
+          )}
+          {isPre && progressionReady && model.continuation?.href && !model.continuation.disabled && (
+            <a className={styles.primaryAction} href={model.continuation.href}>{model.continuation.label}</a>
+          )}
+          {isPre && progressionReady && model.continuation?.disabled && (
+            <p role="status">{model.continuation.label}</p>
+          )}
+          {!isPre && progressionReady && ["PASSED", "COMPLETED", "REQUIREMENT_COMPLETED"].includes(model.state) && (
+            <a className={styles.primaryAction} href={model.nextHref}>Continue</a>
+          )}
+          {model.retakeAllowed && (
+            <button
+              type="button"
+              onClick={onRetake}
+              disabled={retakeStatus === "starting" || syncChecking}
+            >
+              {syncChecking
+                ? "Checking for updates"
+                : retakeStatus === "starting" ? "Starting retake..." : "Retake Post-Test"}
+            </button>
+          )}
+          <a className={styles.secondaryAction} href={model.returnHref}>Back to Lesson Map</a>
+        </nav>
 
         {model.reviewAvailable && orderedReview.length > 0 && (
           <section className={styles.reviewResults} aria-labelledby="answer-review-title">
@@ -196,47 +247,8 @@ export default function AssessmentResult({
           </section>
         )}
         {!model.reviewAvailable && (
-          <p role="status">Answer review is not available for this attempt.</p>
+          <p className={styles.resultStatus} role="status">Answer review is not available for this attempt.</p>
         )}
-
-        {progressionError && (
-          <div role="alert">
-            <p>Your result is saved, but the next lesson step could not be refreshed.</p>
-          </div>
-        )}
-        {!progression && !progressionError && (
-          <p role="status">Checking the next lesson step…</p>
-        )}
-        {retakeError && <p role="alert">The retake could not be started. Please try again.</p>}
-
-        <nav className={styles.resultActions} aria-label="Assessment result actions">
-          {progressionError && (
-            <button className={styles.primaryAction} type="button" onClick={onRetryProgression}>
-              Retry next-step refresh
-            </button>
-          )}
-          {isPre && progressionReady && model.continuation?.href && !model.continuation.disabled && (
-            <a className={styles.primaryAction} href={model.continuation.href}>{model.continuation.label}</a>
-          )}
-          {isPre && progressionReady && model.continuation?.disabled && (
-            <p role="status">{model.continuation.label}</p>
-          )}
-          {!isPre && progressionReady && ["PASSED", "COMPLETED", "REQUIREMENT_COMPLETED"].includes(model.state) && (
-            <a className={styles.primaryAction} href={model.nextHref}>Continue</a>
-          )}
-          {model.retakeAllowed && (
-            <button
-              type="button"
-              onClick={onRetake}
-              disabled={retakeStatus === "starting" || syncChecking}
-            >
-              {syncChecking
-                ? "Checking for updates"
-                : retakeStatus === "starting" ? "Starting retake..." : "Retake Post-Test"}
-            </button>
-          )}
-          <a className={styles.secondaryAction} href={model.returnHref}>Back to Lesson Map</a>
-        </nav>
       </section>
     </main>
   );

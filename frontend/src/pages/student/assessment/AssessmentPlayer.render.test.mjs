@@ -265,6 +265,7 @@ test("responsive page and dialog sizing include padding within the viewport widt
   assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*details:not\(\[open\]\)[^}]*display:\s*none/s);
   assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*\.navigatorLegend\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*\.navigatorLegend span\s*\{[^}]*white-space:\s*nowrap/s);
+  assert.match(css, /@media\s*\(max-width:\s*36rem\)[\s\S]*\.resultActions a,\s*\.resultActions button\s*\{[^}]*flex:\s*0 0 auto;[^}]*width:\s*100%/s);
   assert.match(css, /\.choice\[data-state="selected"\]/);
   assert.match(css, /\.choice:has\(input:disabled\)/);
 });

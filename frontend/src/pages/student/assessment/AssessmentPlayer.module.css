@@ -504,7 +504,7 @@ div.resultStatus { border-left: 3px solid #b6534d; padding: 0.55rem 0.75rem; bac
   .awareness, .resultActions { align-items: stretch; flex-direction: column; }
   .runArea { align-items: stretch; flex-direction: column; }
   .navigation button, .reviewActions button, .dialogActions button, .resultActions a, .resultActions button { flex: 1 1 8rem; }
-  .resultActions a, .resultActions button { width: 100%; }
+  .resultActions a, .resultActions button { flex: 0 0 auto; width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

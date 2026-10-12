@@ -213,6 +213,11 @@ test("cross-tab synchronization blocks stale edits and exposes accessible recove
   }));
   assert.match(checking, /Checking for assessment updates/);
   assert.match(checking, /type="radio"[^>]*disabled=""/);
+  assert.match(checking, /aria-busy="true"/);
+  assert.match(
+    checking,
+    /aria-busy="true"[\s\S]*?<\/div>[\s\S]*?aria-label="Answer save status"[\s\S]*?aria-live="polite"/,
+  );
 
   const failed = renderPlayer(stateAt(0, {
     externalSyncRequired: false,

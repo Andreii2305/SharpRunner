@@ -125,7 +125,7 @@ export function AssessmentPlayer({
   };
 
   return (
-    <main className={styles.page}>
+    <main className={`${styles.page} ${styles.assessmentPage}`}>
       <header className={styles.header}>
         <div className={styles.identityRow}>
           <span className={styles.typeBadge}>{state.assessment.type}-Test</span>
@@ -161,85 +161,89 @@ export function AssessmentPlayer({
         onGoToQuestion={onGoToQuestion}
       />
 
-      {currentQuestion.questionType === "CODING" ? (
-        <AssessmentCodingQuestion
-          question={currentQuestion}
-          sourceCode={sourceCode}
-          onSourceChange={onSourceChange}
-          disabled={editingBlocked}
-          containerRef={questionContainer}
-          runState={state.codingRunByQuestion?.[currentQuestion.id]}
-          onRun={onRunCode}
-        />
-      ) : (
-        <AssessmentQuestion
-          question={currentQuestion}
-          selectedChoiceId={selectedChoiceId}
-          onSelect={onSelect}
-          disabled={editingBlocked}
-          containerRef={questionContainer}
-        />
-      )}
+      <div className={styles.questionRegion} aria-busy={syncChecking}>
+        {currentQuestion.questionType === "CODING" ? (
+          <AssessmentCodingQuestion
+            question={currentQuestion}
+            sourceCode={sourceCode}
+            onSourceChange={onSourceChange}
+            disabled={editingBlocked}
+            containerRef={questionContainer}
+            runState={state.codingRunByQuestion?.[currentQuestion.id]}
+            onRun={onRunCode}
+          />
+        ) : (
+          <AssessmentQuestion
+            question={currentQuestion}
+            selectedChoiceId={selectedChoiceId}
+            onSelect={onSelect}
+            disabled={editingBlocked}
+            containerRef={questionContainer}
+          />
+        )}
+      </div>
 
-      <section
-        className={styles.saveArea}
-        data-tone={syncRequired || syncFailed || hasSaveError || hasConflict ? "error" : "neutral"}
-        aria-label="Answer save status"
-        role={syncRequired || syncFailed || hasSaveError || hasConflict ? "alert" : undefined}
-      >
-        <p
-          ref={saveStatusRef}
-          className={styles.saveStatus}
-          aria-live="polite"
-          aria-atomic="true"
-          tabIndex={shouldFocusSaveStatus ? -1 : undefined}
+      <div className={styles.responseStatus}>
+        <section
+          className={styles.saveArea}
+          data-tone={syncRequired || syncFailed || hasSaveError || hasConflict ? "error" : "neutral"}
+          aria-label="Answer save status"
+          role={syncRequired || syncFailed || hasSaveError || hasConflict ? "alert" : undefined}
         >
-          {saveStatus}
-        </p>
-        {!editingBlocked && currentSaveState?.status === "error" && (
-          <button type="button" className={styles.secondaryButton} onClick={() => onRetrySave(currentQuestion.id)}>
-            Retry save
-          </button>
-        )}
-        {(hasConflict || syncRequired) && (
-          <button type="button" className={styles.secondaryButton} onClick={onRecoverConflict}>
-            Reload assessment
-          </button>
-        )}
-        {syncFailed && (
-          <button type="button" className={styles.secondaryButton} onClick={onRetrySync}>
-            Check again
-          </button>
-        )}
-      </section>
+          <p
+            ref={saveStatusRef}
+            className={styles.saveStatus}
+            aria-live="polite"
+            aria-atomic="true"
+            tabIndex={shouldFocusSaveStatus ? -1 : undefined}
+          >
+            {saveStatus}
+          </p>
+          {!editingBlocked && currentSaveState?.status === "error" && (
+            <button type="button" className={styles.secondaryButton} onClick={() => onRetrySave(currentQuestion.id)}>
+              Retry save
+            </button>
+          )}
+          {(hasConflict || syncRequired) && (
+            <button type="button" className={styles.secondaryButton} onClick={onRecoverConflict}>
+              Reload assessment
+            </button>
+          )}
+          {syncFailed && (
+            <button type="button" className={styles.secondaryButton} onClick={onRetrySync}>
+              Check again
+            </button>
+          )}
+        </section>
 
-      <aside className={styles.awareness} aria-label="Answer review status">
-        <p>
-          {summary.unansweredQuestionIds.length === 0
-            ? "All questions answered"
-            : `${summary.unansweredQuestionIds.length} unanswered`}
-          {failedCount > 0 ? `; ${failedCount} response${failedCount === 1 ? "" : "s"} need attention` : ""}
-          {pendingSaveCount > 0 ? `; ${pendingSaveCount} save${pendingSaveCount === 1 ? "" : "s"} pending` : ""}
-        </p>
-        {firstUnresolvedIndex >= 0 && firstUnresolvedIndex !== currentIndex && (
-          <button
-            type="button"
-            className={styles.linkButton}
-            onClick={() => onGoToQuestion(firstUnresolvedIndex)}
-          >
-            Review first unresolved response
-          </button>
-        )}
-        {firstUnresolvedIndex < 0 && firstUnansweredIndex >= 0 && firstUnansweredIndex !== currentIndex && (
-          <button
-            type="button"
-            className={styles.linkButton}
-            onClick={() => onGoToQuestion(firstUnansweredIndex)}
-          >
-            Review unanswered questions
-          </button>
-        )}
-      </aside>
+        <aside className={styles.awareness} aria-label="Answer review status">
+          <p>
+            {summary.unansweredQuestionIds.length === 0
+              ? "All questions answered"
+              : `${summary.unansweredQuestionIds.length} unanswered`}
+            {failedCount > 0 ? `; ${failedCount} response${failedCount === 1 ? "" : "s"} need attention` : ""}
+            {pendingSaveCount > 0 ? `; ${pendingSaveCount} save${pendingSaveCount === 1 ? "" : "s"} pending` : ""}
+          </p>
+          {firstUnresolvedIndex >= 0 && firstUnresolvedIndex !== currentIndex && (
+            <button
+              type="button"
+              className={styles.linkButton}
+              onClick={() => onGoToQuestion(firstUnresolvedIndex)}
+            >
+              Review first unresolved response
+            </button>
+          )}
+          {firstUnresolvedIndex < 0 && firstUnansweredIndex >= 0 && firstUnansweredIndex !== currentIndex && (
+            <button
+              type="button"
+              className={styles.linkButton}
+              onClick={() => onGoToQuestion(firstUnansweredIndex)}
+            >
+              Review unanswered questions
+            </button>
+          )}
+        </aside>
+      </div>
 
       <nav className={styles.navigation} aria-label="Assessment questions">
         <button type="button" onClick={onPrevious} disabled={isFirst}>

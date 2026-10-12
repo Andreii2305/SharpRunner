@@ -1242,7 +1242,12 @@ function GamePage({ levelConfig, classroomId }) {
           <h1>Deadline Passed</h1>
           {effectiveDueAt ? <p>Due: {formatPhilippineDeadline(effectiveDueAt)} (Philippine Time)</p> : null}
           <p>This level is no longer available. Contact your instructor if you need an extension.</p>
-          <Button label="Back to Map" variant="primary" size="md" onClick={() => navigate("/Map")} />
+          <Button
+            label="Back to Map"
+            variant="primary"
+            size="md"
+            onClick={() => navigate(buildMapHref(classroomId))}
+          />
         </div>
       </div>
     );

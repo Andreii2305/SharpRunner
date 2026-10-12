@@ -110,14 +110,17 @@ test("keeps retry and View Result as separate POST actions", () => {
   assert.match(html, />Retry Post-Test<\/a>/);
 });
 
-test("map uses canonical lesson titles, contextual actions, and compact responsive styling", async () => {
+test("map presents one authoritative next action separately from the selected region", async () => {
   const pageSource = await readFile(new URL("../../pages/map/LessonMapPage.jsx", import.meta.url), "utf8");
   const panelCss = await readFile(new URL("./LessonProgressionPanel.module.css", import.meta.url), "utf8");
   const mapCss = await readFile(new URL("../../pages/map/LessonMapPage.module.css", import.meta.url), "utf8");
 
-  assert.match(pageSource, /progressionTitle: "Functions & Methods"/);
-  assert.match(pageSource, /progressionTitle: "Functions with Arrays"/);
-  assert.match(pageSource, /showAction=\{progressionModel\.action\.kind !== "game"\}/);
+  assert.match(pageSource, /eyebrow: "Functions & Methods · Levels 1–11"/);
+  assert.match(pageSource, /eyebrow: "Functions with Arrays · Levels 1–5"/);
+  assert.match(pageSource, /model=\{mapViewModel\.nextStep\.progression\}/);
+  assert.match(pageSource, /showAction/);
+  assert.match(pageSource, /showContinue=\{false\}/);
+  assert.doesNotMatch(pageSource, /continueRoute/);
   assert.doesNotMatch(pageSource, /\} journey`/);
   assert.match(panelCss, /grid-template-columns:\s*minmax\(140px, auto\) minmax\(0, 1fr\) auto/);
   assert.match(panelCss, /@media \(max-width: 600px\)/);

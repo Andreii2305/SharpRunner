@@ -108,6 +108,10 @@
 .levelNode:disabled { cursor: not-allowed; }
 .locked .shieldInner { background: linear-gradient(#5c4635, #34261d); box-shadow: inset 0 0 0 1px #80694c; }
 .locked .nodeContent { color: #9e8768; }
+.unassigned .shieldInner,
+.unavailable .shieldInner { background: #302a24; box-shadow: inset 0 0 0 1px #746957; }
+.unassigned .nodeContent,
+.unavailable .nodeContent { color: #b6aa96; }
 .expired .shieldInner { background: linear-gradient(#8f4b45, #572f2b); box-shadow: inset 0 0 0 1px #c77a70; }
 .expired .nodeContent { color: #ffe2dc; }
 .completed .shieldInner { background: linear-gradient(#4a9a4a, #2a5a2a); box-shadow: inset 0 0 0 1px #7ec87e; }
@@ -170,6 +174,8 @@
 }
 
 .locked .nodeTitle { color: #b8aa8d; border-color: #73644d; background: rgba(35, 29, 23, 0.9); }
+.unassigned .nodeTitle,
+.unavailable .nodeTitle { color: #c8bdab; border-color: #807462; border-style: dashed; background: rgba(35, 31, 27, 0.9); }
 .expired .nodeTitle { color: #ffd8d1; border-color: #9e5c54; background: rgba(74, 31, 27, 0.94); }
 
 .dueBadge {

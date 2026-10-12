@@ -183,14 +183,16 @@ function CastleHero() {
 /* ─── Single map node (shield-shaped) ────────────────────────── */
 function MapNode({ node, onNodeClick, sounds }) {
   const isLocked = node.status === "locked";
+  const isUnassigned = node.status === "unassigned";
+  const hasUnavailableState = node.status === "unavailable";
   const isExpired = node.status === "expired";
-  const isUnavailable = isLocked || isExpired;
+  const isUnavailable = isLocked || isUnassigned || hasUnavailableState || isExpired;
   const isCurrent = node.status === "current";
   const isDone = node.status === "completed";
   const isBoss = Boolean(node.isBoss);
 
   const handleClick = () => {
-    if (isLocked) {
+    if (isLocked || isUnassigned || hasUnavailableState) {
       sounds?.playLocked();
       return;
     }
@@ -199,7 +201,7 @@ function MapNode({ node, onNodeClick, sounds }) {
   };
 
   const handleEnter = () => {
-    if (!isLocked) sounds?.playHover();
+    if (!isLocked && !isUnassigned && !hasUnavailableState) sounds?.playHover();
   };
 
   return (
@@ -209,8 +211,8 @@ function MapNode({ node, onNodeClick, sounds }) {
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
       onClick={handleClick}
       onMouseEnter={handleEnter}
-      disabled={isLocked}
-      aria-label={`Level ${node.levelNumber}: ${node.title}${isExpired ? " — deadline passed" : isLocked ? " — locked" : ""}`}
+      disabled={isLocked || isUnassigned || hasUnavailableState}
+      aria-label={`Level ${node.levelNumber}: ${node.title}${isExpired ? " — deadline passed" : isUnassigned ? " — not assigned" : hasUnavailableState ? " — availability unavailable" : isLocked ? " — locked" : ""}`}
     >
       {/* Boss crown banner */}
       {isBoss && !isUnavailable && (
@@ -234,6 +236,7 @@ function MapNode({ node, onNodeClick, sounds }) {
           ${isCurrent ? styles.nodeCurrent : ""}
           ${node.status === "unlocked" ? styles.nodeUnlocked : ""}
           ${isUnavailable ? styles.nodeLocked : ""}
+          ${isUnassigned ? styles.nodeUnassigned : ""}
           ${isBoss ? styles.nodeBoss : ""}
         `}
       >
@@ -245,7 +248,7 @@ function MapNode({ node, onNodeClick, sounds }) {
             <CheckOutlinedIcon sx={{ fontSize: 20, color: "#e8ffd4" }} />
           ) : isExpired ? (
             <AccessTimeOutlinedIcon sx={{ fontSize: 17, color: "#c47468" }} />
-          ) : isLocked ? (
+          ) : isLocked || isUnassigned || hasUnavailableState ? (
             <LockOutlinedIcon sx={{ fontSize: 16, color: "#8b6f3f" }} />
           ) : (
             <span className={styles.nodeNum}>{toRoman(node.levelNumber)}</span>
@@ -264,6 +267,7 @@ function MapNode({ node, onNodeClick, sounds }) {
       >
         {node.title}
       </span>
+      {isUnassigned && <span className={styles.assignmentBadge}>Not assigned</span>}
       {isExpired ? <span className={styles.deadlineBadge}>Deadline Passed</span> : null}
       {!isExpired && node.effectiveDueAt ? (
         <span className={styles.deadlineBadge}>{node.hasExtension ? "Extension · " : ""}Due {formatDue(node.effectiveDueAt)}</span>
@@ -470,6 +474,7 @@ function LessonMap({
   subtitle,
   description,
   progressPercent,
+  progressSummary,
   stages,
   nodes,
   connections = [],
@@ -479,6 +484,7 @@ function LessonMap({
   onContinue,
   onExit,
   onNodeClick,
+  showContinue = true,
   continueLabel = "Onward",
   continueDisabled = false,
   exitLabel = "Retreat",
@@ -541,6 +547,7 @@ function LessonMap({
     { label: "In Quest", cls: "legendCurrent" },
     { label: "Awaits", cls: "legendUnlocked" },
     { label: "Sealed", cls: "legendLocked" },
+    { label: "Not assigned", cls: "legendUnassigned" },
   ];
 
   return (
@@ -553,10 +560,10 @@ function LessonMap({
         <div className={styles.mobileProgressWrap}>
           <div className={styles.mobileProgressLabel}>
             <span>{lessonTitle}</span>
-            <span>{progressPercent}%</span>
+            <span>{progressPercent == null ? "—" : `${progressPercent}%`}</span>
           </div>
           <div className={styles.mobileProgressTrack}>
-            <div className={styles.mobileProgressFill} style={{ width: `${progressPercent}%` }} />
+            <div className={styles.mobileProgressFill} style={{ width: `${progressPercent ?? 0}%` }} />
           </div>
         </div>
         <div className={styles.mobileNoticeActions}>
@@ -592,18 +599,19 @@ function LessonMap({
           <div className={styles.progressRow}>
             <div className={styles.progressRing}>
               <CircularProgressBar
-                percentage={progressPercent}
+                percentage={progressPercent ?? 0}
                 strokeWidth={7}
-                showText
+                showText={progressPercent != null}
               />
+              {progressPercent == null && <span className={styles.progressUnavailable}>—</span>}
             </div>
             <div className={styles.progressMeta}>
               <div className={styles.progressLabel}>⚜ Quest Progress</div>
               <div className={styles.progressVal}>
-                {Math.round(progressPercent)}%
+                {progressPercent == null ? "—" : `${Math.round(progressPercent)}%`}
               </div>
               <div className={styles.progressSub}>
-                {toRoman(totalDone) || "0"} of {totalLevelsLabel} levels
+                {progressSummary ?? `${toRoman(totalDone) || "0"} of ${totalLevelsLabel} levels`}
               </div>
             </div>
           </div>
@@ -636,16 +644,18 @@ function LessonMap({
 
           {/* Actions */}
           <div className={styles.panelActions}>
-            <Button
-              label={continueLabel}
-              variant="primary"
-              size="md"
-              onClick={() => {
-                sounds.playClick();
-                onContinue?.();
-              }}
-              disabled={continueDisabled}
-            />
+            {showContinue && (
+              <Button
+                label={continueLabel}
+                variant="primary"
+                size="md"
+                onClick={() => {
+                  sounds.playClick();
+                  onContinue?.();
+                }}
+                disabled={continueDisabled}
+              />
+            )}
             <Button
               label={exitLabel}
               variant="outline"

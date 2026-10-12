@@ -188,14 +188,16 @@ function TiledVisualLayer({ map, layer, onError }) {
 
 function LevelNode({ node, onNodeClick }) {
   const locked = node.status === "locked";
+  const unassigned = node.status === "unassigned";
+  const unavailable = node.status === "unavailable";
   const expired = node.status === "expired";
   const completed = node.status === "completed";
   const current = node.status === "current";
   const assessmentRequired = node.status === "assessment-required";
   const assessmentRecovery = node.status === "assessment-recovery";
   const assessmentInvalid = node.status === "assessment-invalid";
-  const nonInteractive = locked || assessmentRecovery || assessmentInvalid;
-  const statusLabel = node.actionLabel ?? (completed ? "Completed" : current ? "Current" : expired ? "Deadline Passed" : locked ? "Locked" : "Available");
+  const nonInteractive = locked || unassigned || unavailable || assessmentRecovery || assessmentInvalid;
+  const statusLabel = node.actionLabel ?? (completed ? "Completed" : current ? "Current" : expired ? "Deadline Passed" : unassigned ? "Not assigned" : unavailable ? "Availability unavailable" : locked ? "Locked" : "Available");
   const grade =
     node.grade ??
     (node.finalScore >= 90 ? "S" : node.finalScore >= 80 ? "A" : node.finalScore != null ? "B" : null);
@@ -206,7 +208,7 @@ function LevelNode({ node, onNodeClick }) {
       type="button"
       className={`${styles.levelNode} ${styles[node.status]}`}
       style={{ left: node.x, top: node.y }}
-      disabled={locked}
+      disabled={locked || unassigned || unavailable}
       aria-disabled={nonInteractive || undefined}
       onClick={() => onNodeClick?.(node)}
       aria-label={`Level ${levelLabel}: ${node.title}. ${node.actionLabel ?? statusLabel}.`}

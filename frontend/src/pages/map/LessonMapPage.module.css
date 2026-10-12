@@ -22,6 +22,58 @@
 
 .progressionPanel { padding: 6px 0; }
 
+.requestStatus,
+.nextStepStatus {
+  color: #263746;
+  background: #ffffff;
+  border: 1px solid #c6d2dc;
+  border-radius: 10px;
+}
+
+.requestStatus {
+  width: min(100%, 620px);
+  margin: auto;
+  padding: 28px;
+  box-sizing: border-box;
+  box-shadow: 0 8px 24px rgba(24, 49, 72, 0.1);
+}
+
+.requestEyebrow,
+.nextStepStatus > span {
+  color: #175c91;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.requestStatus h1,
+.nextStepStatus h2 { margin: 6px 0 8px; }
+.requestStatus p,
+.nextStepStatus p { margin: 0; line-height: 1.55; }
+
+.requestActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.requestActions button {
+  min-height: 44px;
+  padding: 9px 18px;
+  border: 1px solid #175c91;
+  border-radius: 7px;
+  color: #ffffff;
+  background: #175c91;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.requestActions .secondaryAction { color: #175c91; background: transparent; }
+.requestActions button:focus-visible { outline: 3px solid #f0b429; outline-offset: 2px; }
+
+.nextStepStatus { padding: 16px 18px; }
+
 .regionTabs {
   display: flex;
   align-items: center;
@@ -241,7 +293,6 @@
   cursor: pointer;
 }
 
-.infoActions .continueButton { color: white; background: #175c91; }
 .infoActions button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .arraysHeader {
@@ -267,6 +318,7 @@
 .legendCurrent { background: #9b3120; }
 .legendAvailable { background: #d5b56c; }
 .legendLocked { background: #453225; }
+.mapLegend .legendUnassigned { background: transparent; border-style: dashed; }
 
 /* The LessonMap root fills this container */
 .lessonMapContent > *:not(.regionTabs):not(.progressionPanel) {

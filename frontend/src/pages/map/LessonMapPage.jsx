@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import LessonMap from "../../Components/LessonMap/LessonMap.jsx";
 import TiledCurriculumMap from "../../Components/TiledCurriculumMap/TiledCurriculumMap.jsx";
@@ -6,14 +6,16 @@ import { getLevelConfig } from "../game/levels/levelConfigs.js";
 import LessonProgressionPanel from "../../Components/LessonProgression/LessonProgressionPanel.jsx";
 import { fetchPrimaryClassroomId } from "../../services/builtInLessonContentService.js";
 import { getProgress } from "../../services/studentAssessmentService.js";
-import {
-  createLevelEntryViewModel,
-  createLessonProgressionViewModel,
-  loadExactProgress,
-  withExactClassroom,
-} from "../../utils/lessonProgressionNavigation.js";
+import { loadExactProgress, withExactClassroom } from "../../utils/lessonProgressionNavigation.js";
 import styles from "./LessonMapPage.module.css";
 import { LESSON_ONE_MAP_CONFIG } from "./lessonOneMapConfig";
+import {
+  createLessonMapViewModel,
+  createMapLevelEntry,
+  initialMapProgressState,
+  isConfirmedUnenrolled,
+  mapProgressReducer,
+} from "./lessonMapViewModel.js";
 
 const LEVEL_ONE_BG_SRC = `${import.meta.env.BASE_URL}game/assets/backgrounds/level1_bg.png`;
 const ARRAYS_MAP_URL = `${import.meta.env.BASE_URL}game/assets/curriculum_map_level/array.tmj`;
@@ -24,7 +26,6 @@ const ARRAYS_LEVEL_COUNT = 8;
 const FUNCTIONS_ROUTE_START = 14;
 const FUNCTIONS_LEVEL_COUNT = 11;
 const FUNCTIONS_ARRAYS_ROUTE_START = 26;
-const FUNCTIONS_ARRAYS_NODE_COUNT = 5;
 const LAST_REGION_KEY = "sharprunner:last-map-region";
 const getDeadlineProps = (row) => ({
   effectiveDueAt: row?.effectiveDueAt ?? null,
@@ -58,12 +59,19 @@ function LessonMapPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const requestedClassroomId = searchParams.get("classroomId");
-  const [progressData, setProgressData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const requestKey = requestedClassroomId == null
+    ? "primary"
+    : `classroom:${requestedClassroomId}`;
+  const [requestState, dispatchProgress] = useReducer(mapProgressReducer, initialMapProgressState);
+  const [retryGeneration, setRetryGeneration] = useState(0);
+  const requestGenerationRef = useRef(0);
   const [selectedRegion, setSelectedRegion] = useState(getInitialRegion);
 
   useEffect(() => {
-    let isMounted = true;
+    const generation = requestGenerationRef.current + 1;
+    requestGenerationRef.current = generation;
+    dispatchProgress({ type: "load-started", generation, requestKey });
+    const controller = new AbortController();
     const fetchProgress = async () => {
       try {
         const response = await loadExactProgress({
@@ -72,33 +80,44 @@ function LessonMapPage() {
           resolvePrimary: fetchPrimaryClassroomId,
           signal: controller.signal,
         });
-        if (isMounted) setProgressData(response);
-      } catch {
-        if (isMounted) setProgressData(null);
-      } finally {
-        if (isMounted) setIsLoading(false);
+        dispatchProgress({
+          type: "load-succeeded",
+          generation,
+          requestKey,
+          progress: response,
+        });
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        dispatchProgress({
+          type: isConfirmedUnenrolled(error, requestedClassroomId)
+            ? "load-unenrolled"
+            : "load-failed",
+          generation,
+          requestKey,
+          error: error?.message ?? "Progress could not be loaded.",
+        });
       }
     };
-    const controller = new AbortController();
     fetchProgress();
-    return () => {
-      isMounted = false;
-      controller.abort();
-    };
-  }, [requestedClassroomId]);
+    return () => controller.abort();
+  }, [requestKey, requestedClassroomId, retryGeneration]);
 
-  const classroomId = progressData?.classroomId;
-
-  const progressByKey = useMemo(
-    () => new Map((progressData?.levels ?? []).map((row) => [row.levelKey, row])),
-    [progressData],
+  const currentRequestState = requestState.requestKey === requestKey
+    ? requestState
+    : initialMapProgressState;
+  const progressData = currentRequestState.status === "ready" ? currentRequestState.progress : null;
+  const mapViewModel = useMemo(
+    () => createLessonMapViewModel(progressData, { selectedRegion }),
+    [progressData, selectedRegion],
   );
+  const classroomId = mapViewModel.classroomId;
 
   const mapNodes = useMemo(() => {
     return LESSON_ONE_MAP_CONFIG.nodes.map((node) => {
-      const row = progressByKey.get(getProgressKeyForMapNode(node));
+      const levelKey = getProgressKeyForMapNode(node);
+      const row = mapViewModel.levelsByKey.get(levelKey);
       const gameRoute = withExactClassroom(`/tutorial/level/${node.levelNumber}`, classroomId);
-      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
+      const entry = createMapLevelEntry(mapViewModel, levelKey, gameRoute);
       return {
         ...node,
         status: entry.visualStatus,
@@ -110,19 +129,18 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [classroomId, progressByKey]);
+  }, [classroomId, mapViewModel]);
 
   const arrayNodes = useMemo(() => {
-    const rows = Array.from({ length: ARRAYS_LEVEL_COUNT }, (_, index) =>
-      progressByKey.get(`arrays-level-${index + 1}`),
-    );
-    return rows.map((row, index) => {
+    return Array.from({ length: ARRAYS_LEVEL_COUNT }, (_, index) => {
+      const levelKey = `arrays-level-${index + 1}`;
+      const row = mapViewModel.levelsByKey.get(levelKey);
       const levelNumber = ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
       const gameRoute = withExactClassroom(`/array/level/${index + 1}`, classroomId);
-      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
+      const entry = createMapLevelEntry(mapViewModel, levelKey, gameRoute);
       return {
-        id: `arrays-level-${index + 1}`,
+        id: levelKey,
         levelNumber,
         title: config?.title ?? `Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Arrays",
@@ -137,21 +155,18 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [classroomId, progressByKey]);
-
-  const arraysAvailable = arrayNodes.some((node) => node.status !== "locked");
+  }, [classroomId, mapViewModel]);
 
   const functionNodes = useMemo(() => {
-    const rows = Array.from({ length: FUNCTIONS_LEVEL_COUNT }, (_, index) =>
-      progressByKey.get(`functions-level-${index + 1}`),
-    );
-    return rows.map((row, index) => {
+    return Array.from({ length: FUNCTIONS_LEVEL_COUNT }, (_, index) => {
+      const levelKey = `functions-level-${index + 1}`;
+      const row = mapViewModel.levelsByKey.get(levelKey);
       const levelNumber = FUNCTIONS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
       const gameRoute = withExactClassroom(`/function/level/${index + 1}`, classroomId);
-      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
+      const entry = createMapLevelEntry(mapViewModel, levelKey, gameRoute);
       return {
-        id: `functions-level-${index + 1}`,
+        id: levelKey,
         levelNumber,
         displayLevelNumber: config?.mapLevelLabel ?? levelNumber,
         title: config?.title ?? `Functions ${index + 1}`,
@@ -167,24 +182,18 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [classroomId, progressByKey]);
-
-  const functionsAvailable = functionNodes.some((node) => node.status !== "locked");
+  }, [classroomId, mapViewModel]);
 
   const functionsArraysNodes = useMemo(() => {
-    const rows = [
-      ...Array.from({ length: 4 }, (_, index) =>
-        progressByKey.get(`functions-with-arrays-level-${index + 1}`),
-      ),
-      progressByKey.get("final-level-1"),
-    ];
-    return rows.map((row, index) => {
+    return Array.from({ length: 5 }, (_, index) => {
+      const levelKey = index < 4 ? `functions-with-arrays-level-${index + 1}` : "final-level-1";
+      const row = mapViewModel.levelsByKey.get(levelKey);
       const levelNumber = FUNCTIONS_ARRAYS_ROUTE_START + index;
       const config = getLevelConfig(levelNumber);
       const gameRoute = withExactClassroom(`/function-with-array/level/${index + 1}`, classroomId);
-      const entry = createLevelEntryViewModel({ classroomId, level: row, gameHref: gameRoute });
+      const entry = createMapLevelEntry(mapViewModel, levelKey, gameRoute);
       return {
-        id: index < 4 ? `functions-with-arrays-level-${index + 1}` : "final-level-1",
+        id: levelKey,
         levelNumber,
         title: config?.title ?? `Functions with Arrays ${index + 1}`,
         topic: config?.learnSection?.title ?? config?.subtitle ?? "Functions with Arrays",
@@ -199,25 +208,17 @@ function LessonMapPage() {
         ...getDeadlineProps(row),
       };
     });
-  }, [classroomId, progressByKey]);
-  const functionsArraysAvailable = functionsArraysNodes.some(
-    (node) => node.status !== "locked",
-  );
+  }, [classroomId, mapViewModel]);
 
-  const nextAssignedLevel = (progressData?.levels ?? []).find(
-    (level) => !level.isCompleted && level.isAccessible,
-  ) ?? (progressData?.levels ?? []).find((level) => !level.isCompleted);
-  const inferredRegion = nextAssignedLevel?.levelKey?.startsWith("arrays-")
+  const nextLessonKey = mapViewModel.nextStep.lessonKey;
+  const inferredRegion = nextLessonKey === "arrays"
     ? "arrays"
-    : nextAssignedLevel?.levelKey?.startsWith("functions-with-arrays-") ||
-        nextAssignedLevel?.levelKey?.startsWith("final-")
+    : nextLessonKey === "functions-with-arrays" || nextLessonKey === "final"
       ? "functions-arrays"
-      : nextAssignedLevel?.levelKey?.startsWith("functions-")
+      : nextLessonKey === "functions"
         ? "functions"
         : "tutorial";
   const activeRegion = selectedRegion ?? inferredRegion;
-  const activeLessonKey = activeRegion === "functions-arrays" ? "functions-with-arrays" : activeRegion;
-  const activeLesson = progressData?.lessons?.find((item) => item.lessonKey === activeLessonKey) ?? null;
   const selectRegion = (region) => {
     setSelectedRegion(region);
     try {
@@ -227,51 +228,10 @@ function LessonMapPage() {
     }
   };
 
-  const tutorialProgress =
-    progressData?.lessons?.find((lesson) => lesson.lessonKey === "tutorial")
-      ?.progressPercent ?? 0;
-  const arraysProgress =
-    progressData?.lessons?.find((lesson) => lesson.lessonKey === "arrays")
-      ?.progressPercent ?? 0;
-  const functionsProgress =
-    progressData?.lessons?.find((lesson) => lesson.lessonKey === "functions")
-      ?.progressPercent ?? 0;
-  const functionsArraysProgress = Math.round(
-    functionsArraysNodes.reduce(
-      (sum, node) =>
-        sum + (progressByKey.get(node.id)?.progressPercent ?? 0),
-      0,
-    ) / FUNCTIONS_ARRAYS_NODE_COUNT,
-  );
-  const arraysCompletedCount = arrayNodes.filter((node) => node.completed).length;
-  const functionsCompletedCount = functionNodes.filter(
-    (node) => node.completed,
-  ).length;
-  const functionsArraysCompletedCount = functionsArraysNodes.filter(
-    (node) => node.completed,
-  ).length;
-
-  const continueRoute = useMemo(() => {
-    const candidates =
-      activeRegion === "functions-arrays"
-        ? functionsArraysNodes
-        : activeRegion === "functions"
-        ? functionNodes
-        : activeRegion === "arrays"
-          ? arrayNodes
-          : mapNodes;
-    return (
-      candidates.find((node) => node.status === "assessment-required")?.route ??
-      candidates.find((node) => node.status === "current")?.route ??
-      [...candidates].reverse().find((node) => node.completed)?.route ??
-      "/tutorial/level/1"
-    );
-  }, [activeRegion, arrayNodes, functionNodes, functionsArraysNodes, mapNodes]);
-  const progressionModel = activeLesson ? createLessonProgressionViewModel({
-    lesson: activeLesson,
-    classroomId,
-    gameHref: continueRoute,
-  }) : null;
+  const tutorialMetric = mapViewModel.regions.tutorial;
+  const arraysMetric = mapViewModel.regions.arrays;
+  const functionsMetric = mapViewModel.regions.functions;
+  const functionsArraysMetric = mapViewModel.regions["functions-arrays"];
 
   const mapMarkerToLevel = useCallback(
     (markerLevelNumber) => ARRAYS_ROUTE_START + markerLevelNumber - 1,
@@ -289,21 +249,21 @@ function LessonMapPage() {
   const tiledRegion =
     activeRegion === "functions-arrays"
       ? {
-          progressionTitle: "Functions with Arrays",
           mapUrl: FUNCTIONS_ARRAYS_MAP_URL,
           nodes: functionsArraysNodes,
           markerToLevel: functionsArraysMarkerToLevel,
-          progress: functionsArraysProgress,
-          completedCount: functionsArraysCompletedCount,
-          totalCount: FUNCTIONS_ARRAYS_NODE_COUNT,
-          unlocked: functionsArraysAvailable,
+          metric: functionsArraysMetric,
           badge: "Region IV",
           eyebrow: "Functions with Arrays · Levels 1–5",
           title: "The Final Rituals",
           summary: "Carry arrays through reusable methods, restore the final wards, and face Bakunawa.",
-          headerDescription: functionsArraysAvailable
+          headerDescription: functionsArraysMetric.availability === "available"
             ? "Follow the teacher-assigned sequence and select an available node."
-            : "No level in this region is currently available.",
+            : functionsArraysMetric.countText === "No assigned game activities"
+              ? "No game activities are assigned in this region."
+              : functionsArraysMetric.availability === "locked"
+                ? "Complete the required curriculum step to unlock this region."
+                : "Region availability could not be confirmed.",
           notes: [
             "Pass one-dimensional arrays into methods and process every item.",
             "Restore two-dimensional grids through reusable method logic.",
@@ -312,21 +272,21 @@ function LessonMapPage() {
         }
       : activeRegion === "functions"
       ? {
-          progressionTitle: "Functions & Methods",
           mapUrl: FUNCTIONS_MAP_URL,
           nodes: functionNodes,
           markerToLevel: functionMarkerToLevel,
-          progress: functionsProgress,
-          completedCount: functionsCompletedCount,
-          totalCount: FUNCTIONS_LEVEL_COUNT,
-          unlocked: functionsAvailable,
+          metric: functionsMetric,
           badge: "Region III",
           eyebrow: "Functions & Methods · Levels 1–11",
           title: "Functions & Methods",
           summary: "Name reusable actions, pass values, return results, and master recursive methods.",
-          headerDescription: functionsAvailable
+          headerDescription: functionsMetric.availability === "available"
             ? "Follow the teacher-assigned sequence and select an available Functions node."
-            : "No level in this region is currently available.",
+            : functionsMetric.countText === "No assigned game activities"
+              ? "No game activities are assigned in this region."
+              : functionsMetric.availability === "locked"
+                ? "Complete the required curriculum step to unlock this region."
+                : "Region availability could not be confirmed.",
           notes: [
             "Define and call reusable methods for protective rituals.",
             "Use parameters and return values to carry information between actions.",
@@ -334,27 +294,67 @@ function LessonMapPage() {
           ],
         }
       : {
-          progressionTitle: "Arrays",
           mapUrl: ARRAYS_MAP_URL,
           nodes: arrayNodes,
           markerToLevel: mapMarkerToLevel,
-          progress: arraysProgress,
-          completedCount: arraysCompletedCount,
-          totalCount: ARRAYS_LEVEL_COUNT,
-          unlocked: arraysAvailable,
+          metric: arraysMetric,
           badge: "Region II",
           eyebrow: "Arrays · Levels 6–13",
           title: "The Cursed Collections",
           summary: "Journey through Barangay Malumay and break the curse binding its collections.",
-          headerDescription: arraysAvailable
+          headerDescription: arraysMetric.availability === "available"
             ? "Follow the teacher-assigned sequence and select an available Arrays node."
-            : "No level in this region is currently available.",
+            : arraysMetric.countText === "No assigned game activities"
+              ? "No game activities are assigned in this region."
+              : arraysMetric.availability === "locked"
+                ? "Complete the required curriculum step to unlock this region."
+                : "Region availability could not be confirmed.",
           notes: [
             "Build collections, read indexes, restore two-dimensional grids, and traverse every item.",
             "Level nodes use your current SharpRunner progress and unlock in curriculum order.",
             "Drag or scroll the map to follow Kai through the region.",
           ],
         };
+
+  const retryProgress = () => setRetryGeneration((value) => value + 1);
+  const requestStatus = currentRequestState.status === "idle"
+    ? "loading"
+    : currentRequestState.status;
+  if (requestStatus !== "ready" || mapViewModel.status === "unavailable") {
+    const isLoading = requestStatus === "loading";
+    const isUnenrolled = requestStatus === "unenrolled";
+    const title = isLoading
+      ? "Loading your lesson map"
+      : isUnenrolled
+        ? "Join a classroom to begin"
+        : "Lesson map progress unavailable";
+    const message = isLoading
+      ? "Checking the learning path assigned to this classroom…"
+      : isUnenrolled
+        ? "Your teacher's classroom connects you to lessons, assessments, and game activities."
+        : currentRequestState.error ?? mapViewModel.nextStep.description;
+    return (
+      <div className={styles.lessonMapPage}>
+        <section className={styles.lessonMapContent}>
+          <div className={styles.requestStatus} role={isLoading ? "status" : "alert"}>
+            <span className={styles.requestEyebrow}>Lesson map</span>
+            <h1>{title}</h1>
+            <p>{message}</p>
+            {!isLoading && (
+              <div className={styles.requestActions}>
+                {isUnenrolled ? (
+                  <button type="button" onClick={() => navigate("/join-class")}>Join a classroom</button>
+                ) : (
+                  <button type="button" onClick={retryProgress}>Retry</button>
+                )}
+                <button type="button" className={styles.secondaryAction} onClick={() => navigate("/dashboard")}>Dashboard</button>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.lessonMapPage}>
@@ -370,7 +370,7 @@ function LessonMapPage() {
           >
             <span className={styles.regionOrder}>01</span>
             <span className={styles.regionName}>Tutorial</span>
-            <span className={styles.regionProgress}>{Math.round(tutorialProgress)}%</span>
+            <span className={styles.regionProgress}>{tutorialMetric.percentageText}</span>
           </button>
           <button
             type="button"
@@ -380,7 +380,7 @@ function LessonMapPage() {
           >
             <span className={styles.regionOrder}>02</span>
             <span className={styles.regionName}>Arrays</span>
-            <span className={styles.regionProgress}>{Math.round(arraysProgress)}%</span>
+            <span className={styles.regionProgress}>{arraysMetric.percentageText}</span>
           </button>
           <button
             type="button"
@@ -390,7 +390,7 @@ function LessonMapPage() {
           >
             <span className={styles.regionOrder}>03</span>
             <span className={styles.regionName}>Functions</span>
-            <span className={styles.regionProgress}>{Math.round(functionsProgress)}%</span>
+            <span className={styles.regionProgress}>{functionsMetric.percentageText}</span>
           </button>
           <button
             type="button"
@@ -400,34 +400,46 @@ function LessonMapPage() {
           >
             <span className={styles.regionOrder}>04</span>
             <span className={styles.regionName}>Methods + Arrays</span>
-            <span className={styles.regionProgress}>{functionsArraysProgress}%</span>
+            <span className={styles.regionProgress}>{functionsArraysMetric.percentageText}</span>
           </button>
           </div>
         </nav>
 
-        {progressionModel && <div className={styles.progressionPanel}>
-          <LessonProgressionPanel
-            title={activeRegion === "tutorial" ? LESSON_ONE_MAP_CONFIG.lessonTitle : tiledRegion.progressionTitle}
-            model={progressionModel}
-            showAction={progressionModel.action.kind !== "game"}
-          />
-        </div>}
+        <div className={styles.progressionPanel}>
+          {mapViewModel.nextStep.progression ? (
+            <LessonProgressionPanel
+              title={mapViewModel.nextStep.title}
+              model={mapViewModel.nextStep.progression}
+              showAction
+            />
+          ) : (
+            <div className={styles.nextStepStatus}>
+              <span>Next step</span>
+              <h2>{mapViewModel.status === "empty"
+                ? "No assigned game activities"
+                : mapViewModel.nextStep.title}</h2>
+              <p>{mapViewModel.status === "empty"
+                ? "No game activities are currently assigned in this classroom."
+                : mapViewModel.nextStep.description}</p>
+            </div>
+          )}
+        </div>
 
         {activeRegion === "tutorial" ? (
           <LessonMap
             lessonTitle={LESSON_ONE_MAP_CONFIG.lessonTitle}
             subtitle={LESSON_ONE_MAP_CONFIG.subtitle}
-            description={isLoading ? "Loading map progress..." : "Complete each level to unlock the next node."}
-            progressPercent={tutorialProgress}
+            description="Complete each assigned level from the point your classroom progress allows."
+            progressPercent={tutorialMetric.progressPercent}
+            progressSummary={tutorialMetric.countText}
             stages={LESSON_ONE_MAP_CONFIG.stages}
             nodes={mapNodes}
             connections={LESSON_ONE_MAP_CONFIG.connections}
             lessonDetails={LESSON_DETAILS}
             backgroundImageSrc={LEVEL_ONE_BG_SRC}
-            onContinue={() => navigate(continueRoute)}
             onExit={() => navigate("/dashboard")}
             onNodeClick={(node) => { if (node.route) navigate(node.route); }}
-            continueDisabled={isLoading}
+            showContinue={false}
           />
         ) : (
           <div className={styles.arraysLayout}>
@@ -444,15 +456,17 @@ function LessonMapPage() {
               <div className={styles.arraysProgressBlock}>
                 <div
                   className={styles.progressSeal}
-                  style={{ "--progress": `${Math.round(tiledRegion.progress) * 3.6}deg` }}
-                  aria-label={`${Math.round(tiledRegion.progress)} percent complete`}
+                  style={{ "--progress": `${(tiledRegion.metric.progressPercent ?? 0) * 3.6}deg` }}
+                  aria-label={tiledRegion.metric.progressPercent == null
+                    ? tiledRegion.metric.countText
+                    : `${tiledRegion.metric.progressPercent} percent complete`}
                 >
-                  <span>{Math.round(tiledRegion.progress)}%</span>
+                  <span>{tiledRegion.metric.percentageText}</span>
                 </div>
                 <div>
                   <span className={styles.progressHeading}>Quest progress</span>
-                  <strong>{Math.round(tiledRegion.progress)}%</strong>
-                  <small>{tiledRegion.completedCount} of {tiledRegion.totalCount} nodes conquered</small>
+                  <strong>{tiledRegion.metric.percentageText}</strong>
+                  <small>{tiledRegion.metric.countText}</small>
                 </div>
               </div>
 
@@ -462,14 +476,6 @@ function LessonMapPage() {
               </div>
 
               <div className={styles.infoActions}>
-                <button
-                  type="button"
-                  className={styles.continueButton}
-                  onClick={() => navigate(continueRoute)}
-                  disabled={!tiledRegion.unlocked || isLoading || progressionModel?.action.kind !== "game"}
-                >
-                  Continue
-                </button>
                 <button type="button" onClick={() => navigate("/dashboard")}>Dashboard</button>
               </div>
             </aside>
@@ -485,6 +491,7 @@ function LessonMapPage() {
                   <span><i className={styles.legendCurrent} />In quest</span>
                   <span><i className={styles.legendAvailable} />Available</span>
                   <span><i className={styles.legendLocked} />Sealed</span>
+                  <span><i className={styles.legendUnassigned} />Not assigned</span>
                 </div>
               </header>
               <TiledCurriculumMap

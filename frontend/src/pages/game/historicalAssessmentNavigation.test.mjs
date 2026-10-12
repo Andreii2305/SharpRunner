@@ -9,7 +9,7 @@ test("map and direct route share the canonical level assessment interpreter", as
     source("../map/LessonMapPage.jsx"),
     source("./LevelRoutePage.jsx"),
   ]);
-  assert.match(map, /createLevelEntryViewModel/);
+  assert.match(map, /createMapLevelEntry/);
   assert.match(route, /createLevelEntryViewModel/);
   assert.match(map, /completed:\s*row\?\.isCompleted\s*===\s*true/);
   assert.doesNotMatch(route, /isAccessible\s*\|\|\s*level\?\.isCompleted/);
@@ -62,6 +62,10 @@ test("stale gameplay denials share the canonical interpreter and stop interactio
   assert.match(game, /dialogueSfxManager\.stop/);
   assert.match(game, /role="alert"/);
   assert.match(game, /buildMapHref\(classroomId\)/);
+  assert.match(
+    game,
+    /if \(deadlineExpired\)[\s\S]+navigate\(buildMapHref\(classroomId\)\)/,
+  );
   assert.match(css, /\.accessChangedPanel/);
   assert.doesNotMatch(game, /useSearchParams/);
   assert.doesNotMatch(game, /redirectUrl/);

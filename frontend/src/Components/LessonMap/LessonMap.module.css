@@ -223,6 +223,7 @@
 }
 
 .progressRing {
+  position: relative;
   width: 72px;
   height: 72px;
   flex-shrink: 0;
@@ -231,6 +232,16 @@
   border: 2px solid #1a0f08;
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px #ffeb99, 2px 2px 0 rgba(0,0,0,0.2);
+}
+
+.progressUnavailable {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #3d2817;
+  font-size: 1.1rem;
+  font-weight: 700;
 }
 
 .progressRing :global(.CircularProgressbar-text) {
@@ -498,6 +509,7 @@
 .legendCurrent  { background: #8b2c1a; }
 .legendUnlocked { background: #c9a662; }
 .legendLocked   { background: #3d2817; }
+.legendUnassigned { background: transparent; border-style: dashed; }
 
 .legendLabel {
   font-size: 10px;
@@ -809,6 +821,19 @@
 .nodeLocked .shieldInner {
   background: linear-gradient(180deg, #5c3a1e 0%, #3d2817 100%);
   box-shadow: inset 0 0 0 1px #8b6f3f;
+}
+
+.nodeUnassigned .shieldInner { border: 1px dashed #b29b78; background: #3b3329; }
+
+.assignmentBadge {
+  margin-top: 2px;
+  padding: 1px 4px;
+  border: 1px dashed #7f6c50;
+  border-radius: 3px;
+  color: #d8c8ac;
+  background: rgba(35, 29, 23, 0.9);
+  font-size: 8px;
+  font-weight: 700;
 }
 
 /* Boss node — slightly larger */

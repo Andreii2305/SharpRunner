@@ -5,7 +5,11 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
-const vite = await createServer({ server: { middlewareMode: true }, appType: "custom" });
+const vite = await createServer({
+  server: { middlewareMode: true },
+  appType: "custom",
+  optimizeDeps: { noDiscovery: true },
+});
 const { default: LessonProgressionPanel } = await vite.ssrLoadModule(
   "/src/Components/LessonProgression/LessonProgressionPanel.jsx",
 );
@@ -108,6 +112,22 @@ test("keeps retry and View Result as separate POST actions", () => {
   }));
   assert.match(html, />View Result<\/a>/);
   assert.match(html, />Retry Post-Test<\/a>/);
+});
+
+test("keeps the shared context label by default and allows a map-specific label", () => {
+  const model = {
+    steps: [{ key: "game", label: "Game Levels", state: "current" }],
+    action: { label: "Continue Game", href: "/array/level/1?classroomId=7", disabled: false },
+  };
+  const shared = renderToStaticMarkup(React.createElement(LessonProgressionPanel, { model }));
+  const map = renderToStaticMarkup(React.createElement(LessonProgressionPanel, {
+    model,
+    contextLabel: "Curriculum next step",
+  }));
+
+  assert.match(shared, />Lesson progress<\/span>/);
+  assert.match(map, />Curriculum next step<\/span>/);
+  assert.doesNotMatch(map, />Lesson progress<\/span>/);
 });
 
 test("map presents one authoritative next action separately from the selected region", async () => {

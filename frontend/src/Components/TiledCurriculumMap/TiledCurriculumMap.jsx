@@ -9,6 +9,7 @@ import {
   loadTiledMap,
   parseLevelMarker,
 } from "./tiledMapUtils";
+import { createMobileDetailsFocusController } from "./mobileDetailsFocus.js";
 import styles from "./TiledCurriculumMap.module.css";
 
 const imageCache = new Map();
@@ -194,9 +195,8 @@ function LevelNode({ node, onNodeClick }) {
   const completed = node.status === "completed";
   const current = node.status === "current";
   const assessmentRequired = node.status === "assessment-required";
-  const assessmentRecovery = node.status === "assessment-recovery";
-  const assessmentInvalid = node.status === "assessment-invalid";
-  const nonInteractive = locked || unassigned || unavailable || assessmentRecovery || assessmentInvalid;
+  const actionEnabled = node.disabled !== true && Boolean(node.route);
+  const nonInteractive = !actionEnabled;
   const statusLabel = node.actionLabel ?? (completed ? "Completed" : current ? "Current" : expired ? "Deadline Passed" : unassigned ? "Not assigned" : unavailable ? "Availability unavailable" : locked ? "Locked" : "Available");
   const grade =
     node.grade ??
@@ -208,9 +208,9 @@ function LevelNode({ node, onNodeClick }) {
       type="button"
       className={`${styles.levelNode} ${styles[node.status]}`}
       style={{ left: node.x, top: node.y }}
-      disabled={locked || unassigned || unavailable}
-      aria-disabled={nonInteractive || undefined}
-      onClick={() => onNodeClick?.(node)}
+      disabled={!actionEnabled}
+      aria-disabled={!actionEnabled || undefined}
+      onClick={(event) => onNodeClick?.(node, event.currentTarget)}
       aria-label={`Level ${levelLabel}: ${node.title}. ${node.actionLabel ?? statusLabel}.`}
     >
       {(current || assessmentRequired) && (
@@ -264,6 +264,15 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
   const [selectedNode, setSelectedNode] = useState(null);
   const viewportRef = useRef(null);
   const dragRef = useRef(null);
+  const detailsHeadingRef = useRef(null);
+  const detailsFocusRef = useRef(null);
+  if (detailsFocusRef.current == null) {
+    detailsFocusRef.current = createMobileDetailsFocusController();
+  }
+  const closeDetails = () => {
+    detailsFocusRef.current.close();
+    setSelectedNode(null);
+  };
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768);
@@ -272,8 +281,33 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
   }, []);
 
   useEffect(() => {
-    if (!isMobile) setSelectedNode(null);
+    if (!isMobile) {
+      detailsFocusRef.current.clearForRegionChange();
+      setSelectedNode(null);
+    }
   }, [isMobile]);
+
+  useEffect(() => {
+    detailsFocusRef.current.clearForRegionChange();
+    setSelectedNode(null);
+  }, [mapUrl]);
+
+  const selectedNodeId = selectedNode?.id ?? null;
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    detailsFocusRef.current.focusOpenedDetails(selectedNodeId, detailsHeadingRef.current);
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    if (!selectedNodeId) return undefined;
+    const handleKeyDown = (event) => {
+      if (!detailsFocusRef.current.shouldCloseFromKey(event)) return;
+      detailsFocusRef.current.close();
+      setSelectedNode(null);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedNodeId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -359,12 +393,13 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
     dragRef.current = null;
   };
 
-  const selectOrOpenNode = (node) => {
+  const selectOrOpenNode = (node, opener) => {
     if (isMobile) {
+      detailsFocusRef.current.open(node.id, opener);
       setSelectedNode(node);
       return;
     }
-    if (!node.disabled) onNodeClick?.(node);
+    if (node.disabled !== true && node.route) onNodeClick?.(node);
   };
 
   return (
@@ -398,18 +433,23 @@ function TiledCurriculumMap({ mapUrl, nodes, mapMarkerToLevel, onNodeClick }) {
         </div>
       </div>
       {selectedNode && (
-        <aside className={styles.mobileDetails} aria-label={`${selectedNode.title} details`}>
-          <button type="button" className={styles.detailsClose} onClick={() => setSelectedNode(null)} aria-label="Close level details">×</button>
+        <aside
+          className={styles.mobileDetails}
+          aria-labelledby="mobile-map-details-title"
+        >
+          <button type="button" className={styles.detailsClose} onClick={closeDetails} aria-label="Close level details">×</button>
           <span className={styles.detailsStatus}>{selectedNode.actionLabel ?? selectedNode.status}</span>
-          <strong>{selectedNode.title}</strong>
+          <h3 id="mobile-map-details-title" ref={detailsHeadingRef} tabIndex="-1">{selectedNode.title}</h3>
           <p>{selectedNode.topic || "Open this level to view its learning objective."}</p>
           {selectedNode.effectiveDueAt && <p>{selectedNode.hasExtension ? "Extension granted · " : ""}Due {formatDue(selectedNode.effectiveDueAt)}</p>}
           <button
             type="button"
             className={styles.detailsPlay}
-            disabled={selectedNode.disabled}
-            aria-disabled={selectedNode.disabled || undefined}
-            onClick={() => { if (!selectedNode.disabled) onNodeClick?.(selectedNode); }}
+            disabled={selectedNode.disabled === true || !selectedNode.route}
+            aria-disabled={selectedNode.disabled === true || !selectedNode.route || undefined}
+            onClick={() => {
+              if (selectedNode.disabled !== true && selectedNode.route) onNodeClick?.(selectedNode);
+            }}
           >
             {selectedNode.actionLabel ?? (selectedNode.status === "expired" ? "View deadline" : "Play")}
           </button>

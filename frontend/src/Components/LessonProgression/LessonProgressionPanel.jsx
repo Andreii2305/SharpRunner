@@ -18,14 +18,19 @@ const STATE_MARKERS = {
   blocked: "!",
 };
 
-export default function LessonProgressionPanel({ title = "Lesson progression", model, showAction = true }) {
+export default function LessonProgressionPanel({
+  title = "Lesson progression",
+  contextLabel = "Lesson progress",
+  model,
+  showAction = true,
+}) {
   if (!model) return null;
   const headingId = `lesson-progression-${model.lessonKey ?? "current"}`;
   const renderAction = showAction && !model.lessonCompleted;
   return <section className={styles.panel} aria-labelledby={headingId}>
     <div className={styles.headingRow}>
       <div>
-        <span className={styles.eyebrow}>Lesson progress</span>
+        <span className={styles.eyebrow}>{contextLabel}</span>
         <h2 id={headingId}>{title}</h2>
       </div>
       {model.lessonCompleted && <span className={styles.completeBadge}>Lesson Complete</span>}

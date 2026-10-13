@@ -20,7 +20,7 @@
   flex-direction: column;
 }
 
-.progressionPanel { padding: 6px 0; }
+.progressionPanel { padding: 0 0 6px; }
 
 .requestStatus,
 .nextStepStatus {
@@ -94,9 +94,8 @@
 .regionTabsLabel {
   flex: none;
   color: #c9a662;
-  font: 700 0.68rem Georgia, serif;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 700 0.75rem Georgia, serif;
+  letter-spacing: 0.04em;
 }
 
 .regionTabList {
@@ -130,6 +129,11 @@
   background: rgba(201, 166, 98, 0.12);
 }
 
+.regionTabList button:focus-visible {
+  outline: 3px solid #f0b429;
+  outline-offset: 2px;
+}
+
 .regionTabList .activeRegionTab {
   color: #2a1810;
   background: linear-gradient(180deg, #f4e2ab 0%, #cfad68 100%);
@@ -158,7 +162,7 @@
 .regionProgress {
   margin-left: auto;
   color: #9f8758;
-  font-size: 0.66rem;
+  font-size: 0.75rem;
 }
 
 .activeRegionTab .regionProgress { color: #63451f; }
@@ -182,6 +186,8 @@
 }
 
 .arraysInfoPanel {
+  overflow-x: hidden;
+  overflow-y: auto;
   color: #3d2817;
   background:
     repeating-linear-gradient(0deg, rgba(139, 111, 63, 0.045) 0 2px, transparent 2px 4px),
@@ -234,7 +240,7 @@
 
 .arraysHeroText { position: relative; z-index: 1; }
 .arraysHero h1 { margin: 3px 0; font: 700 1.08rem/1.05 Georgia, serif; text-shadow: 1px 1px #000; }
-.arraysHero p { margin: 0; color: #e6c877; font: italic 0.72rem/1.35 Georgia, serif; }
+.arraysHero p { margin: 0; color: #e6c877; font: italic 0.8rem/1.4 Georgia, serif; }
 
 .arraysProgressBlock {
   display: flex;
@@ -258,9 +264,8 @@
 
 .progressSeal span { font: 700 0.8rem Georgia, serif; }
 .arraysProgressBlock > div:last-child { display: flex; flex-direction: column; }
-.progressHeading { font: 700 0.63rem Georgia, serif; letter-spacing: 0.1em; text-transform: uppercase; }
-.arraysProgressBlock strong { color: #8b2c1a; font: 700 1.35rem Georgia, serif; }
-.arraysProgressBlock small { font: italic 0.67rem Georgia, serif; }
+.progressHeading { font: 700 0.75rem Georgia, serif; }
+.arraysProgressBlock small { margin-top: 4px; font: 0.75rem/1.35 Georgia, serif; }
 
 .arraysNotes {
   margin: 12px;
@@ -270,8 +275,8 @@
   box-shadow: inset 0 0 0 2px rgba(139, 111, 63, 0.2);
 }
 
-.arraysNotes h2 { margin: 0 0 8px; font: 700 0.72rem Georgia, serif; letter-spacing: 0.08em; text-align: center; text-transform: uppercase; }
-.arraysNotes p { position: relative; margin: 8px 0; padding-left: 13px; font: italic 0.68rem/1.45 Georgia, serif; }
+.arraysNotes h2 { margin: 0 0 8px; font: 700 0.8rem Georgia, serif; letter-spacing: 0.04em; text-align: center; }
+.arraysNotes p { position: relative; margin: 8px 0; padding-left: 13px; font: italic 0.78rem/1.45 Georgia, serif; }
 .arraysNotes p::before { content: "✦"; position: absolute; left: 0; color: #8b2c1a; font-style: normal; }
 
 .infoActions {
@@ -309,16 +314,21 @@
 
 .arraysHeader h2 { margin: 0 0 3px; font: 700 1.05rem Georgia, serif; font-variant: small-caps; letter-spacing: 0.05em; }
 .arraysHeader p { margin: 0; color: #c9a662; font-size: 0.8rem; }
-.eyebrow { color: #d5bd7d; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; }
+.eyebrow { color: #d5bd7d; font-size: 0.75rem; font-weight: 800; letter-spacing: 0.04em; }
 
 .mapLegend { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
-.mapLegend span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid #8b6f3f; color: #ead8a6; font: 700 0.58rem Georgia, serif; letter-spacing: 0.05em; text-transform: uppercase; }
+.mapLegend span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid #8b6f3f; color: #ead8a6; font: 700 0.72rem Georgia, serif; }
 .mapLegend i { display: block; width: 9px; height: 9px; border: 1px solid #1a0f08; }
 .legendCompleted { background: #2a6b34; }
-.legendCurrent { background: #9b3120; }
 .legendAvailable { background: #d5b56c; }
+.legendAssessment { background: #315f91; }
+.legendActionRequired,
+.legendExpired { background: #8f4b45; }
 .legendLocked { background: #453225; }
 .mapLegend .legendUnassigned { background: transparent; border-style: dashed; }
+.mapLegend .legendUnavailable { background: #62594d; border-style: dashed; }
+
+.mobileRegionTitle { display: none; }
 
 /* The LessonMap root fills this container */
 .lessonMapContent > *:not(.regionTabs):not(.progressionPanel) {
@@ -348,7 +358,9 @@
   .lessonMapContent {
     padding: 6px;
     height: 100%;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
   }
 
   .regionTabs { align-items: stretch; flex-direction: column; gap: 5px; padding: 7px; }
@@ -360,6 +372,7 @@
   .arraysInfoPanel { display: none; }
   .arraysNotes { display: none; }
   .arraysHeader { padding: 9px 12px; }
+  .mobileRegionTitle { display: block; }
   .arraysHeader p { font-size: 0.7rem; }
-  .arraysRegion { flex: 1; min-height: 0; }
+  .arraysRegion { flex: 1; min-height: 65dvh; }
 }

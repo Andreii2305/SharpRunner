@@ -9,48 +9,46 @@
   font-family: Georgia, "Times New Roman", serif;
 }
 
-/* ── Mobile notice ────────────────────── */
-.mobileNotice {
+/* ── Mobile Tutorial list ─────────────── */
+.mobileTutorial {
   display: none;
   width: 100%;
-  min-height: 100dvh;
   background: #e8d4a0;
   color: #3d2817;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  text-align: center;
-  padding: 40px 24px 100px;
-  gap: 12px;
+  box-sizing: border-box;
+  padding: 16px 14px calc(18px + env(safe-area-inset-bottom));
 }
 
-.mobileNoticeIcon {
-  font-size: 3rem;
-  line-height: 1;
-  margin-bottom: 4px;
+.mobileTutorialHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.mobileNotice h3 {
-  margin: 0;
-  font-size: 1.4rem;
-  font-variant: small-caps;
-  letter-spacing: 2px;
+.mobileTutorialHeader span {
+  color: #765734;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.mobileTutorialHeader h2 {
+  margin: 3px 0 4px;
+  font-size: 1.35rem;
   color: #8b2c1a;
 }
 
-.mobileNotice p {
+.mobileTutorialHeader p,
+.mobileProgressWrap p {
   margin: 0;
-  max-width: 280px;
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   color: #5c3a1e;
-  font-style: italic;
-  line-height: 1.5;
+  line-height: 1.45;
 }
 
 .mobileProgressWrap {
   width: 100%;
-  max-width: 280px;
-  margin-top: 8px;
+  margin-top: 18px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -59,10 +57,10 @@
 .mobileProgressLabel {
   display: flex;
   justify-content: space-between;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 700;
   color: #5c3a1e;
-  font-family: "Segoe UI", sans-serif;
+  font-family: Georgia, serif;
 }
 
 .mobileProgressTrack {
@@ -79,18 +77,10 @@
   transition: width 0.5s ease;
 }
 
-.mobileNoticeActions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
-  max-width: 280px;
-  margin-top: 12px;
-}
-
 .mobileBackBtn {
-  width: 100%;
-  padding: 11px;
+  flex: none;
+  min-height: 44px;
+  padding: 8px 12px;
   background: transparent;
   color: #5c3a1e;
   border: 2px solid #8b6f3f;
@@ -102,6 +92,44 @@
   transition: background 0.15s;
 }
 .mobileBackBtn:hover { background: rgba(0,0,0,0.07); }
+.mobileBackBtn:focus-visible,
+.mobileTutorialList button:focus-visible { outline: 3px solid #8b2c1a; outline-offset: 2px; }
+
+.mobileTutorialList {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mobileTutorialList li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, auto);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid rgba(92, 58, 30, 0.32);
+}
+
+.mobileTutorialList li > div { min-width: 0; }
+.mobileTutorialList li span { display: block; color: #765734; font-size: 0.76rem; }
+.mobileTutorialList li strong { display: block; margin-top: 2px; font-size: 1rem; line-height: 1.3; overflow-wrap: anywhere; }
+.mobileTutorialList button {
+  min-height: 44px;
+  padding: 8px 11px;
+  border: 2px solid #6d2116;
+  border-radius: 8px;
+  color: #fff7dd;
+  background: #8b2c1a;
+  font: 700 0.82rem/1.25 Georgia, serif;
+}
+.mobileTutorialList button:disabled {
+  border-color: #8b795d;
+  color: #594c3b;
+  background: #d0bd8d;
+  cursor: not-allowed;
+}
 
 /* ── Two-column layout ────────────────── */
 .mapLayout {
@@ -124,7 +152,8 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   box-shadow:
     inset 0 0 0 1px #c9a662,
     inset 0 0 30px rgba(92,58,30,0.15),
@@ -266,15 +295,6 @@
   font-weight: 700;
   letter-spacing: 0.1em;
   font-variant: small-caps;
-}
-
-.progressVal {
-  font-size: 22px;
-  font-weight: 700;
-  color: #8b2c1a;
-  margin-top: 1px;
-  line-height: 1.1;
-  font-family: Georgia, serif;
 }
 
 .progressSub {
@@ -505,14 +525,17 @@
   border: 1px solid #1a0f08;
 }
 
-.legendDone     { background: #2a5a2a; }
-.legendCurrent  { background: #8b2c1a; }
-.legendUnlocked { background: #c9a662; }
+.legendCompleted { background: #2a5a2a; }
+.legendAvailable { background: #8b2c1a; }
+.legendAssessment { background: #315f91; }
+.legendActionRequired,
+.legendExpired { background: #8f4b45; }
 .legendLocked   { background: #3d2817; }
 .legendUnassigned { background: transparent; border-style: dashed; }
+.legendUnavailable { background: #62594d; border-style: dashed; }
 
 .legendLabel {
-  font-size: 10px;
+  font-size: 0.75rem;
   color: #e8d4a0;
   white-space: nowrap;
   font-variant: small-caps;
@@ -524,7 +547,7 @@
 .mapCanvas {
   position: relative;
   flex: 1;
-  min-height: 560px;
+  min-height: 0;
   background:
     radial-gradient(ellipse at 15% 20%, rgba(139, 44, 26, 0.1) 0%, transparent 40%),
     radial-gradient(ellipse at 85% 80%, rgba(201, 166, 98, 0.12) 0%, transparent 40%),
@@ -1052,5 +1075,10 @@
 
 @media (max-width: 767px) {
   .mapLayout    { display: none; }
-  .mobileNotice { display: flex; }
+  .mobileTutorial { display: block; }
+}
+
+@media (max-width: 420px) {
+  .mobileTutorialList li { grid-template-columns: 1fr; }
+  .mobileTutorialList button { width: 100%; }
 }

@@ -187,12 +187,13 @@ function MapNode({ node, onNodeClick, sounds }) {
   const hasUnavailableState = node.status === "unavailable";
   const isExpired = node.status === "expired";
   const isUnavailable = isLocked || isUnassigned || hasUnavailableState || isExpired;
+  const actionEnabled = node.disabled !== true && Boolean(node.route);
   const isCurrent = node.status === "current";
   const isDone = node.status === "completed";
   const isBoss = Boolean(node.isBoss);
 
   const handleClick = () => {
-    if (isLocked || isUnassigned || hasUnavailableState) {
+    if (!actionEnabled) {
       sounds?.playLocked();
       return;
     }
@@ -201,7 +202,7 @@ function MapNode({ node, onNodeClick, sounds }) {
   };
 
   const handleEnter = () => {
-    if (!isLocked && !isUnassigned && !hasUnavailableState) sounds?.playHover();
+    if (actionEnabled) sounds?.playHover();
   };
 
   return (
@@ -211,7 +212,7 @@ function MapNode({ node, onNodeClick, sounds }) {
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
       onClick={handleClick}
       onMouseEnter={handleEnter}
-      disabled={isLocked || isUnassigned || hasUnavailableState}
+      disabled={!actionEnabled}
       aria-label={`Level ${node.levelNumber}: ${node.title}${isExpired ? " — deadline passed" : isUnassigned ? " — not assigned" : hasUnavailableState ? " — availability unavailable" : isLocked ? " — locked" : ""}`}
     >
       {/* Boss crown banner */}
@@ -484,6 +485,7 @@ function LessonMap({
   onContinue,
   onExit,
   onNodeClick,
+  legendItems = [],
   showContinue = true,
   continueLabel = "Onward",
   continueDisabled = false,
@@ -542,36 +544,50 @@ function LessonMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [knightKey]);
 
-  const LEGEND = [
-    { label: "Conquered", cls: "legendDone" },
-    { label: "In Quest", cls: "legendCurrent" },
-    { label: "Awaits", cls: "legendUnlocked" },
-    { label: "Sealed", cls: "legendLocked" },
-    { label: "Not assigned", cls: "legendUnassigned" },
-  ];
-
   return (
     <div className={styles.lessonMapRoot}>
-      {/* Mobile fallback */}
-      <div className={styles.mobileNotice}>
-        <div className={styles.mobileNoticeIcon}>🗺</div>
-        <h3>Quest Map</h3>
-        <p>The interactive map is best viewed on a larger screen.</p>
+      <section className={styles.mobileTutorial} aria-labelledby="mobile-tutorial-heading">
+        <div className={styles.mobileTutorialHeader}>
+          <div>
+            <span>Region I</span>
+            <h2 id="mobile-tutorial-heading">{lessonTitle}</h2>
+            <p>{description}</p>
+          </div>
+          <button className={styles.mobileBackBtn} type="button" onClick={onExit}>
+            Dashboard
+          </button>
+        </div>
         <div className={styles.mobileProgressWrap}>
           <div className={styles.mobileProgressLabel}>
-            <span>{lessonTitle}</span>
+            <span>Game progress</span>
             <span>{progressPercent == null ? "—" : `${progressPercent}%`}</span>
           </div>
           <div className={styles.mobileProgressTrack}>
             <div className={styles.mobileProgressFill} style={{ width: `${progressPercent ?? 0}%` }} />
           </div>
+          <p>{progressSummary}</p>
         </div>
-        <div className={styles.mobileNoticeActions}>
-          <button className={styles.mobileBackBtn} onClick={onExit}>
-            ← Back to Dashboard
-          </button>
-        </div>
-      </div>
+        <ol className={styles.mobileTutorialList} aria-label="Tutorial activities">
+          {orderedNodes.map((node) => {
+            const actionEnabled = node.disabled !== true && Boolean(node.route);
+            return (
+              <li key={node.id} data-status={node.status}>
+                <div>
+                  <span>Level {toRoman(node.levelNumber)}</span>
+                  <strong>{node.title}</strong>
+                </div>
+                <button
+                  type="button"
+                  disabled={!actionEnabled}
+                  onClick={() => { if (actionEnabled) onNodeClick?.(node); }}
+                >
+                  {node.actionLabel ?? (actionEnabled ? "Open activity" : "Unavailable")}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
 
       <div className={styles.mapLayout}>
         {/* ══ LEFT PANEL — parchment scroll ══ */}
@@ -606,10 +622,7 @@ function LessonMap({
               {progressPercent == null && <span className={styles.progressUnavailable}>—</span>}
             </div>
             <div className={styles.progressMeta}>
-              <div className={styles.progressLabel}>⚜ Quest Progress</div>
-              <div className={styles.progressVal}>
-                {progressPercent == null ? "—" : `${Math.round(progressPercent)}%`}
-              </div>
+              <div className={styles.progressLabel}>Game progress</div>
               <div className={styles.progressSub}>
                 {progressSummary ?? `${toRoman(totalDone) || "0"} of ${totalLevelsLabel} levels`}
               </div>
@@ -621,7 +634,7 @@ function LessonMap({
             <div className={styles.currentPill}>
               <span className={styles.currentDot} />
               <div>
-                <div className={styles.currentPillLabel}>⚔ Now Questing</div>
+                <div className={styles.currentPillLabel}>Available activity</div>
                 <div className={styles.currentPillVal}>
                   Level {toRoman(currentNode.levelNumber)} · {currentNode.title}
                 </div>
@@ -672,16 +685,15 @@ function LessonMap({
         <section className={styles.rightPanel}>
           <header className={styles.mapHeader}>
             <div className={styles.headerText}>
-              <h2 className={styles.mapTitle}>⚔ {lessonTitle} ⚔</h2>
-              <p className={styles.mapSubtitle}>{subtitle}</p>
+              <h2 className={styles.mapTitle}>Choose a tutorial activity</h2>
               <span className={styles.mapDesc}>{description}</span>
             </div>
 
             {/* Legend */}
             <div className={styles.legend}>
-              {LEGEND.map(({ label, cls }) => (
+              {legendItems.map(({ label, className }) => (
                 <div key={label} className={styles.legendItem}>
-                  <span className={`${styles.legendDot} ${styles[cls]}`} />
+                  <span className={`${styles.legendDot} ${styles[className]}`} />
                   <span className={styles.legendLabel}>{label}</span>
                 </div>
               ))}

@@ -16,6 +16,7 @@ import {
   isConfirmedUnenrolled,
   mapProgressReducer,
 } from "./lessonMapViewModel.js";
+import { createVisibleMapLegend } from "./mapPresentation.js";
 
 const LEVEL_ONE_BG_SRC = `${import.meta.env.BASE_URL}game/assets/backgrounds/level1_bg.png`;
 const ARRAYS_MAP_URL = `${import.meta.env.BASE_URL}game/assets/curriculum_map_level/array.tmj`;
@@ -209,6 +210,7 @@ function LessonMapPage() {
       };
     });
   }, [classroomId, mapViewModel]);
+  const tutorialLegend = useMemo(() => createVisibleMapLegend(mapNodes), [mapNodes]);
 
   const nextLessonKey = mapViewModel.nextStep.lessonKey;
   const inferredRegion = nextLessonKey === "arrays"
@@ -315,6 +317,10 @@ function LessonMapPage() {
             "Drag or scroll the map to follow Kai through the region.",
           ],
         };
+  const tiledLegend = useMemo(
+    () => createVisibleMapLegend(tiledRegion.nodes),
+    [tiledRegion.nodes],
+  );
 
   const retryProgress = () => setRetryGeneration((value) => value + 1);
   const requestStatus = currentRequestState.status === "idle"
@@ -359,8 +365,29 @@ function LessonMapPage() {
   return (
     <div className={styles.lessonMapPage}>
       <section className={styles.lessonMapContent}>
-        <nav className={styles.regionTabs} aria-label="Curriculum regions">
-          <span className={styles.regionTabsLabel}>Switch lesson</span>
+        <div className={styles.progressionPanel}>
+          {mapViewModel.nextStep.progression ? (
+            <LessonProgressionPanel
+              title={mapViewModel.nextStep.title}
+              model={mapViewModel.nextStep.progression}
+              contextLabel="Curriculum next step"
+              showAction
+            />
+          ) : (
+            <div className={styles.nextStepStatus}>
+              <span>Curriculum next step</span>
+              <h2>{mapViewModel.status === "empty"
+                ? "No assigned game activities"
+                : mapViewModel.nextStep.title}</h2>
+              <p>{mapViewModel.status === "empty"
+                ? "No game activities are currently assigned in this classroom."
+                : mapViewModel.nextStep.description}</p>
+            </div>
+          )}
+        </div>
+
+        <nav className={styles.regionTabs} aria-label="Explore map regions">
+          <span className={styles.regionTabsLabel}>Map regions</span>
           <div className={styles.regionTabList}>
           <button
             type="button"
@@ -405,26 +432,6 @@ function LessonMapPage() {
           </div>
         </nav>
 
-        <div className={styles.progressionPanel}>
-          {mapViewModel.nextStep.progression ? (
-            <LessonProgressionPanel
-              title={mapViewModel.nextStep.title}
-              model={mapViewModel.nextStep.progression}
-              showAction
-            />
-          ) : (
-            <div className={styles.nextStepStatus}>
-              <span>Next step</span>
-              <h2>{mapViewModel.status === "empty"
-                ? "No assigned game activities"
-                : mapViewModel.nextStep.title}</h2>
-              <p>{mapViewModel.status === "empty"
-                ? "No game activities are currently assigned in this classroom."
-                : mapViewModel.nextStep.description}</p>
-            </div>
-          )}
-        </div>
-
         {activeRegion === "tutorial" ? (
           <LessonMap
             lessonTitle={LESSON_ONE_MAP_CONFIG.lessonTitle}
@@ -439,6 +446,7 @@ function LessonMapPage() {
             backgroundImageSrc={LEVEL_ONE_BG_SRC}
             onExit={() => navigate("/dashboard")}
             onNodeClick={(node) => { if (node.route) navigate(node.route); }}
+            legendItems={tutorialLegend}
             showContinue={false}
           />
         ) : (
@@ -464,8 +472,7 @@ function LessonMapPage() {
                   <span>{tiledRegion.metric.percentageText}</span>
                 </div>
                 <div>
-                  <span className={styles.progressHeading}>Quest progress</span>
-                  <strong>{tiledRegion.metric.percentageText}</strong>
+                  <span className={styles.progressHeading}>Game progress</span>
                   <small>{tiledRegion.metric.countText}</small>
                 </div>
               </div>
@@ -483,15 +490,13 @@ function LessonMapPage() {
             <section className={styles.arraysRegion}>
               <header className={styles.arraysHeader}>
                 <div>
-                  <h2>⚔ {tiledRegion.title} ⚔</h2>
+                  <h2 className={styles.mobileRegionTitle}>{tiledRegion.title}</h2>
                   <p>{tiledRegion.headerDescription}</p>
                 </div>
                 <div className={styles.mapLegend} aria-label="Level status legend">
-                  <span><i className={styles.legendCompleted} />Conquered</span>
-                  <span><i className={styles.legendCurrent} />In quest</span>
-                  <span><i className={styles.legendAvailable} />Available</span>
-                  <span><i className={styles.legendLocked} />Sealed</span>
-                  <span><i className={styles.legendUnassigned} />Not assigned</span>
+                  {tiledLegend.map(({ label, className }) => (
+                    <span key={label}><i className={styles[className]} />{label}</span>
+                  ))}
                 </div>
               </header>
               <TiledCurriculumMap

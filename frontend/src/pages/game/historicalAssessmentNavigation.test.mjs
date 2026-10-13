@@ -34,10 +34,12 @@ test("map debt and recovery states remain keyboard-visible and mobile-usable", a
     source("../../Components/TiledCurriculumMap/TiledCurriculumMap.module.css"),
   ]);
   assert.match(component, /assessment-required/);
-  assert.match(component, /assessment-recovery/);
+  assert.match(component, /styles\[node\.status\]/);
   assert.match(component, /aria-label=.*actionLabel/s);
   assert.match(component, /aria-disabled/);
-  assert.match(component, /onClick=\{\(\) => onNodeClick\?\.\(node\)\}/);
+  assert.match(component, /onClick=\{\(event\) => onNodeClick\?\.\(node, event\.currentTarget\)\}/);
+  assert.match(component, /createMobileDetailsFocusController/);
+  assert.match(component, /shouldCloseFromKey\(event\)/);
   assert.match(css, /\.assessment-required/);
   assert.match(css, /\.assessment-recovery/);
   assert.match(css, /focus-visible/);

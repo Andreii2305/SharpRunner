@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-
 import Button from "../../Components/Button/Button.jsx";
 import GamePage from "./GamePage.jsx";
 import styles from "./LevelRoutePage.module.css";
+import { createLevelAccessErrorState } from "./levelRouteAccess.js";
 import {
   getAvailableLessonRoutes,
   getLevelConfig,
@@ -33,6 +34,7 @@ const formatDeadline = (value) => new Intl.DateTimeFormat("en-PH", {
 function LevelRoutePage() {
   const navigate = useNavigate();
   const accessPanelRef = useRef(null);
+  const lastFocusedAccessStatusRef = useRef(null);
   const { lessonSlug, levelNumber } = useParams();
   const [searchParams] = useSearchParams();
   const requestedClassroomId = searchParams.get("classroomId");
@@ -106,7 +108,9 @@ function LevelRoutePage() {
         });
       })
       .catch(() => {
-        if (isMounted) setAccessCheck({ levelKey, status: "error" });
+        if (isMounted) {
+          setAccessCheck(createLevelAccessErrorState(levelKey, requestedClassroomId));
+        }
       });
 
     return () => {
@@ -121,9 +125,11 @@ function LevelRoutePage() {
       : "loading";
 
   useEffect(() => {
-    if (["recovery", "invalid"].includes(accessStatus)) {
+    const focusableFailure = ["locked", "recovery", "invalid", "expired", "error"].includes(accessStatus);
+    if (focusableFailure && lastFocusedAccessStatusRef.current !== accessStatus) {
       accessPanelRef.current?.focus();
     }
+    lastFocusedAccessStatusRef.current = accessStatus;
   }, [accessStatus]);
 
   useEffect(() => {
@@ -163,7 +169,7 @@ function LevelRoutePage() {
     );
     return (
       <div className={styles.placeholderPage}>
-        <div className={styles.placeholderCard}>
+        <div ref={accessPanelRef} className={styles.placeholderCard} role="alert" tabIndex={-1}>
           <h1>Level locked</h1>
           <p>{accessCheck.message}</p>
           <div className={styles.placeholderActions}>
@@ -210,7 +216,7 @@ function LevelRoutePage() {
   if (levelConfig && accessStatus === "expired") {
     return (
       <div className={styles.placeholderPage}>
-        <div className={styles.placeholderCard}>
+        <div ref={accessPanelRef} className={styles.placeholderCard} role="alert" tabIndex={-1}>
           <h1>Deadline Passed</h1>
           {accessCheck.effectiveDueAt ? (
             <p>Due: {formatDeadline(accessCheck.effectiveDueAt)} (Philippine Time)</p>
@@ -225,7 +231,7 @@ function LevelRoutePage() {
   if (levelConfig && accessStatus === "error") {
     return (
       <div className={styles.placeholderPage}>
-        <div className={styles.placeholderCard}>
+        <div ref={accessPanelRef} className={styles.placeholderCard} role="alert" tabIndex={-1}>
           <h1>Could not verify level access</h1>
           <p>Your progress could not be loaded. Retry or return to the map.</p>
           <div className={styles.placeholderActions}>

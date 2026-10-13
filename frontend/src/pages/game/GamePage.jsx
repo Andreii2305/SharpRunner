@@ -45,6 +45,15 @@ import {
   withExactClassroom,
 } from "../../utils/lessonProgressionNavigation.js";
 import { buildExactClassroomProgressUrl, createGameCompletionAction } from "./gameCompletionNavigation.js";
+import { focusDialog, handleDialogKeyDown, restoreDialogFocus } from "../../utils/dialogFocus.js";
+import {
+  GAMEPLAY_TABS,
+  cancelEvaluation,
+  createEvaluationLifecycle,
+  dispatchEvaluation,
+  getNextGameplayTab,
+  shouldAcceptEvaluationOutcome,
+} from "./gamePageInteractions.js";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -149,6 +158,7 @@ function GamePage({ levelConfig, classroomId }) {
     window.matchMedia?.("(orientation: portrait)").matches ?? false,
   );
   const [activeMobileTab, setActiveMobileTab] = useState("game");
+  const mobileTabRefs = useRef({});
   const [cameraAvailable, setCameraAvailable] = useState(false);
   const [recenterRequest, setRecenterRequest] = useState(0);
   const [orientationPromptDismissed, setOrientationPromptDismissed] = useState(false);
@@ -206,9 +216,20 @@ function GamePage({ levelConfig, classroomId }) {
   const runLevelCheckRef = useRef(null);
   const evaluationActivityIdRef = useRef(null);
   const evaluationInFlightRef = useRef(false);
+  const [isEvaluationRunning, setIsEvaluationRunning] = useState(false);
+  const evaluationLifecycleRef = useRef(null);
+  if (!evaluationLifecycleRef.current) {
+    evaluationLifecycleRef.current = createEvaluationLifecycle(
+      setIsEvaluationRunning,
+      evaluationInFlightRef,
+    );
+  }
   const dialogueButtonRef = useRef(null);
   const hintButtonRef = useRef(null);
+  const hintDialogRef = useRef(null);
+  const hintOpenerRef = useRef(null);
   const gradeButtonRef = useRef(null);
+  const gradeDialogRef = useRef(null);
   const previousTypedCharactersRef = useRef(0);
   const elapsedSecondsRef = useRef(0);
   const confirmedSecondsRef = useRef(0);
@@ -237,6 +258,7 @@ function GamePage({ levelConfig, classroomId }) {
   const [detailedHintXpCost, setDetailedHintXpCost] = useState(null);
   const [currentXp, setCurrentXp] = useState(null);
   const [activeHint, setActiveHint] = useState(null);
+  const hintOpen = Boolean(activeHint);
   const [showHintPurchase, setShowHintPurchase] = useState(false);
   const [isPurchasingHint, setIsPurchasingHint] = useState(false);
   const [dialogueScript, setDialogueScript] = useState(getDefaultDialogueScript(levelConfig));
@@ -305,8 +327,7 @@ function GamePage({ levelConfig, classroomId }) {
     activeTimerAnchorRef.current = null;
     heartbeatStopRef.current?.();
     clearNextLevelTimer();
-    evaluationActivityIdRef.current = null;
-    evaluationInFlightRef.current = false;
+    cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
     setActiveHint(null);
     setShowHintPurchase(false);
     setGradeModal(null);
@@ -356,8 +377,7 @@ function GamePage({ levelConfig, classroomId }) {
   useEffect(() => {
     clearNextLevelTimer();
     completionRequestRef.current = null;
-    evaluationActivityIdRef.current = null;
-    evaluationInFlightRef.current = false;
+    cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
     setMergedLevelConfig(levelConfig);
     setDialogueScript(getDefaultDialogueScript(levelConfig));
     setActiveDialogueId(null);
@@ -503,6 +523,7 @@ function GamePage({ levelConfig, classroomId }) {
       if (code === "DEADLINE_PASSED") {
         levelSessionActiveRef.current = false;
         stopHeartbeat();
+        cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
         setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
         setDeadlineExpired(true);
       } else if (code === "LEVEL_SESSION_REPLACED") {
@@ -712,12 +733,15 @@ function GamePage({ levelConfig, classroomId }) {
     }
 
     const handleOutcome = ({ levelNumber: outcomeLevelNumber, status, message, shouldProceed }) => {
-      if (outcomeLevelNumber !== levelConfig.levelNumber) {
+      if (!shouldAcceptEvaluationOutcome({
+        outcomeLevelNumber,
+        currentLevelNumber: levelConfig.levelNumber,
+        evaluationRunning: evaluationInFlightRef.current,
+      })) {
         return;
       }
       const activityId = evaluationActivityIdRef.current ?? createRequestId();
-      evaluationActivityIdRef.current = null;
-      evaluationInFlightRef.current = false;
+      cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
 
       if (status === "success") {
         if (levelConfig.levelNumber === 30) void bgmManager.fadeOut();
@@ -865,20 +889,26 @@ function GamePage({ levelConfig, classroomId }) {
 
     const sourceCode = code ?? "";
     const validation = mergedLevelConfig.validateCode(sourceCode);
-    evaluationInFlightRef.current = true;
     evaluationActivityIdRef.current = createRequestId();
 
-    gameEvents.emit(GAME_LEVEL_CODE_EVALUATED, {
-      levelNumber: mergedLevelConfig.levelNumber,
-      isCorrect: validation.isCorrect,
-      message: validation.message,
-      sourceCode,
-      configuredVariableName:
-        mergedLevelConfig.validatorConfig?.variableName ??
-        mergedLevelConfig.validatorConfig?.goals?.[0]?.name ??
-        null,
-      ...(validation.payload ?? {}),
-    });
+    try {
+      dispatchEvaluation(evaluationLifecycleRef.current, () => {
+        gameEvents.emit(GAME_LEVEL_CODE_EVALUATED, {
+          levelNumber: mergedLevelConfig.levelNumber,
+          isCorrect: validation.isCorrect,
+          message: validation.message,
+          sourceCode,
+          configuredVariableName:
+            mergedLevelConfig.validatorConfig?.variableName ??
+            mergedLevelConfig.validatorConfig?.goals?.[0]?.name ??
+            null,
+          ...(validation.payload ?? {}),
+        });
+      });
+    } catch (error) {
+      cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
+      throw error;
+    }
 
     setResult({
       type: validation.isCorrect ? "success" : "error",
@@ -903,6 +933,7 @@ function GamePage({ levelConfig, classroomId }) {
   const openBasicHint = async () => {
     if (tutorialRequestedRef.current) return;
     if (!basicHint || !hintUnlocked || !hintsEnabledRef.current) return;
+    const opener = document.activeElement;
     try {
       const response = await axios.post(
         buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/hint-use`, classroomId)),
@@ -911,6 +942,7 @@ function GamePage({ levelConfig, classroomId }) {
       );
       syncHintState(response.data);
       if (response.data?.basicHint) {
+        hintOpenerRef.current = opener;
         setActiveHint({ title: "Basic Hint · Free", text: response.data.basicHint });
       }
     } catch (error) {
@@ -925,6 +957,7 @@ function GamePage({ levelConfig, classroomId }) {
   const openDetailedHint = () => {
     if (tutorialRequestedRef.current) return;
     if (detailedHintUnlocked && detailedHint) {
+      hintOpenerRef.current = document.activeElement;
       setActiveHint({
         title: hintStage === "stronger" ? "Stronger Guidance · Unlocked" : "Personalized Hint · Unlocked",
         text: detailedHint,
@@ -939,6 +972,7 @@ function GamePage({ levelConfig, classroomId }) {
       });
       return;
     }
+    hintOpenerRef.current = document.activeElement;
     setShowHintPurchase(true);
   };
 
@@ -1011,6 +1045,7 @@ function GamePage({ levelConfig, classroomId }) {
       return;
     }
     const draftKey = getDraftKey(levelConfig);
+    cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
     removeGameDraft(getGameStorage(), draftKey);
     setCode(defaultCode);
     setDraftRestored(false);
@@ -1108,8 +1143,22 @@ function GamePage({ levelConfig, classroomId }) {
   }, []);
 
   useEffect(() => {
-    if (activeHint) hintButtonRef.current?.focus();
-  }, [activeHint]);
+    if (!hintOpen) return undefined;
+    const opener = hintOpenerRef.current;
+    focusDialog(hintDialogRef.current, hintButtonRef.current);
+    const onKeyDown = (event) => handleDialogKeyDown({
+      event,
+      dialog: hintDialogRef.current,
+      disabled: false,
+      onDismiss: () => setActiveHint(null),
+    });
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      restoreDialogFocus(opener);
+      hintOpenerRef.current = null;
+    };
+  }, [hintOpen]);
 
   useEffect(() => {
     if (!showStoryIntro || !activeDialogue) return undefined;
@@ -1117,17 +1166,19 @@ function GamePage({ levelConfig, classroomId }) {
     return () => window.clearTimeout(focusTimer);
   }, [showStoryIntro, activeDialogue, activeDialogueId, dialogueStep]);
 
+  const gradeModalOpen = Boolean(gradeModal);
   useEffect(() => {
-    if (gradeModal) gradeButtonRef.current?.focus();
-  }, [gradeModal]);
-
-  useEffect(() => {
-    const handleEscape = (event) => {
-      if (event.key === "Escape" && activeHint) setActiveHint(null);
-    };
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [activeHint]);
+    if (!gradeModalOpen) return undefined;
+    focusDialog(gradeDialogRef.current, gradeButtonRef.current);
+    const onKeyDown = (event) => handleDialogKeyDown({
+      event,
+      dialog: gradeDialogRef.current,
+      disabled: true,
+      onDismiss: () => {},
+    });
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [gradeModalOpen]);
 
   useEffect(() => {
     if (!showStoryIntro || !activeDialogue) {
@@ -1207,6 +1258,14 @@ function GamePage({ levelConfig, classroomId }) {
   const prepareTutorialStep = useCallback((step) => {
     if (isMobile && step.mobileTab) setActiveMobileTab(step.mobileTab);
   }, [isMobile]);
+
+  const handleMobileTabKeyDown = (event, tab) => {
+    const nextTab = getNextGameplayTab(tab, event.key);
+    if (!nextTab) return;
+    event.preventDefault();
+    setActiveMobileTab(nextTab);
+    mobileTabRefs.current[nextTab]?.focus();
+  };
 
   const tutorialSteps = getGameTutorialSteps(levelConfig?.levelNumber);
   const parTimeSeconds = levelConfig?.parTimeSeconds ?? 900;
@@ -1345,20 +1404,21 @@ function GamePage({ levelConfig, classroomId }) {
       </header>
 
       <nav className={styles.mobileTabs} aria-label="Gameplay panels" role="tablist">
-        {[
-          ["game", "Game"],
-          ["code", "Code"],
-          ["lesson", "Lesson"],
-        ].map(([tab, label]) => (
+        {GAMEPLAY_TABS.map((tab) => (
           <button
             key={tab}
+            id={`gameplay-tab-${tab}`}
+            ref={(element) => { mobileTabRefs.current[tab] = element; }}
             type="button"
             className={activeMobileTab === tab ? styles.mobileTabActive : ""}
             onClick={() => setActiveMobileTab(tab)}
+            onKeyDown={(event) => handleMobileTabKeyDown(event, tab)}
             aria-selected={activeMobileTab === tab}
+            aria-controls={tab === "game" ? "phaser-canvas-root" : `gameplay-panel-${tab}`}
             role="tab"
+            tabIndex={activeMobileTab === tab ? 0 : -1}
           >
-            {label}
+            {tab === "game" ? "Game" : tab === "code" ? "Code" : "Lesson"}
           </button>
         ))}
       </nav>
@@ -1369,6 +1429,8 @@ function GamePage({ levelConfig, classroomId }) {
             id="phaser-canvas-root"
             data-game-tutorial-target="world"
             className={`${styles.phaserCanvasRoot} ${activeMobileTab === "game" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}
+            role={isMobile ? "tabpanel" : undefined}
+            aria-labelledby={isMobile ? "gameplay-tab-game" : undefined}
           >
             <Game
               scene={levelConfig.scene}
@@ -1392,7 +1454,7 @@ function GamePage({ levelConfig, classroomId }) {
             )}
             {activeHint && (
               <div className={styles.hintOverlay} role="presentation">
-                <div className={styles.hintBox} role="dialog" aria-modal="true" aria-labelledby="level-hint-title">
+                <div ref={hintDialogRef} className={styles.hintBox} role="dialog" aria-modal="true" aria-labelledby="level-hint-title" tabIndex={-1}>
                   <div className={styles.hintHeader}>
                     <span id="level-hint-title" className={styles.hintTitle}>{activeHint.title}</span>
                     <button ref={hintButtonRef} type="button" className={styles.hintClose} onClick={() => setActiveHint(null)} aria-label="Close hint">✕</button>
@@ -1496,7 +1558,14 @@ function GamePage({ levelConfig, classroomId }) {
             )}
           </div>
 
-          <div data-game-tutorial-target="editor" className={`${styles.editorPanel} ${activeMobileTab === "code" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
+          <div
+            id="gameplay-panel-code"
+            data-game-tutorial-target="editor"
+            className={`${styles.editorPanel} ${activeMobileTab === "code" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}
+            role={isMobile ? "tabpanel" : undefined}
+            aria-labelledby={isMobile ? "gameplay-tab-code" : undefined}
+            aria-busy={isEvaluationRunning || undefined}
+          >
             <div className={styles.editorHeader}>
               <div className={styles.editorTitleGroup}>
                 <b>C#</b>
@@ -1572,7 +1641,6 @@ function GamePage({ levelConfig, classroomId }) {
                     {reducedMotion ? <FiZapOff aria-hidden="true" /> : <FiZap aria-hidden="true" />}
                   </button>
                 )}
-                <Button label="Submit" variant="primary" size="sm" onClick={runLevelCheck} />
               </div>
             </div>
             <div style={{ flexGrow: 1 }}>
@@ -1596,10 +1664,11 @@ function GamePage({ levelConfig, classroomId }) {
             <div className={styles.editorFooter}>
               <Button
                 data-game-tutorial-target="run"
-                label="Run Code"
-                variant="outline"
+                label={isEvaluationRunning ? "Running…" : "Run Code"}
+                variant="primary"
                 size="sm"
                 onClick={runLevelCheck}
+                disabled={isEvaluationRunning}
               />
               {hintsEnabledRef.current ? (
                 <div className={styles.hintAccess} data-game-tutorial-target="hints" aria-live="polite">
@@ -1664,7 +1733,12 @@ function GamePage({ levelConfig, classroomId }) {
           </div>
         </div>
 
-        <div className={`${styles.lowerRow} ${activeMobileTab === "lesson" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}>
+        <div
+          id="gameplay-panel-lesson"
+          className={`${styles.lowerRow} ${activeMobileTab === "lesson" ? styles.mobilePanelActive : styles.mobilePanelInactive}`}
+          role={isMobile ? "tabpanel" : undefined}
+          aria-labelledby={isMobile ? "gameplay-tab-lesson" : undefined}
+        >
           <section className={styles.card} data-game-tutorial-target="task">
             <h3>{goalTitle}</h3>
             <p>{goalDescription}</p>
@@ -1726,7 +1800,7 @@ function GamePage({ levelConfig, classroomId }) {
 
       {gradeModal && (
         <div className={styles.gradeOverlay} role="presentation">
-          <div className={`${styles.gradeCard} ${styles[`gradeCard${gradeModal.grade}`]}`} role="dialog" aria-modal="true" aria-labelledby="completion-title">
+          <div ref={gradeDialogRef} className={`${styles.gradeCard} ${styles[`gradeCard${gradeModal.grade}`]}`} role="dialog" aria-modal="true" aria-labelledby="completion-title" tabIndex={-1}>
             <div id="completion-title" className={styles.gradeComplete}>
               <span className={styles.gradeCompleteLine} />
               {gradeModal.isFinalLevel ? "JOURNEY COMPLETE" : "LEVEL COMPLETE"}

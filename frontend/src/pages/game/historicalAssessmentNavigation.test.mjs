@@ -59,7 +59,7 @@ test("stale gameplay denials share the canonical interpreter and stop interactio
   assert.match(game, /navigate\(action\.href, \{ replace: true \}\)/);
   assert.match(game, /heartbeatStopRef\.current\?\.\(\)/);
   assert.match(game, /levelSessionActiveRef\.current = false/);
-  assert.match(game, /evaluationInFlightRef\.current = false/);
+  assert.match(game, /cancelEvaluation\(evaluationLifecycleRef\.current, evaluationActivityIdRef\)/);
   assert.match(game, /bgmManager\.fadeOut/);
   assert.match(game, /dialogueSfxManager\.stop/);
   assert.match(game, /role="alert"/);
@@ -71,6 +71,14 @@ test("stale gameplay denials share the canonical interpreter and stop interactio
   assert.match(css, /\.accessChangedPanel/);
   assert.doesNotMatch(game, /useSearchParams/);
   assert.doesNotMatch(game, /redirectUrl/);
+});
+
+test("failed direct-route access keeps the requested classroom and fences stale responses", async () => {
+  const route = await source("./LevelRoutePage.jsx");
+  assert.match(route, /createLevelAccessErrorState\(levelKey, requestedClassroomId\)/);
+  assert.match(route, /if \(isMounted\) \{[\s\S]+createLevelAccessErrorState/);
+  assert.match(route, /isMounted = false;[\s\S]+controller\.abort\(\)/);
+  assert.match(route, /buildMapHref\(accessCheck\.classroomId\)/);
 });
 
 test("every mounted protected GamePage request routes denials through the shared handler", async () => {

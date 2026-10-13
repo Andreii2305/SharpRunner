@@ -6,6 +6,29 @@
   flex-shrink: 0;
 }
 
+.inlineState,
+.errorState {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #d7e3ee;
+  border-radius: 9px;
+  background: #fff;
+  color: #475569;
+  font-size: var(--teacher-text-sm);
+}
+
+.errorState {
+  align-items: flex-start;
+  flex-direction: column;
+  border-color: #f1c7c3;
+}
+
+.errorState strong { color: #8f1710; }
+.inlineState button, .errorState button { min-height: 40px; }
+
 .summaryChip {
   background: #fff;
   border: 1px solid #e2e8f0;

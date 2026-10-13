@@ -14,6 +14,14 @@ import pgStyles from "./TeacherClassesPage.module.css";
 import detailStyles from "./TeacherClassDetailPage.module.css";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import { DEFAULT_UPLOAD_POLICY, normalizeUploadPolicy, validateUploadFiles } from "../../utils/uploadPolicy.js";
+import {
+  createClassroomIdentityTracker,
+  createExactClassroomRequestFence,
+  createSingleFlightGuard,
+  getRequiredCollection,
+  isExactClassroomPayload,
+  removeStudentFromRoster,
+} from "./teacherClassroomState.js";
 
 const AVATAR_PALETTES = [
   { bg: "#e0e7ff", color: "#4338ca" }, { bg: "#fce7f3", color: "#9d174d" },
@@ -107,8 +115,9 @@ function TeacherClassDetailPage() {
   const [lessons, setLessons] = useState([]);
   const [uploadPolicy, setUploadPolicy] = useState(DEFAULT_UPLOAD_POLICY);
   const [activeTab, setActiveTab] = useState("students");
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState("");
+  const [rosterState, setRosterState] = useState({ status: "loading", error: "", hasData: false });
+  const [classworkState, setClassworkState] = useState({ status: "loading", error: "", hasData: false });
+  const [managementState, setManagementState] = useState({ status: "loading", error: "", hasData: false });
   const [attachingLessonId, setAttachingLessonId] = useState(null);
   const [editingLesson, setEditingLesson] = useState(null);
   const [editForm, setEditForm] = useState(emptyContentForm());
@@ -128,32 +137,126 @@ function TeacherClassDetailPage() {
   const [publishTarget, setPublishTarget] = useState(null);
   const [draggedLessonId, setDraggedLessonId] = useState(null);
   const [studentRemoveTarget, setStudentRemoveTarget] = useState(null);
+  const [studentRemovalPending, setStudentRemovalPending] = useState(false);
+  const [studentRemovalError, setStudentRemovalError] = useState("");
   const [classActionTarget, setClassActionTarget] = useState(null);
   const [classActionPending, setClassActionPending] = useState(false);
   const [sharedEditTarget, setSharedEditTarget] = useState(null);
+  const classroomIdentityTrackerRef = useRef(createClassroomIdentityTracker(classroomId));
+  const rosterFenceRef = useRef(createExactClassroomRequestFence());
+  const classworkFenceRef = useRef(createExactClassroomRequestFence());
+  const managementFenceRef = useRef(createExactClassroomRequestFence());
+  const studentRemovalGuardRef = useRef(createSingleFlightGuard());
 
-  const loadClass = useCallback(async () => {
-    setLoading(true);
-    setLoadError("");
-    try {
-      const [rosterResult, lessonResult, managementResult] = await Promise.all([
-        axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/students`), { headers: getAuthHeaders() }),
-        axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons`), { headers: getAuthHeaders() }),
-        axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/classwork-management`), { headers: getAuthHeaders() }).catch(() => ({ data: null })),
-      ]);
-      setClassroom(rosterResult.data?.classroom ?? lessonResult.data?.classroom ?? null);
-      setStudents(rosterResult.data?.students ?? []);
-      setLessons(lessonResult.data?.lessons ?? []);
-      setUploadPolicy(normalizeUploadPolicy(lessonResult.data?.uploadPolicy));
-      setManagement(managementResult.data ?? { storage: null, audits: [], insights: null });
-    } catch (error) {
-      setLoadError(error.response?.data?.message ?? "Failed to load classroom.");
-    } finally {
-      setLoading(false);
-    }
+  useLayoutEffect(() => {
+    const exactClassroomId = `${classroomId}`;
+    classroomIdentityTrackerRef.current.enter(exactClassroomId);
+    rosterFenceRef.current.reset(exactClassroomId);
+    classworkFenceRef.current.reset(exactClassroomId);
+    managementFenceRef.current.reset(exactClassroomId);
+    studentRemovalGuardRef.current.reset();
   }, [classroomId]);
 
-  useEffect(() => { loadClass(); }, [loadClass]);
+  const isActiveClassroom = useCallback(
+    (classroomScope) => classroomIdentityTrackerRef.current.isCurrent(classroomScope),
+    [],
+  );
+
+  const loadRoster = useCallback(async () => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    if (!isActiveClassroom(classroomScope)) return;
+    const token = rosterFenceRef.current.begin(requestClassroomId);
+    setRosterState((current) => ({ ...current, status: "loading", error: "" }));
+    try {
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/students`), { headers: getAuthHeaders() });
+      if (!rosterFenceRef.current.isCurrent(token)) return;
+      if (!isExactClassroomPayload(response.data, requestClassroomId)) throw new Error("Classroom identity could not be verified.");
+      const students = getRequiredCollection(response.data, "students");
+      if (!students) throw new Error("The classroom roster response was incomplete.");
+      setClassroom(response.data.classroom);
+      setStudents(students);
+      setRosterState({ status: "success", error: "", hasData: true });
+    } catch (error) {
+      if (!rosterFenceRef.current.isCurrent(token)) return;
+      setRosterState((current) => ({ ...current, status: "error", error: error.response?.data?.message ?? error.message ?? "Failed to load students." }));
+    }
+  }, [isActiveClassroom]);
+
+  const loadClasswork = useCallback(async () => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    if (!isActiveClassroom(classroomScope)) return;
+    const token = classworkFenceRef.current.begin(requestClassroomId);
+    setClassworkState((current) => ({ ...current, status: "loading", error: "" }));
+    try {
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons`), { headers: getAuthHeaders() });
+      if (!classworkFenceRef.current.isCurrent(token)) return;
+      if (!isExactClassroomPayload(response.data, requestClassroomId)) throw new Error("Classroom identity could not be verified.");
+      const classwork = getRequiredCollection(response.data, "lessons");
+      if (!classwork) throw new Error("The classroom classwork response was incomplete.");
+      setClassroom(response.data.classroom);
+      setLessons(classwork);
+      setUploadPolicy(normalizeUploadPolicy(response.data?.uploadPolicy));
+      setClassworkState({ status: "success", error: "", hasData: true });
+    } catch (error) {
+      if (!classworkFenceRef.current.isCurrent(token)) return;
+      setClassworkState((current) => ({ ...current, status: "error", error: error.response?.data?.message ?? error.message ?? "Failed to load classwork." }));
+    }
+  }, [isActiveClassroom]);
+
+  const loadManagement = useCallback(async () => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    if (!isActiveClassroom(classroomScope)) return;
+    const token = managementFenceRef.current.begin(requestClassroomId);
+    setManagementState((current) => ({ ...current, status: "loading", error: "" }));
+    try {
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/classwork-management`), { headers: getAuthHeaders() });
+      if (!managementFenceRef.current.isCurrent(token)) return;
+      if (!response.data?.storage || !response.data?.insights || !getRequiredCollection(response.data, "audits")) {
+        throw new Error("The classroom analytics response was incomplete.");
+      }
+      setManagement(response.data);
+      setManagementState({ status: "success", error: "", hasData: true });
+    } catch (error) {
+      if (!managementFenceRef.current.isCurrent(token)) return;
+      setManagementState((current) => ({ ...current, status: "error", error: error.response?.data?.message ?? error.message ?? "Failed to load classroom analytics." }));
+    }
+  }, [isActiveClassroom]);
+
+  useEffect(() => {
+    const exactClassroomId = `${classroomId}`;
+    const rosterFence = rosterFenceRef.current;
+    const classworkFence = classworkFenceRef.current;
+    const managementFence = managementFenceRef.current;
+    const studentRemovalGuard = studentRemovalGuardRef.current;
+    rosterFence.reset(exactClassroomId);
+    classworkFence.reset(exactClassroomId);
+    managementFence.reset(exactClassroomId);
+    studentRemovalGuard.reset();
+    setClassroom(null);
+    setStudents([]);
+    setLessons([]);
+    setManagement({ storage: null, audits: [], insights: null });
+    setRosterState({ status: "loading", error: "", hasData: false });
+    setClassworkState({ status: "loading", error: "", hasData: false });
+    setManagementState({ status: "loading", error: "", hasData: false });
+    setStudentRemoveTarget(null);
+    setStudentRemovalPending(false);
+    setStudentRemovalError("");
+    setClassActionTarget(null);
+    setClassActionPending(false);
+    loadRoster();
+    loadClasswork();
+    loadManagement();
+    return () => {
+      rosterFence.reset(null);
+      classworkFence.reset(null);
+      managementFence.reset(null);
+      studentRemovalGuard.reset();
+    };
+  }, [classroomId, loadClasswork, loadManagement, loadRoster]);
   useEffect(() => {
     if (!selectedSubmission || !reviewLesson) return;
     setGradeForm({
@@ -208,6 +311,8 @@ function TeacherClassDetailPage() {
   };
 
   const addLessonAttachments = async (lessonId, selectedFiles) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     const { files, error } = validateUploadFiles(selectedFiles, uploadPolicy);
     if (error) { toast.error(error); return; }
     if (!files.length) return;
@@ -219,10 +324,11 @@ function TeacherClassDetailPage() {
       const response = await axios.post(
         buildApiUrl(libraryLesson
           ? `/api/teacher/lesson-library/${lessonId}/attachments`
-          : `/api/teacher/classrooms/${classroomId}/lessons/${lessonId}/attachments`),
+          : `/api/teacher/classrooms/${requestClassroomId}/lessons/${lessonId}/attachments`),
         payload,
         { headers: getAuthHeaders() },
       );
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((lesson) =>
         lesson.id === lessonId ? { ...lesson, attachments: response.data?.lesson?.attachments ?? response.data?.attachments ?? lesson.attachments } : lesson
       ));
@@ -230,9 +336,10 @@ function TeacherClassDetailPage() {
         ? "Files re-uploaded and the unavailable copy was removed."
         : "Files added to the lesson.");
     } catch (error) {
+      if (!isActiveClassroom(classroomScope)) return;
       toast.error(error.response?.data?.message ?? "Unable to add files.");
     } finally {
-      setAttachingLessonId(null);
+      if (isActiveClassroom(classroomScope)) setAttachingLessonId(null);
     }
   };
 
@@ -266,12 +373,14 @@ function TeacherClassDetailPage() {
 
   const saveLessonChanges = async (event) => {
     event.preventDefault();
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     if (!editForm.title.trim()) { setEditError("Lesson title is required."); return; }
     setIsEditing(true);
     setEditError("");
     try {
       const response = await axios.put(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${editingLesson.id}`),
+        buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${editingLesson.id}`),
         {
           title: editForm.title.trim(),
           contentType: editForm.contentType,
@@ -289,24 +398,29 @@ function TeacherClassDetailPage() {
         },
         { headers: getAuthHeaders() },
       );
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((lesson) =>
         lesson.id === editingLesson.id ? response.data.lesson : lesson
       ));
       setEditingLesson(null);
       toast.success("Lesson updated.");
     } catch (error) {
+      if (!isActiveClassroom(classroomScope)) return;
       setEditError(error.response?.data?.message ?? "Unable to update lesson.");
     } finally {
-      setIsEditing(false);
+      if (isActiveClassroom(classroomScope)) setIsEditing(false);
     }
   };
 
   const updateAttachment = async (lesson, attachment, changes) => {
     if (lesson.isLibraryLesson) { toast.info("Open the Lesson Builder to manage this reusable resource."); return; }
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
-      const response = await axios.patch(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), changes, { headers: getAuthHeaders() });
+      const response = await axios.patch(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), changes, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.map((file) => file.id === attachment.id ? response.data.attachment : file).sort((a, b) => a.displayOrder - b.displayOrder) } : item));
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to update attachment."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to update attachment."); }
   };
 
   const renameAttachment = (lesson, attachment) => {
@@ -316,14 +430,17 @@ function TeacherClassDetailPage() {
 
   const deleteAttachment = async (lesson, attachment) => {
     if (!window.confirm(`Remove ${attachment.originalName}?`)) return;
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
       const response = await axios.delete(buildApiUrl(lesson.isLibraryLesson
         ? `/api/teacher/lesson-library/${lesson.id}/attachments/${attachment.id}`
-        : `/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), { headers: getAuthHeaders() });
+        : `/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/attachments/${attachment.id}`), { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.filter((file) => file.id !== attachment.id) } : item));
       if (response.data?.version) setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, version: response.data.version } : item));
       toast.success("Attachment removed.");
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to remove attachment."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to remove attachment."); }
   };
 
   const replaceAttachment = async (lesson, attachment, file) => {
@@ -332,11 +449,14 @@ function TeacherClassDetailPage() {
     const validation = validateUploadFiles([file], uploadPolicy);
     if (validation.error) { toast.error(validation.error); return; }
     const payload = new FormData(); payload.append("files", file);
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
-      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/${attachment.id}/file`), payload, { headers: getAuthHeaders() });
+      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/attachments/${attachment.id}/file`), payload, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments: item.attachments.map((entry) => entry.id === attachment.id ? response.data.attachment : entry) } : item));
       toast.success("Attachment replaced.");
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to replace attachment."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to replace attachment."); }
   };
 
   const reorderAttachments = async (lesson, sourceId, targetId) => {
@@ -348,8 +468,10 @@ function TeacherClassDetailPage() {
     const [moved] = items.splice(sourceIndex, 1); items.splice(targetIndex, 0, moved);
     const attachments = items.map((item, displayOrder) => ({ ...item, displayOrder }));
     setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, attachments } : item));
-    try { await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/attachments/reorder`), { attachmentIds: attachments.map((item) => item.id) }, { headers: getAuthHeaders() }); }
-    catch { toast.error("Unable to reorder attachments."); loadClass(); }
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    try { await axios.put(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/attachments/reorder`), { attachmentIds: attachments.map((item) => item.id) }, { headers: getAuthHeaders() }); }
+    catch { if (isActiveClassroom(classroomScope)) { toast.error("Unable to reorder attachments."); loadClasswork(); } }
   };
 
   const reorderLessons = async (sourceId, targetId) => {
@@ -357,8 +479,10 @@ function TeacherClassDetailPage() {
     const items = [...lessons]; const sourceIndex = items.findIndex((item) => item.id === sourceId); const targetIndex = items.findIndex((item) => item.id === targetId);
     if (sourceIndex < 0 || targetIndex < 0) return;
     const [moved] = items.splice(sourceIndex, 1); items.splice(targetIndex, 0, moved); setLessons(items);
-    try { await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/reorder`), { lessonIds: items.map((item) => item.id) }, { headers: getAuthHeaders() }); }
-    catch { toast.error("Unable to reorder classwork."); loadClass(); }
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    try { await axios.put(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/reorder`), { lessonIds: items.map((item) => item.id) }, { headers: getAuthHeaders() }); }
+    catch { if (isActiveClassroom(classroomScope)) { toast.error("Unable to reorder classwork."); loadClasswork(); } }
   };
 
   const moveLesson = (lessonId, direction) => {
@@ -368,102 +492,130 @@ function TeacherClassDetailPage() {
   };
 
   const duplicateLesson = async (lesson) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
       if (lesson.isLibraryLesson) {
         const copyResponse = await axios.post(buildApiUrl(`/api/teacher/lesson-library/${lesson.id}/duplicate`), {}, { headers: getAuthHeaders() });
-        await axios.post(buildApiUrl(`/api/teacher/lesson-library/${copyResponse.data.lesson.id}/placements`), { classroomId: Number(classroomId), moduleId: lesson.moduleId || null, mode: "reuse" }, { headers: getAuthHeaders() });
-        await loadClass();
+        await axios.post(buildApiUrl(`/api/teacher/lesson-library/${copyResponse.data.lesson.id}/placements`), { classroomId: Number(requestClassroomId), moduleId: lesson.moduleId || null, mode: "reuse" }, { headers: getAuthHeaders() });
+        if (!isActiveClassroom(classroomScope)) return;
+        await Promise.allSettled([loadClasswork(), loadManagement()]);
         toast.success("An independent draft copy was added to this class.");
         return;
       }
-      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/duplicate`), {}, { headers: getAuthHeaders() });
+      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/duplicate`), {}, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => [...current, response.data.lesson]); toast.success("A draft copy was created.");
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to duplicate classwork."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to duplicate classwork."); }
   };
 
   const openVersionHistory = async (lesson) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     setHistoryLesson(lesson); setVersions([]);
     try {
-      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/versions`), { headers: getAuthHeaders() });
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/versions`), { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setVersions(response.data?.versions ?? []);
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to load version history."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to load version history."); }
   };
 
   const restoreVersion = async (version) => {
     if (!historyLesson) return;
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
-      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${historyLesson.id}/versions/${version.id}/restore`), {}, { headers: getAuthHeaders() });
+      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${historyLesson.id}/versions/${version.id}/restore`), {}, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((item) => item.id === historyLesson.id ? { ...item, ...response.data.lesson, stats: item.stats } : item));
-      setHistoryLesson(null); toast.success(`Version ${version.versionNumber} restored.`); loadClass();
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to restore this version."); }
+      setHistoryLesson(null); toast.success(`Version ${version.versionNumber} restored.`); loadClasswork(); loadManagement();
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to restore this version."); }
   };
 
   const releaseFeedback = async (lesson) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
-      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/release-feedback`), {}, { headers: getAuthHeaders() });
+      const response = await axios.post(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/release-feedback`), {}, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, feedbackReleaseAt: response.data.feedbackReleaseAt ?? null } : item));
       toast.success("Grades and feedback are now visible to students.");
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to release feedback."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to release feedback."); }
   };
 
   const setPublication = async (lesson, isPublished) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
-      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}`), {
+      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}`), {
         title: lesson.title, description: lesson.description || "", contentType: lesson.contentType,
         dueAt: lesson.dueAt, publishAt: isPublished ? lesson.publishAt : null, isPublished, maxScore: lesson.maxScore,
         rubric: lesson.rubric, feedbackReleaseAt: lesson.feedbackReleaseAt, allowLateSubmissions: lesson.allowLateSubmissions,
         maxAttempts: lesson.maxAttempts, allowedFileTypes: lesson.allowedFileTypes, maxFileSizeMb: lesson.maxFileSizeMb,
         assignedStudentIds: lesson.assignedStudentIds,
       }, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       setLessons((current) => current.map((item) => item.id === lesson.id ? { ...item, ...response.data.lesson, stats: item.stats } : item));
       toast.success(isPublished ? "Published to the class." : "Classwork moved to drafts.");
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to change publication status."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to change publication status."); }
   };
 
   const previewLesson = (lesson) => window.open(`/${lesson.contentType === "assignment" ? "assignment" : "lesson"}/classroom/${lesson.id}?teacherPreview=1`, "_blank");
 
   const openSubmissions = async (lesson) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     setReviewLesson(lesson); setReviewLoading(true); setSubmissions([]); setSelectedSubmission(null);
     try {
-      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${lesson.id}/submissions`), { headers: getAuthHeaders() });
+      const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${lesson.id}/submissions`), { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       const loaded = response.data?.submissions ?? []; setSubmissions(loaded);
       if (loaded[0]) { setSelectedSubmission(loaded[0]); setGradeForm({ grade: loaded[0].grade ?? "", feedback: loaded[0].feedback ?? "", rubricScores: lesson.rubric?.map((criterion) => loaded[0].rubricScores?.find((score) => score.id === criterion.id) ?? { id: criterion.id, score: 0 }) ?? [] }); }
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to load submissions."); }
-    finally { setReviewLoading(false); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to load submissions."); }
+    finally { if (isActiveClassroom(classroomScope)) setReviewLoading(false); }
   };
 
   const gradeSubmission = async (status = "graded") => {
     if (!selectedSubmission) return;
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
-      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${classroomId}/lessons/${reviewLesson.id}/submissions/${selectedSubmission.id}/grade`), { grade: Number(gradeForm.grade), feedback: gradeForm.feedback, rubricScores: gradeForm.rubricScores, status }, { headers: getAuthHeaders() });
+      const response = await axios.put(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/lessons/${reviewLesson.id}/submissions/${selectedSubmission.id}/grade`), { grade: Number(gradeForm.grade), feedback: gradeForm.feedback, rubricScores: gradeForm.rubricScores, status }, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       const updated = { ...selectedSubmission, ...response.data.submission }; setSelectedSubmission(updated);
       const nextSubmissions = submissions.map((item) => item.id === updated.id ? updated : item); setSubmissions(nextSubmissions);
       setLessons((current) => current.map((item) => item.id === reviewLesson.id ? { ...item, stats: { ...item.stats, graded: nextSubmissions.filter((entry) => entry.status === "graded").length } } : item));
       toast.success("Grade and feedback saved.");
-    } catch (error) { toast.error(error.response?.data?.message ?? "Unable to save grade."); }
+    } catch (error) { if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to save grade."); }
   };
 
   const deleteLesson = async () => {
     if (!deleteTarget) return;
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    const target = deleteTarget;
     setIsDeleting(true);
     try {
       await axios.delete(
-        buildApiUrl(deleteTarget.isLibraryLesson
-          ? `/api/teacher/lesson-library/${deleteTarget.id}/placements/${classroomId}`
-          : `/api/teacher/classrooms/${classroomId}/lessons/${deleteTarget.id}`),
+        buildApiUrl(target.isLibraryLesson
+          ? `/api/teacher/lesson-library/${target.id}/placements/${requestClassroomId}`
+          : `/api/teacher/classrooms/${requestClassroomId}/lessons/${target.id}`),
         { headers: getAuthHeaders() },
       );
-      setLessons((current) => current.filter((lesson) => lesson.id !== deleteTarget.id));
+      if (!isActiveClassroom(classroomScope)) return;
+      setLessons((current) => current.filter((lesson) => lesson.id !== target.id));
       setDeleteTarget(null);
-      toast.success(deleteTarget.isLibraryLesson ? "Lesson removed from this class." : "Lesson deleted.");
+      toast.success(target.isLibraryLesson ? "Lesson removed from this class." : "Lesson deleted.");
     } catch (error) {
-      toast.error(error.response?.data?.message ?? "Unable to delete lesson.");
+      if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to delete lesson.");
     } finally {
-      setIsDeleting(false);
+      if (isActiveClassroom(classroomScope)) setIsDeleting(false);
     }
   };
 
   const buildNewLesson = async (moduleId = null) => {
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     try {
       const { data } = await axios.post(buildApiUrl("/api/teacher/lesson-library"), {
         title: "Untitled lesson",
@@ -472,11 +624,12 @@ function TeacherClassDetailPage() {
         topics: [{ title: "Topic 1", displayOrder: 0, content: { format: "markdown", body: "", codeBlocks: [], practiceBlocks: [] } }],
       }, { headers: getAuthHeaders() });
       await axios.post(buildApiUrl(`/api/teacher/lesson-library/${data.lesson.id}/placements`), {
-        classroomId: Number(classroomId), moduleId: moduleId ? Number(moduleId) : null, mode: "reuse",
+        classroomId: Number(requestClassroomId), moduleId: moduleId ? Number(moduleId) : null, mode: "reuse",
       }, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
       navigate(`/teacher/lessons/${data.lesson.id}/edit`);
     } catch (error) {
-      toast.error(error.response?.data?.message ?? "Unable to start a new lesson.");
+      if (isActiveClassroom(classroomScope)) toast.error(error.response?.data?.message ?? "Unable to start a new lesson.");
     }
   };
 
@@ -487,36 +640,74 @@ function TeacherClassDetailPage() {
 
   const removeStudent = async () => {
     if (!studentRemoveTarget) return;
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
+    const target = studentRemoveTarget;
+    const operation = studentRemovalGuardRef.current.begin(requestClassroomId, target.userId);
+    if (!operation) return;
+    setStudentRemovalPending(true);
+    setStudentRemovalError("");
     try {
       await axios.patch(
-        buildApiUrl(`/api/teacher/classrooms/${classroomId}/students/${studentRemoveTarget.userId}`),
+        buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/students/${target.userId}`),
         { status: "removed" },
         { headers: getAuthHeaders() },
       );
-      setStudents((current) => current.filter((student) => student.userId !== studentRemoveTarget.userId));
-      toast.success(`${studentRemoveTarget.studentName} was removed from this classroom.`);
+      if (!studentRemovalGuardRef.current.isCurrent(operation) || !isActiveClassroom(classroomScope)) return;
+      rosterFenceRef.current.reset(requestClassroomId);
+      setStudents((current) => removeStudentFromRoster(current, target.userId));
+      setRosterState({ status: "success", error: "", hasData: true });
+      toast.success(`${target.studentName} was removed from this classroom.`);
       setStudentRemoveTarget(null);
     } catch (error) {
-      toast.error(error.response?.data?.message ?? "Unable to remove student.");
+      if (!studentRemovalGuardRef.current.isCurrent(operation) || !isActiveClassroom(classroomScope)) return;
+      setStudentRemovalError(error.response?.data?.message ?? "Unable to remove student. Try again.");
+    } finally {
+      if (studentRemovalGuardRef.current.finish(operation) && isActiveClassroom(classroomScope)) {
+        setStudentRemovalPending(false);
+      }
     }
   };
 
   const performClassAction = async () => {
     if (!classActionTarget) return;
+    const classroomScope = classroomIdentityTrackerRef.current.capture();
+    const requestClassroomId = classroomScope.identity;
     setClassActionPending(true);
     try {
       const response = classActionTarget === "rotate"
-        ? await axios.post(buildApiUrl(`/api/teacher/classrooms/${classroomId}/regenerate-code`), {}, { headers: getAuthHeaders() })
-        : await axios.patch(buildApiUrl(`/api/teacher/classrooms/${classroomId}`), { isActive: classActionTarget === "reactivate" }, { headers: getAuthHeaders() });
+        ? await axios.post(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/regenerate-code`), {}, { headers: getAuthHeaders() })
+        : await axios.patch(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}`), { isActive: classActionTarget === "reactivate" }, { headers: getAuthHeaders() });
+      if (!isActiveClassroom(classroomScope)) return;
+      if (!isExactClassroomPayload(response.data, requestClassroomId)) throw new Error("Classroom identity could not be verified.");
       setClassroom(response.data.classroom);
       toast.success(response.data.message);
       setClassActionTarget(null);
     } catch (error) {
-      toast.error(error.response?.data?.message ?? "Unable to update classroom.");
+      if (!isActiveClassroom(classroomScope)) return;
+      toast.error(error.response?.data?.message ?? error.message ?? "Unable to update classroom.");
     } finally {
-      setClassActionPending(false);
+      if (isActiveClassroom(classroomScope)) setClassActionPending(false);
     }
   };
+
+  const hasClassroomIdentity = `${classroom?.id ?? ""}` === `${classroomId}`;
+  const activeSectionState = activeTab === "students"
+    ? rosterState
+    : activeTab === "analytics"
+      ? managementState
+      : classworkState;
+  const retryActiveSection = activeTab === "students"
+    ? loadRoster
+    : activeTab === "analytics"
+      ? loadManagement
+      : loadClasswork;
+  const activeSectionLabel = activeTab === "students"
+    ? "students"
+    : activeTab === "analytics"
+      ? "analytics"
+      : "classwork";
+  const activeSectionBlocked = !hasClassroomIdentity || (!activeSectionState.hasData && activeSectionState.status !== "success");
 
   return (
     <div className={styles.root}>
@@ -526,33 +717,38 @@ function TeacherClassDetailPage() {
           <div className={detailStyles.headerIdentity}>
             <button className={detailStyles.backButton} type="button" onClick={() => navigate("/teacher/classes")} aria-label="Back to classes"><FiArrowLeft /></button>
             <div>
-              <div className={styles.pageTitle}>{classroom?.className ?? "Classroom"}</div>
-              <div className={detailStyles.headerMeta}>{classroom ? `${classroom.section} · SY ${classroom.schoolYear} · ${classroom.classCode}` : "Loading class details…"}</div>
+              <div className={styles.pageTitle}>{hasClassroomIdentity ? classroom.className : "Classroom unavailable"}</div>
+              <div className={detailStyles.headerMeta}>{hasClassroomIdentity ? `${classroom.section} · SY ${classroom.schoolYear} · ${classroom.classCode}` : "Classroom identity has not been verified."}</div>
             </div>
           </div>
           <div className={detailStyles.headerActions}>
-            <span className={classroom?.isActive === false ? detailStyles.archivedBadge : detailStyles.activeBadge}>{classroom?.isActive === false ? "Archived" : "Active"}</span>
-            <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget("rotate")} disabled={classroom?.isActive === false}><FiCopy /> New code</button>
-            <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget(classroom?.isActive === false ? "reactivate" : "archive")}>{classroom?.isActive === false ? <FiCheckCircle /> : <FiEyeOff />} {classroom?.isActive === false ? "Reactivate" : "Archive"}</button>
-            <button className={styles.btnOutline} type="button" onClick={() => navigate(`/teacher/classrooms/${classroomId}/levels`)}><FiSettings /> Edit levels</button>
-            <button className={styles.btnOutline} type="button" onClick={() => navigate(`/teacher/assessments?classroomId=${encodeURIComponent(classroomId)}`)}><FiClipboard /> Assessments</button>
+            <span className={!hasClassroomIdentity || classroom?.isActive === false ? detailStyles.archivedBadge : detailStyles.activeBadge}>{!hasClassroomIdentity ? "Unavailable" : classroom.isActive === false ? "Archived" : "Active"}</span>
+            <button className={styles.btnOutline} type="button" onClick={() => setClassActionTarget("rotate")} disabled={!hasClassroomIdentity || classroom.isActive === false}><FiCopy /> New code</button>
+            <button className={styles.btnOutline} type="button" disabled={!hasClassroomIdentity} onClick={() => setClassActionTarget(classroom?.isActive === false ? "reactivate" : "archive")}>{classroom?.isActive === false ? <FiCheckCircle /> : <FiEyeOff />} {classroom?.isActive === false ? "Reactivate" : "Archive"}</button>
+            <button className={styles.btnOutline} type="button" disabled={!hasClassroomIdentity} onClick={() => navigate(`/teacher/classrooms/${classroomId}/levels`)}><FiSettings /> Edit levels</button>
+            <button className={styles.btnOutline} type="button" disabled={!hasClassroomIdentity} onClick={() => navigate(`/teacher/assessments?classroomId=${encodeURIComponent(classroomId)}`)}><FiClipboard /> Assessments</button>
           </div>
         </header>
 
         <div className={styles.body}>
-          {loadError && <div className={styles.errorText}>{loadError}</div>}
-          <section className={detailStyles.heroCard}>
+          {!hasClassroomIdentity && (
+            <div className={detailStyles.sectionState} role={rosterState.status === "error" && classworkState.status === "error" ? "alert" : "status"}>
+              <span>{rosterState.status === "loading" || classworkState.status === "loading" ? "Verifying classroom details…" : "Classroom details could not be verified from the roster or classwork response."}</span>
+              {rosterState.status !== "loading" && classworkState.status !== "loading" && <button type="button" className={styles.btnOutline} onClick={() => { loadRoster(); loadClasswork(); }}>Retry details</button>}
+            </div>
+          )}
+          {hasClassroomIdentity && <section className={detailStyles.heroCard}>
             <div className={detailStyles.heroIcon}>{(classroom?.className?.[0] ?? "C").toUpperCase()}</div>
             <div className={detailStyles.heroCopy}>
               <h1>{classroom?.className ?? "Classroom"}</h1>
               <p>{classroom?.description || "Manage students, progress, and class-only lessons from one place."}</p>
             </div>
             <div className={detailStyles.heroStats}>
-              <div><strong>{students.length}</strong><span>Students</span></div>
-              <div><strong>{lessons.length}</strong><span>Class content</span></div>
-              <div><strong>{analytics.avgProgress}%</strong><span>Avg progress</span></div>
+              <div><strong>{rosterState.hasData ? students.length : "—"}</strong><span>Students</span></div>
+              <div><strong>{classworkState.hasData ? lessons.length : "—"}</strong><span>Class content</span></div>
+              <div><strong>{rosterState.hasData ? `${analytics.avgProgress}%` : "—"}</strong><span>Avg progress</span></div>
             </div>
-          </section>
+          </section>}
 
           <nav className={detailStyles.tabs} aria-label="Classroom sections">
             {[
@@ -560,28 +756,35 @@ function TeacherClassDetailPage() {
               ["analytics", <FiBarChart2 key="analytics" />, "Analytics"],
               ["lessons", <FiBookOpen key="lessons" />, "Classwork"],
             ].map(([key, icon, label]) => (
-              <button type="button" key={key} className={activeTab === key ? detailStyles.tabActive : detailStyles.tab} onClick={() => setActiveTab(key)}>{icon}{label}{key === "lessons" && <span>{lessons.length}</span>}</button>
+              <button type="button" key={key} className={activeTab === key ? detailStyles.tabActive : detailStyles.tab} onClick={() => setActiveTab(key)}>{icon}{label}{key === "lessons" && hasClassroomIdentity && <span>{lessons.length}</span>}</button>
             ))}
           </nav>
 
           <section className={detailStyles.contentCard}>
-            {loading ? activeTab === "lessons" ? <div className={detailStyles.skeletonGrid}>{[1, 2, 3].map((item) => <span key={item} />)}</div> : <div className={styles.loadingText}>Loading classroom…</div> : activeTab === "students" ? (
+            {activeSectionState.status === "loading" && !activeSectionState.hasData && (activeTab === "lessons" ? <div className={detailStyles.skeletonGrid}>{[1, 2, 3].map((item) => <span key={item} />)}</div> : <div className={styles.loadingText}>Loading {activeSectionLabel}…</div>)}
+            {activeSectionState.status === "error" && (
+              <div className={detailStyles.sectionState} role="alert">
+                <span>{activeSectionState.error}</span>
+                <button type="button" className={styles.btnOutline} onClick={retryActiveSection}>Retry {activeSectionLabel}</button>
+              </div>
+            )}
+            {!activeSectionBlocked && (activeTab === "students" ? (
               students.length ? (
                 <div className={detailStyles.tableScroll}><table className={pgStyles.rosterTable}>
                   <thead><tr><th>#</th><th>Student</th><th>Progress</th><th>Levels Done</th><th>Avg Score</th><th>Last Active</th><th>Actions</th></tr></thead>
                   <tbody>{students.map((student, index) => { const palette = AVATAR_PALETTES[index % AVATAR_PALETTES.length]; return (
-                    <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td><td><button type="button" className={detailStyles.rosterRemoveButton} onClick={() => setStudentRemoveTarget(student)}><FiX /> Remove</button></td></tr>
+                    <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td><td><button type="button" className={detailStyles.rosterRemoveButton} onClick={() => { setStudentRemovalError(""); setStudentRemoveTarget(student); }}><FiX /> Remove</button></td></tr>
                   ); })}</tbody>
                 </table></div>
               ) : <div className={detailStyles.emptyState}><FiUsers /><h2>No students enrolled yet</h2><p>Share class code <strong>{classroom?.classCode}</strong> so students can join.</p></div>
             ) : activeTab === "analytics" ? (
               <div className={detailStyles.analyticsDashboard}><div className={detailStyles.analyticsGrid}>
-                <div><FiTrendingUp /><strong>{analytics.avgProgress}%</strong><span>Average progress</span></div>
-                <div><FiAward /><strong>{analytics.avgScore}</strong><span>Average score</span></div>
-                <div><FiBarChart2 /><strong>{management.insights?.submissions ?? 0}</strong><span>Assignment submissions</span></div>
-                <div><FiCheckCircle /><strong>{management.insights?.graded ?? 0}</strong><span>Graded submissions</span></div>
-                <div><FiCalendar /><strong>{management.insights?.late ?? 0}</strong><span>Late submissions</span></div>
-                <div><FiFile /><strong>{formatFileSize(management.storage?.usedBytes)}</strong><span>Classwork storage</span></div>
+                <div><FiTrendingUp /><strong>{rosterState.hasData ? `${analytics.avgProgress}%` : "Unavailable"}</strong><span>Average progress</span></div>
+                <div><FiAward /><strong>{rosterState.hasData ? analytics.avgScore : "Unavailable"}</strong><span>Average score</span></div>
+                <div><FiBarChart2 /><strong>{management.insights?.submissions ?? "Unavailable"}</strong><span>Assignment submissions</span></div>
+                <div><FiCheckCircle /><strong>{management.insights?.graded ?? "Unavailable"}</strong><span>Graded submissions</span></div>
+                <div><FiCalendar /><strong>{management.insights?.late ?? "Unavailable"}</strong><span>Late submissions</span></div>
+                <div><FiFile /><strong>{management.storage?.usedBytes == null ? "Unavailable" : formatFileSize(management.storage.usedBytes)}</strong><span>Classwork storage</span></div>
               </div><div className={detailStyles.managementGrid}><section><h3>Students needing attention</h3>{management.insights?.attention?.slice(0, 8).map((entry) => { const student = students.find((item) => item.userId === entry.studentId); return <div key={entry.studentId}><span>{student?.studentName ?? `Student ${entry.studentId}`}</span><small>{entry.missing} missing · {entry.submitted} submitted{entry.averageGrade != null ? ` · ${entry.averageGrade} avg` : ""}</small></div>; })}</section><section><h3>Recent classwork activity</h3>{management.audits?.slice(0, 8).map((audit) => <div key={audit.id}><span>{String(audit.action || "updated").replaceAll("_", " ")}</span><small>{new Date(audit.createdAt).toLocaleString()} · {audit.actor?.firstName || audit.actor?.username || "Teacher"}</small></div>)}</section></div></div>
             ) : (
               <div>
@@ -621,7 +824,7 @@ function TeacherClassDetailPage() {
                   </div>;
                 })}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>{lessons.length ? "Nothing in this filter" : "No class content yet"}</h2><p>{lessons.length ? "Choose another filter or create new classwork." : "Create a reusable lesson or add one from your lesson library."}</p><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>}
               </div>
-            )}
+            ))}
           </section>
         </div>
       </main>
@@ -664,7 +867,20 @@ function TeacherClassDetailPage() {
         onConfirm={deleteLesson}
         onCancel={() => !isDeleting && setDeleteTarget(null)}
       />
-      <ConfirmModal open={Boolean(studentRemoveTarget)} title="Remove student from this classroom?" message={studentRemoveTarget ? `${studentRemoveTarget.studentName} will lose access to this classroom. Saved progress is retained, and the student can be added again later.` : ""} confirmLabel="Remove student" danger onConfirm={removeStudent} onCancel={() => setStudentRemoveTarget(null)} />
+      <ConfirmModal
+        open={Boolean(studentRemoveTarget)}
+        title="Remove student from this classroom?"
+        message={studentRemoveTarget ? `${studentRemoveTarget.studentName} will lose access to this classroom. Saved progress is retained, and the student can be added again later.${studentRemovalError ? ` Removal failed: ${studentRemovalError}` : ""}` : ""}
+        confirmLabel={studentRemovalPending ? "Removing…" : "Remove student"}
+        danger
+        confirmDisabled={studentRemovalPending}
+        onConfirm={removeStudent}
+        onCancel={() => {
+          if (studentRemovalPending) return;
+          setStudentRemovalError("");
+          setStudentRemoveTarget(null);
+        }}
+      />
       <ConfirmModal open={Boolean(classActionTarget)} title={classActionTarget === "rotate" ? "Generate a new class code?" : classActionTarget === "archive" ? "Archive this classroom?" : "Reactivate this classroom?"} message={classActionTarget === "rotate" ? "The current code will stop working immediately. Existing students remain enrolled." : classActionTarget === "archive" ? "Students cannot join this classroom and new announcements are blocked until it is reactivated." : "Students can join and classroom activity can resume."} confirmLabel={classActionPending ? "Saving..." : classActionTarget === "rotate" ? "Generate new code" : classActionTarget === "archive" ? "Archive classroom" : "Reactivate classroom"} danger={classActionTarget === "archive" || classActionTarget === "rotate"} confirmDisabled={classActionPending} onConfirm={performClassAction} onCancel={() => !classActionPending && setClassActionTarget(null)} />
     </div>
   );

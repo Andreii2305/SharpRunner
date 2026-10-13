@@ -11,6 +11,28 @@
   gap: 12px;
 }
 
+.stateRow,
+.sectionError {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #f1c7c3;
+  border-radius: 9px;
+  background: #fff;
+  color: #8f1710;
+  font-size: var(--teacher-text-sm);
+}
+
+.sectionError {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.stateRow button,
+.sectionError button { min-height: 40px; }
+
 /* Class row inside overview card */
 .classRow {
   display: flex;

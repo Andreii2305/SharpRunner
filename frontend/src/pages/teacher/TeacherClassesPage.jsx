@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { FiPlus, FiUsers, FiCopy, FiCheck, FiX, FiList, FiLayers, FiBarChart2, FiTrendingUp, FiAward } from "react-icons/fi";
@@ -12,6 +12,7 @@ import {
 } from "./TeacherShared.jsx";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
+import { getRemoteCollectionView, getRequiredCollection, mergeClassroomPerformance } from "./teacherClassroomState.js";
 
 const ACCENTS = ["#2563eb", "#7c3aed", "#0891b2", "#059669"];
 
@@ -43,10 +44,9 @@ const getProgressClass = (pct) => {
 function TeacherClassesPage() {
   const navigate = useNavigate();
   const toast = useToast();
-  const [classPerformance, setClassPerformance] = useState([]);
-  const [overview, setOverview] = useState({ totalStudents: 0, totalClassrooms: 0 });
+  const [classroomState, setClassroomState] = useState({ status: "loading", data: [], error: "" });
+  const [metricsState, setMetricsState] = useState({ status: "loading", data: null, error: "" });
   const [copiedCode, setCopiedCode] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [createdCode, setCreatedCode] = useState("");
@@ -64,6 +64,8 @@ function TeacherClassesPage() {
   const [rosterLoading] = useState(false);
   const [rosterTab, setRosterTab] = useState("students");
   const rosterClassCode = useRef("");
+  const classroomRequestRef = useRef(0);
+  const metricsRequestRef = useRef(0);
 
   const handleCopyCode = (code) => {
     navigator.clipboard.writeText(code).then(() => {
@@ -73,31 +75,54 @@ function TeacherClassesPage() {
     });
   };
 
-  const fetchData = async () => {
-    setIsLoading(true);
+  const fetchClassrooms = useCallback(async () => {
+    const requestId = ++classroomRequestRef.current;
+    setClassroomState((current) => ({ ...current, status: "loading", error: "" }));
     try {
-      const config = { headers: getAuthHeaders() };
-      const [dashboardResponse, classroomsResponse] = await Promise.all([
-        axios.get(buildApiUrl("/api/teacher/dashboard"), config),
-        axios.get(buildApiUrl("/api/teacher/classrooms"), config),
-      ]);
-      const dashboardRows = dashboardResponse.data?.classPerformance ?? [];
-      const performanceById = new Map(dashboardRows.map((item) => [item.classId, item]));
-      const allClassrooms = classroomsResponse.data?.classrooms ?? [];
-      setClassPerformance(allClassrooms.map((classroom) => performanceById.get(classroom.id) ?? {
-        ...classroom,
-        classId: classroom.id,
-        averageProgressPercent: 0,
+      const response = await axios.get(buildApiUrl("/api/teacher/classrooms"), { headers: getAuthHeaders() });
+      if (requestId !== classroomRequestRef.current) return;
+      const classrooms = getRequiredCollection(response.data, "classrooms");
+      if (!classrooms) throw new Error("The classroom list response was incomplete.");
+      setClassroomState({ status: "success", data: classrooms, error: "" });
+    } catch (error) {
+      if (requestId !== classroomRequestRef.current) return;
+      setClassroomState((current) => ({
+        ...current,
+        status: "error",
+        error: error.response?.data?.message ?? error.message ?? "Failed to load classrooms.",
       }));
-      setOverview(dashboardResponse.data?.overview ?? { totalStudents: 0, totalClassrooms: 0 });
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, []);
+
+  const fetchMetrics = useCallback(async () => {
+    const requestId = ++metricsRequestRef.current;
+    setMetricsState((current) => ({ ...current, status: "loading", error: "" }));
+    try {
+      const response = await axios.get(buildApiUrl("/api/teacher/dashboard"), { headers: getAuthHeaders() });
+      if (requestId !== metricsRequestRef.current) return;
+      if (!response.data?.overview || !getRequiredCollection(response.data, "classPerformance")) {
+        throw new Error("The classroom summary response was incomplete.");
+      }
+      setMetricsState({ status: "success", data: response.data ?? null, error: "" });
+    } catch (error) {
+      if (requestId !== metricsRequestRef.current) return;
+      setMetricsState((current) => ({
+        ...current,
+        status: "error",
+        error: error.response?.data?.message ?? error.message ?? "Summary metrics are unavailable.",
+      }));
+    }
+  }, []);
+
+  const fetchData = useCallback(() => Promise.allSettled([fetchClassrooms(), fetchMetrics()]), [fetchClassrooms, fetchMetrics]);
 
   useEffect(() => {
     fetchData();
-  }, []);
+    return () => {
+      classroomRequestRef.current += 1;
+      metricsRequestRef.current += 1;
+    };
+  }, [fetchData]);
 
   const openRoster = (classId) => navigate(`/teacher/classrooms/${classId}`);
 
@@ -132,17 +157,27 @@ function TeacherClassesPage() {
     }
   };
 
+  const classPerformance = useMemo(
+    () => mergeClassroomPerformance(classroomState.data, metricsState.data?.classPerformance),
+    [classroomState.data, metricsState.data],
+  );
+  const overview = metricsState.data?.overview ?? null;
+  const classroomView = getRemoteCollectionView(classroomState);
+
   const classAccents = useMemo(() => {
     const map = new Map();
     classPerformance.forEach((c, i) => map.set(c.classId, ACCENTS[i % ACCENTS.length]));
     return map;
   }, [classPerformance]);
 
-  const activeClassPerformance = classPerformance.filter((item) => item.isActive !== false);
-  const totalStudents = overview.totalStudents;
-  const avgProgress = activeClassPerformance.length === 0 ? 0 : Math.round(
-    activeClassPerformance.reduce((sum, c) => sum + (c.averageProgressPercent ?? 0), 0) / activeClassPerformance.length
-  );
+  const totalStudents = overview?.totalStudents ?? null;
+  const activeProgress = (Array.isArray(metricsState.data?.classPerformance) ? metricsState.data.classPerformance : [])
+    .filter((classroom) => classroom.isActive !== false)
+    .map((classroom) => classroom.averageProgressPercent)
+    .filter(Number.isFinite);
+  const avgProgress = activeProgress.length === 0
+    ? null
+    : Math.round(activeProgress.reduce((sum, value) => sum + value, 0) / activeProgress.length);
 
   const classAnalytics = useMemo(() => {
     if (rosterStudents.length === 0) return null;
@@ -190,18 +225,25 @@ function TeacherClassesPage() {
 
         <div className={styles.body}>
           {/* Summary chips */}
-          {!isLoading && classPerformance.length > 0 && (
+          {metricsState.status === "loading" ? (
+            <div className={pgStyles.inlineState} role="status">Loading classroom summary…</div>
+          ) : metricsState.status === "error" ? (
+            <div className={pgStyles.inlineState} role="alert">
+              <span>{metricsState.error}</span>
+              <button type="button" className={styles.btnOutline} onClick={fetchMetrics}>Retry summary</button>
+            </div>
+          ) : (
             <div className={pgStyles.summaryRow}>
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{overview.totalClassrooms}</span>
+                <span className={pgStyles.summaryVal}>{overview?.totalClassrooms ?? "—"}</span>
                 <span className={pgStyles.summaryLbl}>Active Classes</span>
               </div>
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{totalStudents}</span>
+                <span className={pgStyles.summaryVal}>{totalStudents ?? "—"}</span>
                 <span className={pgStyles.summaryLbl}>Unique Students</span>
               </div>
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{avgProgress}%</span>
+                <span className={pgStyles.summaryVal}>{avgProgress == null ? "—" : `${avgProgress}%`}</span>
                 <span className={pgStyles.summaryLbl}>Avg. Progress</span>
               </div>
             </div>
@@ -210,7 +252,7 @@ function TeacherClassesPage() {
           {/* Grid header */}
           <div className={pgStyles.gridHeader}>
             <span className={pgStyles.gridTitle}>All Classrooms</span>
-            {!isLoading && (
+            {classroomState.status === "success" && (
               <span className={pgStyles.gridSub}>
                 {classPerformance.length} classroom{classPerformance.length !== 1 ? "s" : ""}
               </span>
@@ -218,18 +260,32 @@ function TeacherClassesPage() {
           </div>
 
           {/* Content */}
-          {isLoading ? (
+          {classroomView.showLoading ? (
             <div className={styles.loadingText}>Loading classrooms...</div>
-          ) : classPerformance.length === 0 ? (
+          ) : classroomView.showError && !classroomView.showData ? (
+            <div className={pgStyles.errorState} role="alert">
+              <strong>Classrooms unavailable</strong>
+              <span>{classroomState.error}</span>
+              <button type="button" className={styles.btnOutline} onClick={fetchClassrooms}>Retry</button>
+            </div>
+          ) : classroomView.showEmpty ? (
             <div className={pgStyles.emptyState}>
               <FiLayers size={36} className={pgStyles.emptyStateIcon} />
               <div className={pgStyles.emptyStateTitle}>No classrooms yet</div>
               <div className={pgStyles.emptyStateSub}>Create your first class to get started.</div>
             </div>
-          ) : (
-            <div className={pgStyles.classGrid}>
+          ) : classroomView.showData ? (
+            <>
+              {classroomView.showError && (
+                <div className={pgStyles.inlineState} role="alert">
+                  <span>{classroomState.error}</span>
+                  <button type="button" className={styles.btnOutline} onClick={fetchClassrooms}>Retry</button>
+                </div>
+              )}
+              <div className={pgStyles.classGrid}>
               {classPerformance.map((item) => {
                 const accent = classAccents.get(item.classId) ?? ACCENTS[0];
+                const progressAvailable = Number.isFinite(item.averageProgressPercent);
                 return (
                   <div
                     key={item.classId ?? item.className}
@@ -276,14 +332,14 @@ function TeacherClassesPage() {
                     <div className={pgStyles.progressSection}>
                       <div className={pgStyles.progressHeader}>
                         <span className={pgStyles.progressLabel}>Avg. Progress</span>
-                        <span className={pgStyles.progressPct}>{clampPercent(item.averageProgressPercent)}%</span>
+                        <span className={pgStyles.progressPct}>{progressAvailable ? `${clampPercent(item.averageProgressPercent)}%` : "Unavailable"}</span>
                       </div>
-                      <div className={pgStyles.progressTrack}>
+                      {progressAvailable && <div className={pgStyles.progressTrack}>
                         <div
                           className={pgStyles.progressFill}
                           style={{ width: `${clampPercent(item.averageProgressPercent)}%` }}
                         />
-                      </div>
+                      </div>}
                     </div>
 
                     {/* Divider + actions */}
@@ -311,8 +367,9 @@ function TeacherClassesPage() {
                   </div>
                 );
               })}
-            </div>
-          )}
+              </div>
+            </>
+          ) : null}
 
         </div>
       </div>

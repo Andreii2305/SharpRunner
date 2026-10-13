@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import {
   FiActivity,
@@ -16,6 +16,7 @@ import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherDashboardPage.module.css";
+import { getFiniteMetric, getRequiredCollection } from "./teacherClassroomState.js";
 
 /* ─── Shared helpers ──────────────────────────────────────────── */
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
@@ -176,7 +177,8 @@ function TeacherDashboardPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [modalError, setModalError] = useState("");
-  const [annError, setAnnError] = useState("");
+  const [annLoadError, setAnnLoadError] = useState("");
+  const [annFormError, setAnnFormError] = useState("");
   const [annSuccess, setAnnSuccess] = useState("");
   const [classForm, setClassForm] = useState({
     className: "",
@@ -190,6 +192,8 @@ function TeacherDashboardPage() {
     header: "",
     message: "",
   });
+  const dashboardRequestRef = useRef(0);
+  const announcementRequestRef = useRef(0);
 
   const handleCopyCode = (code) => {
     navigator.clipboard.writeText(code).then(() => {
@@ -200,11 +204,43 @@ function TeacherDashboardPage() {
   };
 
   /* ── fetch announcement data ── */
-  const fetchAnnData = async () => {
+  const fetchDashboard = useCallback(async () => {
+    const requestId = ++dashboardRequestRef.current;
+    setIsLoading(true);
+    setDashboardError("");
+    try {
+      const response = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
+        headers: getAuthHeaders(),
+      });
+      if (requestId !== dashboardRequestRef.current) return;
+      if (
+        !response.data?.overview
+        || !getRequiredCollection(response.data, "classPerformance")
+        || !getRequiredCollection(response.data, "studentPerformance")
+        || !response.data?.gamificationPreferenceCounts
+      ) {
+        throw new Error("The dashboard response was incomplete.");
+      }
+      setDashData(response.data);
+    } catch (error) {
+      if (requestId !== dashboardRequestRef.current) return;
+      setDashboardError(error.response?.data?.message ?? error.message ?? "Failed to load dashboard totals.");
+    } finally {
+      if (requestId === dashboardRequestRef.current) setIsLoading(false);
+    }
+  }, []);
+
+  const fetchAnnData = useCallback(async () => {
+    const requestId = ++announcementRequestRef.current;
     setIsLoadingAnn(true);
+    setAnnLoadError("");
     const url = buildApiUrl("/api/teacher/announcements");
     const apply = (payload) => {
-      const safe = payload ?? { classrooms: [], announcements: [] };
+      if (requestId !== announcementRequestRef.current) return;
+      const classrooms = getRequiredCollection(payload, "classrooms");
+      const announcements = getRequiredCollection(payload, "announcements");
+      if (!classrooms || !announcements) throw new Error("The announcement response was incomplete.");
+      const safe = { ...payload, classrooms, announcements };
       setAnnData(safe);
       setAnnForm((c) => ({
         ...c,
@@ -234,31 +270,23 @@ function TeacherDashboardPage() {
           /* handled below */
         }
       }
-      setAnnError(
-        err.response?.data?.message ?? "Failed to load announcements.",
+      if (requestId !== announcementRequestRef.current) return;
+      setAnnLoadError(
+        err.response?.data?.message ?? err.message ?? "Failed to load announcements.",
       );
     } finally {
-      setIsLoadingAnn(false);
+      if (requestId === announcementRequestRef.current) setIsLoadingAnn(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      setIsLoading(true);
-      setDashboardError("");
-      try {
-        const res = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
-          headers: getAuthHeaders(),
-        });
-        setDashData(res.data);
-      } catch (error) {
-        setDashboardError(error.response?.data?.message ?? "Failed to load dashboard totals.");
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+    fetchDashboard();
     fetchAnnData();
-  }, []);
+    return () => {
+      dashboardRequestRef.current += 1;
+      announcementRequestRef.current += 1;
+    };
+  }, [fetchAnnData, fetchDashboard]);
 
   /* ── create class ── */
   const onCreateClass = async (e) => {
@@ -299,11 +327,7 @@ function TeacherDashboardPage() {
         maxStudents: "",
         description: "",
       });
-      const refreshed = await axios.get(buildApiUrl("/api/teacher/dashboard"), {
-        headers: getAuthHeaders(),
-      });
-      setDashData(refreshed.data);
-      await fetchAnnData();
+      await Promise.allSettled([fetchDashboard(), fetchAnnData()]);
     } catch (err) {
       setModalError(
         err.response?.data?.message ?? "Failed to create classroom.",
@@ -316,19 +340,19 @@ function TeacherDashboardPage() {
   /* ── post announcement ── */
   const onPostAnn = async (e) => {
     e.preventDefault();
-    setAnnError("");
+    setAnnFormError("");
     setAnnSuccess("");
     const cid = Number.parseInt(annForm.classroomId, 10);
     if (!Number.isInteger(cid) || cid <= 0) {
-      setAnnError("Please select a classroom.");
+      setAnnFormError("Please select a classroom.");
       return;
     }
     if (!annForm.header.trim()) {
-      setAnnError("Header is required.");
+      setAnnFormError("Header is required.");
       return;
     }
     if (!annForm.message.trim()) {
-      setAnnError("Message is required.");
+      setAnnFormError("Message is required.");
       return;
     }
     setIsPosting(true);
@@ -345,7 +369,7 @@ function TeacherDashboardPage() {
       setAnnForm((c) => ({ ...c, header: "", message: "" }));
       await fetchAnnData();
     } catch (err) {
-      setAnnError(
+      setAnnFormError(
         err.response?.data?.message ?? "Failed to post announcement.",
       );
     } finally {
@@ -354,12 +378,11 @@ function TeacherDashboardPage() {
   };
 
   /* ── derived data ── */
-  const overview = dashData?.overview ?? {
-    totalStudents: 0,
-    totalClassrooms: 0,
-    averageProgressPercent: 0,
-    activeStudentsToday: 0,
-  };
+  const overview = dashData?.overview ?? {};
+  const totalStudents = getFiniteMetric(overview.totalStudents);
+  const totalClassrooms = getFiniteMetric(overview.totalClassrooms);
+  const averageProgress = getFiniteMetric(overview.averageProgressPercent);
+  const activeStudentsToday = getFiniteMetric(overview.activeStudentsToday);
   const classPerformance = dashData?.classPerformance ?? [];
   const topStudents = (dashData?.studentPerformance ?? []).slice(0, 5);
   const preferenceCounts = dashData?.gamificationPreferenceCounts ?? {};
@@ -397,7 +420,7 @@ function TeacherDashboardPage() {
 
         <div className={styles.body}>
           {/* Stat cards */}
-          {isLoading ? <div className={styles.loadingText}>Loading overview...</div> : dashboardError ? <div className={styles.emptyText} role="alert">{dashboardError}</div> : <div className={styles.statRow}>
+          {isLoading ? <div className={styles.loadingText}>Loading overview...</div> : dashboardError ? <div className={pgStyles.stateRow} role="alert"><span>{dashboardError}</span><button type="button" className={styles.btnOutline} onClick={fetchDashboard}>Retry overview</button></div> : <div className={styles.statRow}>
             <div
               className={styles.statCard}
               style={{ background: "#1e3a5f", borderColor: "#1e3a5f" }}
@@ -409,23 +432,22 @@ function TeacherDashboardPage() {
                 <FiUsers size={13} /> Total students
               </div>
               <div className={styles.statVal} style={{ color: "#fff" }}>
-                {overview.totalStudents}
+                {totalStudents ?? "Unavailable"}
               </div>
               <div
                 className={styles.statSub}
                 style={{ color: "rgba(255,255,255,0.6)" }}
               >
-                across {overview.totalClassrooms} classroom
-                {overview.totalClassrooms !== 1 ? "s" : ""}
+                {totalClassrooms == null ? "Classroom count unavailable" : `across ${totalClassrooms} classroom${totalClassrooms !== 1 ? "s" : ""}`}
               </div>
             </div>
             <div className={styles.statCard}>
               <div className={styles.statLabel}>
                 <FiGrid size={13} /> Classrooms
               </div>
-              <div className={styles.statVal}>{overview.totalClassrooms}</div>
+              <div className={styles.statVal}>{totalClassrooms ?? "Unavailable"}</div>
               <div className={styles.statSub}>
-                {overview.totalClassrooms} active
+                {totalClassrooms == null ? "Active count unavailable" : `${totalClassrooms} active`}
               </div>
             </div>
             <div className={styles.statCard}>
@@ -433,7 +455,7 @@ function TeacherDashboardPage() {
                 <FiBarChart2 size={13} /> Avg. progress
               </div>
               <div className={styles.statVal}>
-                {clampPercent(overview.averageProgressPercent)}%
+                {averageProgress == null ? "Unavailable" : `${clampPercent(averageProgress)}%`}
               </div>
               <div className={styles.statSub}>across all lessons</div>
             </div>
@@ -442,13 +464,13 @@ function TeacherDashboardPage() {
                 <FiActivity size={13} /> Active today
               </div>
               <div className={styles.statVal}>
-                {overview.activeStudentsToday}
+                {activeStudentsToday ?? "Unavailable"}
               </div>
               <div className={styles.statSub}>students online now</div>
             </div>
           </div>}
 
-          <div className={styles.card}>
+          {!isLoading && !dashboardError && <div className={styles.card}>
             <div className={styles.sectionHead}>
               <div>
                 <div className={styles.sectionTitle}>Class motivation preferences</div>
@@ -464,11 +486,11 @@ function TeacherDashboardPage() {
               ].map(([label, count]) => (
                 <div className={styles.statCard} key={label}>
                   <div className={styles.statLabel}>{label}</div>
-                  <div className={styles.statVal}>{count ?? 0}</div>
+                  <div className={styles.statVal}>{getFiniteMetric(count) ?? "Unavailable"}</div>
                 </div>
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* Mid row: classrooms + top students */}
           <div className={pgStyles.midRow}>
@@ -478,12 +500,19 @@ function TeacherDashboardPage() {
               </div>
               {isLoading ? (
                 <div className={styles.loadingText}>Loading...</div>
+              ) : dashboardError ? (
+                <div className={pgStyles.sectionError} role="alert">
+                  <span>Classroom performance is unavailable.</span>
+                  <button type="button" className={styles.btnOutline} onClick={fetchDashboard}>Retry</button>
+                </div>
               ) : classPerformance.length === 0 ? (
                 <div className={styles.emptyText}>
                   No classrooms yet. Create one above.
                 </div>
               ) : (
-                classPerformance.map((item) => (
+                classPerformance.map((item) => {
+                  const progress = getFiniteMetric(item.averageProgressPercent);
+                  return (
                   <div
                     key={item.classId ?? item.className}
                     className={pgStyles.classRow}
@@ -509,19 +538,20 @@ function TeacherDashboardPage() {
                     </div>
                     <div className={pgStyles.classRowRight}>
                       <div className={pgStyles.classAvgLabel}>
-                        Avg {clampPercent(item.averageProgressPercent)}%
+                        {progress == null ? "Progress unavailable" : `Avg ${clampPercent(progress)}%`}
                       </div>
-                      <div className={styles.miniBarTrack}>
+                      {progress != null && <div className={styles.miniBarTrack}>
                         <div
                           className={styles.miniBarFill}
                           style={{
-                            width: `${clampPercent(item.averageProgressPercent)}%`,
+                            width: `${clampPercent(progress)}%`,
                           }}
                         />
-                      </div>
+                      </div>}
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -531,6 +561,8 @@ function TeacherDashboardPage() {
               </div>
               {isLoading ? (
                 <div className={styles.loadingText}>Loading...</div>
+              ) : dashboardError ? (
+                <div className={styles.emptyText}>Student performance is unavailable.</div>
               ) : topStudents.length === 0 ? (
                 <div className={styles.emptyText}>No student data yet.</div>
               ) : (
@@ -586,12 +618,12 @@ function TeacherDashboardPage() {
                 Post reminders or guidance — students see this in their
                 dashboard.
               </p>
-              {annError && (
+              {annFormError && (
                 <div
                   className={pgStyles.annFeedback}
                   style={{ color: "#E24B4A" }}
                 >
-                  {annError}
+                  {annFormError}
                 </div>
               )}
               {annSuccess && (
@@ -672,6 +704,11 @@ function TeacherDashboardPage() {
               </div>
               {isLoadingAnn ? (
                 <div className={styles.loadingText}>Loading...</div>
+              ) : annLoadError ? (
+                <div className={pgStyles.sectionError} role="alert">
+                  <span>{annLoadError}</span>
+                  <button type="button" className={styles.btnOutline} onClick={fetchAnnData}>Retry</button>
+                </div>
               ) : teacherAnnouncements.length === 0 ? (
                 <div className={styles.emptyText}>
                   No announcements posted yet.

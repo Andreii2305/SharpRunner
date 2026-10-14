@@ -15,9 +15,12 @@ const {
   AnalyticsDefaultLayout,
   AnalyticsRequestBoundary,
   AnalyticsSummary,
+  AttentionSection,
+  LevelPerformanceTable,
   SimplifiedAnalyticsDashboard,
 } = await vite.ssrLoadModule("/src/pages/teacher/TeacherAnalyticsPage.jsx");
 const {
+  AssessmentEvidenceSummary,
   AssessmentResultsBoundary,
   CodingQuestionBreakdown,
 } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentAnalyticsPanel.jsx");
@@ -73,6 +76,75 @@ test("main request error renders local recovery without stale or fabricated resu
   assert.match(html, /role="alert"/);
   assert.match(html, />Retry</);
   assert.doesNotMatch(html, /0 students|No lesson activity/);
+});
+
+test("attention rows preserve order and reasons while the persistent toggle exposes expansion", () => {
+  const rows = Array.from({ length: 7 }, (_, index) => ({
+    studentId: index + 1,
+    name: `Student ${index + 1}`,
+    attentionReasons: [`Reason ${index + 1}`, `Context ${index + 1}`],
+  }));
+  const collapsed = render(React.createElement(AttentionSection, {
+    rows,
+    available: true,
+    count: 7,
+    expanded: false,
+    onExpandedChange() {},
+    openStudent() {},
+  }));
+  for (let index = 1; index <= 5; index += 1) assert.match(collapsed, new RegExp(`Student ${index}[\\s\\S]*Reason ${index}[\\s\\S]*Context ${index}`));
+  assert.doesNotMatch(collapsed, /Student 6|Student 7/);
+  assert.match(collapsed, /aria-expanded="false"[^>]*>Show all 7/);
+
+  const expanded = render(React.createElement(AttentionSection, {
+    rows,
+    available: true,
+    count: 7,
+    expanded: true,
+    onExpandedChange() {},
+    openStudent() {},
+  }));
+  assert.ok(expanded.indexOf("Student 1") < expanded.indexOf("Student 7"));
+  assert.match(expanded, /Student 7[\s\S]*Reason 7[\s\S]*Context 7/);
+  assert.match(expanded, /aria-expanded="true"[^>]*>Show fewer/);
+  assert.equal((expanded.match(/Review student/g) || []).length, 7);
+});
+
+test("level table keeps concise columns and retains diagnostics in per-level details", () => {
+  const level = {
+    levelKey: "arrays-implementation-key",
+    title: "Array basics",
+    applicableStudents: 12,
+    studentsStarted: 8,
+    studentsAttempted: 7,
+    studentsCompleted: 5,
+    startRate: 66.7,
+    attemptRate: 58.3,
+    completionRate: 62.5,
+    averageScore: 78,
+    averageAttempts: 2.5,
+    averageFailedAttempts: 1.5,
+    totalFailedAttempts: 12,
+    averageActiveTimeLabel: "18m",
+    hintUsageRate: 25,
+    basicHintUsers: 2,
+    purchasedHintUsers: 1,
+    firstAttemptSuccessRate: 40,
+    difficulty: { sufficientData: true, label: "Moderate", score: 54 },
+    failurePatterns: { unresolvedAffectedStudents: 3, completedAfterFailureStudents: 2 },
+  };
+  const html = render(React.createElement(LevelPerformanceTable, {
+    levels: [level],
+    expandedLevelKeys: new Set([level.levelKey]),
+    toggleLevel() {},
+  }));
+  for (const heading of ["Level", "Participation", "Completion", "Average score", "Details"]) assert.match(html, new RegExp(`<th[^>]*>${heading}`));
+  assert.match(html, /Array basics/);
+  assert.match(html, /8 of 12 started[\s\S]*66\.7% started/);
+  assert.match(html, /5 of 8 starters/);
+  for (const detail of ["Average attempts", "Average failed attempts", "Total failed attempts", "Average active time", "Hint usage", "First-attempt success", "Difficulty", "Students with unresolved difficulty"]) assert.match(html, new RegExp(detail));
+  assert.doesNotMatch(html, /arrays-implementation-key/);
+  assert.equal((html.match(/<th scope="col"/g) || []).length, 5);
 });
 
 test("reduced lesson and student tables retain secondary metrics behind deliberate details", () => {
@@ -171,6 +243,34 @@ test("assessment request error renders Retry instead of availability children", 
   assert.match(html, /role="alert"/);
   assert.match(html, />Retry</);
   assert.doesNotMatch(html, /Not configured/);
+});
+
+test("assessment evidence groups core comparisons and keeps paired semantics beside learning gain", () => {
+  const html = render(React.createElement(AssessmentEvidenceSummary, { metrics: {
+    preSubmittedStudents: 18,
+    postSubmittedStudents: 14,
+    averageAllPrePercentage: 52,
+    averageValidBaselinePrePercentage: 49,
+    validBaselineStudents: 12,
+    excludedBaselineStudents: 6,
+    averageOfficialPostPercentage: 81,
+    postPassRate: 75,
+    postPassedStudents: 9,
+    averagePostAttempts: 1.8,
+    pairedStudents: 10,
+    averageLearningGain: 24,
+  } }));
+  for (const group of ["Participation", "PRE and POST scores", "POST outcomes", "Paired learning gain"]) assert.match(html, new RegExp(group));
+  assert.match(html, /10 valid-baseline paired students/);
+  assert.match(html, /PRE to first submitted POST/);
+  assert.match(html, /18 submitted diagnostics/);
+  assert.match(html, /12 valid baselines/);
+  assert.match(html, /Official results only/);
+  assert.match(html, /Comparison details/);
+  assert.match(html, /Valid baseline students[\s\S]*12/);
+  assert.match(html, /Excluded baseline students[\s\S]*6/);
+  assert.match(html, /Average submitted POST attempts[\s\S]*1\.8/);
+  assert.doesNotMatch(html, /class=.*metric/);
 });
 
 test("coding analytics renders only when historical coding evidence exists", () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FiBarChart2, FiX } from "react-icons/fi";
+import { FiX } from "react-icons/fi";
 import {
   getTeacherAssessmentResults,
   listTeacherAssessments,
@@ -20,15 +20,11 @@ const percentage = (value) => value == null ? "Unavailable" : `${value}%`;
 const signedPoints = (value) => value == null ? "Unavailable" : `${value > 0 ? "+" : ""}${value} pp`;
 const submittedDate = (value) => value ? new Date(value).toLocaleString() : "Unavailable";
 
-function Metric({ label, value, note }) {
-  return <article className={styles.metric}><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</article>;
-}
-
 export function CodingQuestionBreakdown({ questions }) {
   if (!questions.length) return null;
   return <section className={styles.codingBreakdown} aria-labelledby="coding-question-performance-title">
     <header>
-      <div><span>Question performance</span><h3 id="coding-question-performance-title">Coding question performance</h3></div>
+      <div><h3 id="coding-question-performance-title">Coding question performance</h3></div>
       <p>Question-level performance is separate from the official POST grade. PRE results remain diagnostic and do not imply pass or fail.</p>
     </header>
     <div className={styles.codingGrid}>{questions.map((question) => <article key={`${question.assessmentType}-${question.questionId}`}>
@@ -47,9 +43,43 @@ export function CodingQuestionBreakdown({ questions }) {
 export function AssessmentResultsBoundary({ view, error, onRetry, children }) {
   if (view === "error") return <div className={styles.errorState} role="alert"><span>{error}</span><button type="button" onClick={onRetry}>Retry</button></div>;
   if (view === "select_scope") return <div className={styles.empty}>Select a classroom and lesson to view assessment evidence.</div>;
-  if (view === "not_applicable") return <div className={styles.empty}><strong>Assessment not applicable.</strong> This lesson is assessment-exempt in the canonical progression policy.</div>;
+  if (view === "not_applicable") return <div className={styles.empty}><strong>Assessment not applicable.</strong> This lesson does not use PRE or POST assessments.</div>;
   if (view === "loading") return <div className={styles.empty} role="status">Loading assessment results…</div>;
   return children;
+}
+
+export function AssessmentEvidenceSummary({ metrics }) {
+  const gainUnavailableReason = metrics.averageLearningGain == null
+    ? "Unavailable because no students have both a valid-baseline PRE and a first submitted POST."
+    : null;
+  return <>
+    <div className={styles.summaryGroups} aria-label="Assessment analytics overview">
+      <section><h3>Participation</h3><dl>
+        <div><dt>PRE submitted</dt><dd>{metrics.preSubmittedStudents}</dd></div>
+        <div><dt>POST submitted</dt><dd>{metrics.postSubmittedStudents}</dd></div>
+      </dl><p>Distinct students with submitted attempts.</p></section>
+      <section><h3>PRE and POST scores</h3><dl>
+        <div><dt>All submitted PRE average</dt><dd>{percentage(metrics.averageAllPrePercentage)}<small>{metrics.preSubmittedStudents} submitted diagnostics</small></dd></div>
+        <div><dt>Valid baseline PRE average</dt><dd>{percentage(metrics.averageValidBaselinePrePercentage)}<small>{metrics.validBaselineStudents} valid baselines</small></dd></div>
+        <div><dt>Average official POST</dt><dd>{percentage(metrics.averageOfficialPostPercentage)}<small>Official results only</small></dd></div>
+      </dl></section>
+      <section><h3>POST outcomes</h3><dl>
+        <div><dt>POST pass rate</dt><dd>{percentage(metrics.postPassRate)}</dd></div>
+      </dl><p>{metrics.postPassedStudents == null ? "No passing threshold applies." : `${metrics.postPassedStudents} passed; submitted official results only.`}</p></section>
+      <section><h3>Paired learning gain</h3><strong className={styles.gainValue}>{signedPoints(metrics.averageLearningGain)}</strong><p>{metrics.pairedStudents} valid-baseline paired students · PRE to first submitted POST.</p>{gainUnavailableReason && <p>{gainUnavailableReason}</p>}</section>
+    </div>
+    <details className={styles.comparisonDetails}>
+      <summary>Comparison details</summary>
+      <div><dl>
+        <div><dt>Valid baseline students</dt><dd>{metrics.validBaselineStudents}</dd></div>
+        <div><dt>Excluded baseline students</dt><dd>{metrics.excludedBaselineStudents}</dd></div>
+        <div><dt>Average submitted POST attempts</dt><dd>{metrics.averagePostAttempts ?? "Unavailable"}</dd></div>
+      </dl>
+      <p><strong>Learning gain:</strong> Each valid-baseline PRE is compared with that student&apos;s first submitted POST. It is not a comparison between the all-submitted PRE average and official POST grades.</p>
+      <p><strong>PRE baseline labels:</strong> Valid baseline; Retroactive — game activity preceded PRE; Unknown — legacy baseline timing.</p>
+      <p><strong>Submission rate:</strong> Enrollment denominator unavailable from the assessment-results contract. No enrollment-based rate is inferred.</p></div>
+    </details>
+  </>;
 }
 
 function AttemptHistoryDialog({ row, onClose }) {
@@ -178,8 +208,7 @@ export default function TeacherAssessmentAnalyticsPanel() {
     else setClassroomRetryVersion((current) => current + 1);
   };
 
-  return <section className={styles.root} aria-labelledby="assessment-analytics-title">
-    <header className={styles.heading}><div><span>Assessment evidence</span><h2 id="assessment-analytics-title"><FiBarChart2 /> Assessment analytics</h2><p>Submitted PRE diagnostics and POST assessments for one explicit classroom and lesson.</p></div></header>
+  return <section className={styles.root} aria-label="Assessment evidence">
     <section className={styles.filters} aria-label="Assessment analytics filters">
       <label>Classroom<select value={classroomId} onChange={(event) => { setClassroomId(event.target.value); setLessonKey(""); }}><option value="">Select a classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}{classroom.section ? ` · ${classroom.section}` : ""}</option>)}</select></label>
       <label>Lesson<select value={lessonKey} disabled={!classroomId} onChange={(event) => setLessonKey(event.target.value)}><option value="">Select a lesson</option>{ACADEMIC_LESSONS.map((lesson) => <option key={lesson.key} value={lesson.key}>{lesson.title}</option>)}</select></label>
@@ -193,19 +222,7 @@ export default function TeacherAssessmentAnalyticsPanel() {
           <article><strong>PRE diagnostic</strong><span>{summarizeAssessmentAvailability(slots.PRE, payloads.prePayload)}</span></article>
           <article><strong>POST assessment</strong><span>{summarizeAssessmentAvailability(slots.POST, payloads.postPayload)}</span></article>
         </div>
-        <div className={styles.metrics} aria-label="Assessment analytics overview">
-          <Metric label="Submitted students" value={`${metrics.preSubmittedStudents} PRE · ${metrics.postSubmittedStudents} POST`} note="Distinct students with submitted attempts" />
-          <Metric label="All submitted PRE average" value={percentage(metrics.averageAllPrePercentage)} note="All diagnostic submissions; no pass/fail" />
-          <Metric label="Valid baseline PRE average" value={percentage(metrics.averageValidBaselinePrePercentage)} note="PRE completed before meaningful game activity" />
-          <Metric label="Valid baseline students" value={metrics.validBaselineStudents} note="Eligible for paired learning gain" />
-          <Metric label="Excluded baseline students" value={metrics.excludedBaselineStudents} note="Retroactive or unknown timing" />
-          <Metric label="Average official POST" value={percentage(metrics.averageOfficialPostPercentage)} note="Backend-selected best grade" />
-          <Metric label="POST pass rate" value={percentage(metrics.postPassRate)} note={metrics.postPassedStudents == null ? "No passing threshold applies" : `${metrics.postPassedStudents} passed; submitted official results only`} />
-          <Metric label="Average submitted POST attempts" value={metrics.averagePostAttempts ?? "Unavailable"} note="Submitted attempts among POST submitters" />
-          <Metric label="Learning gain" value={signedPoints(metrics.averageLearningGain)} note={`${metrics.pairedStudents} valid-baseline paired students · PRE to first submitted POST`} />
-        </div>
-        <p className={styles.limitation}><strong>PRE baseline labels:</strong> Valid baseline; Retroactive — game activity preceded PRE; Unknown — legacy baseline timing.</p>
-        <p className={styles.limitation}><strong>Submission rate:</strong> Enrollment denominator unavailable from the assessment-results contract. No enrollment-based rate is inferred.</p>
+        <AssessmentEvidenceSummary metrics={metrics} />
         <CodingQuestionBreakdown questions={codingQuestions} />
         <div className={styles.tableWrap}><table><caption>Submitted assessment results, alphabetical by student</caption><thead><tr><th scope="col">Student</th><th scope="col">PRE diagnostic</th><th scope="col">First POST</th><th scope="col">Official POST</th><th scope="col">POST status</th><th scope="col">Submitted POST attempts</th><th scope="col">Learning gain</th><th scope="col">History</th></tr></thead><tbody>
           {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td>{percentage(row.preAttempt?.percentage)}<small>{row.preStatus}</small></td><td>{percentage(row.firstPost?.percentage)}</td><td>{percentage(row.officialPost?.percentage)}</td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}

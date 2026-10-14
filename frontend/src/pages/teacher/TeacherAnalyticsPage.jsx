@@ -234,22 +234,58 @@ function FailurePatternGroup({ group, completed = false }) {
   </details>)}</div>;
 }
 
-function LevelPerformance({ lesson }) {
-  const levels = lesson.levels || [];
+export function AttentionSection({ rows, available, count, expanded, onExpandedChange, openStudent }) {
+  const visibleRows = expanded ? rows : rows.slice(0, 5);
+  return <section className={styles.card}>
+    <div className={pgStyles.sectionHeading}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Needs attention</h2><p>{count == null ? "The attention count is unavailable for this scope." : `Existing attention rules identify ${count} student${count === 1 ? "" : "s"} in this scope.`}</p></div></div>
+    <div id="attention-students" className={pgStyles.attentionList}>{!available
+      ? <div className={styles.emptyText}>Attention results are unavailable for this scope.</div>
+      : !rows.length
+      ? <div className={styles.emptyText}>No students match the current attention rules.</div>
+      : visibleRows.map((student) => <div key={student.studentId} className={pgStyles.attentionItem}>
+        <FiAlertCircle aria-hidden="true" />
+        <div><strong>{student.name}</strong><ul>{student.attentionReasons.map((reason, index) => <li key={`${student.studentId}-${index}`}>{reason}</li>)}</ul></div>
+        <button type="button" onClick={(event) => openStudent(student, event.currentTarget)}>Review student</button>
+      </div>)}</div>
+    {available && rows.length > 5 && <button type="button" className={pgStyles.attentionToggle} aria-expanded={expanded} aria-controls="attention-students" onClick={() => onExpandedChange(!expanded)}>{expanded ? "Show fewer" : `Show all ${rows.length}`}</button>}
+  </section>;
+}
+
+export function LevelPerformanceTable({ levels, expandedLevelKeys, toggleLevel }) {
   if (!levels.length) return <div className={pgStyles.levelEmpty}>No levels are available to students in this scope.</div>;
   return <div className={pgStyles.levelTableWrap}><table className={pgStyles.levelTable}>
-    <thead><tr><th scope="col">Level</th><th scope="col">Applicable</th><th scope="col">Started</th><th scope="col">Attempted</th><th scope="col">Completed</th><th scope="col">Start rate</th><th scope="col">Attempt rate</th><th scope="col">Completion</th><th scope="col">Avg score</th><th scope="col">Avg attempts</th><th scope="col">Failed attempts</th><th scope="col">Active time</th><th scope="col">Hint use</th><th scope="col">Hint users</th><th scope="col">First-attempt success</th><th scope="col">Difficulty</th><th scope="col">Current failure signals</th></tr></thead>
-    <tbody>{levels.map((level) => <tr key={level.levelKey}>
-      <td><strong>{level.title}</strong><small>{level.levelKey}</small></td>
-      <td>{level.applicableStudents}</td><td>{level.studentsStarted}</td><td>{level.studentsAttempted}</td><td>{level.studentsCompleted}</td>
-      <td>{valueOrEmpty(level.startRate, "%")}</td><td>{valueOrEmpty(level.attemptRate, "%")}</td><td>{valueOrEmpty(level.completionRate, "%")}</td>
-      <td>{valueOrEmpty(level.averageScore, "%")}</td><td>{valueOrEmpty(level.averageAttempts)}</td><td>{valueOrEmpty(level.averageFailedAttempts)} avg · {level.totalFailedAttempts} total</td>
-      <td>{level.averageActiveTimeLabel || "Not enough data"}</td><td>{valueOrEmpty(level.hintUsageRate, "%")}</td><td>{level.basicHintUsers} basic · {level.purchasedHintUsers} purchased</td>
-      <td>{valueOrEmpty(level.firstAttemptSuccessRate, "%")}</td>
-      <td>{level.difficulty?.sufficientData ? <span className={`${pgStyles.difficulty} ${pgStyles[`difficulty${level.difficulty.label}`]}`}>{level.difficulty.label}<small>{level.difficulty.score}/100</small></span> : "Not enough data"}</td>
-      <td>{level.failurePatterns?.unresolvedAffectedStudents ? `${level.failurePatterns.unresolvedAffectedStudents} unresolved` : "No unresolved signal"}{level.failurePatterns?.completedAfterFailureStudents ? <small className={pgStyles.retainedSignal}>{level.failurePatterns.completedAfterFailureStudents} completed afterward</small> : null}</td>
-    </tr>)}</tbody>
+    <thead><tr><th scope="col">Level</th><th scope="col">Participation</th><th scope="col">Completion</th><th scope="col">Average score</th><th scope="col">Details</th></tr></thead>
+    <tbody>{levels.map((level, index) => {
+      const expanded = expandedLevelKeys.has(level.levelKey);
+      const detailId = `level-performance-detail-${index}`;
+      return <Fragment key={level.levelKey}><tr>
+        <th scope="row"><strong>{level.title}</strong></th>
+        <td><strong>{level.studentsStarted} of {level.applicableStudents} started</strong><small>{valueOrEmpty(level.startRate, "%")} started · {level.studentsAttempted} attempted · {valueOrEmpty(level.attemptRate, "%")} attempted</small></td>
+        <td><strong>{level.studentsCompleted} of {level.studentsStarted} starters</strong><small>{valueOrEmpty(level.completionRate, "%")} completion</small></td>
+        <td>{valueOrEmpty(level.averageScore, "%")}</td>
+        <td><button type="button" className={pgStyles.levelDetailButton} aria-expanded={expanded} aria-controls={detailId} onClick={() => toggleLevel(level.levelKey)}>{expanded ? "Hide details" : "View details"}</button></td>
+      </tr>{expanded && <tr id={detailId} className={pgStyles.levelEvidenceRow}><td colSpan="5"><dl className={pgStyles.levelEvidence}>
+        <div><dt>Average attempts</dt><dd>{valueOrEmpty(level.averageAttempts)}</dd></div>
+        <div><dt>Average failed attempts</dt><dd>{valueOrEmpty(level.averageFailedAttempts)}</dd></div>
+        <div><dt>Total failed attempts</dt><dd>{valueOrEmpty(level.totalFailedAttempts)}</dd></div>
+        <div><dt>Average active time</dt><dd>{level.averageActiveTimeLabel || "Not enough data"}</dd></div>
+        <div><dt>Hint usage</dt><dd>{valueOrEmpty(level.hintUsageRate, "%")}<small>{level.basicHintUsers} basic hint users · {level.purchasedHintUsers} purchased hint users</small></dd></div>
+        <div><dt>First-attempt success</dt><dd>{valueOrEmpty(level.firstAttemptSuccessRate, "%")}</dd></div>
+        <div><dt>Difficulty</dt><dd>{level.difficulty?.sufficientData ? `${level.difficulty.label} (${level.difficulty.score}/100)` : "Not enough data"}</dd></div>
+        <div><dt>Students with unresolved difficulty</dt><dd>{level.failurePatterns?.unresolvedAffectedStudents ?? 0}<small>{level.failurePatterns?.completedAfterFailureStudents ? `${level.failurePatterns.completedAfterFailureStudents} later completed the level` : "No later completions retain this signal"}</small></dd></div>
+      </dl></td></tr>}</Fragment>;
+    })}</tbody>
   </table></div>;
+}
+
+function LevelPerformance({ lesson }) {
+  const [expandedLevelKeys, setExpandedLevelKeys] = useState(() => new Set());
+  const toggleLevel = (levelKey) => setExpandedLevelKeys((current) => {
+    const next = new Set(current);
+    if (next.has(levelKey)) next.delete(levelKey); else next.add(levelKey);
+    return next;
+  });
+  return <LevelPerformanceTable levels={lesson.levels || []} expandedLevelKeys={expandedLevelKeys} toggleLevel={toggleLevel} />;
 }
 
 export function SimplifiedAnalyticsDashboard({
@@ -273,19 +309,13 @@ export function SimplifiedAnalyticsDashboard({
   lessonPerformanceAvailable = true,
   studentPerformanceAvailable = true,
 }) {
+  const [attentionExpanded, setAttentionExpanded] = useState(false);
   const attentionRows = attentionAvailable ? data.attention : [];
   const attentionCount = overview.studentsNeedingAttention;
-  const attention = <section className={styles.card}>
-    <div className={pgStyles.sectionHeading}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Needs attention</h2><p>{attentionCount == null ? "The attention count is unavailable for this scope." : `Existing attention rules identify ${attentionCount} student${attentionCount === 1 ? "" : "s"} in this scope.`}</p></div></div>
-    <div className={pgStyles.attentionList}>{!attentionAvailable
-      ? <div className={styles.emptyText}>Attention results are unavailable for this scope.</div>
-      : !attentionRows.length
-      ? <div className={styles.emptyText}>No students match the current attention rules.</div>
-      : attentionRows.map((student) => <button type="button" key={student.studentId} onClick={(event) => openStudent(student, event.currentTarget)} className={pgStyles.attentionItem}><FiAlertCircle /><span><strong>{student.name}</strong><small>{student.attentionReasons.join(" ")}</small></span><b>Review student</b></button>)}</div>
-  </section>;
+  const attention = <AttentionSection rows={attentionRows} available={attentionAvailable} count={attentionCount} expanded={attentionExpanded} onExpandedChange={setAttentionExpanded} openStudent={openStudent} />;
 
   const lessons = <section className={styles.card}>
-    <div className={pgStyles.sectionHeading}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Lesson performance</h2><p>Participation, completion, scores, and existing difficulty evidence for the current scope.</p></div></div>
+    <div className={pgStyles.sectionHeading}><div><h2 className={`${styles.sectionTitle} ${pgStyles.headingReset}`}>Lesson performance</h2><p>Participation, completion, scores, and where students may need support.</p></div></div>
     <div className={styles.tableWrap}><table className={`${styles.table} ${pgStyles.lessonTable}`}><thead><tr>
       <th scope="col"><SortButton label="Lesson" column="title" sort={lessonSort} onSort={onLessonSort} /></th>
       <th scope="col"><SortButton label="Participation" column="studentsStarted" sort={lessonSort} onSort={onLessonSort} /></th>

@@ -19,8 +19,8 @@ test("canonical assessment-exempt lessons render an explicit not-applicable stat
   assert.match(pageSource, /TeacherAssessmentAnalyticsPanel/);
 });
 
-test("overview states definitions, denominator limitation, and paired gain sample size", () => {
-  for (const marker of ["Submitted students", "All submitted PRE average", "Valid baseline PRE average", "Valid baseline students", "Excluded baseline students", "Average official POST", "POST pass rate", "Average submitted POST attempts", "Submitted POST attempts", "Learning gain", "valid-baseline paired students", "Enrollment denominator unavailable"]) {
+test("comparison presentation retains definitions, denominator limitation, and paired gain sample size", () => {
+  for (const marker of ["Participation", "All submitted PRE average", "Valid baseline PRE average", "Valid baseline students", "Excluded baseline students", "Average official POST", "POST pass rate", "Average submitted POST attempts", "Submitted POST attempts", "Paired learning gain", "valid-baseline paired students", "Enrollment denominator unavailable", "Comparison details"]) {
     assert.equal(source.includes(marker), true, marker);
   }
 });

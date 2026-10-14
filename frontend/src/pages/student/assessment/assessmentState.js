@@ -497,6 +497,8 @@ export const assessmentReducer = (state, action) => {
       return { ...state, progressionError: action.error };
     case "RETAKE_STARTED":
       return { ...state, retakeStatus: "starting", retakeError: null };
+    case "RETAKE_READY":
+      return { ...state, retakeStatus: "idle", retakeError: null };
     case "RETAKE_FAILED":
       return { ...state, retakeStatus: "error", retakeError: action.error };
     default:

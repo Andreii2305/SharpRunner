@@ -943,7 +943,22 @@ test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without 
 test("discovery never exposes questions choices or grading configuration", async () => {
   stub(User, "findByPk", async () => activeUser(42));
   stub(models.ClassroomMembership, "findOne", async () => ({ id: 1 }));
-  stub(models.LessonAssessment, "findOne", async () => assessment());
+  stub(models.LessonAssessment, "findOne", async () => assessment({
+    requirePassingForCompletion: true,
+    questions: [
+      assessment().questions[0],
+      { id: 102, questionText: "True or false", questionType: "TRUE_FALSE", points: 1.25, choices: [] },
+      {
+        id: 103,
+        questionText: "Write a method",
+        questionType: "CODING",
+        points: 3.25,
+        referenceSolution: "teacher secret",
+        codingTestCases: [{ visibility: "HIDDEN", input: [1], expectedOutput: 1, weight: 1 }],
+        choices: [],
+      },
+    ],
+  }));
   stub(models.AssessmentAttempt, "findAll", async (options) => {
     assert.deepEqual(options.where, { assessmentId: 12, studentId: 42 });
     return [
@@ -994,6 +1009,15 @@ test("discovery never exposes questions choices or grading configuration", async
   assert.equal(payload.status.unlocked, true);
   assert.equal(payload.status.lockReason, null);
   assert.deepEqual(payload.status.officialPost, { attemptNumber: 3, percentage: 80 });
+  assert.deepEqual(payload.assessment.studentInformation, {
+    lessonTitle: "Arrays",
+    questionCount: 3,
+    totalPossiblePoints: 6.5,
+    passingRequirement: { required: true, minimumPercentage: 75 },
+    scoreReleasePolicy: "AFTER_SUBMISSION",
+    answerReviewReleasePolicy: "AFTER_FINAL_ATTEMPT",
+  });
+  assert.doesNotMatch(JSON.stringify(payload), /teacher secret|HIDDEN|expectedOutput/);
   assertNoForbiddenKeys(payload);
 });
 

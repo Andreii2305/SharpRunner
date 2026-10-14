@@ -117,6 +117,11 @@ test("beforeunload warns only while active assessment work is dirty, saving, fai
   const resultEvent = { preventDefault() { this.prevented = true; } };
   harness.windowTarget.emit("beforeunload", resultEvent);
   assert.equal(resultEvent.prevented, undefined);
+
+  harness.setState({ ...cleanState(), screen: "ready", retakeStatus: "idle" });
+  const checkpointEvent = { preventDefault() { this.prevented = true; } };
+  harness.windowTarget.emit("beforeunload", checkpointEvent);
+  assert.equal(checkpointEvent.prevented, undefined);
   harness.guard.dispose();
 });
 

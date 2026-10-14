@@ -53,6 +53,14 @@ const discoveryDto = ({
     instructions: "Choose the best answer.",
     required: true,
     maxAttempts: type === "PRE" ? 1 : 3,
+    studentInformation: {
+      lessonTitle: "Arrays",
+      questionCount: 2,
+      totalPossiblePoints: 2,
+      passingRequirement: type === "PRE" ? null : { required: true, minimumPercentage: 75 },
+      scoreReleasePolicy: "AFTER_SUBMISSION",
+      answerReviewReleasePolicy: type === "PRE" ? "NEVER" : "AFTER_FINAL_ATTEMPT",
+    },
   },
   status: {
     available: true,
@@ -289,17 +297,16 @@ test("explicit classroom identity is used for progression and discovery without 
   };
 
   const result = await load(harness, routeParams({ classroomId: "88" }));
-  assert.equal(result.kind, "ACTIVE");
+  assert.equal(result.kind, "READY");
   assert.deepEqual(harness.calls.map(({ name }) => name), [
     "getProgress",
     "discoverAssessment",
-    "startOrResumeAttempt",
   ]);
   assert.equal(harness.calls[0].args.classroomId, 88);
   assert.equal(harness.calls[1].args.classroomId, 88);
 });
 
-test("assessment-exempt final PRE and POST routes discover and start without projected assessment IDs", async (t) => {
+test("assessment-exempt final PRE and POST routes discover without projected IDs or attempt creation", async (t) => {
   for (const type of ["PRE", "POST"]) {
     await t.test(type, async () => {
       const assessmentId = type === "PRE" ? 701 : 702;
@@ -326,13 +333,12 @@ test("assessment-exempt final PRE and POST routes discover and start without pro
         type: type.toLowerCase(),
       }));
 
-      assert.equal(result.kind, "ACTIVE");
+      assert.equal(result.kind, "READY");
       assert.deepEqual(harness.calls.map(({ name }) => name), [
         "getProgress",
         "discoverAssessment",
-        "startOrResumeAttempt",
       ]);
-      assert.equal(harness.calls[2].args.assessmentId, assessmentId);
+      assert.equal(result.discovery.assessment.id, assessmentId);
     });
   }
 });
@@ -443,7 +449,7 @@ test("authoritative locked PRE and POST progression prevents discovery and start
   }
 });
 
-test("first unlocked PRE and POST attempts start only after progression and discovery", async (t) => {
+test("first unlocked PRE and POST route entry is non-mutating until explicit Start", async (t) => {
   for (const type of ["PRE", "POST"]) {
     await t.test(type, async () => {
       const assessmentId = type === "PRE" ? 91 : 92;
@@ -452,16 +458,28 @@ test("first unlocked PRE and POST attempts start only after progression and disc
         discovery: discoveryDto({ type, assessmentId }),
         started: attemptEnvelope({ type, assessmentId, resumed: true }),
       });
-      const result = await load(harness, routeParams({ type: type.toLowerCase() }));
-      assert.equal(result.kind, "ACTIVE");
-      assert.equal(result.source, "start");
-      assert.equal(result.envelope.attempt.resumed, true);
+      const { createAssessmentRouteOrchestrator } = await loadModule();
+      const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+      const input = {
+        params: routeParams({ type: type.toLowerCase() }),
+        generation: 1,
+        isCurrent: () => true,
+      };
+      const result = await orchestrator.load(input);
+      assert.equal(result.kind, "READY");
+      assert.equal(result.startMode, "initial");
       assert.deepEqual(harness.calls.map(({ name }) => name), [
         "getProgress",
         "discoverAssessment",
-        "startOrResumeAttempt",
       ]);
-      assert.equal(harness.calls[2].args.assessmentId, assessmentId);
+      assert.equal(harness.calls.some(({ name }) => name === "startOrResumeAttempt"), false);
+
+      const started = await orchestrator.start({ ...input, ready: result });
+      assert.equal(started.kind, "ACTIVE");
+      assert.equal(started.source, "start");
+      assert.equal(started.envelope.attempt.resumed, true);
+      assert.equal(harness.calls.at(-1).name, "startOrResumeAttempt");
+      assert.equal(harness.calls.at(-1).args.assessmentId, assessmentId);
     });
   }
 });
@@ -643,15 +661,17 @@ test("progression and discovery assessment ID disagreement blocks start and resu
   assert.deepEqual(harness.calls.map(({ name }) => name), ["getProgress", "discoverAssessment"]);
 });
 
-test("same route generation shares one in-flight start request", async () => {
+test("explicit Start shares one in-flight creation request", async () => {
   const pendingStart = deferred();
   const harness = createHarness({ started: () => pendingStart.promise });
   const { createAssessmentRouteOrchestrator } = await loadModule();
   const orchestrator = createAssessmentRouteOrchestrator(harness.services);
   const input = { params: routeParams(), generation: 9, isCurrent: () => true };
 
-  const first = orchestrator.load(input);
-  const second = orchestrator.load(input);
+  const ready = await orchestrator.load(input);
+  assert.equal(ready.kind, "READY");
+  const first = orchestrator.start({ ...input, ready });
+  const second = orchestrator.start({ ...input, ready });
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(harness.calls.filter(({ name }) => name === "startOrResumeAttempt").length, 1);
@@ -661,8 +681,60 @@ test("same route generation shares one in-flight start request", async () => {
   assert.deepEqual(results.map(({ kind }) => kind), ["ACTIVE", "ACTIVE"]);
 });
 
-test("stale progression, discovery, start, and attempt recovery never advance orchestration", async (t) => {
-  for (const stage of ["getProgress", "discoverAssessment", "startOrResumeAttempt", "getAttempt"]) {
+test("an uncertain Start response reconciles an attempt created by this or another tab", async () => {
+  let discoveries = 0;
+  const network = Object.assign(new Error("Connection interrupted"), { status: null, code: null });
+  const harness = createHarness({
+    discovery: () => discoveryDto({
+      status: discoveries++ === 0
+        ? {}
+        : { activeAttemptId: 309, attemptStatus: "IN_PROGRESS" },
+    }),
+    attempt: attemptEnvelope({ attemptId: 309, resumed: true }),
+    failures: { startOrResumeAttempt: network },
+  });
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+  const input = { params: routeParams(), generation: 15, isCurrent: () => true };
+  const ready = await orchestrator.load(input);
+  const outcome = await orchestrator.start({ ...input, ready });
+
+  assert.equal(outcome.kind, "ACTIVE");
+  assert.equal(outcome.source, "resume");
+  assert.equal(outcome.envelope.attempt.attemptId, 309);
+  assert.equal(harness.calls.filter(({ name }) => name === "startOrResumeAttempt").length, 1);
+  assert.deepEqual(harness.calls.map(({ name }) => name), [
+    "getProgress",
+    "discoverAssessment",
+    "startOrResumeAttempt",
+    "getProgress",
+    "discoverAssessment",
+    "getAttempt",
+  ]);
+});
+
+test("an unresolved uncertain Start retains READY context before another creation try", async () => {
+  const network = Object.assign(new Error("Connection interrupted"), { status: null, code: null });
+  const harness = createHarness({ failures: { startOrResumeAttempt: network } });
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+  const input = { params: routeParams(), generation: 16, isCurrent: () => true };
+  const ready = await orchestrator.load(input);
+
+  const first = await orchestrator.start({ ...input, ready });
+  assert.equal(first.kind, "START_ERROR");
+  assert.equal(first.discovery.assessment.id, 91);
+  assert.equal(harness.calls.filter(({ name }) => name === "startOrResumeAttempt").length, 1);
+
+  const retryReady = { ...first, kind: "READY" };
+  const second = await orchestrator.start({ ...input, ready: retryReady });
+  assert.equal(second.kind, "START_ERROR");
+  assert.equal(harness.calls.filter(({ name }) => name === "startOrResumeAttempt").length, 2);
+  assert.equal(harness.calls.filter(({ name }) => name === "discoverAssessment").length, 3);
+});
+
+test("stale progression, discovery, and attempt recovery never advance orchestration", async (t) => {
+  for (const stage of ["getProgress", "discoverAssessment", "getAttempt"]) {
     await t.test(stage, async () => {
       const pending = deferred();
       const entered = deferred();
@@ -696,7 +768,6 @@ test("stale progression, discovery, start, and attempt recovery never advance or
       const values = {
         getProgress: progressDto(),
         discoverAssessment: discoveryDto(),
-        startOrResumeAttempt: attemptEnvelope(),
         getAttempt: attemptEnvelope({ type, assessmentId, attemptId: activeAttemptId }),
       };
       pending.resolve(values[stage]);
@@ -705,7 +776,6 @@ test("stale progression, discovery, start, and attempt recovery never advance or
       const expectedCalls = {
         getProgress: ["getProgress"],
         discoverAssessment: ["getProgress", "discoverAssessment"],
-        startOrResumeAttempt: ["getProgress", "discoverAssessment", "startOrResumeAttempt"],
         getAttempt: ["getProgress", "discoverAssessment", "getAttempt"],
       };
       assert.deepEqual(harness.calls.map(({ name }) => name), expectedCalls[stage]);
@@ -749,11 +819,14 @@ test("active orchestration results produce generation-fenced F-B hydration actio
   } = await loadModule();
   const { assessmentReducer, createAssessmentState } = await import("./assessmentState.js");
   const harness = createHarness();
-  const outcome = await createAssessmentRouteOrchestrator(harness.services).load({
+  const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+  const input = {
     params: routeParams(),
     generation: 12,
     isCurrent: () => true,
-  });
+  };
+  const ready = await orchestrator.load(input);
+  const outcome = await orchestrator.start({ ...input, ready });
   const actions = assessmentActionsForOutcome(outcome, {
     routeKey: "47:arrays:pre",
     requestGeneration: 12,
@@ -876,7 +949,7 @@ test("direct result retry refetches the same submitted attempt ID without creati
   assert.equal(harness.calls.some(({ name }) => name === "startOrResumeAttempt"), false);
 });
 
-test("explicit POST retake revalidates progression/discovery and starts only once", async () => {
+test("POST retake opens the same checkpoint and explicit Start creates once", async () => {
   const pending = deferred();
   const harness = createHarness({
     progress: progressDto({ lesson: lessonProgression({
@@ -897,8 +970,13 @@ test("explicit POST retake revalidates progression/discovery and starts only onc
   const orchestrator = createAssessmentRouteOrchestrator(harness.services);
   const input = { params: routeParams({ type: "post" }), generation: 11, isCurrent: () => true };
 
-  const first = orchestrator.retake(input);
-  const second = orchestrator.retake(input);
+  const ready = await orchestrator.retake(input);
+  assert.equal(ready.kind, "READY");
+  assert.equal(ready.startMode, "retake");
+  assert.equal(harness.calls.some(({ name }) => name === "startOrResumeAttempt"), false);
+
+  const first = orchestrator.start({ ...input, ready });
+  const second = orchestrator.start({ ...input, ready });
   await Promise.resolve();
   await Promise.resolve();
   assert.equal(harness.calls.filter(({ name }) => name === "startOrResumeAttempt").length, 1);
@@ -975,8 +1053,10 @@ test("two sequential retakes in one page lifetime start distinct attempts", asyn
   const orchestrator = createAssessmentRouteOrchestrator(harness.services);
   const input = { params: routeParams({ type: "post" }), generation: 11, isCurrent: () => true };
 
-  const first = await orchestrator.retake(input);
-  const second = await orchestrator.retake(input);
+  const firstReady = await orchestrator.retake(input);
+  const first = await orchestrator.start({ ...input, ready: firstReady });
+  const secondReady = await orchestrator.retake(input);
+  const second = await orchestrator.start({ ...input, ready: secondReady });
 
   assert.equal(first.envelope.attempt.attemptId, 501);
   assert.equal(second.envelope.attempt.attemptId, 502);
@@ -1026,11 +1106,14 @@ test("retake is absent for PRE, passed POST, and exhausted POST and stale comple
       } }),
       started: () => pending.promise,
     });
-    const operation = createAssessmentRouteOrchestrator(harness.services).retake({
+    const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+    const input = {
       params: routeParams({ type: "post" }),
       generation: 1,
       isCurrent: () => current,
-    });
+    };
+    const ready = await orchestrator.retake(input);
+    const operation = orchestrator.start({ ...input, ready });
     await Promise.resolve();
     await Promise.resolve();
     current = false;

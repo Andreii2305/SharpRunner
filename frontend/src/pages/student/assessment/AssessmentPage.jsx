@@ -21,6 +21,7 @@ import {
 } from "./assessmentState.js";
 import AssessmentPlayer from "./AssessmentPlayer.jsx";
 import AssessmentResult from "./AssessmentResult.jsx";
+import AssessmentStart from "./AssessmentStart.jsx";
 import AssessmentSubmitReview from "./AssessmentSubmitReview.jsx";
 import styles from "./AssessmentPlayer.module.css";
 import { createAssessmentPlayerController } from "./assessmentPlayerController.js";
@@ -34,7 +35,10 @@ import {
   parseAssessmentPageRoute,
 } from "./assessmentRouteOrchestrator.js";
 import { createAssessmentSessionGuard } from "./assessmentSessionGuard.js";
-import { buildAssessmentPageHref } from "../../../utils/lessonProgressionNavigation.js";
+import {
+  buildAssessmentHref,
+  buildAssessmentPageHref,
+} from "../../../utils/lessonProgressionNavigation.js";
 
 const shellCopy = {
   LOADING: {
@@ -165,7 +169,12 @@ export function AssessmentPageContent({
   onRetryGrading,
   onRetake,
   onRetryProgression,
+  onStart,
 }) {
+  if (["READY", "START_ERROR"].includes(outcome?.kind)) {
+    return <AssessmentStart outcome={outcome} onStart={onStart} />;
+  }
+
   if (assessmentState?.screen === "result" && assessmentState.result) {
     return (
       <AssessmentResult
@@ -287,6 +296,8 @@ function AssessmentPage() {
   const submissionController = useRef(null);
   const sessionGuard = useRef(null);
   const retakeInFlight = useRef(null);
+  const startInFlight = useRef(null);
+  const startAbortController = useRef(null);
   const codingRunInFlight = useRef(new Map());
   const latestState = useRef(assessmentState);
   latestState.current = assessmentState;
@@ -316,15 +327,17 @@ function AssessmentPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const historyHref = buildAssessmentPageHref({
-      route: parsedRoute,
-      screen: assessmentState.screen,
-      resultAttemptId: syncAttemptId,
-    });
+    const historyHref = ["READY", "START_ERROR"].includes(outcome?.kind)
+      ? buildAssessmentHref(parsedRoute)
+      : buildAssessmentPageHref({
+        route: parsedRoute,
+        screen: assessmentState.screen,
+        resultAttemptId: syncAttemptId,
+      });
     if (historyHref && window.location.pathname !== historyHref) {
       window.history.replaceState(window.history.state, "", historyHref);
     }
-  }, [assessmentState.screen, parsedRoute, syncAttemptId]);
+  }, [assessmentState.screen, outcome?.kind, parsedRoute, syncAttemptId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -341,6 +354,9 @@ function AssessmentPage() {
     });
     setReviewReady(false);
     retakeInFlight.current = null;
+    startAbortController.current?.abort();
+    startAbortController.current = null;
+    startInFlight.current = null;
     codingRunInFlight.current.clear();
     setOutcome({ kind: "LOADING", route: parsedRoute });
 
@@ -363,7 +379,10 @@ function AssessmentPage() {
     };
 
     loadAssessment();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      startAbortController.current?.abort();
+    };
   }, [attemptId, classroomId, lessonKey, orchestrator, parsedRoute, retryGeneration, routeKey, type]);
 
   const revalidateAssessment = useCallback(async ({ isActive = () => true } = {}) => {
@@ -671,6 +690,51 @@ function AssessmentPage() {
       }
     }
   }, [parsedRoute]);
+  const startAssessment = useCallback(() => {
+    if (!parsedRoute || !["READY", "START_ERROR"].includes(outcome?.kind)) {
+      return Promise.resolve(null);
+    }
+    if (startInFlight.current) return startInFlight.current;
+
+    const current = latestState.current;
+    const generation = current.requestGeneration;
+    const currentRouteKey = current.routeKey;
+    const ready = outcome.kind === "START_ERROR"
+      ? { ...outcome, kind: "READY", startStatus: "idle", error: undefined }
+      : outcome;
+    const controller = new AbortController();
+    startAbortController.current = controller;
+    const isCurrent = () => (
+      !controller.signal.aborted
+      && requestGeneration.current === generation
+      && latestState.current.routeKey === currentRouteKey
+    );
+
+    setOutcome({ ...ready, startStatus: "starting" });
+    const operation = orchestrator.start({
+      params: { classroomId, lessonKey, type },
+      ready,
+      generation,
+      signal: controller.signal,
+      isCurrent,
+    }).then((nextOutcome) => {
+      if (!isCurrent() || nextOutcome.kind === "STALE") return nextOutcome;
+      for (const action of assessmentActionsForOutcome(nextOutcome, {
+        routeKey: currentRouteKey,
+        requestGeneration: generation,
+      })) dispatch(action);
+      setReviewReady(false);
+      setOutcome(nextOutcome.kind === "START_ERROR"
+        ? { ...nextOutcome, startStatus: "error" }
+        : nextOutcome);
+      return nextOutcome;
+    }).finally(() => {
+      if (startInFlight.current === operation) startInFlight.current = null;
+      if (startAbortController.current === controller) startAbortController.current = null;
+    });
+    startInFlight.current = operation;
+    return operation;
+  }, [classroomId, lessonKey, orchestrator, outcome, parsedRoute, type]);
   const startRetake = useCallback(() => {
     if (!parsedRoute || parsedRoute.type !== "POST") return Promise.resolve(null);
     if (retakeInFlight.current) return retakeInFlight.current;
@@ -690,6 +754,16 @@ function AssessmentPage() {
           routeKey: current.routeKey,
           requestGeneration: current.requestGeneration,
         })) dispatch(nextAction);
+        setReviewReady(false);
+        setOutcome(nextOutcome);
+        return nextOutcome;
+      }
+      if (nextOutcome.kind === "READY") {
+        dispatch({
+          type: "RETAKE_READY",
+          routeKey: current.routeKey,
+          requestGeneration: current.requestGeneration,
+        });
         setReviewReady(false);
         setOutcome(nextOutcome);
         return nextOutcome;
@@ -743,6 +817,7 @@ function AssessmentPage() {
       onRetryGrading={retryGrading}
       onRetake={startRetake}
       onRetryProgression={retryProgression}
+      onStart={startAssessment}
     />
   );
 }

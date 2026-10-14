@@ -156,12 +156,12 @@ const verifyResultEnvelope = (route, attemptId, envelope) => {
 export const createAssessmentRouteOrchestrator = (services) => {
   const inFlightStarts = new Map();
 
-  const startOnce = (key, args) => {
+  const startOnce = (key, operation) => {
     if (inFlightStarts.has(key)) return inFlightStarts.get(key);
 
     let request;
     try {
-      request = Promise.resolve(services.startOrResumeAttempt(args));
+      request = Promise.resolve().then(operation);
     } catch (error) {
       request = Promise.reject(error);
     }
@@ -214,10 +214,9 @@ export const createAssessmentRouteOrchestrator = (services) => {
 
   const resolve = async ({
     params,
-    generation = 0,
     signal,
     isCurrent = () => true,
-    allowStart = true,
+    allowReady = true,
   } = {}) => {
     const route = parseAssessmentPageRoute(params);
     if (!route) return { kind: "INVALID_ROUTE" };
@@ -386,20 +385,15 @@ export const createAssessmentRouteOrchestrator = (services) => {
         });
       }
 
-      if (!allowStart) throw stateMismatch();
-
-      const startKey = `${route.routeKey}:${generation}`;
-      const envelope = await startOnce(startKey, { assessmentId: discoveredAssessmentId, signal });
-      if (!isCurrent()) return { kind: "STALE" };
-      verifyAttemptEnvelope(route, discoveredAssessmentId, envelope);
-      return { kind: "ACTIVE", source: "start", envelope, ...shared };
+      if (!allowReady) throw stateMismatch();
+      return { kind: "READY", startMode: "initial", ...shared };
     } catch (error) {
       return classifyError(error, isCurrent);
     }
   };
 
-  const load = (args = {}) => resolve({ ...args, allowStart: true });
-  const revalidate = (args = {}) => resolve({ ...args, allowStart: false });
+  const load = (args = {}) => resolve({ ...args, allowReady: true });
+  const revalidate = (args = {}) => resolve({ ...args, allowReady: false });
 
   const loadResult = async ({
     params,
@@ -422,7 +416,6 @@ export const createAssessmentRouteOrchestrator = (services) => {
 
   const retake = async ({
     params,
-    generation = 0,
     signal,
     isCurrent = () => true,
   } = {}) => {
@@ -486,17 +479,72 @@ export const createAssessmentRouteOrchestrator = (services) => {
         || Number(discovery.status.attemptsRemaining) <= 0
       ) throw stateMismatch();
 
-      const envelope = await startOnce(
-        `retake:${route.routeKey}:${generation}`,
-        { assessmentId, signal },
-      );
-      if (!isCurrent()) return { kind: "STALE" };
-      verifyAttemptEnvelope(route, assessmentId, envelope);
-      return { kind: "ACTIVE", source: "retake", envelope, ...shared, discovery };
+      return {
+        kind: "READY",
+        startMode: "retake",
+        ...shared,
+        discovery,
+      };
     } catch (error) {
       return classifyError(error, isCurrent);
     }
   };
 
-  return { load, loadResult, revalidate, retake };
+  const start = ({
+    params,
+    ready,
+    generation = 0,
+    signal,
+    isCurrent = () => true,
+  } = {}) => {
+    const route = parseAssessmentPageRoute(params);
+    if (!route) return Promise.resolve({ kind: "INVALID_ROUTE" });
+    if (!isCurrent()) return Promise.resolve({ kind: "STALE" });
+    if (
+      ready?.kind !== "READY"
+      || ready?.route?.routeKey !== route.routeKey
+      || !isPositiveInteger(ready?.discovery?.assessment?.id)
+    ) return Promise.resolve({ kind: "ERROR", error: stateMismatch(), route });
+
+    const assessmentId = Number(ready.discovery.assessment.id);
+    const startMode = ready.startMode === "retake" ? "retake" : "initial";
+    const startKey = `${startMode}:${route.routeKey}:${generation}`;
+    return startOnce(startKey, async () => {
+      try {
+        const envelope = await services.startOrResumeAttempt({ assessmentId, signal });
+        if (!isCurrent()) return { kind: "STALE" };
+        verifyAttemptEnvelope(route, assessmentId, envelope);
+        return {
+          kind: "ACTIVE",
+          source: startMode === "retake" ? "retake" : "start",
+          envelope,
+          ...context(route, ready.progression, ready.lessonProgression, ready.discovery),
+        };
+      } catch (error) {
+        const classified = classifyError(error, isCurrent);
+        if (classified.kind !== "ERROR") {
+          return {
+            ...classified,
+            ...context(route, ready.progression, ready.lessonProgression, ready.discovery),
+          };
+        }
+
+        const reconciled = startMode === "retake"
+          ? await retake({ params, generation, signal, isCurrent })
+          : await resolve({ params, generation, signal, isCurrent, allowReady: true });
+        if (!isCurrent() || reconciled.kind === "STALE") return { kind: "STALE" };
+        if (reconciled.kind !== "READY") {
+          return { ...reconciled, route: reconciled.route ?? route };
+        }
+        return {
+          ...reconciled,
+          kind: "START_ERROR",
+          startMode,
+          error,
+        };
+      }
+    });
+  };
+
+  return { load, loadResult, revalidate, retake, start };
 };

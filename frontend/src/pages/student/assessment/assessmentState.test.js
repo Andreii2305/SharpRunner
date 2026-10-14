@@ -358,6 +358,19 @@ test("result and progression payloads remain server-authoritative objects", () =
   assert.equal(withProgress.submitStatus, "succeeded");
 });
 
+test("reaching the retake Start checkpoint completes the local retake transition", () => {
+  const resultState = assessmentReducer(
+    activeState(),
+    action("SUBMIT_SUCCEEDED", { payload: { result: { attemptId: 312 } } }),
+  );
+  const starting = assessmentReducer(resultState, action("RETAKE_STARTED"));
+  assert.equal(starting.retakeStatus, "starting");
+
+  const ready = assessmentReducer(starting, action("RETAKE_READY"));
+  assert.equal(ready.retakeStatus, "idle");
+  assert.equal(ready.retakeError, null);
+});
+
 test("submission failure preserves active answers while progression refresh failure preserves the result", () => {
   const before = activeState();
   const submitting = assessmentReducer(before, action("SUBMIT_STARTED"));

@@ -266,6 +266,9 @@ test("teacher recovery serializer exposes only the eight approved attempt fields
 test("discovery uses assessment-state names and never lesson completion names", () => {
   const output = serializers.serializeDiscoveryStatus({
     assessment: assessment({ type: "PRE", maxAttempts: 1 }),
+    lessonTitle: "Arrays",
+    questionCount: 3,
+    totalPossiblePoints: 6.5,
     available: true,
     unlocked: false,
     lockReason: "LESSON_PREREQUISITE_REQUIRED",
@@ -280,7 +283,51 @@ test("discovery uses assessment-state names and never lesson completion names", 
   assert.equal(output.status.latestSubmittedAttemptId, 40);
   assert.equal(output.status.unlocked, false);
   assert.equal(output.status.lockReason, "LESSON_PREREQUISITE_REQUIRED");
+  assert.deepEqual(output.assessment.studentInformation, {
+    lessonTitle: "Arrays",
+    questionCount: 3,
+    totalPossiblePoints: 6.5,
+    passingRequirement: null,
+    scoreReleasePolicy: "AFTER_SUBMISSION",
+    answerReviewReleasePolicy: "AFTER_FINAL_ATTEMPT",
+  });
   assert.equal(findForbiddenKey(output, new Set(["completed", "lessonCompleted"])), null);
+});
+
+test("POST discovery exposes a safe optional passing requirement and release policies", () => {
+  const required = serializers.serializeDiscoveryStatus({
+    assessment: assessment(),
+    lessonTitle: "Arrays",
+    questionCount: 2,
+    totalPossiblePoints: 3.25,
+  });
+  assert.deepEqual(required.assessment.studentInformation.passingRequirement, {
+    required: true,
+    minimumPercentage: 75,
+  });
+
+  const optional = serializers.serializeDiscoveryStatus({
+    assessment: assessment({
+      requirePassingForCompletion: false,
+      showScoreAfterSubmission: false,
+      answerReviewPolicy: "NEVER",
+    }),
+    lessonTitle: "Arrays",
+    questionCount: 2,
+    totalPossiblePoints: 3.25,
+  });
+  assert.deepEqual(optional.assessment.studentInformation, {
+    lessonTitle: "Arrays",
+    questionCount: 2,
+    totalPossiblePoints: 3.25,
+    passingRequirement: { required: false },
+    scoreReleasePolicy: "NOT_RELEASED",
+    answerReviewReleasePolicy: "NEVER",
+  });
+  assert.equal(findForbiddenKey(optional, new Set([
+    "questions", "choices", "isCorrect", "correctChoiceId", "referenceSolution",
+    "codingTestCases", "passingPercentage", "showScoreAfterSubmission",
+  ])), null);
 });
 
 test("discovery exposes a submitted attempt ID without hidden scores or answer keys", () => {

@@ -86,9 +86,17 @@ const serializePlayerAttempt = ({ assessment, attempt, responses = [], attemptsU
   maxAttempts: Number(maxAttempts),
 });
 
-const serializeDiscoveryAssessment = (assessmentInput) => {
+const serializeDiscoveryAssessment = (assessmentInput, studentInformation = {}) => {
   if (!assessmentInput) return null;
   const assessment = plain(assessmentInput);
+  const passingRequirement = assessment.type === "POST"
+    ? {
+        required: assessment.requirePassingForCompletion === true,
+        ...(assessment.requirePassingForCompletion === true
+          ? { minimumPercentage: numberOrNull(assessment.passingPercentage) }
+          : {}),
+      }
+    : null;
   return {
     id: assessment.id,
     lessonKey: assessment.lessonKey,
@@ -97,6 +105,16 @@ const serializeDiscoveryAssessment = (assessmentInput) => {
     instructions: assessment.instructions ?? null,
     required: Boolean(assessment.isRequired),
     maxAttempts: Number(assessment.maxAttempts),
+    studentInformation: {
+      lessonTitle: studentInformation.lessonTitle ?? assessment.lessonKey,
+      questionCount: Number(studentInformation.questionCount ?? 0),
+      totalPossiblePoints: numberOrNull(studentInformation.totalPossiblePoints) ?? 0,
+      passingRequirement,
+      scoreReleasePolicy: assessment.showScoreAfterSubmission === true
+        ? "AFTER_SUBMISSION"
+        : "NOT_RELEASED",
+      answerReviewReleasePolicy: assessment.answerReviewPolicy,
+    },
   };
 };
 
@@ -140,7 +158,14 @@ const serializeDiscoveryStatus = (input = {}) => {
       percentage: numberOrNull(official.percentage),
     };
   }
-  return { assessment: serializeDiscoveryAssessment(assessment), status };
+  return {
+    assessment: serializeDiscoveryAssessment(assessment, {
+      lessonTitle: input.lessonTitle,
+      questionCount: input.questionCount,
+      totalPossiblePoints: input.totalPossiblePoints,
+    }),
+    status,
+  };
 };
 
 const serializeScore = (attemptInput) => {

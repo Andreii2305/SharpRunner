@@ -5,6 +5,7 @@ const defaultSerializers = require("./assessmentSerializationService");
 const defaultProgressionService = require("./lessonProgressionService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const { ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
+const { LESSON_DEFINITIONS } = require("../constants/progressDefaults");
 const {
   calculateLearningGain,
   selectFirstSubmittedPostAttempt,
@@ -12,6 +13,13 @@ const {
 } = require("./assessmentPolicyService");
 
 const plain = (value) => value?.toJSON ? value.toJSON() : value;
+const lessonTitleByKey = new Map(LESSON_DEFINITIONS.map(
+  ({ lessonKey, lessonTitle }) => [lessonKey, lessonTitle],
+));
+const totalQuestionPoints = (questions = []) => Math.round(questions.reduce(
+  (total, question) => total + Number(plain(question)?.points ?? 0),
+  0,
+) * 100) / 100;
 
 const newestSubmitted = (attempts) => [...attempts].sort(
   (left, right) => Number(right.attemptNumber) - Number(left.attemptNumber)
@@ -44,6 +52,11 @@ const createAssessmentReadService = ({
 
     const assessmentRow = await LessonAssessment.findOne({
       where: { classroomId, lessonKey, type, isPublished: true },
+      include: [{
+        model: AssessmentQuestion,
+        as: "questions",
+        attributes: ["id", "questionType", "points"],
+      }],
     });
     if (!assessmentRow) {
       return serializers.serializeDiscoveryStatus({
@@ -81,9 +94,13 @@ const createAssessmentReadService = ({
     ) ?? null;
     const latestSubmitted = newestSubmitted(submittedAttempts);
     const attemptsUsed = submittedAttempts.length;
+    const questions = assessment.questions || [];
 
     return serializers.serializeDiscoveryStatus({
       assessment,
+      lessonTitle: lessonTitleByKey.get(lessonKey) ?? lessonKey,
+      questionCount: questions.length,
+      totalPossiblePoints: totalQuestionPoints(questions),
       available: true,
       unlocked: progressionDecision.allowed,
       lockReason: progressionDecision.reason,

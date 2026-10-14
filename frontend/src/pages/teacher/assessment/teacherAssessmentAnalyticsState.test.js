@@ -4,6 +4,7 @@ import {
   ACADEMIC_LESSONS,
   buildAssessmentAnalytics,
   filterAssessmentStudents,
+  getAssessmentAnalyticsView,
   summarizeAssessmentAvailability,
 } from "./teacherAssessmentAnalyticsState.js";
 
@@ -28,6 +29,15 @@ const postPayload = (results, codingQuestions = []) => ({ assessment: { id: 2, l
 test("academic lesson filter uses the backend assessment allowlist", () => {
   assert.deepEqual(ACADEMIC_LESSONS.map(({ key }) => key), ["arrays", "functions", "functions-with-arrays", "final"]);
   assert.equal(ACADEMIC_LESSONS.find(({ key }) => key === "final").assessmentApplicable, false);
+});
+
+test("assessment presentation keeps request failure distinct from configuration availability", () => {
+  assert.equal(getAssessmentAnalyticsView({ classroomId: "", lessonKey: "", assessmentApplicable: true, loading: false, error: "" }), "select_scope");
+  assert.equal(getAssessmentAnalyticsView({ classroomId: "3", lessonKey: "final", assessmentApplicable: false, loading: false, error: "" }), "not_applicable");
+  assert.equal(getAssessmentAnalyticsView({ classroomId: "3", lessonKey: "arrays", assessmentApplicable: true, loading: true, error: "" }), "loading");
+  assert.equal(getAssessmentAnalyticsView({ classroomId: "3", lessonKey: "arrays", assessmentApplicable: true, loading: false, error: "offline" }), "error");
+  assert.equal(getAssessmentAnalyticsView({ classroomId: "3", lessonKey: "arrays", assessmentApplicable: true, loading: false, error: "", dataMatchesScope: false }), "loading");
+  assert.equal(getAssessmentAnalyticsView({ classroomId: "3", lessonKey: "arrays", assessmentApplicable: true, loading: false, error: "", dataMatchesScope: true }), "ready");
 });
 
 test("analytics deduplicates submitted students and keeps first versus official POST distinct", () => {

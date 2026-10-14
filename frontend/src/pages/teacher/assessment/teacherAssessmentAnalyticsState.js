@@ -147,3 +147,18 @@ export const summarizeAssessmentAvailability = (summary, payload) => {
   if (!summary.published) return "Draft — results unavailable";
   return payload?.results?.length ? "Published — submissions available" : "Published — no submitted attempts";
 };
+
+export const getAssessmentAnalyticsView = ({
+  classroomId,
+  lessonKey,
+  assessmentApplicable,
+  loading,
+  error,
+  dataMatchesScope,
+}) => {
+  if (error) return "error";
+  if (!classroomId || !lessonKey) return "select_scope";
+  if (assessmentApplicable === false) return "not_applicable";
+  if (loading || !dataMatchesScope) return "loading";
+  return "ready";
+};

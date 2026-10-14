@@ -11,6 +11,7 @@ import {
   downloadAnalyticsCsv,
   formatComparison,
   formatTrendValue,
+  getAnalyticsRequestView,
   normalizeTrendValue,
   resetAnalyticsFilters,
   trapDialogFocus,
@@ -46,6 +47,12 @@ assert.equal(normalizeTrendValue(undefined), null);
 assert.equal(normalizeTrendValue("not-a-number"), null);
 assert.equal(normalizeTrendValue(0), 0);
 assert.equal(normalizeTrendValue("66.7"), 66.7);
+
+assert.equal(getAnalyticsRequestView({ isLoading: true, error: "", dataMatchesFilters: false }), "loading");
+assert.equal(getAnalyticsRequestView({ isLoading: false, error: "offline", errorMatchesFilters: true, dataMatchesFilters: false }), "error");
+assert.equal(getAnalyticsRequestView({ isLoading: false, error: "old scope failed", errorMatchesFilters: false, dataMatchesFilters: false }), "loading");
+assert.equal(getAnalyticsRequestView({ isLoading: false, error: "", dataMatchesFilters: true }), "ready");
+assert.equal(getAnalyticsRequestView({ isLoading: false, error: "", dataMatchesFilters: false }), "loading");
 
 assert.equal(
   formatComparison({

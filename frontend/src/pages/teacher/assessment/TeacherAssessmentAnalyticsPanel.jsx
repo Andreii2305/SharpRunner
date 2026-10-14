@@ -10,6 +10,7 @@ import {
   ACADEMIC_LESSONS,
   buildAssessmentAnalytics,
   filterAssessmentStudents,
+  getAssessmentAnalyticsView,
   summarizeAssessmentAvailability,
 } from "./teacherAssessmentAnalyticsState.js";
 import styles from "./TeacherAssessmentAnalyticsPanel.module.css";
@@ -23,7 +24,7 @@ function Metric({ label, value, note }) {
   return <article className={styles.metric}><span>{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</article>;
 }
 
-function CodingQuestionBreakdown({ questions }) {
+export function CodingQuestionBreakdown({ questions }) {
   if (!questions.length) return null;
   return <section className={styles.codingBreakdown} aria-labelledby="coding-question-performance-title">
     <header>
@@ -41,6 +42,14 @@ function CodingQuestionBreakdown({ questions }) {
       </dl>
     </article>)}</div>
   </section>;
+}
+
+export function AssessmentResultsBoundary({ view, error, onRetry, children }) {
+  if (view === "error") return <div className={styles.errorState} role="alert"><span>{error}</span><button type="button" onClick={onRetry}>Retry</button></div>;
+  if (view === "select_scope") return <div className={styles.empty}>Select a classroom and lesson to view assessment evidence.</div>;
+  if (view === "not_applicable") return <div className={styles.empty}><strong>Assessment not applicable.</strong> This lesson is assessment-exempt in the canonical progression policy.</div>;
+  if (view === "loading") return <div className={styles.empty} role="status">Loading assessment results…</div>;
+  return children;
 }
 
 function AttemptHistoryDialog({ row, onClose }) {
@@ -81,19 +90,28 @@ export default function TeacherAssessmentAnalyticsPanel() {
   const [slots, setSlots] = useState(emptySlots);
   const [payloads, setPayloads] = useState({ prePayload: null, postPayload: null });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [classroomError, setClassroomError] = useState("");
+  const [resultsError, setResultsError] = useState("");
+  const [resultsErrorScope, setResultsErrorScope] = useState("");
+  const [loadedResultsScope, setLoadedResultsScope] = useState("");
+  const [classroomRetryVersion, setClassroomRetryVersion] = useState(0);
+  const [resultsRetryVersion, setResultsRetryVersion] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const classroomRequestVersionRef = useRef(0);
   const requestVersionRef = useRef(0);
   const launcherRef = useRef(null);
   const selectedLesson = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey) ?? null;
+  const resultsScope = classroomId && lessonKey ? `${classroomId}:${lessonKey}` : "";
 
   useEffect(() => {
+    const requestVersion = ++classroomRequestVersionRef.current;
     const controller = new AbortController();
+    setClassroomError("");
     listTeacherClassrooms({ signal: controller.signal })
-      .then((response) => setClassrooms(response.classrooms ?? []))
-      .catch((source) => { if (source?.code !== "ERR_CANCELED") setError(normalizeTeacherAssessmentError(source).message); });
+      .then((response) => { if (requestVersion === classroomRequestVersionRef.current) setClassrooms(response.classrooms ?? []); })
+      .catch((source) => { if (source?.code !== "ERR_CANCELED" && requestVersion === classroomRequestVersionRef.current) setClassroomError(normalizeTeacherAssessmentError(source).message); });
     return () => controller.abort();
-  }, []);
+  }, [classroomRetryVersion]);
 
   useEffect(() => {
     const requestVersion = ++requestVersionRef.current;
@@ -101,7 +119,9 @@ export default function TeacherAssessmentAnalyticsPanel() {
     setSlots(emptySlots());
     setPayloads({ prePayload: null, postPayload: null });
     setSelectedStudent(null);
-    setError("");
+    setResultsError("");
+    setResultsErrorScope("");
+    setLoadedResultsScope("");
     if (!classroomId || !lessonKey || selectedLesson?.assessmentApplicable === false) { setLoading(false); return () => controller.abort(); }
     setLoading(true);
     (async () => {
@@ -118,14 +138,18 @@ export default function TeacherAssessmentAnalyticsPanel() {
         if (requestVersion !== requestVersionRef.current) return;
         const resultMap = Object.fromEntries(entries);
         setPayloads({ prePayload: resultMap.PRE, postPayload: resultMap.POST });
+        setLoadedResultsScope(resultsScope);
       } catch (source) {
-        if (source?.code !== "ERR_CANCELED" && requestVersion === requestVersionRef.current) setError(normalizeTeacherAssessmentError(source).message);
+        if (source?.code !== "ERR_CANCELED" && requestVersion === requestVersionRef.current) {
+          setResultsError(normalizeTeacherAssessmentError(source).message);
+          setResultsErrorScope(resultsScope);
+        }
       } finally {
         if (requestVersion === requestVersionRef.current) setLoading(false);
       }
     })();
     return () => controller.abort();
-  }, [classroomId, lessonKey, selectedLesson?.assessmentApplicable]);
+  }, [classroomId, lessonKey, selectedLesson?.assessmentApplicable, resultsRetryVersion, resultsScope]);
 
   const model = useMemo(() => buildAssessmentAnalytics(payloads), [payloads]);
   const rows = useMemo(() => filterAssessmentStudents(model.students, { query, type: typeFilter }), [model.students, query, typeFilter]);
@@ -138,6 +162,21 @@ export default function TeacherAssessmentAnalyticsPanel() {
   };
   const openHistory = (row, launcher) => { launcherRef.current = launcher; setSelectedStudent(row); };
   const { metrics } = model;
+  const currentResultsError = resultsErrorScope === resultsScope ? resultsError : "";
+  const requestError = resultsScope ? currentResultsError : classroomError;
+  const dataMatchesScope = loadedResultsScope === resultsScope && Boolean(resultsScope);
+  const view = getAssessmentAnalyticsView({
+    classroomId,
+    lessonKey,
+    assessmentApplicable: selectedLesson?.assessmentApplicable,
+    loading,
+    error: requestError,
+    dataMatchesScope,
+  });
+  const retryRequest = () => {
+    if (resultsScope && currentResultsError) setResultsRetryVersion((current) => current + 1);
+    else setClassroomRetryVersion((current) => current + 1);
+  };
 
   return <section className={styles.root} aria-labelledby="assessment-analytics-title">
     <header className={styles.heading}><div><span>Assessment evidence</span><h2 id="assessment-analytics-title"><FiBarChart2 /> Assessment analytics</h2><p>Submitted PRE diagnostics and POST assessments for one explicit classroom and lesson.</p></div></header>
@@ -148,9 +187,8 @@ export default function TeacherAssessmentAnalyticsPanel() {
       <label>Student search<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or username" /></label>
     </section>
 
-    {error && <div className={styles.error} role="alert">{error}</div>}
-    {!classroomId || !lessonKey ? <div className={styles.empty}>Select a classroom and lesson to view assessment evidence.</div> : selectedLesson?.assessmentApplicable === false ? <div className={styles.empty}><strong>Assessment not applicable.</strong> This lesson is assessment-exempt in the canonical progression policy.</div> : <>
-      {loading ? <div className={styles.empty} role="status">Loading assessment results…</div> : <>
+    <AssessmentResultsBoundary view={view} error={requestError} onRetry={retryRequest}>
+      <>
         <div className={styles.availability} aria-label="Assessment availability">
           <article><strong>PRE diagnostic</strong><span>{summarizeAssessmentAvailability(slots.PRE, payloads.prePayload)}</span></article>
           <article><strong>POST assessment</strong><span>{summarizeAssessmentAvailability(slots.POST, payloads.postPayload)}</span></article>
@@ -172,8 +210,8 @@ export default function TeacherAssessmentAnalyticsPanel() {
         <div className={styles.tableWrap}><table><caption>Submitted assessment results, alphabetical by student</caption><thead><tr><th scope="col">Student</th><th scope="col">PRE diagnostic</th><th scope="col">First POST</th><th scope="col">Official POST</th><th scope="col">POST status</th><th scope="col">Submitted POST attempts</th><th scope="col">Learning gain</th><th scope="col">History</th></tr></thead><tbody>
           {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td>{percentage(row.preAttempt?.percentage)}<small>{row.preStatus}</small></td><td>{percentage(row.firstPost?.percentage)}</td><td>{percentage(row.officialPost?.percentage)}</td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}
         </tbody></table></div>
-      </>}
-    </>}
+      </>
+    </AssessmentResultsBoundary>
     {selectedStudent && <AttemptHistoryDialog row={selectedStudent} onClose={closeHistory} />}
   </section>;
 }

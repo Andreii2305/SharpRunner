@@ -50,6 +50,12 @@ export const createLatestRequestGuard = () => {
   };
 };
 
+export const getAnalyticsRequestView = ({ isLoading, error, errorMatchesFilters, dataMatchesFilters }) => {
+  if (error && errorMatchesFilters !== false) return "error";
+  if (isLoading || !dataMatchesFilters) return "loading";
+  return "ready";
+};
+
 const DIALOG_FOCUSABLE_SELECTOR = [
   "a[href]",
   "button:not([disabled])",

@@ -18,10 +18,62 @@ import {
   createClassroomIdentityTracker,
   createExactClassroomRequestFence,
   createSingleFlightGuard,
+  getNextClassroomTab,
   getRequiredCollection,
   isExactClassroomPayload,
   removeStudentFromRoster,
 } from "./teacherClassroomState.js";
+
+const CLASSROOM_SECTION_KEYS = ["students", "analytics", "lessons"];
+
+export function ClassroomSectionTabs({ idBase, activeTab, onSelect, lessonCount, hasClassroomIdentity }) {
+  const tabRefs = useRef({});
+  const onKeyDown = (event, currentTab) => {
+    const nextTab = getNextClassroomTab(CLASSROOM_SECTION_KEYS, currentTab, event.key);
+    if (!nextTab) return;
+    event.preventDefault();
+    onSelect(nextTab);
+    tabRefs.current[nextTab]?.focus();
+  };
+
+  return (
+    <div className={detailStyles.tabs} role="tablist" aria-label="Classroom sections">
+      {[
+        ["students", <FiList key="students" />, "Students"],
+        ["analytics", <FiBarChart2 key="analytics" />, "Analytics"],
+        ["lessons", <FiBookOpen key="lessons" />, "Classwork"],
+      ].map(([key, icon, label]) => (
+        <button
+          ref={(element) => { tabRefs.current[key] = element; }}
+          type="button"
+          role="tab"
+          id={`${idBase}-tab-${key}`}
+          aria-selected={activeTab === key}
+          aria-controls={`${idBase}-panel`}
+          tabIndex={activeTab === key ? 0 : -1}
+          key={key}
+          className={activeTab === key ? detailStyles.tabActive : detailStyles.tab}
+          onClick={() => onSelect(key)}
+          onKeyDown={(event) => onKeyDown(event, key)}
+        >{icon}{label}{key === "lessons" && hasClassroomIdentity && <span>{lessonCount}</span>}</button>
+      ))}
+    </div>
+  );
+}
+
+export function ClassroomSectionPanel({ idBase, activeTab, className, children }) {
+  return (
+    <section
+      className={className}
+      role="tabpanel"
+      id={`${idBase}-panel`}
+      aria-labelledby={`${idBase}-tab-${activeTab}`}
+      tabIndex={0}
+    >
+      {children}
+    </section>
+  );
+}
 
 const AVATAR_PALETTES = [
   { bg: "#e0e7ff", color: "#4338ca" }, { bg: "#fce7f3", color: "#9d174d" },
@@ -115,6 +167,7 @@ function TeacherClassDetailPage() {
   const [lessons, setLessons] = useState([]);
   const [uploadPolicy, setUploadPolicy] = useState(DEFAULT_UPLOAD_POLICY);
   const [activeTab, setActiveTab] = useState("students");
+  const sectionTabsId = useId();
   const [rosterState, setRosterState] = useState({ status: "loading", error: "", hasData: false });
   const [classworkState, setClassworkState] = useState({ status: "loading", error: "", hasData: false });
   const [managementState, setManagementState] = useState({ status: "loading", error: "", hasData: false });
@@ -750,17 +803,15 @@ function TeacherClassDetailPage() {
             </div>
           </section>}
 
-          <nav className={detailStyles.tabs} aria-label="Classroom sections">
-            {[
-              ["students", <FiList key="students" />, "Students"],
-              ["analytics", <FiBarChart2 key="analytics" />, "Analytics"],
-              ["lessons", <FiBookOpen key="lessons" />, "Classwork"],
-            ].map(([key, icon, label]) => (
-              <button type="button" key={key} className={activeTab === key ? detailStyles.tabActive : detailStyles.tab} onClick={() => setActiveTab(key)}>{icon}{label}{key === "lessons" && hasClassroomIdentity && <span>{lessons.length}</span>}</button>
-            ))}
-          </nav>
+          <ClassroomSectionTabs
+            idBase={sectionTabsId}
+            activeTab={activeTab}
+            onSelect={setActiveTab}
+            lessonCount={lessons.length}
+            hasClassroomIdentity={hasClassroomIdentity}
+          />
 
-          <section className={detailStyles.contentCard}>
+          <ClassroomSectionPanel idBase={sectionTabsId} activeTab={activeTab} className={detailStyles.contentCard}>
             {activeSectionState.status === "loading" && !activeSectionState.hasData && (activeTab === "lessons" ? <div className={detailStyles.skeletonGrid}>{[1, 2, 3].map((item) => <span key={item} />)}</div> : <div className={styles.loadingText}>Loading {activeSectionLabel}…</div>)}
             {activeSectionState.status === "error" && (
               <div className={detailStyles.sectionState} role="alert">
@@ -825,7 +876,7 @@ function TeacherClassDetailPage() {
                 })}</div> : <div className={detailStyles.emptyState}><FiBookOpen /><h2>{lessons.length ? "Nothing in this filter" : "No class content yet"}</h2><p>{lessons.length ? "Choose another filter or create new classwork." : "Create a reusable lesson or add one from your lesson library."}</p><div className={detailStyles.createActions}><button className={styles.btnOutline} type="button" onClick={() => navigate(lessonLibraryUrl())}><FiBookOpen /> Add Existing Lesson</button><button className={styles.btnPrimary} type="button" onClick={() => buildNewLesson()}><FiPlus /> Create New Lesson</button></div></div>}
               </div>
             ))}
-          </section>
+          </ClassroomSectionPanel>
         </div>
       </main>
 

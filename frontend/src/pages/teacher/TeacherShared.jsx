@@ -1,3 +1,10 @@
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
+import {
+  createDialogFocusSession,
+  focusDialog,
+  handleDialogKeyDown,
+  requestDialogDismiss,
+} from "../../utils/dialogFocus.js";
 import styles from "./TeacherPage.module.css";
 
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
@@ -28,19 +35,73 @@ export const formatDateTime = (value) => {
   return Number.isNaN(date.getTime()) ? "Just now" : date.toLocaleString();
 };
 
-export function CreateClassModal({ form, onChange, onSubmit, onClose, isCreating, error }) {
-  return (
-    <div className={styles.modalBackdrop}>
-      <div className={styles.modalCard}>
-        <div className={styles.modalHeader}>
-          <h3>Create new class</h3>
-          <button type="button" className={styles.modalCloseBtn} onClick={onClose}>×</button>
+export function ClassCreationDialogFlow({ stage, form, onChange, onSubmit, onClose, isCreating, error, classCode }) {
+  const dialogRef = useRef(null);
+  const classNameRef = useRef(null);
+  const doneRef = useRef(null);
+  const focusSessionRef = useRef(null);
+  const titleId = useId();
+  const isOpen = stage === "create" || stage === "success";
+  const dismissDisabled = stage === "create" && isCreating;
+
+  if (!focusSessionRef.current) focusSessionRef.current = createDialogFocusSession();
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      focusSessionRef.current.end();
+      return;
+    }
+    focusSessionRef.current.begin(document.activeElement);
+    focusDialog(dialogRef.current, stage === "create" ? classNameRef.current : doneRef.current);
+  }, [isOpen, stage]);
+
+  useEffect(() => () => focusSessionRef.current.end(), []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKeyDown = (event) => handleDialogKeyDown({
+      event,
+      dialog: dialogRef.current,
+      disabled: dismissDisabled,
+      onDismiss: onClose,
+    });
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dismissDisabled, isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const requestClose = () => requestDialogDismiss({ disabled: dismissDisabled, onDismiss: onClose });
+  const onBackdropMouseDown = (event) => {
+    if (event.target === event.currentTarget) requestClose();
+  };
+
+  if (stage === "success") {
+    return (
+      <div className={styles.modalBackdrop} onMouseDown={onBackdropMouseDown}>
+        <div ref={dialogRef} className={`${styles.successCard} ${styles.classDialog}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+          <div className={styles.successIcon} aria-hidden="true">✓</div>
+          <h3 id={titleId}>Classroom created!</h3>
+          <p>Share this code with your students.</p>
+          <div className={styles.codeBlock}>{classCode || "N/A"}</div>
+          <button ref={doneRef} type="button" className={styles.btnPrimary} onClick={requestClose}>Done</button>
         </div>
-        {error && <div className={styles.modalError}>{error}</div>}
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.modalBackdrop} onMouseDown={onBackdropMouseDown}>
+      <div ref={dialogRef} className={`${styles.modalCard} ${styles.classDialog}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
+        <div className={styles.modalHeader}>
+          <h3 id={titleId}>Create new class</h3>
+          <button type="button" className={styles.modalCloseBtn} aria-label="Close create class dialog" onClick={requestClose} disabled={isCreating}>×</button>
+        </div>
+        {error && <div className={styles.modalError} role="alert">{error}</div>}
         <form onSubmit={onSubmit} className={styles.modalForm}>
           <label className={styles.modalLabel}>
             <span>Class name</span>
-            <input type="text" name="className" value={form.className} onChange={onChange} placeholder="e.g. BSIT - C# Fundamentals" />
+            <input ref={classNameRef} autoFocus type="text" name="className" value={form.className} onChange={onChange} placeholder="e.g. BSIT - C# Fundamentals" />
           </label>
           <label className={styles.modalLabel}>
             <span>Section</span>
@@ -59,24 +120,10 @@ export function CreateClassModal({ form, onChange, onSubmit, onClose, isCreating
             <input type="text" name="description" value={form.description} onChange={onChange} placeholder="Short description" />
           </label>
           <div className={styles.modalActions}>
-            <button type="button" className={styles.btnOutline} onClick={onClose} disabled={isCreating}>Cancel</button>
+            <button type="button" className={styles.btnOutline} onClick={requestClose} disabled={isCreating}>Cancel</button>
             <button type="submit" className={styles.btnPrimary} disabled={isCreating}>{isCreating ? "Creating..." : "Create class"}</button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-export function SuccessModal({ classCode, onClose }) {
-  return (
-    <div className={styles.modalBackdrop}>
-      <div className={styles.successCard}>
-        <div className={styles.successIcon}>✓</div>
-        <h3>Classroom created!</h3>
-        <p>Share this code with your students.</p>
-        <div className={styles.codeBlock}>{classCode || "N/A"}</div>
-        <button type="button" className={styles.btnPrimary} onClick={onClose}>Done</button>
       </div>
     </div>
   );

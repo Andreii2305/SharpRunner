@@ -28,7 +28,7 @@
     "test:lessons": "node src/Components/LessonSection/lessonSectionState.test.js && node src/Components/LessonSection/LessonSection.render.test.mjs",
     "test:dialogs": "node src/utils/dialogFocus.test.js",
     "test:legal": "node src/pages/legal/legalPages.test.js",
-    "test:teacher-classrooms": "node src/pages/teacher/teacherClassroomState.test.js",
+    "test:teacher-classrooms": "node src/pages/teacher/teacherClassroomState.test.js && node src/pages/teacher/TeacherShared.render.test.mjs",
     "test:teacher-analytics": "node src/pages/teacher/teacherAnalyticsUtils.test.js",
     "test:protected-content-ui": "node src/pages/student/builtInModuleContentState.test.js && node src/pages/student/BuiltInModulePage.render.test.mjs",
     "test:protected-content-audit": "node scripts/audit-protected-built-in-content.test.mjs",

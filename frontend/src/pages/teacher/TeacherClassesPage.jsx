@@ -6,13 +6,12 @@ import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import {
+  ClassCreationDialogFlow,
   clampPercent,
-  CreateClassModal,
-  SuccessModal,
 } from "./TeacherShared.jsx";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
-import { getRemoteCollectionView, getRequiredCollection, mergeClassroomPerformance } from "./teacherClassroomState.js";
+import { filterClassrooms, getRemoteCollectionView, getRequiredCollection, mergeClassroomPerformance } from "./teacherClassroomState.js";
 
 const ACCENTS = ["#2563eb", "#7c3aed", "#0891b2", "#059669"];
 
@@ -47,8 +46,8 @@ function TeacherClassesPage() {
   const [classroomState, setClassroomState] = useState({ status: "loading", data: [], error: "" });
   const [metricsState, setMetricsState] = useState({ status: "loading", data: null, error: "" });
   const [copiedCode, setCopiedCode] = useState(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [classDialogStage, setClassDialogStage] = useState("closed");
+  const [classroomSearch, setClassroomSearch] = useState("");
   const [createdCode, setCreatedCode] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [modalError, setModalError] = useState("");
@@ -146,8 +145,7 @@ function TeacherClassesPage() {
         { headers: getAuthHeaders() },
       );
       setCreatedCode(res.data?.classroom?.classCode ?? "");
-      setShowCreate(false);
-      setShowSuccess(true);
+      setClassDialogStage("success");
       setClassForm({ className: "", section: "", schoolYear: "", maxStudents: "", description: "" });
       await fetchData();
     } catch (err) {
@@ -163,6 +161,11 @@ function TeacherClassesPage() {
   );
   const overview = metricsState.data?.overview ?? null;
   const classroomView = getRemoteCollectionView(classroomState);
+  const filteredClassPerformance = useMemo(
+    () => filterClassrooms(classPerformance, classroomSearch),
+    [classPerformance, classroomSearch],
+  );
+  const hasClassroomSearch = classroomSearch.trim().length > 0;
 
   const classAccents = useMemo(() => {
     const map = new Map();
@@ -215,8 +218,8 @@ function TeacherClassesPage() {
           <div className={styles.pageActions}>
             <button
               type="button"
-              className={styles.btnPrimary}
-              onClick={() => { setShowCreate(true); setModalError(""); }}
+              className={`${styles.btnPrimary} ${styles.classDialogTrigger}`}
+              onClick={() => { setClassDialogStage("create"); setModalError(""); }}
             >
               <FiPlus size={14} /> New class
             </button>
@@ -251,12 +254,25 @@ function TeacherClassesPage() {
 
           {/* Grid header */}
           <div className={pgStyles.gridHeader}>
-            <span className={pgStyles.gridTitle}>All Classrooms</span>
-            {classroomState.status === "success" && (
-              <span className={pgStyles.gridSub}>
-                {classPerformance.length} classroom{classPerformance.length !== 1 ? "s" : ""}
-              </span>
-            )}
+            <div>
+              <span className={pgStyles.gridTitle}>All Classrooms</span>
+              {classroomState.status === "success" && (
+                <span className={pgStyles.gridSub}>
+                  {hasClassroomSearch
+                    ? `${filteredClassPerformance.length} of ${classPerformance.length} classrooms`
+                    : `${classPerformance.length} classroom${classPerformance.length !== 1 ? "s" : ""}`}
+                </span>
+              )}
+            </div>
+            <label className={pgStyles.classSearch}>
+              <span>Search classrooms</span>
+              <input
+                type="search"
+                value={classroomSearch}
+                onChange={(event) => setClassroomSearch(event.target.value)}
+                placeholder="Name, section, school year, or code"
+              />
+            </label>
           </div>
 
           {/* Content */}
@@ -282,8 +298,15 @@ function TeacherClassesPage() {
                   <button type="button" className={styles.btnOutline} onClick={fetchClassrooms}>Retry</button>
                 </div>
               )}
+              {hasClassroomSearch && filteredClassPerformance.length === 0 ? (
+                <div className={pgStyles.noMatches}>
+                  <strong>No matching classes</strong>
+                  <span>Try another name, section, school year, or class code.</span>
+                  <button type="button" className={styles.btnOutline} onClick={() => setClassroomSearch("")}>Clear search</button>
+                </div>
+              ) : (
               <div className={pgStyles.classGrid}>
-              {classPerformance.map((item) => {
+              {filteredClassPerformance.map((item) => {
                 const accent = classAccents.get(item.classId) ?? ACCENTS[0];
                 const progressAvailable = Number.isFinite(item.averageProgressPercent);
                 return (
@@ -368,28 +391,26 @@ function TeacherClassesPage() {
                 );
               })}
               </div>
+              )}
             </>
           ) : null}
 
         </div>
       </div>
 
-      {showCreate && (
-        <CreateClassModal
-          form={classForm}
-          onChange={(e) => {
-            const { name, value } = e.target;
-            setClassForm((c) => ({ ...c, [name]: value }));
-          }}
-          onSubmit={onCreateClass}
-          onClose={() => setShowCreate(false)}
-          isCreating={isCreating}
-          error={modalError}
-        />
-      )}
-      {showSuccess && (
-        <SuccessModal classCode={createdCode} onClose={() => setShowSuccess(false)} />
-      )}
+      <ClassCreationDialogFlow
+        stage={classDialogStage}
+        form={classForm}
+        onChange={(e) => {
+          const { name, value } = e.target;
+          setClassForm((c) => ({ ...c, [name]: value }));
+        }}
+        onSubmit={onCreateClass}
+        onClose={() => setClassDialogStage("closed")}
+        isCreating={isCreating}
+        error={modalError}
+        classCode={createdCode}
+      />
 
       {rosterModal && (
         <div className={pgStyles.rosterOverlay} onClick={() => setRosterModal(null)}>

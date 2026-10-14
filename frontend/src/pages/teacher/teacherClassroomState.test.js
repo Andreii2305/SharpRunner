@@ -4,6 +4,9 @@ import {
   createClassroomIdentityTracker,
   createExactClassroomRequestFence,
   createSingleFlightGuard,
+  filterClassrooms,
+  getAuthoritativeClassroomId,
+  getNextClassroomTab,
   getRemoteCollectionView,
   getFiniteMetric,
   getRequiredCollection,
@@ -12,6 +15,40 @@ import {
   isSameClassroomIdentity,
   mergeClassroomPerformance,
 } from "./teacherClassroomState.js";
+
+test("dashboard classroom links require an authoritative positive integer ID", () => {
+  assert.equal(getAuthoritativeClassroomId({ classId: 7 }), 7);
+  assert.equal(getAuthoritativeClassroomId({ classId: "7" }), null);
+  assert.equal(getAuthoritativeClassroomId({ classId: 0 }), null);
+  assert.equal(getAuthoritativeClassroomId({ classId: Number.NaN }), null);
+  assert.equal(getAuthoritativeClassroomId({}), null);
+});
+
+test("classroom search matches name, section, school year, and code without hiding archived rows", () => {
+  const classrooms = [
+    { classId: 1, className: "C# Fundamentals", section: "BSIT 1A", schoolYear: "2025-2026", classCode: "ACTIVE1", isActive: true },
+    { classId: 2, className: "Advanced Arrays", section: "BSCS 2B", schoolYear: "2024-2025", classCode: "OLD222", isActive: false },
+  ];
+
+  assert.deepEqual(filterClassrooms(classrooms, " fundamentals ").map((row) => row.classId), [1]);
+  assert.deepEqual(filterClassrooms(classrooms, "bscs 2b").map((row) => row.classId), [2]);
+  assert.deepEqual(filterClassrooms(classrooms, "2024-2025").map((row) => row.classId), [2]);
+  assert.deepEqual(filterClassrooms(classrooms, "old222").map((row) => row.classId), [2]);
+});
+
+test("whitespace-only classroom search preserves the complete successful collection", () => {
+  const classrooms = [{ classId: 1 }, { classId: 2 }];
+  assert.equal(filterClassrooms(classrooms, "  \n\t "), classrooms);
+});
+
+test("classroom tab keyboard navigation wraps and supports Home and End", () => {
+  const tabs = ["students", "analytics", "lessons"];
+  assert.equal(getNextClassroomTab(tabs, "students", "ArrowLeft"), "lessons");
+  assert.equal(getNextClassroomTab(tabs, "lessons", "ArrowRight"), "students");
+  assert.equal(getNextClassroomTab(tabs, "analytics", "Home"), "students");
+  assert.equal(getNextClassroomTab(tabs, "analytics", "End"), "lessons");
+  assert.equal(getNextClassroomTab(tabs, "analytics", "Enter"), null);
+});
 
 test("classroom operation scopes reject an old A completion after switching A to B to A", () => {
   const tracker = createClassroomIdentityTracker("A");

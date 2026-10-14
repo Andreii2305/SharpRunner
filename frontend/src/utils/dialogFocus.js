@@ -58,3 +58,24 @@ export const restoreDialogFocus = (element) => {
   element.focus();
   return true;
 };
+
+export const createDialogFocusSession = () => {
+  let active = false;
+  let opener = null;
+
+  return {
+    begin(element) {
+      if (active) return false;
+      active = true;
+      opener = element;
+      return true;
+    },
+    end() {
+      if (!active) return false;
+      active = false;
+      const capturedOpener = opener;
+      opener = null;
+      return restoreDialogFocus(capturedOpener);
+    },
+  };
+};

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import axios from "axios";
 import {
   FiActivity,
@@ -16,7 +17,8 @@ import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherDashboardPage.module.css";
-import { getFiniteMetric, getRequiredCollection } from "./teacherClassroomState.js";
+import { getAuthoritativeClassroomId, getFiniteMetric, getRequiredCollection } from "./teacherClassroomState.js";
+import { ClassCreationDialogFlow } from "./TeacherShared.jsx";
 
 /* ─── Shared helpers ──────────────────────────────────────────── */
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
@@ -47,121 +49,6 @@ export const formatDateTime = (value) => {
   return Number.isNaN(d.getTime()) ? "Just now" : d.toLocaleString();
 };
 
-/* ─── Create class modal ──────────────────────────────────────── */
-export function CreateClassModal({
-  form,
-  onChange,
-  onSubmit,
-  onClose,
-  isCreating,
-  error,
-}) {
-  return (
-    <div className={styles.modalBackdrop}>
-      <div className={styles.modalCard}>
-        <div className={styles.modalHeader}>
-          <h3>Create new class</h3>
-          <button
-            type="button"
-            className={styles.modalCloseBtn}
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </div>
-        {error && <div className={styles.modalError}>{error}</div>}
-        <form onSubmit={onSubmit} className={styles.modalForm}>
-          <label className={styles.modalLabel}>
-            <span>Class name</span>
-            <input
-              type="text"
-              name="className"
-              value={form.className}
-              onChange={onChange}
-              placeholder="e.g. BSIT - C# Fundamentals"
-            />
-          </label>
-          <label className={styles.modalLabel}>
-            <span>Section</span>
-            <input
-              type="text"
-              name="section"
-              value={form.section}
-              onChange={onChange}
-              placeholder="e.g. BSIT 1A"
-              autoComplete="off"
-            />
-          </label>
-          <label className={styles.modalLabel}>
-            <span>School year</span>
-            <input
-              type="text"
-              name="schoolYear"
-              value={form.schoolYear}
-              onChange={onChange}
-              placeholder="e.g. 2025-2026"
-            />
-          </label>
-          <label className={styles.modalLabel}>
-            <span>Max students (optional)</span>
-            <input
-              type="number"
-              name="maxStudents"
-              value={form.maxStudents}
-              onChange={onChange}
-              min={1}
-              placeholder="No limit"
-            />
-          </label>
-          <label className={`${styles.modalLabel} ${styles.modalLabelFull}`}>
-            <span>Description (optional)</span>
-            <input
-              type="text"
-              name="description"
-              value={form.description}
-              onChange={onChange}
-              placeholder="Short description"
-            />
-          </label>
-          <div className={styles.modalActions}>
-            <button
-              type="button"
-              className={styles.btnOutline}
-              onClick={onClose}
-              disabled={isCreating}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className={styles.btnPrimary}
-              disabled={isCreating}
-            >
-              {isCreating ? "Creating..." : "Create class"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-export function SuccessModal({ classCode, onClose }) {
-  return (
-    <div className={styles.modalBackdrop}>
-      <div className={styles.successCard}>
-        <div className={styles.successIcon}>✓</div>
-        <h3>Classroom created!</h3>
-        <p>Share this code with your students.</p>
-        <div className={styles.codeBlock}>{classCode || "N/A"}</div>
-        <button type="button" className={styles.btnPrimary} onClick={onClose}>
-          Done
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* ─── Overview page ───────────────────────────────────────────── */
 function TeacherDashboardPage() {
   const toast = useToast();
@@ -171,8 +58,7 @@ function TeacherDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
   const [isLoadingAnn, setIsLoadingAnn] = useState(true);
-  const [showCreate, setShowCreate] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [classDialogStage, setClassDialogStage] = useState("closed");
   const [createdCode, setCreatedCode] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
@@ -318,8 +204,7 @@ function TeacherDashboardPage() {
         { headers: getAuthHeaders() },
       );
       setCreatedCode(res.data?.classroom?.classCode ?? "");
-      setShowCreate(false);
-      setShowSuccess(true);
+      setClassDialogStage("success");
       setClassForm({
         className: "",
         section: "",
@@ -407,9 +292,9 @@ function TeacherDashboardPage() {
           <div className={styles.pageActions}>
             <button
               type="button"
-              className={styles.btnPrimary}
+              className={`${styles.btnPrimary} ${styles.classDialogTrigger}`}
               onClick={() => {
-                setShowCreate(true);
+                setClassDialogStage("create");
                 setModalError("");
               }}
             >
@@ -512,6 +397,7 @@ function TeacherDashboardPage() {
               ) : (
                 classPerformance.map((item) => {
                   const progress = getFiniteMetric(item.averageProgressPercent);
+                  const classroomId = getAuthoritativeClassroomId(item);
                   return (
                   <div
                     key={item.classId ?? item.className}
@@ -548,6 +434,11 @@ function TeacherDashboardPage() {
                           }}
                         />
                       </div>}
+                      {classroomId != null && (
+                        <Link className={pgStyles.classOpenLink} to={`/teacher/classrooms/${classroomId}`}>
+                          Open class
+                        </Link>
+                      )}
                     </div>
                   </div>
                   );
@@ -739,25 +630,19 @@ function TeacherDashboardPage() {
         </div>
       </div>
 
-      {showCreate && (
-        <CreateClassModal
-          form={classForm}
-          onChange={(e) => {
-            const { name, value } = e.target;
-            setClassForm((c) => ({ ...c, [name]: value }));
-          }}
-          onSubmit={onCreateClass}
-          onClose={() => setShowCreate(false)}
-          isCreating={isCreating}
-          error={modalError}
-        />
-      )}
-      {showSuccess && (
-        <SuccessModal
-          classCode={createdCode}
-          onClose={() => setShowSuccess(false)}
-        />
-      )}
+      <ClassCreationDialogFlow
+        stage={classDialogStage}
+        form={classForm}
+        onChange={(e) => {
+          const { name, value } = e.target;
+          setClassForm((c) => ({ ...c, [name]: value }));
+        }}
+        onSubmit={onCreateClass}
+        onClose={() => setClassDialogStage("closed")}
+        isCreating={isCreating}
+        error={modalError}
+        classCode={createdCode}
+      />
     </div>
   );
 }

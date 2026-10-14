@@ -57,6 +57,24 @@
 }
 .classAvgLabel { font-size: var(--teacher-text-sm); font-weight: 600; color: #1e3a5f; }
 
+.classOpenLink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  color: #26547c;
+  font-size: var(--teacher-text-sm);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.classOpenLink:hover { color: #16304f; }
+.classOpenLink:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid rgba(38, 84, 124, 0.35);
+  outline-offset: 2px;
+}
+
 /* Student rows */
 .studentRow {
   display: flex;

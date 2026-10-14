@@ -2,10 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   focusDialog,
+  createDialogFocusSession,
   handleDialogKeyDown,
   requestDialogDismiss,
   restoreDialogFocus,
 } from "./dialogFocus.js";
+
+test("a dialog flow captures its opener once and restores only when the whole flow ends", () => {
+  const firstOpener = focusable("new class");
+  const behindSuccess = focusable("create dialog control");
+  const session = createDialogFocusSession();
+
+  assert.equal(session.begin(firstOpener), true);
+  assert.equal(session.begin(behindSuccess), false);
+  assert.equal(firstOpener.focused, undefined);
+  assert.equal(behindSuccess.focused, undefined);
+  assert.equal(session.end(), true);
+  assert.equal(firstOpener.focused, true);
+  assert.equal(behindSuccess.focused, undefined);
+  assert.equal(session.end(), false);
+
+  const reopenedFrom = focusable("second new class button");
+  assert.equal(session.begin(reopenedFrom), true);
+  assert.equal(session.end(), true);
+  assert.equal(reopenedFrom.focused, true);
+});
 
 const focusable = (name, { disabled = false, connected = true } = {}) => ({
   name,

@@ -210,6 +210,22 @@
 .btnOutline:hover    { border-color: #1e3a5f; color: #1e3a5f; }
 .btnOutline:disabled { opacity: 0.6; cursor: not-allowed; }
 
+.classDialogTrigger,
+.classDialog .modalActions > .btnPrimary,
+.classDialog .modalActions > .btnOutline,
+.classDialog.successCard > .btnPrimary {
+  min-height: 44px;
+}
+
+.classDialogTrigger:focus-visible,
+.classDialog .modalActions > .btnPrimary:focus-visible,
+.classDialog .modalActions > .btnOutline:focus-visible,
+.classDialog.successCard > .btnPrimary:focus-visible,
+.classDialog .modalCloseBtn:focus-visible {
+  outline: 3px solid rgba(38, 84, 124, 0.35);
+  outline-offset: 2px;
+}
+
 /* ── Table ────────────────────────────── */
 .tableWrap {
   border: 1px solid #e2e8f0;
@@ -268,6 +284,11 @@
   padding: 20px;
 }
 
+.classDialog:focus-visible {
+  outline: 3px solid rgba(38, 84, 124, 0.35);
+  outline-offset: 2px;
+}
+
 .modalHeader {
   display: flex;
   align-items: center;
@@ -292,6 +313,15 @@
   cursor: pointer;
 }
 .modalCloseBtn:hover { border-color: #1e3a5f; color: #1e3a5f; }
+
+.classDialog .modalCloseBtn {
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+}
+
+.classDialog .modalCloseBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .modalError { font-size: var(--teacher-text-sm); line-height: 1.5; color: #E24B4A; margin-bottom: 10px; }
 

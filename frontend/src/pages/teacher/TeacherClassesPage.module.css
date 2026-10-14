@@ -65,6 +65,13 @@
   flex-shrink: 0;
 }
 
+.gridHeader > div:first-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .gridTitle {
   font-size: var(--teacher-text-lg);
   font-weight: 700;
@@ -74,6 +81,34 @@
 .gridSub {
   font-size: var(--teacher-text-xs);
   color: #64748b;
+}
+
+.classSearch {
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #475569;
+  font-size: var(--teacher-text-sm);
+  font-weight: 600;
+}
+
+.classSearch input {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1f2937;
+  padding: 9px 11px;
+  font: inherit;
+}
+
+.classSearch input:focus-visible {
+  border-color: #26547c;
+  outline: 3px solid rgba(38, 84, 124, 0.18);
+  outline-offset: 1px;
 }
 
 /* ── Empty state ──────────────────────── */
@@ -92,6 +127,31 @@
 .emptyStateIcon { color: #cbd5e1; margin-bottom: 4px; }
 .emptyStateTitle { font-size: 14px; font-weight: 700; color: #1e3a5f; }
 .emptyStateSub { font-size: var(--teacher-text-xs); color: #64748b; }
+
+.noMatches {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #64748b;
+  font-size: var(--teacher-text-sm);
+}
+
+.noMatches strong { color: #1e3a5f; font-size: var(--teacher-text-md); }
+.noMatches button { min-height: 44px; }
+.noMatches button:focus-visible {
+  outline: 3px solid rgba(38, 84, 124, 0.35);
+  outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+  .gridHeader { align-items: stretch; flex-direction: column; gap: 10px; }
+  .classSearch { width: 100%; }
+}
 
 /* ── Class card grid ──────────────────── */
 .classGrid {

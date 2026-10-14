@@ -16,6 +16,35 @@ export const getRequiredCollection = (payload, field) => (
   Array.isArray(payload?.[field]) ? payload[field] : null
 );
 
+export const getAuthoritativeClassroomId = (classroom) => {
+  const classId = classroom?.classId;
+  return Number.isInteger(classId) && classId > 0 ? classId : null;
+};
+
+export const filterClassrooms = (classrooms, query) => {
+  if (!Array.isArray(classrooms)) return [];
+  const normalizedQuery = `${query ?? ""}`.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return classrooms;
+
+  return classrooms.filter((classroom) => [
+    classroom?.className,
+    classroom?.section,
+    classroom?.schoolYear,
+    classroom?.classCode,
+  ].some((value) => `${value ?? ""}`.toLocaleLowerCase().includes(normalizedQuery)));
+};
+
+export const getNextClassroomTab = (tabs, currentTab, key) => {
+  if (!Array.isArray(tabs) || tabs.length === 0) return null;
+  if (key === "Home") return tabs[0];
+  if (key === "End") return tabs.at(-1);
+  if (key !== "ArrowLeft" && key !== "ArrowRight") return null;
+
+  const currentIndex = Math.max(0, tabs.indexOf(currentTab));
+  const offset = key === "ArrowRight" ? 1 : -1;
+  return tabs[(currentIndex + offset + tabs.length) % tabs.length];
+};
+
 export const removeStudentFromRoster = (students, targetId) => {
   if (!Array.isArray(students) || !students.some((student) => student?.userId === targetId)) return students;
   return students.filter((student) => student?.userId !== targetId);

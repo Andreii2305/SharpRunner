@@ -305,28 +305,21 @@ function TeacherDashboardPage() {
 
         <div className={styles.body}>
           {/* Stat cards */}
-          {isLoading ? <div className={styles.loadingText}>Loading overview...</div> : dashboardError ? <div className={pgStyles.stateRow} role="alert"><span>{dashboardError}</span><button type="button" className={styles.btnOutline} onClick={fetchDashboard}>Retry overview</button></div> : <div className={styles.statRow}>
+          {isLoading ? <div className={styles.loadingText}>Loading overview...</div> : dashboardError ? <div className={pgStyles.stateRow} role="alert"><span>{dashboardError}</span><button type="button" className={styles.btnOutline} onClick={fetchDashboard}>Retry overview</button></div> : <div className={`${styles.statRow} ${pgStyles.overviewSummary}`} aria-label="Teacher overview summary">
             <div
-              className={styles.statCard}
-              style={{ background: "#1e3a5f", borderColor: "#1e3a5f" }}
+              className={`${styles.statCard} ${pgStyles.overviewItem}`}
             >
-              <div
-                className={styles.statLabel}
-                style={{ color: "rgba(255,255,255,0.7)" }}
-              >
+              <div className={styles.statLabel}>
                 <FiUsers size={13} /> Total students
               </div>
-              <div className={styles.statVal} style={{ color: "#fff" }}>
+              <div className={styles.statVal}>
                 {totalStudents ?? "Unavailable"}
               </div>
-              <div
-                className={styles.statSub}
-                style={{ color: "rgba(255,255,255,0.6)" }}
-              >
+              <div className={styles.statSub}>
                 {totalClassrooms == null ? "Classroom count unavailable" : `across ${totalClassrooms} classroom${totalClassrooms !== 1 ? "s" : ""}`}
               </div>
             </div>
-            <div className={styles.statCard}>
+            <div className={`${styles.statCard} ${pgStyles.overviewItem}`}>
               <div className={styles.statLabel}>
                 <FiGrid size={13} /> Classrooms
               </div>
@@ -335,45 +328,23 @@ function TeacherDashboardPage() {
                 {totalClassrooms == null ? "Active count unavailable" : `${totalClassrooms} active`}
               </div>
             </div>
-            <div className={styles.statCard}>
+            <div className={`${styles.statCard} ${pgStyles.overviewItem}`}>
               <div className={styles.statLabel}>
-                <FiBarChart2 size={13} /> Avg. progress
+                <FiBarChart2 size={13} /> Average student progress
               </div>
               <div className={styles.statVal}>
                 {averageProgress == null ? "Unavailable" : `${clampPercent(averageProgress)}%`}
               </div>
-              <div className={styles.statSub}>across all lessons</div>
+              <div className={styles.statSub}>Across unique students in active classes</div>
             </div>
-            <div className={styles.statCard}>
+            <div className={`${styles.statCard} ${pgStyles.overviewItem}`}>
               <div className={styles.statLabel}>
-                <FiActivity size={13} /> Active today
+                <FiActivity size={13} /> Students playing now
               </div>
               <div className={styles.statVal}>
                 {activeStudentsToday ?? "Unavailable"}
               </div>
-              <div className={styles.statSub}>students online now</div>
-            </div>
-          </div>}
-
-          {!isLoading && !dashboardError && <div className={styles.card}>
-            <div className={styles.sectionHead}>
-              <div>
-                <div className={styles.sectionTitle}>Class motivation preferences</div>
-                <div className={styles.statSub}>Aggregate counts only; individual preferences are not exposed.</div>
-              </div>
-            </div>
-            <div className={styles.statRow}>
-              {[
-                ["Progress", preferenceCounts.progress],
-                ["Competition", preferenceCounts.competition],
-                ["Rewards", preferenceCounts.rewards],
-                ["Story", preferenceCounts.story],
-              ].map(([label, count]) => (
-                <div className={styles.statCard} key={label}>
-                  <div className={styles.statLabel}>{label}</div>
-                  <div className={styles.statVal}>{getFiniteMetric(count) ?? "Unavailable"}</div>
-                </div>
-              ))}
+              <div className={styles.statSub}>With recent gameplay activity</div>
             </div>
           </div>}
 
@@ -424,7 +395,7 @@ function TeacherDashboardPage() {
                     </div>
                     <div className={pgStyles.classRowRight}>
                       <div className={pgStyles.classAvgLabel}>
-                        {progress == null ? "Progress unavailable" : `Avg ${clampPercent(progress)}%`}
+                        {progress == null ? "Average student progress unavailable" : `${clampPercent(progress)}% average student progress`}
                       </div>
                       {progress != null && <div className={styles.miniBarTrack}>
                         <div
@@ -496,6 +467,28 @@ function TeacherDashboardPage() {
               )}
             </div>
           </div>
+
+          {!isLoading && !dashboardError && <div className={`${styles.card} ${pgStyles.preferenceCard}`}>
+            <div className={styles.sectionHead}>
+              <div>
+                <div className={styles.sectionTitle}>Class motivation preferences</div>
+                <div className={styles.statSub}>Aggregate counts only; individual preferences are not exposed.</div>
+              </div>
+            </div>
+            <dl className={pgStyles.preferenceSummary}>
+              {[
+                ["Progress", preferenceCounts.progress],
+                ["Competition", preferenceCounts.competition],
+                ["Rewards", preferenceCounts.rewards],
+                ["Story", preferenceCounts.story],
+              ].map(([label, count]) => (
+                <div className={pgStyles.preferenceItem} key={label}>
+                  <dt>{label}</dt>
+                  <dd>{getFiniteMetric(count) ?? "Unavailable"}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>}
 
           {/* Bottom row: quick announcement + recent activity */}
           <div className={pgStyles.bottomRow}>

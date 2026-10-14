@@ -1,9 +1,13 @@
 /* ── Summary stat chips ───────────────── */
 .summaryRow {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
   flex-shrink: 0;
+  margin: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
 }
 
 .inlineState,
@@ -30,18 +34,18 @@
 .inlineState button, .errorState button { min-height: 40px; }
 
 .summaryChip {
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 12px 20px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 110px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  gap: 4px;
+  border-right: 1px solid #e2e8f0;
 }
+.summaryChip:last-child { border-right: 0; }
 
 .summaryVal {
+  margin: 0;
   font-size: 22px;
   font-weight: 800;
   color: #1e3a5f;
@@ -52,9 +56,7 @@
   font-size: var(--teacher-text-xs);
   font-weight: 600;
   color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin-top: 2px;
+  overflow-wrap: anywhere;
 }
 
 /* ── Grid header ──────────────────────── */
@@ -156,12 +158,14 @@
 /* ── Class card grid ──────────────────── */
 .classGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 14px;
 }
 
 /* ── Class card ───────────────────────── */
 .classCard {
+  box-sizing: border-box;
+  min-width: 0;
   background: #fff;
   border: 1px solid #e2e8f0;
   border-left: 4px solid var(--accent, #2563eb);
@@ -218,17 +222,13 @@
   font-size: var(--teacher-text-lg);
   font-weight: 700;
   color: #1e3a5f;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .classCardMeta {
   font-size: var(--teacher-text-sm);
   color: #64748b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 .codePillBtn {
@@ -245,8 +245,11 @@
   letter-spacing: 0.05em;
   cursor: pointer;
   transition: background 0.12s;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  max-width: 100%;
   font-family: inherit;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .codePillBtn:hover { background: #dbeafe; }
 .codePillBtn:disabled { cursor: not-allowed; opacity: .55; background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
@@ -324,11 +327,13 @@
 /* ── Card actions ─────────────────────── */
 .classCardActions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .cardBtn {
-  flex: 1;
+  flex: 1 1 130px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -343,11 +348,13 @@
   cursor: pointer;
   transition: filter 0.12s;
   font-family: inherit;
+  white-space: normal;
 }
 .cardBtn:hover { filter: brightness(1.1); }
 
 .cardBtnSecondary {
-  flex: 1;
+  flex: 1 1 130px;
+  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -362,6 +369,7 @@
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s;
   font-family: inherit;
+  white-space: normal;
 }
 .cardBtnSecondary:hover { background: #f1f5f9; border-color: #cbd5e0; }
 
@@ -799,6 +807,10 @@
 
 /* ── Responsive ─────────────────────────── */
 @media (max-width: 600px) {
+  .summaryRow { grid-template-columns: 1fr; }
+  .summaryChip { grid-template-columns: minmax(0, 1fr) auto; align-items: center; display: grid; border-right: 0; border-bottom: 1px solid #e2e8f0; padding: 10px 12px; }
+  .summaryChip:last-child { border-bottom: 0; }
+  .summaryVal { font-size: 20px; text-align: right; }
   .analyticsStatRow {
     grid-template-columns: 1fr 1fr;
   }
@@ -820,6 +832,9 @@
   .classGrid {
     grid-template-columns: 1fr;
   }
+  .classCardTop { flex-direction: column; }
+  .classCardLeft { width: 100%; align-items: flex-start; }
+  .codePillBtn { align-self: flex-start; min-height: 44px; padding-inline: 11px; }
   .rosterOverlay {
     padding: 12px;
     align-items: flex-end;

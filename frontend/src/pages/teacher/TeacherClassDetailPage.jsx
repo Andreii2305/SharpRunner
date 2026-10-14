@@ -765,8 +765,8 @@ function TeacherClassDetailPage() {
   return (
     <div className={styles.root}>
       <Sidebar />
-      <main className={styles.main}>
-        <header className={styles.pageHeader}>
+      <main className={`${styles.main} ${detailStyles.detailMain}`}>
+        <header className={`${styles.pageHeader} ${detailStyles.detailPageHeader}`}>
           <div className={detailStyles.headerIdentity}>
             <button className={detailStyles.backButton} type="button" onClick={() => navigate("/teacher/classes")} aria-label="Back to classes"><FiArrowLeft /></button>
             <div>
@@ -783,23 +783,19 @@ function TeacherClassDetailPage() {
           </div>
         </header>
 
-        <div className={styles.body}>
+        <div className={`${styles.body} ${detailStyles.detailBody}`}>
           {!hasClassroomIdentity && (
             <div className={detailStyles.sectionState} role={rosterState.status === "error" && classworkState.status === "error" ? "alert" : "status"}>
               <span>{rosterState.status === "loading" || classworkState.status === "loading" ? "Verifying classroom details…" : "Classroom details could not be verified from the roster or classwork response."}</span>
               {rosterState.status !== "loading" && classworkState.status !== "loading" && <button type="button" className={styles.btnOutline} onClick={() => { loadRoster(); loadClasswork(); }}>Retry details</button>}
             </div>
           )}
-          {hasClassroomIdentity && <section className={detailStyles.heroCard}>
-            <div className={detailStyles.heroIcon}>{(classroom?.className?.[0] ?? "C").toUpperCase()}</div>
-            <div className={detailStyles.heroCopy}>
-              <h1>{classroom?.className ?? "Classroom"}</h1>
-              <p>{classroom?.description || "Manage students, progress, and class-only lessons from one place."}</p>
-            </div>
-            <div className={detailStyles.heroStats}>
+          {hasClassroomIdentity && <section className={detailStyles.classSummary} aria-label="Classroom summary">
+            <p className={detailStyles.summaryDescription}>{classroom?.description || "Manage students, progress, and class-only lessons from one place."}</p>
+            <div className={detailStyles.summaryStats}>
               <div><strong>{rosterState.hasData ? students.length : "—"}</strong><span>Students</span></div>
               <div><strong>{classworkState.hasData ? lessons.length : "—"}</strong><span>Class content</span></div>
-              <div><strong>{rosterState.hasData ? `${analytics.avgProgress}%` : "—"}</strong><span>Avg progress</span></div>
+              <div><strong>{rosterState.hasData ? `${analytics.avgProgress}%` : "—"}</strong><span>Average student progress</span></div>
             </div>
           </section>}
 
@@ -821,12 +817,15 @@ function TeacherClassDetailPage() {
             )}
             {!activeSectionBlocked && (activeTab === "students" ? (
               students.length ? (
-                <div className={detailStyles.tableScroll}><table className={pgStyles.rosterTable}>
+                <div className={detailStyles.rosterRegion}>
+                  <p className={detailStyles.rosterScrollHint}>Scroll horizontally to see all columns.</p>
+                  <div className={detailStyles.tableScroll} role="region" aria-label="Student roster" tabIndex={0}><table className={`${pgStyles.rosterTable} ${detailStyles.studentRosterTable}`}>
                   <thead><tr><th>#</th><th>Student</th><th>Progress</th><th>Levels Done</th><th>Avg Score</th><th>Last Active</th><th>Actions</th></tr></thead>
                   <tbody>{students.map((student, index) => { const palette = AVATAR_PALETTES[index % AVATAR_PALETTES.length]; return (
                     <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td><td><button type="button" className={detailStyles.rosterRemoveButton} onClick={() => { setStudentRemovalError(""); setStudentRemoveTarget(student); }}><FiX /> Remove</button></td></tr>
                   ); })}</tbody>
-                </table></div>
+                  </table></div>
+                </div>
               ) : <div className={detailStyles.emptyState}><FiUsers /><h2>No students enrolled yet</h2><p>Share class code <strong>{classroom?.classCode}</strong> so students can join.</p></div>
             ) : activeTab === "analytics" ? (
               <div className={detailStyles.analyticsDashboard}><div className={detailStyles.analyticsGrid}>

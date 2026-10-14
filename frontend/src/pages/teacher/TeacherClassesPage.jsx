@@ -236,20 +236,20 @@ function TeacherClassesPage() {
               <button type="button" className={styles.btnOutline} onClick={fetchMetrics}>Retry summary</button>
             </div>
           ) : (
-            <div className={pgStyles.summaryRow}>
+            <dl className={pgStyles.summaryRow} aria-label="Classroom summary">
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{overview?.totalClassrooms ?? "—"}</span>
-                <span className={pgStyles.summaryLbl}>Active Classes</span>
+                <dt className={pgStyles.summaryLbl}>Active classes</dt>
+                <dd className={pgStyles.summaryVal}>{overview?.totalClassrooms ?? "—"}</dd>
               </div>
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{totalStudents ?? "—"}</span>
-                <span className={pgStyles.summaryLbl}>Unique Students</span>
+                <dt className={pgStyles.summaryLbl}>Unique students</dt>
+                <dd className={pgStyles.summaryVal}>{totalStudents ?? "—"}</dd>
               </div>
               <div className={pgStyles.summaryChip}>
-                <span className={pgStyles.summaryVal}>{avgProgress == null ? "—" : `${avgProgress}%`}</span>
-                <span className={pgStyles.summaryLbl}>Avg. Progress</span>
+                <dt className={pgStyles.summaryLbl}>Average class progress</dt>
+                <dd className={pgStyles.summaryVal}>{avgProgress == null ? "—" : `${avgProgress}%`}</dd>
               </div>
-            </div>
+            </dl>
           )}
 
           {/* Grid header */}
@@ -354,7 +354,7 @@ function TeacherClassesPage() {
                     {/* Progress */}
                     <div className={pgStyles.progressSection}>
                       <div className={pgStyles.progressHeader}>
-                        <span className={pgStyles.progressLabel}>Avg. Progress</span>
+                        <span className={pgStyles.progressLabel}>Average student progress</span>
                         <span className={pgStyles.progressPct}>{progressAvailable ? `${clampPercent(item.averageProgressPercent)}%` : "Unavailable"}</span>
                       </div>
                       {progressAvailable && <div className={pgStyles.progressTrack}>

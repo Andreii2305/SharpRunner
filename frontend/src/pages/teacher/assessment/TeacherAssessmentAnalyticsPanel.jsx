@@ -11,6 +11,7 @@ import {
 } from "../../../services/teacherAssessmentService.js";
 import {
   ACADEMIC_LESSONS,
+  assessmentClassroomLabel,
   attemptPointsLabel,
   buildAssessmentAnalytics,
   filterAssessmentStudents,
@@ -247,7 +248,7 @@ export default function TeacherAssessmentAnalyticsPanel() {
 
   return <section className={styles.root} aria-label="Assessment evidence">
     <section className={styles.filters} aria-label="Assessment analytics filters">
-      <label>Classroom<select value={classroomId} onChange={(event) => { setClassroomId(event.target.value); setLessonKey(""); }}><option value="">Select a classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name}{classroom.section ? ` · ${classroom.section}` : ""}</option>)}</select></label>
+      <label>Classroom<select value={classroomId} onChange={(event) => { setClassroomId(event.target.value); setLessonKey(""); }}><option value="">Select a classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{assessmentClassroomLabel(classroom)}</option>)}</select></label>
       <label>Lesson<select value={lessonKey} disabled={!classroomId} onChange={(event) => setLessonKey(event.target.value)}><option value="">Select a lesson</option>{ACADEMIC_LESSONS.map((lesson) => <option key={lesson.key} value={lesson.key}>{lesson.title}</option>)}</select></label>
       <label>Assessment type<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="ALL">All assessment types</option><option value="PRE">PRE diagnostic</option><option value="POST">POST assessment</option></select></label>
       <label>Student search<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or username" /></label>

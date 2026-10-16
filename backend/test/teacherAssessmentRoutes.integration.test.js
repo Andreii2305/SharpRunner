@@ -2332,6 +2332,8 @@ test("assessment score sheet exports the complete submitted PRE and POST union w
   assert.equal(result.response.status, 200);
   assert.match(result.response.headers.get("content-type"), /^text\/csv/);
   assert.match(result.response.headers.get("content-disposition"), /assessment-score-sheet\.csv/);
+  assert.match(result.text, /"Class name","Section","Classroom ID"/);
+  assert.match(result.text, /"Section =A","A","7"/);
   assert.match(result.text, /"'\=Ada Learner","'\+ada"/);
   assert.match(result.text, /"0","10\.5","0","Valid baseline"/);
   assert.match(result.text, /"6","10","60","9","10","90","Submitted","2"/);

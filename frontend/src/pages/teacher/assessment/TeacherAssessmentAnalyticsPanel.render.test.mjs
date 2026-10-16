@@ -11,6 +11,8 @@ test("assessment analytics is classroom and lesson scoped with explicit PRE/POST
   assert.match(source, /listTeacherClassrooms/);
   assert.match(source, /listTeacherAssessments/);
   assert.match(source, /getTeacherAssessmentResults/);
+  assert.match(source, /assessmentClassroomLabel/);
+  assert.equal(source.includes("value={classroom.id}"), true);
 });
 
 test("canonical assessment-exempt lessons render an explicit not-applicable state", () => {

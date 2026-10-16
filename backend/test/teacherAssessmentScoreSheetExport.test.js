@@ -23,7 +23,7 @@ test("score sheet preserves zero, decimals, partial legacy scores, and explicit 
   });
 
   assert.deepEqual(data.headers, [
-    "Classroom", "Classroom ID", "Lesson", "Lesson Key", "Student Name", "Username",
+    "Class name", "Section", "Classroom ID", "Lesson", "Lesson Key", "Student Name", "Username",
     "PRE Points Earned", "PRE Points Possible", "PRE Percentage", "PRE Baseline Status",
     "First POST Points Earned", "First POST Points Possible", "First POST Percentage",
     "Official POST Points Earned", "Official POST Points Possible", "Official POST Percentage",
@@ -31,7 +31,7 @@ test("score sheet preserves zero, decimals, partial legacy scores, and explicit 
     "Learning Gain Unavailable Reason",
   ]);
   assert.deepEqual(data.rows[0], [
-    "Section =A", 7, "Arrays", "arrays", "Ada Learner", "+ada",
+    "Section =A", "A", 7, "Arrays", "arrays", "Ada Learner", "+ada",
     0, 10.5, 0, "Valid baseline",
     "Unavailable", "Unavailable", 72.5,
     "Not submitted", "Not submitted", "Not submitted",
@@ -40,6 +40,16 @@ test("score sheet preserves zero, decimals, partial legacy scores, and explicit 
   const csv = serializeCsv(data);
   assert.match(csv, /"'\+ada"/);
   assert.match(csv, /"0","10\.5","0"/);
+});
+
+test("score sheet keeps an absent authoritative classroom section blank", () => {
+  const data = buildAssessmentScoreSheetCsvData({
+    classroom: { id: 8, className: "DSA" },
+    lesson: { lessonKey: "arrays", lessonTitle: "Arrays" },
+    students: [{ student: { username: "student" }, postAttemptCount: 0 }],
+  });
+  assert.deepEqual(data.headers.slice(0, 3), ["Class name", "Section", "Classroom ID"]);
+  assert.deepEqual(data.rows[0].slice(0, 3), ["DSA", "", 8]);
 });
 
 test("score sheet keeps unavailable gain blank with a separate reason", () => {
@@ -57,9 +67,9 @@ test("score sheet keeps unavailable gain blank with a separate reason", () => {
       officialPostOutcome: "Submitted",
     }],
   });
-  assert.equal(data.rows[0][18], "");
-  assert.equal(data.rows[0][19], "PRE not submitted");
-  assert.equal(data.rows[0][6], "Not submitted");
+  assert.equal(data.rows[0][19], "");
+  assert.equal(data.rows[0][20], "PRE not submitted");
+  assert.equal(data.rows[0][7], "Not submitted");
 });
 
 test("score sheet emits authoritative gain reasons for invalid and missing baselines", () => {
@@ -80,7 +90,7 @@ test("score sheet emits authoritative gain reasons for invalid and missing basel
       { ...base, student: { ...base.student, username: "missing" }, firstPost: null, learningGainUnavailableReason: "First POST not submitted" },
     ],
   });
-  assert.deepEqual(data.rows.map((row) => row[19]), [
+  assert.deepEqual(data.rows.map((row) => row[20]), [
     "PRE baseline is retroactive",
     "PRE baseline timing is unknown",
     "First POST not submitted",

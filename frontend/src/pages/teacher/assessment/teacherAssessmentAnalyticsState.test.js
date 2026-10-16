@@ -7,6 +7,7 @@ import {
   getAssessmentAnalyticsView,
   summarizeAssessmentAvailability,
   attemptPointsLabel,
+  assessmentClassroomLabel,
 } from "./teacherAssessmentAnalyticsState.js";
 
 const student = (id, firstName, lastName) => ({ id, firstName, lastName, username: `student${id}` });
@@ -28,6 +29,12 @@ const result = (studentValue, overrides = {}) => ({
 
 const prePayload = (results, codingQuestions = []) => ({ assessment: { id: 1, lessonKey: "arrays", type: "PRE", title: "Arrays diagnostic", passingPercentage: null, maxAttempts: 1 }, results, codingQuestions });
 const postPayload = (results, codingQuestions = []) => ({ assessment: { id: 2, lessonKey: "arrays", type: "POST", title: "Arrays check", passingPercentage: 75, maxAttempts: 3, passingRequirementApplicable: true }, results, codingQuestions });
+
+test("assessment classroom labels keep authoritative names and optional sections separate", () => {
+  assert.equal(assessmentClassroomLabel({ id: 47, className: "DSA", section: "BSIT 3E" }), "DSA — BSIT 3E");
+  assert.equal(assessmentClassroomLabel({ id: 48, className: "Algorithms", section: "" }), "Algorithms");
+  assert.equal(assessmentClassroomLabel({ id: 49, className: "Programming", section: null }), "Programming");
+});
 
 test("academic lesson filter uses the backend assessment allowlist", () => {
   assert.deepEqual(ACADEMIC_LESSONS.map(({ key }) => key), ["arrays", "functions", "functions-with-arrays", "final"]);

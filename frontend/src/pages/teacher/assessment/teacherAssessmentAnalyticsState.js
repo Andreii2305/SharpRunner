@@ -5,6 +5,14 @@ export const ACADEMIC_LESSONS = Object.freeze([
   { key: "final", title: "Final Lesson", assessmentApplicable: false },
 ]);
 
+export const assessmentClassroomLabel = (classroom = {}) => {
+  const className = typeof classroom.className === "string" && classroom.className.trim()
+    ? classroom.className.trim()
+    : "Unnamed classroom";
+  const section = typeof classroom.section === "string" ? classroom.section.trim() : "";
+  return section ? `${className} — ${section}` : className;
+};
+
 const finite = (value) => value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 const rounded = (value) => Math.round((value + Number.EPSILON) * 10) / 10;
 const average = (values) => values.length ? rounded(values.reduce((sum, value) => sum + value, 0) / values.length) : null;

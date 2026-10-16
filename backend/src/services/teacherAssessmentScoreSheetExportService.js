@@ -22,7 +22,7 @@ const studentName = (student = {}) => (
 
 const buildAssessmentScoreSheetCsvData = ({ classroom = {}, lesson = {}, students = [] } = {}) => ({
   headers: [
-    "Classroom", "Classroom ID", "Lesson", "Lesson Key", "Student Name", "Username",
+    "Class name", "Section", "Classroom ID", "Lesson", "Lesson Key", "Student Name", "Username",
     "PRE Points Earned", "PRE Points Possible", "PRE Percentage", "PRE Baseline Status",
     "First POST Points Earned", "First POST Points Possible", "First POST Percentage",
     "Official POST Points Earned", "Official POST Points Possible", "Official POST Percentage",
@@ -31,6 +31,7 @@ const buildAssessmentScoreSheetCsvData = ({ classroom = {}, lesson = {}, student
   ],
   rows: students.map((row) => [
     classroom.className ?? "Unavailable",
+    classroom.section ?? "",
     classroom.id ?? "Unavailable",
     lesson.lessonTitle ?? "Unavailable",
     lesson.lessonKey ?? "Unavailable",

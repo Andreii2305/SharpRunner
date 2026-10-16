@@ -372,6 +372,8 @@ const serializeTeacherResults = (input = {}) => {
       title: assessment.title,
       passingPercentage: numberOrNull(assessment.passingPercentage),
       maxAttempts: Number(assessment.maxAttempts),
+      passingRequirementApplicable: assessment.type === "POST"
+        && assessment.requirePassingForCompletion === true,
     },
     results: (input.results || []).map((itemInput) => {
       const item = plain(itemInput);
@@ -391,6 +393,9 @@ const serializeTeacherResults = (input = {}) => {
         maxPoints: numberOrNull(attempt.maxPoints),
         percentage: numberOrNull(attempt.percentage),
         passed: attempt.passed == null ? null : Boolean(attempt.passed),
+        ...(assessment.type === "POST" ? {
+          passingPercentageApplied: numberOrNull(attempt.passingPercentageApplied),
+        } : {}),
         isOfficial: Boolean(item.isOfficial),
         isFirstSubmittedPost: Boolean(item.isFirstSubmittedPost),
         ...(assessment.type === "PRE" ? {

@@ -58,6 +58,27 @@ test("student table and local history detail are accessible and not a leaderboar
   assert.equal(source.includes("sessionStorage"), false);
 });
 
+test("table and history present authoritative points without hiding independently available percentages", () => {
+  for (const marker of [
+    "attemptPointsLabel", "Percentage unavailable", "PRE attempt", "POST attempt",
+    "Required threshold unavailable", "Required:", "First POST", "Official grade",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.equal(source.includes("correct answers"), false);
+  assert.equal(source.includes("correctCount"), false);
+});
+
+test("score sheet download states its submitted-only scope and fences obsolete requests", () => {
+  for (const marker of [
+    "Download score sheet",
+    "All students with at least one submitted PRE or POST for this classroom and lesson",
+    "Student search and assessment-type filters do not affect this download",
+    "createScoreSheetDownloadController",
+    "setScope(resultsScope)",
+    "Downloading…",
+    "aria-live=\"polite\"",
+  ]) assert.equal(source.includes(marker), true, marker);
+});
+
 test("request handling cancels stale classroom/lesson result loads and normalizes errors", () => {
   assert.match(source, /AbortController/);
   assert.match(source, /requestVersionRef/);

@@ -14,6 +14,7 @@ const {
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const { validateExplicitCodingParameterNames } = require("./codingParameterNameService");
+const { buildAssessmentScoreSheetCsvData } = require("./teacherAssessmentScoreSheetExportService");
 
 const CREATE_FIELDS = new Set([
   "lessonKey",
@@ -446,6 +447,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         "maxPoints",
         "percentage",
         "passed",
+        "passingPercentageApplied",
         ...(plain(assessment).type === ASSESSMENT_TYPES.PRE ? ["preBaselineStatus"] : []),
       ],
       include: [{
@@ -546,6 +548,117 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       results,
       codingQuestions: codingAnalytics,
     });
+  };
+
+  const getAssessmentScoreSheet = async ({ classroomId, lessonKey, actorId, actorRole }) => {
+    const classroom = plain(await authorization.requireManagedClassroom({
+      classroomId, actorId, actorRole,
+    }));
+    authorization.assertAcademicLessonKey(lessonKey);
+    const lesson = LESSON_DEFINITIONS.find((item) => item.lessonKey === lessonKey);
+    const assessments = (await LessonAssessment.findAll({
+      where: { classroomId, lessonKey },
+      order: [["type", "ASC"]],
+    })).map(plain);
+    const assessmentByType = new Map(assessments.map((assessment) => [assessment.type, assessment]));
+    const attemptsByType = new Map();
+
+    for (const type of [ASSESSMENT_TYPES.PRE, ASSESSMENT_TYPES.POST]) {
+      const assessment = assessmentByType.get(type);
+      if (!assessment) {
+        attemptsByType.set(type, []);
+        continue;
+      }
+      const attempts = await AssessmentAttempt.findAll({
+        where: {
+          assessmentId: assessment.id,
+          classroomId,
+          status: ATTEMPT_STATUSES.SUBMITTED,
+        },
+        attributes: [
+          "id", "studentId", "attemptNumber", "status", "submittedAt",
+          "pointsEarned", "maxPoints", "percentage", "passed",
+          "passingPercentageApplied", "preBaselineStatus",
+        ],
+        include: [{
+          model: User,
+          as: "student",
+          attributes: ["id", "firstName", "lastName", "username"],
+        }],
+        order: [
+          ["studentId", "ASC"], ["attemptNumber", "ASC"],
+          ["submittedAt", "ASC"], ["id", "ASC"],
+        ],
+      });
+      attemptsByType.set(type, attempts.map(plain));
+    }
+
+    const students = new Map();
+    const addAttempt = (attempt, type) => {
+      const key = String(attempt.studentId);
+      if (!students.has(key)) {
+        students.set(key, { student: plain(attempt.student), preAttempts: [], postAttempts: [] });
+      }
+      students.get(key)[type === ASSESSMENT_TYPES.PRE ? "preAttempts" : "postAttempts"].push(attempt);
+    };
+    attemptsByType.get(ASSESSMENT_TYPES.PRE).forEach((attempt) => addAttempt(attempt, ASSESSMENT_TYPES.PRE));
+    attemptsByType.get(ASSESSMENT_TYPES.POST).forEach((attempt) => addAttempt(attempt, ASSESSMENT_TYPES.POST));
+
+    // Assessment settings cannot change after any attempt exists, so this
+    // assessment-level flag is authoritative for historical applicability.
+    // The numeric threshold still comes only from each submitted attempt.
+    const postAssessment = assessmentByType.get(ASSESSMENT_TYPES.POST);
+    const rows = [...students.values()].map((entry) => {
+      const preAttempt = entry.preAttempts
+        .sort((left, right) => Number(left.attemptNumber) - Number(right.attemptNumber))[0] || null;
+      const firstPost = policy.selectFirstSubmittedPostAttempt(entry.postAttempts);
+      const officialPost = policy.selectOfficialPostAttempt(entry.postAttempts);
+      const hasStoredPercentage = (attempt) => attempt
+        && attempt.percentage !== null
+        && attempt.percentage !== undefined
+        && attempt.percentage !== ""
+        && Number.isFinite(Number(attempt.percentage));
+      const learningGain = hasStoredPercentage(preAttempt) && hasStoredPercentage(firstPost)
+        ? policy.calculateLearningGain(preAttempt, entry.postAttempts)
+        : null;
+      let learningGainUnavailableReason = null;
+      if (!learningGain) {
+        if (!preAttempt) learningGainUnavailableReason = "PRE not submitted";
+        else if (preAttempt.preBaselineStatus === "RETROACTIVE") {
+          learningGainUnavailableReason = "PRE baseline is retroactive";
+        } else if (preAttempt.preBaselineStatus !== "VALID") {
+          learningGainUnavailableReason = "PRE baseline timing is unknown";
+        } else if (!firstPost) learningGainUnavailableReason = "First POST not submitted";
+        else learningGainUnavailableReason = "Stored score unavailable";
+      }
+      let officialPostOutcome = "Not submitted";
+      if (officialPost) {
+        if (postAssessment?.requirePassingForCompletion !== true) officialPostOutcome = "Submitted";
+        else if (typeof officialPost.passed === "boolean") {
+          officialPostOutcome = officialPost.passed ? "Passed" : "Not passed";
+        } else officialPostOutcome = "Unavailable";
+      }
+      return {
+        student: entry.student,
+        preAttempt,
+        firstPost,
+        officialPost,
+        officialPostOutcome,
+        postAttemptCount: entry.postAttempts.length,
+        learningGain,
+        learningGainUnavailableReason,
+      };
+    }).sort((left, right) => {
+      const leftName = `${left.student.firstName || ""} ${left.student.lastName || ""}`.trim();
+      const rightName = `${right.student.firstName || ""} ${right.student.lastName || ""}`.trim();
+      return leftName.localeCompare(rightName, undefined, { sensitivity: "base" })
+        || String(left.student.id).localeCompare(String(right.student.id));
+    });
+    const csv = buildAssessmentScoreSheetCsvData({ classroom, lesson, students: rows });
+    return {
+      ...csv,
+      filename: `sharprunner-${classroom.className || classroom.id}-${lessonKey}-assessment-score-sheet.csv`,
+    };
   };
 
   const validateSaveInput = (input) => {
@@ -923,6 +1036,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     createAssessment,
     deleteAssessment,
     getAssessmentResults,
+    getAssessmentScoreSheet,
     getEditorAssessment,
     grantAdditionalPostAttempt,
     publishAssessment,

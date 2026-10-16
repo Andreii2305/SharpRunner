@@ -225,6 +225,28 @@ test("teacher editor serializer includes answer keys only after authorization", 
   });
   assert.equal(results.results[0].student.email, undefined);
   assert.equal(results.results[0].isOfficial, true);
+  assert.equal(results.assessment.passingRequirementApplicable, true);
+  assert.equal(results.results[0].passingPercentageApplied, 75);
+
+  const optionalResults = serializers.serializeTeacherResults({
+    assessment: assessment({ requirePassingForCompletion: false }),
+    results: [{
+      student: { id: 99, firstName: "Ada", lastName: "Learner", username: "ada" },
+      attempt: submittedAttempt({ passingPercentageApplied: 75 }),
+    }],
+  });
+  assert.equal(optionalResults.assessment.passingRequirementApplicable, false);
+  assert.equal(optionalResults.results[0].passingPercentageApplied, 75);
+
+  const missingHistoricalThreshold = serializers.serializeTeacherResults({
+    assessment: assessment({ requirePassingForCompletion: true }),
+    results: [{
+      student: { id: 99, firstName: "Ada", lastName: "Learner", username: "ada" },
+      attempt: submittedAttempt({ passingPercentageApplied: null }),
+    }],
+  });
+  assert.equal(missingHistoricalThreshold.assessment.passingRequirementApplicable, true);
+  assert.equal(missingHistoricalThreshold.results[0].passingPercentageApplied, null);
 
   for (const [preBaselineStatus, expected] of [
     ["VALID", "VALID"],
@@ -240,6 +262,7 @@ test("teacher editor serializer includes answer keys only after authorization", 
       }],
     });
     assert.equal(preResults.results[0].preBaselineStatus, expected);
+    assert.equal("passingPercentageApplied" in preResults.results[0], false);
   }
 
   assert.equal("preBaselineStatus" in results.results[0], false);

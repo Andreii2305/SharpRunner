@@ -3,6 +3,7 @@ const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const defaultService = require("../services/teacherAssessmentService");
 const { AssessmentApiError, sendAssessmentError } = require("../services/assessmentErrorService");
+const { sendCsv } = require("../services/csvService");
 
 const CREATE_FIELDS = new Set([
   "lessonKey",
@@ -121,6 +122,20 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
         ...actor(req),
       });
       return res.status(201).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.get("/classrooms/:classroomId/lessons/:lessonKey/assessment-score-sheet.csv", async (req, res) => {
+    try {
+      assertQueryKeys(req.query, []);
+      const payload = await service.getAssessmentScoreSheet({
+        classroomId: parsePositiveId(req.params.classroomId),
+        lessonKey: req.params.lessonKey,
+        ...actor(req),
+      });
+      return sendCsv(res, payload.filename, payload.headers, payload.rows);
     } catch (error) {
       return sendAssessmentError(res, error);
     }

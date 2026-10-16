@@ -59,6 +59,14 @@ const request = async (path, { actorId, method = "GET", body } = {}) => {
   return { response, payload: text ? JSON.parse(text) : null };
 };
 
+const requestText = async (path, { actorId, method = "GET" } = {}) => {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method,
+    headers: actorId ? { Authorization: `Bearer ${token(actorId)}` } : {},
+  });
+  return { response, text: await response.text() };
+};
+
 const baseAssessment = (overrides = {}) => ({
   id: 12,
   classroomId: 7,
@@ -121,6 +129,7 @@ const submittedAttempt = (overrides = {}) => ({
   maxPoints: 10,
   percentage: 80,
   passed: true,
+  passingPercentageApplied: 75,
   submissionKey: "private-submission-key",
   responses: [{ id: 501, isCorrect: true, pointsAwarded: 2 }],
   student: baseStudent(),
@@ -145,7 +154,11 @@ const matches = (row, where = {}) => Object.entries(where).every(([key, value]) 
 
 const harness = ({ assessments, questions, choices, codingTests, attempts, responses, memberships, progress } = {}) => {
   const store = {
-    classrooms: [{ id: 7, teacherId: 5 }, { id: 8, teacherId: 6 }, { id: 10, teacherId: 5 }],
+    classrooms: [
+      { id: 7, teacherId: 5, className: "Section =A", section: "A" },
+      { id: 8, teacherId: 6, className: "Foreign", section: "B" },
+      { id: 10, teacherId: 5, className: "Other", section: "C" },
+    ],
     assessments: cloneRows(assessments || [baseAssessment()]),
     questions: cloneRows(questions || [baseQuestion()]),
     choices: cloneRows(choices || baseChoices()),
@@ -2110,6 +2123,7 @@ test("results query requests only submitted attempts and allowed student columns
     "maxPoints",
     "percentage",
     "passed",
+    "passingPercentageApplied",
   ]);
   assert.equal(options.include.length, 1);
   assert.equal(options.include[0].as, "student");
@@ -2255,4 +2269,91 @@ test("coding analytics batches submitted response grades without loading source 
     "sourceCode", "referenceSolution", "codingTestCases", "expectedOutput",
     "gradingLeaseToken", "student secret", "hidden",
   ]) assert.equal(serialized.includes(forbidden), false, forbidden);
+});
+
+test("assessment score sheet exports the complete submitted PRE and POST union with safe CSV values", async () => {
+  const pre = baseAssessment({
+    id: 11, type: "PRE", title: "Arrays diagnostic", passingPercentage: null,
+    maxAttempts: 1, gradeCalculation: "FIRST", requirePassingForCompletion: false,
+  });
+  const post = baseAssessment({ id: 12, requirePassingForCompletion: false });
+  const ada = baseStudent({ id: 42, firstName: "=Ada", username: "+ada" });
+  const grace = baseStudent({ id: 43, firstName: "Grace", lastName: "Hopper", username: "grace" });
+  const h = harness({
+    assessments: [pre, post],
+    attempts: [
+      submittedAttempt({
+        id: 31, assessmentId: 11, studentId: 42, student: ada, pointsEarned: 0,
+        maxPoints: 10.5, percentage: 0, passed: null, passingPercentageApplied: null,
+        preBaselineStatus: "VALID",
+      }),
+      submittedAttempt({
+        id: 41, assessmentId: 12, studentId: 43, student: grace, attemptNumber: 1,
+        pointsEarned: 6, maxPoints: 10, percentage: 60, passed: false,
+      }),
+      submittedAttempt({
+        id: 42, assessmentId: 12, studentId: 43, student: grace, attemptNumber: 2,
+        pointsEarned: 9, maxPoints: 10, percentage: 90, passed: true,
+      }),
+      submittedAttempt({
+        id: 51, assessmentId: 11, studentId: 45,
+        student: baseStudent({ id: 45, firstName: "Legacy", lastName: "Score", username: "legacy" }),
+        pointsEarned: null, maxPoints: null, percentage: null, passed: null,
+        passingPercentageApplied: null, preBaselineStatus: "VALID",
+      }),
+      submittedAttempt({
+        id: 52, assessmentId: 12, studentId: 45,
+        student: baseStudent({ id: 45, firstName: "Legacy", lastName: "Score", username: "legacy" }),
+        pointsEarned: 8, maxPoints: 10, percentage: 80, passed: true,
+      }),
+      submittedAttempt({
+        id: 53, assessmentId: 11, studentId: 46,
+        student: baseStudent({ id: 46, firstName: "Legacy", lastName: "Post", username: "legacy-post" }),
+        pointsEarned: 3, maxPoints: 10, percentage: 30, passed: null,
+        passingPercentageApplied: null, preBaselineStatus: "VALID",
+      }),
+      submittedAttempt({
+        id: 54, assessmentId: 12, studentId: 46,
+        student: baseStudent({ id: 46, firstName: "Legacy", lastName: "Post", username: "legacy-post" }),
+        pointsEarned: null, maxPoints: null, percentage: null, passed: null,
+      }),
+      submittedAttempt({
+        id: 43, assessmentId: 12, studentId: 44, status: "IN_PROGRESS",
+        student: baseStudent({ id: 44, username: "unfinished" }),
+      }),
+    ],
+  });
+
+  const result = await requestText(
+    "/api/teacher/classrooms/7/lessons/arrays/assessment-score-sheet.csv",
+    { actorId: 5 },
+  );
+
+  assert.equal(result.response.status, 200);
+  assert.match(result.response.headers.get("content-type"), /^text\/csv/);
+  assert.match(result.response.headers.get("content-disposition"), /assessment-score-sheet\.csv/);
+  assert.match(result.text, /"'\=Ada Learner","'\+ada"/);
+  assert.match(result.text, /"0","10\.5","0","Valid baseline"/);
+  assert.match(result.text, /"6","10","60","9","10","90","Submitted","2"/);
+  assert.match(result.text, /"Legacy Score","legacy","Unavailable","Unavailable","Unavailable","Valid baseline"/);
+  assert.match(result.text, /"Submitted","1","","Stored score unavailable"/);
+  assert.match(result.text, /"Legacy Post"[^\r\n]*"Submitted","1","","Stored score unavailable"/);
+  assert.doesNotMatch(result.text, /unfinished/);
+  assert.equal(h.store.resultQueries.length, 2);
+  assert.equal(h.store.resultQueries.every(({ where }) => where.status === "SUBMITTED"), true);
+});
+
+test("assessment score sheet enforces classroom ownership and exact lesson identity", async () => {
+  harness({ assessments: [baseAssessment()] });
+  const foreign = await requestText(
+    "/api/teacher/classrooms/8/lessons/arrays/assessment-score-sheet.csv",
+    { actorId: 5 },
+  );
+  assert.equal(foreign.response.status, 403);
+
+  const invalidLesson = await requestText(
+    "/api/teacher/classrooms/7/lessons/not-a-lesson/assessment-score-sheet.csv",
+    { actorId: 5 },
+  );
+  assert.equal(invalidLesson.response.status, 400);
 });

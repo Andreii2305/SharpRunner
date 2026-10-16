@@ -103,6 +103,91 @@ export const getTeacherAssessmentResults = async ({ classroomId, assessmentId, s
   return response.data;
 };
 
+const downloadFilename = (headers, fallback) => {
+  const disposition = typeof headers?.get === "function"
+    ? headers.get("content-disposition")
+    : headers?.["content-disposition"];
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition || "");
+  if (encoded) {
+    try { return decodeURIComponent(encoded[1]); } catch { return fallback; }
+  }
+  return /filename="([^"]+)"/i.exec(disposition || "")?.[1] || fallback;
+};
+
+export const getTeacherAssessmentScoreSheet = async ({ classroomId, lessonKey, signal }) => {
+  const response = await axios.get(buildApiUrl(
+    `/api/teacher/classrooms/${segment(classroomId)}/lessons/${segment(lessonKey)}/assessment-score-sheet.csv`,
+  ), {
+    ...config(signal),
+    responseType: "blob",
+  });
+  return {
+    blob: response.data,
+    filename: downloadFilename(response.headers, `sharprunner-${lessonKey}-assessment-score-sheet.csv`),
+  };
+};
+
+export const saveTeacherAssessmentScoreSheet = ({ blob, filename }, {
+  documentRef = document,
+  createObjectUrl = (value) => URL.createObjectURL(value),
+  revokeObjectUrl = (value) => URL.revokeObjectURL(value),
+} = {}) => {
+  const objectUrl = createObjectUrl(blob);
+  try {
+    const link = documentRef.createElement("a");
+    link.href = objectUrl;
+    link.download = filename;
+    link.hidden = true;
+    documentRef.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    revokeObjectUrl(objectUrl);
+  }
+};
+
+export const createScoreSheetDownloadController = ({ request, onReady, onPending, onError }) => {
+  let scope = "";
+  let version = 0;
+  let pending = false;
+  let abortController = null;
+  return {
+    setScope(nextScope) {
+      if (nextScope === scope) return;
+      scope = nextScope;
+      version += 1;
+      abortController?.abort();
+      abortController = null;
+      if (pending) onPending(false);
+      pending = false;
+    },
+    async download(input) {
+      if (pending || !input?.scope || input.scope !== scope) return false;
+      pending = true;
+      const requestVersion = ++version;
+      abortController = new AbortController();
+      onPending(true);
+      try {
+        const result = await request({ ...input, signal: abortController.signal });
+        if (requestVersion !== version || input.scope !== scope) return false;
+        onReady(result);
+        return true;
+      } catch (error) {
+        if (requestVersion === version && input.scope === scope && error?.code !== "ERR_CANCELED") {
+          onError(error);
+        }
+        return false;
+      } finally {
+        if (requestVersion === version) {
+          pending = false;
+          abortController = null;
+          onPending(false);
+        }
+      }
+    },
+  };
+};
+
 export const saveTeacherAssessment = async ({ classroomId, assessmentId, graph, signal }) => {
   const response = await axios.put(
     buildApiUrl(`${base(classroomId)}/${segment(assessmentId)}`),

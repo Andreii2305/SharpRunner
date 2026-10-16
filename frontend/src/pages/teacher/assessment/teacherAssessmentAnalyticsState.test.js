@@ -6,6 +6,7 @@ import {
   filterAssessmentStudents,
   getAssessmentAnalyticsView,
   summarizeAssessmentAvailability,
+  attemptPointsLabel,
 } from "./teacherAssessmentAnalyticsState.js";
 
 const student = (id, firstName, lastName) => ({ id, firstName, lastName, username: `student${id}` });
@@ -14,17 +15,19 @@ const result = (studentValue, overrides = {}) => ({
   attemptId: overrides.attemptId ?? `${studentValue.id}-${overrides.attemptNumber ?? 1}`,
   attemptNumber: overrides.attemptNumber ?? 1,
   submittedAt: overrides.submittedAt ?? "2026-09-20T00:00:00.000Z",
-  pointsEarned: overrides.pointsEarned ?? 8,
-  maxPoints: overrides.maxPoints ?? 10,
+  pointsEarned: Object.hasOwn(overrides, "pointsEarned") ? overrides.pointsEarned : 8,
+  maxPoints: Object.hasOwn(overrides, "maxPoints") ? overrides.maxPoints : 10,
   percentage: overrides.percentage ?? 80,
   passed: overrides.passed ?? null,
+  passingPercentageApplied: Object.hasOwn(overrides, "passingPercentageApplied")
+    ? overrides.passingPercentageApplied : 75,
   isOfficial: overrides.isOfficial ?? false,
   isFirstSubmittedPost: overrides.isFirstSubmittedPost ?? false,
   preBaselineStatus: overrides.preBaselineStatus ?? "VALID",
 });
 
 const prePayload = (results, codingQuestions = []) => ({ assessment: { id: 1, lessonKey: "arrays", type: "PRE", title: "Arrays diagnostic", passingPercentage: null, maxAttempts: 1 }, results, codingQuestions });
-const postPayload = (results, codingQuestions = []) => ({ assessment: { id: 2, lessonKey: "arrays", type: "POST", title: "Arrays check", passingPercentage: 75, maxAttempts: 3 }, results, codingQuestions });
+const postPayload = (results, codingQuestions = []) => ({ assessment: { id: 2, lessonKey: "arrays", type: "POST", title: "Arrays check", passingPercentage: 75, maxAttempts: 3, passingRequirementApplicable: true }, results, codingQuestions });
 
 test("academic lesson filter uses the backend assessment allowlist", () => {
   assert.deepEqual(ACADEMIC_LESSONS.map(({ key }) => key), ["arrays", "functions", "functions-with-arrays", "final"]);
@@ -118,12 +121,37 @@ test("mixed baseline provenance separates diagnostic averages, counts, and paire
 
 test("POST without a passing policy is submitted, never failed, and has no pass rate", () => {
   const alan = student(1, "Alan", "Turing");
-  const payload = postPayload([result(alan, { percentage: 70, passed: null, isOfficial: true, isFirstSubmittedPost: true })]);
-  payload.assessment.passingPercentage = null;
+  const payload = postPayload([result(alan, { percentage: 70, passed: false, isOfficial: true, isFirstSubmittedPost: true })]);
+  payload.assessment.passingRequirementApplicable = false;
   const model = buildAssessmentAnalytics({ postPayload: payload });
   assert.equal(model.students[0].postStatus, "Submitted");
   assert.equal(model.metrics.postPassRate, null);
   assert.equal(model.metrics.postPassedStudents, null);
+  assert.equal(model.students[0].officialPost.passed, false);
+  assert.equal(model.students[0].officialPost.passingRequirementApplicable, false);
+});
+
+test("authoritative points and applied thresholds preserve zero, decimals, and partial legacy values", () => {
+  const ada = student(1, "Ada", "Lovelace");
+  const model = buildAssessmentAnalytics({
+    postPayload: postPayload([
+      result(ada, {
+        pointsEarned: 0, maxPoints: 10.5, percentage: 0, passed: false,
+        passingPercentageApplied: null, isOfficial: true, isFirstSubmittedPost: true,
+      }),
+    ]),
+  });
+  const attempt = model.students[0].officialPost;
+  assert.equal(attempt.pointsEarned, 0);
+  assert.equal(attempt.maxPoints, 10.5);
+  assert.equal(attempt.percentage, 0);
+  assert.equal(attempt.passingPercentageApplied, null);
+  assert.equal(attempt.passingRequirementApplicable, true);
+  assert.equal(attemptPointsLabel(attempt), "0 / 10.5 points");
+  assert.equal(attemptPointsLabel({ pointsEarned: 7.5, maxPoints: null }), "7.5 points earned · possible unavailable");
+  assert.equal(attemptPointsLabel({ pointsEarned: null, maxPoints: 10 }), "Earned unavailable · 10 points possible");
+  assert.equal(attemptPointsLabel({ pointsEarned: null, maxPoints: null }), "Points unavailable");
+  assert.equal(attemptPointsLabel(null), "Not submitted");
 });
 
 test("paired learning gain excludes PRE-only and POST-only students and preserves negative gain", () => {
@@ -183,7 +211,7 @@ test("availability distinguishes unconfigured, draft, published-empty, and publi
 test("analytics model exposes no answer content or grading keys", () => {
   const raw = postPayload([{ ...result(student(1, "A", "B"), { isOfficial: true }), responses: [{ isCorrect: true, correctChoiceId: 9 }], explanation: "hidden" }]);
   const serialized = JSON.stringify(buildAssessmentAnalytics({ postPayload: raw }));
-  for (const forbidden of ["responses", "isCorrect", "correctChoiceId", "explanation", "pointsEarned", "maxPoints"]) assert.equal(serialized.includes(forbidden), false);
+  for (const forbidden of ["responses", "isCorrect", "correctChoiceId", "explanation", "correctCount", "questionCount"]) assert.equal(serialized.includes(forbidden), false);
 });
 
 test("coding question performance stays assessment-scoped and allowlisted without ranking data", () => {

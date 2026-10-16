@@ -101,6 +101,79 @@ test("teacher assessment results request preserves exact classroom and assessmen
   assert.equal(calls[0].at(-1)?.headers?.Authorization, "Bearer teacher-token");
 });
 
+test("teacher assessment score sheet request preserves exact classroom and lesson identity", async () => {
+  calls.length = 0;
+  await service.getTeacherAssessmentScoreSheet({ classroomId: 47, lessonKey: "functions-with-arrays" });
+  assert.match(calls[0][1], /classrooms\/47\/lessons\/functions-with-arrays\/assessment-score-sheet\.csv$/);
+  assert.equal(calls[0][2].responseType, "blob");
+  assert.equal(calls[0][2].headers.Authorization, "Bearer teacher-token");
+});
+
+test("score sheet controller prevents duplicate downloads and fences stale scope responses", async () => {
+  const requests = [];
+  const ready = [];
+  const errors = [];
+  const pending = [];
+  const controller = service.createScoreSheetDownloadController({
+    request: ({ signal, scope }) => new Promise((resolve, reject) => requests.push({ resolve, reject, signal, scope })),
+    onReady: (value) => ready.push(value),
+    onError: (error) => errors.push(error.message),
+    onPending: (value) => pending.push(value),
+  });
+
+  controller.setScope("7:arrays");
+  const first = controller.download({ scope: "7:arrays" });
+  const duplicate = await controller.download({ scope: "7:arrays" });
+  assert.equal(duplicate, false);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].scope, "7:arrays");
+
+  controller.setScope("7:functions");
+  assert.equal(requests[0].signal.aborted, true);
+  requests[0].resolve({ filename: "stale.csv" });
+  assert.equal(await first, false);
+  assert.deepEqual(ready, []);
+  assert.deepEqual(errors, []);
+
+  const current = controller.download({ scope: "7:functions" });
+  requests[1].resolve({ filename: "current.csv" });
+  assert.equal(await current, true);
+  assert.deepEqual(ready, [{ filename: "current.csv" }]);
+  assert.deepEqual(pending, [true, false, true, false]);
+});
+
+test("score sheet controller reports only current-scope failures", async () => {
+  const errors = [];
+  const controller = service.createScoreSheetDownloadController({
+    request: async () => { throw new Error("network unavailable"); },
+    onReady: () => assert.fail("failed requests must not download"),
+    onError: (error) => errors.push(error.message),
+    onPending: () => {},
+  });
+  controller.setScope("7:arrays");
+  assert.equal(await controller.download({ scope: "7:arrays" }), false);
+  assert.deepEqual(errors, ["network unavailable"]);
+});
+
+test("score sheet save revokes its object URL after triggering the named download", () => {
+  const events = [];
+  const link = {
+    click: () => events.push("click"),
+    remove: () => events.push("remove"),
+  };
+  service.saveTeacherAssessmentScoreSheet({ blob: "csv-blob", filename: "scores.csv" }, {
+    documentRef: {
+      createElement: () => link,
+      body: { appendChild: (value) => events.push(value === link ? "append" : "wrong") },
+    },
+    createObjectUrl: (blob) => { assert.equal(blob, "csv-blob"); return "blob:test"; },
+    revokeObjectUrl: (url) => events.push(`revoke:${url}`),
+  });
+  assert.equal(link.href, "blob:test");
+  assert.equal(link.download, "scores.csv");
+  assert.deepEqual(events, ["append", "click", "remove", "revoke:blob:test"]);
+});
+
 test("safe teacher errors never expose transport internals", () => {
   const error = { message: "secret stack", stack: "ORM password", config: { headers: { Authorization: "token" } }, response: { status: 409, data: { error: { code: "VERSION_CONFLICT", message: "Version conflict" } } } };
   assert.deepEqual(service.normalizeTeacherAssessmentError(error), { code: "VERSION_CONFLICT", message: "This assessment changed elsewhere. Reload it before continuing.", status: 409 });

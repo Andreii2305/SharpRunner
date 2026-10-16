@@ -18,12 +18,27 @@ export const baselineStatusLabel = (value) => ({
   UNKNOWN: "Unknown — legacy baseline timing",
 }[baselineStatus(value)]);
 
-const safeAttempt = (row, type) => ({
+const numericOrNull = (value) => finite(value) ? Number(value) : null;
+export const attemptPointsLabel = (attempt) => {
+  if (!attempt) return "Not submitted";
+  const earned = numericOrNull(attempt.pointsEarned);
+  const possible = numericOrNull(attempt.maxPoints);
+  if (earned !== null && possible !== null) return `${earned} / ${possible} points`;
+  if (earned !== null) return `${earned} points earned · possible unavailable`;
+  if (possible !== null) return `Earned unavailable · ${possible} points possible`;
+  return "Points unavailable";
+};
+
+const safeAttempt = (row, type, passingRequirementApplicable = false) => ({
   attemptId: row.attemptId,
   attemptNumber: Number(row.attemptNumber),
   submittedAt: row.submittedAt,
-  percentage: finite(row.percentage) ? Number(row.percentage) : null,
+  pointsEarned: numericOrNull(row.pointsEarned),
+  maxPoints: numericOrNull(row.maxPoints),
+  percentage: numericOrNull(row.percentage),
   passed: type === "POST" && typeof row.passed === "boolean" ? row.passed : null,
+  passingRequirementApplicable: type === "POST" && passingRequirementApplicable === true,
+  passingPercentageApplied: type === "POST" ? numericOrNull(row.passingPercentageApplied) : null,
   isOfficial: type === "POST" && row.isOfficial === true,
   isFirstSubmittedPost: type === "POST" && row.isFirstSubmittedPost === true,
   ...(type === "PRE" ? {
@@ -62,14 +77,18 @@ const compareAttempts = (left, right) => (
 );
 
 export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null } = {}) => {
-  const postPassingApplies = finite(postPayload?.assessment?.passingPercentage);
+  const postPassingApplies = postPayload?.assessment?.passingRequirementApplicable === true;
   const students = new Map();
   const ingest = (payload, type) => {
     for (const source of payload?.results ?? []) {
       if (!source?.student?.id) continue;
       const key = String(source.student.id);
       if (!students.has(key)) students.set(key, { student: studentIdentity(source.student), preAttempts: [], postAttempts: [] });
-      students.get(key)[type === "PRE" ? "preAttempts" : "postAttempts"].push(safeAttempt(source, type));
+      students.get(key)[type === "PRE" ? "preAttempts" : "postAttempts"].push(safeAttempt(
+        source,
+        type,
+        payload?.assessment?.passingRequirementApplicable,
+      ));
     }
   };
   ingest(prePayload, "PRE");

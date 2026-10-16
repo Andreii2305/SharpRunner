@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { FiX } from "react-icons/fi";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { FiDownload, FiX } from "react-icons/fi";
 import {
+  createScoreSheetDownloadController,
+  getTeacherAssessmentScoreSheet,
   getTeacherAssessmentResults,
   listTeacherAssessments,
   listTeacherClassrooms,
   normalizeTeacherAssessmentError,
+  saveTeacherAssessmentScoreSheet,
 } from "../../../services/teacherAssessmentService.js";
 import {
   ACADEMIC_LESSONS,
+  attemptPointsLabel,
   buildAssessmentAnalytics,
   filterAssessmentStudents,
   getAssessmentAnalyticsView,
@@ -16,9 +20,17 @@ import {
 import styles from "./TeacherAssessmentAnalyticsPanel.module.css";
 
 const emptySlots = () => ({ PRE: { exists: false }, POST: { exists: false } });
-const percentage = (value) => value == null ? "Unavailable" : `${value}%`;
+const percentage = (value) => value == null ? "Percentage unavailable" : `${value}%`;
 const signedPoints = (value) => value == null ? "Unavailable" : `${value > 0 ? "+" : ""}${value} pp`;
 const submittedDate = (value) => value ? new Date(value).toLocaleString() : "Unavailable";
+
+function AttemptScore({ attempt }) {
+  if (!attempt) return <span>Not submitted</span>;
+  return <span className={styles.scoreLine}>
+    <strong>{attemptPointsLabel(attempt)}</strong>
+    <small>{percentage(attempt.percentage)}</small>
+  </span>;
+}
 
 export function CodingQuestionBreakdown({ questions }) {
   if (!questions.length) return null;
@@ -104,8 +116,8 @@ function AttemptHistoryDialog({ row, onClose }) {
     <section ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="assessment-history-title" onMouseDown={(event) => event.stopPropagation()}>
       <header><div><span>Submitted assessment history</span><h3 id="assessment-history-title">{row.name}</h3></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Close assessment history"><FiX /></button></header>
       <div className={styles.historyList}>{row.history.map((attempt) => <article key={`${attempt.type}-${attempt.attemptId}`}>
-        <div><strong>{attempt.type === "PRE" ? "PRE diagnostic" : `POST attempt ${attempt.attemptNumber}`}</strong><span>{submittedDate(attempt.submittedAt)}</span></div>
-        <div><span>{percentage(attempt.percentage)}</span>{attempt.type === "PRE" && <b>{attempt.baselineLabel}</b>}{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div>
+        <div><strong>{attempt.type === "PRE" ? `PRE attempt ${attempt.attemptNumber}` : `POST attempt ${attempt.attemptNumber}`}</strong><span>{submittedDate(attempt.submittedAt)}</span></div>
+        <div className={styles.historyScore}><AttemptScore attempt={attempt} /><div className={styles.historyLabels}>{attempt.type === "PRE" && <b>{attempt.baselineLabel}</b>}{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && <b>{attempt.passingPercentageApplied == null ? "Required threshold unavailable" : `Required: ${attempt.passingPercentageApplied}%`}</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div></div>
       </article>)}</div>
     </section>
   </div>;
@@ -127,11 +139,28 @@ export default function TeacherAssessmentAnalyticsPanel() {
   const [classroomRetryVersion, setClassroomRetryVersion] = useState(0);
   const [resultsRetryVersion, setResultsRetryVersion] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const classroomRequestVersionRef = useRef(0);
   const requestVersionRef = useRef(0);
   const launcherRef = useRef(null);
+  const downloadControllerRef = useRef(null);
   const selectedLesson = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey) ?? null;
   const resultsScope = classroomId && lessonKey ? `${classroomId}:${lessonKey}` : "";
+  if (!downloadControllerRef.current) {
+    downloadControllerRef.current = createScoreSheetDownloadController({
+      request: getTeacherAssessmentScoreSheet,
+      onReady: saveTeacherAssessmentScoreSheet,
+      onPending: setDownloadPending,
+      onError: (source) => setDownloadError(normalizeTeacherAssessmentError(source).message),
+    });
+  }
+
+  useLayoutEffect(() => {
+    downloadControllerRef.current.setScope(resultsScope);
+    setDownloadError("");
+  }, [resultsScope]);
+  useEffect(() => () => downloadControllerRef.current?.setScope(""), []);
 
   useEffect(() => {
     const requestVersion = ++classroomRequestVersionRef.current;
@@ -207,6 +236,14 @@ export default function TeacherAssessmentAnalyticsPanel() {
     if (resultsScope && currentResultsError) setResultsRetryVersion((current) => current + 1);
     else setClassroomRetryVersion((current) => current + 1);
   };
+  const downloadScoreSheet = () => {
+    setDownloadError("");
+    downloadControllerRef.current.download({
+      scope: resultsScope,
+      classroomId,
+      lessonKey,
+    });
+  };
 
   return <section className={styles.root} aria-label="Assessment evidence">
     <section className={styles.filters} aria-label="Assessment analytics filters">
@@ -222,10 +259,16 @@ export default function TeacherAssessmentAnalyticsPanel() {
           <article><strong>PRE diagnostic</strong><span>{summarizeAssessmentAvailability(slots.PRE, payloads.prePayload)}</span></article>
           <article><strong>POST assessment</strong><span>{summarizeAssessmentAvailability(slots.POST, payloads.postPayload)}</span></article>
         </div>
+        <div className={styles.downloadBar}>
+          <p>All students with at least one submitted PRE or POST for this classroom and lesson. Student search and assessment-type filters do not affect this download.</p>
+          <button type="button" onClick={downloadScoreSheet} disabled={downloadPending || !model.students.length}><FiDownload aria-hidden="true" /> {downloadPending ? "Downloading…" : "Download score sheet"}</button>
+        </div>
+        {downloadError && <div className={styles.downloadError} role="alert">{downloadError}</div>}
+        <span className={styles.srOnly} aria-live="polite">{downloadPending ? "Preparing score sheet download" : ""}</span>
         <AssessmentEvidenceSummary metrics={metrics} />
         <CodingQuestionBreakdown questions={codingQuestions} />
         <div className={styles.tableWrap}><table><caption>Submitted assessment results, alphabetical by student</caption><thead><tr><th scope="col">Student</th><th scope="col">PRE diagnostic</th><th scope="col">First POST</th><th scope="col">Official POST</th><th scope="col">POST status</th><th scope="col">Submitted POST attempts</th><th scope="col">Learning gain</th><th scope="col">History</th></tr></thead><tbody>
-          {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td>{percentage(row.preAttempt?.percentage)}<small>{row.preStatus}</small></td><td>{percentage(row.firstPost?.percentage)}</td><td>{percentage(row.officialPost?.percentage)}</td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}
+          {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td><AttemptScore attempt={row.preAttempt} />{row.preAttempt && <small>{row.preStatus}</small>}</td><td><AttemptScore attempt={row.firstPost} /></td><td><AttemptScore attempt={row.officialPost} /></td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}
         </tbody></table></div>
       </>
     </AssessmentResultsBoundary>

@@ -19,6 +19,8 @@ test("CSV serialization preserves structured text and neutralizes spreadsheet fo
       ["CRLF formula", "\r\n=cmd"],
       ["Control formula", "\u0001@cmd"],
       ["Unicode-space formula", "\u00A0+cmd"],
+      ["Numeric negative", -20],
+      ["Text negative", "-20"],
       ["Missing", null],
     ],
   });
@@ -33,6 +35,8 @@ test("CSV serialization preserves structured text and neutralizes spreadsheet fo
   assert.match(csv, /"CRLF formula","'\r\n=cmd"/);
   assert.match(csv, /"Control formula","'\u0001@cmd"/);
   assert.match(csv, /"Unicode-space formula","'\u00A0\+cmd"/);
+  assert.match(csv, /"Numeric negative","-20"/);
+  assert.match(csv, /"Text negative","'-20"/);
   assert.match(csv, /"Missing",""/);
   assert.equal(csv.includes("\r\n"), true);
   assert.equal(safeCsvFilename('report.csv"\r\nX-Injected: yes'), "report.csv-X-Injected-yes.csv");

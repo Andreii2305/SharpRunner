@@ -2,7 +2,7 @@ const formulaPrefixPattern = /^[\s\u0000-\u001f]*[=+\-@]/;
 
 const csvCell = (value) => {
   const text = value === null || value === undefined ? "" : String(value);
-  const safe = formulaPrefixPattern.test(text) ? `'${text}` : text;
+  const safe = typeof value !== "number" && formulaPrefixPattern.test(text) ? `'${text}` : text;
   return `"${safe.replace(/"/g, '""')}"`;
 };
 

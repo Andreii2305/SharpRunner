@@ -20,6 +20,7 @@ const CREATE_FIELDS = new Set([
   "shuffleChoices",
 ]);
 const COPY_FIELDS = new Set(["sourceClassroomId", "sourceAssessmentId", "lessonKey", "type"]);
+const TEMPLATE_IMPORT_FIELDS = new Set(["templateKey", "templateVersion"]);
 
 const parsePositiveId = (value) => {
   if (!/^[1-9][0-9]*$/.test(String(value || ""))) {
@@ -84,6 +85,15 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
   const router = express.Router();
   router.use(authMiddleware, requireRole("teacher", "admin"));
 
+  router.get("/assessment-templates", async (req, res) => {
+    try {
+      assertNoBody(req);
+      return res.status(200).json(await service.listBuiltInAssessmentTemplates(actor(req)));
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
   router.get("/classrooms/:classroomId/assessments", async (req, res) => {
     try {
       assertQueryKeys(req.query, ["lessonKey"]);
@@ -128,6 +138,28 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
         sourceAssessmentId: parsePositiveId(body.sourceAssessmentId),
         lessonKey: body.lessonKey,
         type: body.type,
+        ...actor(req),
+      });
+      return res.status(201).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.post("/classrooms/:classroomId/assessments/from-template", async (req, res) => {
+    try {
+      const body = readObjectBody(req);
+      if (Object.keys(body).length !== TEMPLATE_IMPORT_FIELDS.size
+        || Object.keys(body).some((key) => !TEMPLATE_IMPORT_FIELDS.has(key))
+        || typeof body.templateKey !== "string"
+        || !Number.isSafeInteger(body.templateVersion)
+        || body.templateVersion < 1) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const payload = await service.importBuiltInAssessmentTemplate({
+        classroomId: parsePositiveId(req.params.classroomId),
+        templateKey: body.templateKey,
+        templateVersion: body.templateVersion,
         ...actor(req),
       });
       return res.status(201).json(payload);

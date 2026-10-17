@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { FiArrowDown, FiArrowUp, FiCopy, FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiArrowDown, FiArrowUp, FiBookOpen, FiCopy, FiPlus, FiTrash2 } from "react-icons/fi";
 import Sidebar from "../../../Components/SideBar/Sidebar.jsx";
 import ConfirmModal from "../../../Components/ConfirmModal/ConfirmModal.jsx";
 import CodingQuestionEditor from "./CodingQuestionEditor.jsx";
 import { StudentCodingPreview, TeacherCodingConfigurationPreview } from "./CodingQuestionPreview.jsx";
 import TeacherAssessmentCopyDialog from "./TeacherAssessmentCopyDialog.jsx";
+import TeacherAssessmentTemplateDialog from "./TeacherAssessmentTemplateDialog.jsx";
 import { EditorActionBar, QuestionNavigator } from "./TeacherAssessmentBuilderChrome.jsx";
 import {
-  copyTeacherAssessment, createTeacherAssessment, deleteTeacherAssessment, listTeacherAssessments,
-  listTeacherClassrooms, loadTeacherAssessment, normalizeTeacherAssessmentError,
+  copyTeacherAssessment, createTeacherAssessment, createTemplateImportController,
+  deleteTeacherAssessment, importBuiltInAssessmentTemplate, listBuiltInAssessmentTemplates,
+  listTeacherAssessments, listTeacherClassrooms, loadTeacherAssessment, normalizeTeacherAssessmentError,
   publishTeacherAssessment, saveTeacherAssessment, unpublishTeacherAssessment,
 } from "../../../services/teacherAssessmentService.js";
 import {
@@ -116,6 +118,10 @@ export default function TeacherAssessmentBuilderPage() {
   const [copying, setCopying] = useState(false);
   const [copyError, setCopyError] = useState("");
   const [copyNotice, setCopyNotice] = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [templateTarget, setTemplateTarget] = useState("");
+  const [templatePending, setTemplatePending] = useState(false);
+  const [templateError, setTemplateError] = useState("");
   const requestId = useRef(0);
   const copyRequestId = useRef(0);
   const copyingRef = useRef(false);
@@ -125,6 +131,16 @@ export default function TeacherAssessmentBuilderPage() {
     listTeacherClassrooms({ signal: controller.signal }).then((payload) => setClassrooms(payload.classrooms ?? [])).catch((source) => {
       if (source?.code !== "ERR_CANCELED") setError(normalizeTeacherAssessmentError(source).message);
     });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    listBuiltInAssessmentTemplates({ signal: controller.signal })
+      .then((payload) => setTemplates(payload.templates ?? []))
+      .catch((source) => {
+        if (source?.code !== "ERR_CANCELED") setError(normalizeTeacherAssessmentError(source).message);
+      });
     return () => controller.abort();
   }, []);
 
@@ -143,6 +159,41 @@ export default function TeacherAssessmentBuilderPage() {
     } finally { if (id === requestId.current) setLoading(false); }
   }, [classroomId, lessonKey]);
   useEffect(() => { loadSlots(); }, [loadSlots]);
+
+  const templateImportController = useMemo(() => createTemplateImportController({
+    request: importBuiltInAssessmentTemplate,
+    onPending: setTemplatePending,
+    onSuccess: (payload) => {
+      const assessment = payload.assessment;
+      setActiveType(assessment.type);
+      setDraft(hydrateAssessmentDraft(assessment));
+      setDirty(false); setValidationAttempted(false); setSaveState("saved");
+      setSlots((current) => ({
+        ...current,
+        [assessment.type]: {
+          exists: true,
+          id: assessment.id,
+          title: assessment.title,
+          published: false,
+          questionCount: assessment.questions.length,
+          attemptsExist: false,
+        },
+      }));
+      setCopyNotice(`${assessment.type === "PRE" ? "Pre-Test" : "Post-Test"} built-in draft loaded.`);
+      setTemplateError("");
+      setTemplateTarget("");
+    },
+    onError: (source) => {
+      const normalized = normalizeTeacherAssessmentError(source);
+      setTemplateError(normalized.message);
+      if (normalized.code === "ASSESSMENT_TYPE_EXISTS") loadSlots({ preserveDraft: true });
+    },
+  }), [loadSlots]);
+  const templateScope = templateTarget ? `${classroomId}:${lessonKey}:${templateTarget}` : "";
+  useEffect(() => {
+    templateImportController.setScope(templateScope);
+    return () => templateImportController.setScope("");
+  }, [templateImportController, templateScope]);
 
   useEffect(() => {
     const id = ++copyRequestId.current;
@@ -190,8 +241,9 @@ export default function TeacherAssessmentBuilderPage() {
     if (!dirty || window.confirm("Discard unsaved assessment changes?")) action();
   };
   const updateRoute = (next) => guard(() => {
+    templateImportController.setScope("");
     setDirty(false); setDraft(null); setValidationAttempted(false);
-    setCopyTarget(""); setCopyNotice("");
+    setCopyTarget(""); setCopyNotice(""); setTemplateTarget(""); setTemplateError("");
     setSearchParams({ ...(next.classroomId ? { classroomId: next.classroomId } : {}), ...(next.lessonKey ? { lessonKey: next.lessonKey } : {}) });
   });
 
@@ -226,6 +278,31 @@ export default function TeacherAssessmentBuilderPage() {
     setCopySourceSummary(null);
     setCopyError("");
     setCopyNotice("");
+  };
+
+  const openTemplateDialog = (type) => {
+    templateImportController.setScope(`${classroomId}:${lessonKey}:${type}`);
+    setTemplateError("");
+    setCopyNotice("");
+    setTemplateTarget(type);
+  };
+
+  const closeTemplateDialog = () => {
+    if (!templatePending) {
+      setTemplateTarget("");
+      setTemplateError("");
+    }
+  };
+
+  const importTemplate = () => {
+    const selected = templates.find((item) => item.lessonKey === lessonKey && item.type === templateTarget);
+    if (!selected) return;
+    templateImportController.importTemplate({
+      scope: templateScope,
+      classroomId,
+      templateKey: selected.templateKey,
+      templateVersion: selected.templateVersion,
+    });
   };
 
   const closeCopyDialog = useCallback(() => {
@@ -342,6 +419,9 @@ export default function TeacherAssessmentBuilderPage() {
   const locked = Boolean(draft?.structureLocked || draft?.attemptsExist);
   const selectedClassroom = classrooms.find((item) => String(item.id) === String(classroomId));
   const selectedLesson = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey);
+  const selectedTemplate = templates.find((item) => (
+    item.lessonKey === lessonKey && item.type === templateTarget
+  ));
   const confirmCopy = confirmAction === "publish" ? { title: "Publish assessment?", message: "Publishing makes this assessment available according to lesson progression. Save and verify the draft first; later changes may be restricted after a student begins.", label: "Publish", danger: false }
     : confirmAction === "unpublish" ? { title: "Unpublish assessment?", message: "Students will no longer be able to start this assessment. This is permitted only before any attempt exists.", label: "Unpublish", danger: false }
       : { title: "Delete assessment?", message: "This permanently removes the draft. Deletion is permitted only before any student attempt exists.", label: "Delete", danger: true };
@@ -354,7 +434,10 @@ export default function TeacherAssessmentBuilderPage() {
     </div>{selectedClassroom && lessonKey && <p>Managing <strong>{selectedClassroom.className}</strong> · {ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title}</p>}</section>
     {error && <div className={styles.errorBanner} role="alert">{error}</div>}
     {copyNotice && <div className={styles.successBanner} role="status">{copyNotice}</div>}
-    {classroomId && lessonKey && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "One-attempt diagnostic" : "Mastery check with highest grade"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading} onClick={() => create(type)}><FiPlus /> Create new</button><button type="button" disabled={loading} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button></div>}</article>)}</section>}
+    {classroomId && lessonKey && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => {
+      const availableTemplate = templates.find((item) => item.lessonKey === lessonKey && item.type === type);
+      return <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "One-attempt diagnostic" : "Mastery check with highest grade"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading || templatePending} onClick={() => create(type)}><FiPlus /> Create new</button>{availableTemplate && <button type="button" disabled={loading || templatePending} onClick={() => openTemplateDialog(type)}><FiBookOpen /> Use built-in draft</button>}<button type="button" disabled={loading || templatePending} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button></div>}</article>;
+    })}</section>}
     {loading && <p role="status" className={styles.loading}>Loading assessment…</p>}
     {!draft && classroomId && lessonKey && !loading && <section className={styles.emptyState}><h2>Select an assessment</h2><p>Open an existing assessment or explicitly create one type above.</p></section>}
     {draft && <>
@@ -399,6 +482,17 @@ export default function TeacherAssessmentBuilderPage() {
       onAssessmentChange={() => {}}
       onSubmit={copyAsDraft}
       onClose={closeCopyDialog}
+    />
+    <TeacherAssessmentTemplateDialog
+      open={Boolean(templateTarget && selectedTemplate)}
+      classroom={selectedClassroom}
+      lesson={selectedLesson}
+      type={templateTarget}
+      template={selectedTemplate}
+      pending={templatePending}
+      error={templateError}
+      onConfirm={importTemplate}
+      onClose={closeTemplateDialog}
     />
     <ConfirmModal open={Boolean(confirmAction)} title={confirmCopy.title} message={confirmCopy.message} confirmLabel={confirmCopy.label} danger={confirmCopy.danger} confirmDisabled={loading} onConfirm={runAction} onCancel={() => setConfirmAction(null)} />
   </main></div>;

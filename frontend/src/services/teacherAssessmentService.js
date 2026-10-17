@@ -78,6 +78,64 @@ export const createTeacherAssessment = async ({ classroomId, signal, ...input })
   return normalizeEditorPayload(response.data);
 };
 
+export const listBuiltInAssessmentTemplates = async ({ signal } = {}) => {
+  const response = await axios.get(buildApiUrl("/api/teacher/assessment-templates"), config(signal));
+  return response.data;
+};
+
+export const importBuiltInAssessmentTemplate = async ({
+  classroomId, templateKey, templateVersion, signal,
+}) => {
+  const response = await axios.post(
+    buildApiUrl(`${base(classroomId)}/from-template`),
+    { templateKey, templateVersion },
+    config(signal),
+  );
+  return normalizeEditorPayload(response.data);
+};
+
+export const createTemplateImportController = ({ request, onSuccess, onPending, onError }) => {
+  let scope = "";
+  let version = 0;
+  let pending = false;
+  let abortController = null;
+  return {
+    setScope(nextScope) {
+      if (nextScope === scope) return;
+      scope = nextScope;
+      version += 1;
+      abortController?.abort();
+      abortController = null;
+      if (pending) onPending(false);
+      pending = false;
+    },
+    async importTemplate(input) {
+      if (pending || !input?.scope || input.scope !== scope) return false;
+      pending = true;
+      const requestVersion = ++version;
+      abortController = new AbortController();
+      onPending(true);
+      try {
+        const result = await request({ ...input, signal: abortController.signal });
+        if (requestVersion !== version || input.scope !== scope) return false;
+        onSuccess(result);
+        return true;
+      } catch (error) {
+        if (requestVersion === version && input.scope === scope && error?.code !== "ERR_CANCELED") {
+          onError(error);
+        }
+        return false;
+      } finally {
+        if (requestVersion === version) {
+          pending = false;
+          abortController = null;
+          onPending(false);
+        }
+      }
+    },
+  };
+};
+
 export const copyTeacherAssessment = async ({ destinationClassroomId, signal, ...input }) => {
   const response = await axios.post(
     buildApiUrl(`${base(destinationClassroomId)}/copy`),

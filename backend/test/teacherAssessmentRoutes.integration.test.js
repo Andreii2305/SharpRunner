@@ -1046,6 +1046,103 @@ test("creation is always unpublished version one", async () => {
   assert.equal(injected.payload.code, "INVALID_REQUEST");
 });
 
+test("teacher catalog exposes safe summaries while student access is rejected", async () => {
+  harness({ assessments: [], questions: [], choices: [] });
+  const teacher = await request("/api/teacher/assessment-templates", { actorId: 5 });
+  assert.equal(teacher.response.status, 200);
+  assert.equal(teacher.payload.templates.length, 6);
+  assert.equal(teacher.payload.templates.every((template) => template.questionCount === 10), true);
+  assert.equal(teacher.payload.templates.every((template) => template.totalPoints === 10), true);
+  assert.equal(JSON.stringify(teacher.payload).includes("isCorrect"), false);
+  assert.equal(JSON.stringify(teacher.payload).includes("choices"), false);
+
+  const student = await request("/api/teacher/assessment-templates", { actorId: 42 });
+  assert.equal(student.response.status, 403);
+});
+
+test("template import creates a fresh unpublished graph with normal policy defaults", async () => {
+  const h = harness({ assessments: [], questions: [], choices: [] });
+  const result = await h.call("/classrooms/7/assessments/from-template", {
+    method: "POST",
+    body: { templateKey: "builtin-arrays-post", templateVersion: 1 },
+  });
+  assert.equal(result.response.status, 201);
+  assert.equal(result.payload.assessment.classroomId, 7);
+  assert.equal(result.payload.assessment.lessonKey, "arrays");
+  assert.equal(result.payload.assessment.type, "POST");
+  assert.equal(result.payload.assessment.isPublished, false);
+  assert.equal(result.payload.assessment.passingPercentage, 75);
+  assert.equal(result.payload.assessment.maxAttempts, 3);
+  assert.equal(result.payload.assessment.answerReviewPolicy, "AFTER_FINAL_ATTEMPT");
+  assert.equal(result.payload.assessment.questions.length, 10);
+  assert.equal(result.payload.assessment.questions.every((question) => question.points === 1), true);
+  assert.equal(result.payload.assessment.questions.every((question) => question.questionType === "MULTIPLE_CHOICE"), true);
+  assert.equal(new Set(result.payload.assessment.questions.map(({ id }) => id)).size, 10);
+  assert.equal(new Set(result.payload.assessment.questions.flatMap(({ choices }) => choices.map(({ id }) => id))).size, 40);
+  assert.equal(h.store.attempts.length, 0);
+  assert.equal(h.store.grants.length, 0);
+  assert.equal(h.store.events.includes("attempt-create"), false);
+});
+
+test("template import preserves an occupied slot and maps uniqueness races to a stable conflict", async () => {
+  const existing = baseAssessment({ id: 12, classroomId: 7, lessonKey: "arrays", type: "POST" });
+  const h = harness({ assessments: [existing], questions: [baseQuestion()], choices: baseChoices() });
+  const snapshot = JSON.parse(JSON.stringify({
+    assessments: h.store.assessments,
+    questions: h.store.questions,
+    choices: h.store.choices,
+  }));
+  const occupied = await h.call("/classrooms/7/assessments/from-template", {
+    method: "POST",
+    body: { templateKey: "builtin-arrays-post", templateVersion: 1 },
+  });
+  assert.equal(occupied.response.status, 409);
+  assert.equal(occupied.payload.code, "ASSESSMENT_TYPE_EXISTS");
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    assessments: h.store.assessments,
+    questions: h.store.questions,
+    choices: h.store.choices,
+  })), snapshot);
+
+  h.store.assessments.splice(0);
+  h.store.questions.splice(0);
+  h.store.choices.splice(0);
+  h.store.duplicateOnCreate = true;
+  const raced = await h.call("/classrooms/7/assessments/from-template", {
+    method: "POST",
+    body: { templateKey: "builtin-arrays-post", templateVersion: 1 },
+  });
+  assert.equal(raced.response.status, 409);
+  assert.deepEqual(raced.payload, {
+    code: "ASSESSMENT_TYPE_EXISTS",
+    message: "An assessment of this type already exists",
+  });
+  assert.equal(h.store.questions.length, 0);
+  assert.equal(h.store.choices.length, 0);
+});
+
+test("template import rolls back the entire graph and enforces exact classroom ownership", async () => {
+  const h = harness({ assessments: [], questions: [], choices: [] });
+  h.store.failChoiceCreate = true;
+  const failed = await h.call("/classrooms/7/assessments/from-template", {
+    method: "POST",
+    body: { templateKey: "builtin-functions-pre", templateVersion: 1 },
+  });
+  assert.equal(failed.response.status, 500);
+  assert.deepEqual(h.store.assessments, []);
+  assert.deepEqual(h.store.questions, []);
+  assert.deepEqual(h.store.choices, []);
+
+  h.store.failChoiceCreate = false;
+  const unauthorized = await request("/api/teacher/classrooms/8/assessments/from-template", {
+    actorId: 5,
+    method: "POST",
+    body: { templateKey: "builtin-functions-pre", templateVersion: 1 },
+  });
+  assert.equal(unauthorized.response.status, 403);
+  assert.equal(unauthorized.payload.code, "FORBIDDEN");
+});
+
 test("duplicate classroom lesson type maps to ASSESSMENT_TYPE_EXISTS", async () => {
   const h = harness({ assessments: [], questions: [], choices: [] });
   h.store.duplicateOnCreate = true;

@@ -145,7 +145,47 @@ test("builder exposes labelled settings, question controls, preview, and lifecyc
 test("empty assessment slots expose restrained create and copy actions", () => {
   assert.match(source, /Create new/);
   assert.match(source, /Copy existing/);
+  assert.match(source, /Use built-in draft/);
   assert.doesNotMatch(source, /Copy assessment dashboard/);
+});
+
+test("built-in template dialog gives exact draft context and pending protection", async () => {
+  let dialogModule = null;
+  try {
+    dialogModule = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentTemplateDialog.jsx");
+  } catch {
+    // The first TDD run intentionally reaches this assertion before the component exists.
+  }
+  assert.ok(dialogModule, "template dialog component must exist");
+  const Dialog = dialogModule.default;
+  const html = renderToStaticMarkup(React.createElement(Dialog, {
+    open: true,
+    classroom: { id: 7, className: "DSA", section: "BSIT 3E" },
+    lesson: { key: "arrays", title: "Arrays" },
+    type: "PRE",
+    template: {
+      templateKey: "builtin-arrays-pre",
+      templateVersion: 1,
+      curriculumRevision: "2026-09-28.1",
+      questionCount: 10,
+      totalPoints: 10,
+    },
+    pending: true,
+    error: "",
+    onConfirm() {},
+    onClose() {},
+  }));
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /Arrays Pre-Test/);
+  assert.match(html, /DSA/);
+  assert.match(html, /BSIT 3E/);
+  assert.match(html, /Version 1/);
+  assert.match(html, /Curriculum revision 2026-09-28\.1/);
+  assert.match(html, /10 questions . 10 points/);
+  assert.match(html, /unpublished draft/i);
+  assert.match(html, /Review and publish it when it is ready/i);
+  assert.match(html, /Loading draft/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Loading draft.<\/button>/);
 });
 
 test("preview remains teacher-local and answer keys are never persisted in browser storage", () => {

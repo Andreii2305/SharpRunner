@@ -25,6 +25,65 @@ test("teacher assessment service preserves exact classroom, lesson, assessment, 
   assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
 });
 
+test("built-in template requests keep catalog answers server-side and preserve exact classroom identity", async () => {
+  calls.length = 0;
+  await service.listBuiltInAssessmentTemplates();
+  await service.importBuiltInAssessmentTemplate({
+    classroomId: 47,
+    templateKey: "builtin-functions-post",
+    templateVersion: 1,
+  });
+  assert.match(calls[0][1], /\/api\/teacher\/assessment-templates$/);
+  assert.match(calls[1][1], /classrooms\/47\/assessments\/from-template$/);
+  assert.deepEqual(calls[1][2], {
+    templateKey: "builtin-functions-post",
+    templateVersion: 1,
+  });
+  assert.equal(JSON.stringify(calls).includes("isCorrect"), false);
+});
+
+test("template import controller single-flights and fences classroom or lesson changes", async () => {
+  const requests = [];
+  const successes = [];
+  const errors = [];
+  const pending = [];
+  const controller = service.createTemplateImportController({
+    request: ({ signal, scope }) => new Promise((resolve, reject) => requests.push({ resolve, reject, signal, scope })),
+    onSuccess: (value) => successes.push(value),
+    onError: (error) => errors.push(error.message),
+    onPending: (value) => pending.push(value),
+  });
+  controller.setScope("7:arrays:PRE");
+  const first = controller.importTemplate({ scope: "7:arrays:PRE" });
+  assert.equal(await controller.importTemplate({ scope: "7:arrays:PRE" }), false);
+  assert.equal(requests.length, 1);
+  controller.setScope("8:functions:POST");
+  assert.equal(requests[0].signal.aborted, true);
+  requests[0].resolve({ assessment: { id: 12 } });
+  assert.equal(await first, false);
+  assert.deepEqual(successes, []);
+  assert.deepEqual(errors, []);
+
+  const current = controller.importTemplate({ scope: "8:functions:POST" });
+  requests[1].resolve({ assessment: { id: 13 } });
+  assert.equal(await current, true);
+  assert.deepEqual(successes, [{ assessment: { id: 13 } }]);
+  assert.deepEqual(pending, [true, false, true, false]);
+});
+
+test("template import controller reports only current-scope errors", async () => {
+  const errors = [];
+  const controller = service.createTemplateImportController({
+    request: async () => { throw new Error("template unavailable"); },
+    onSuccess: () => assert.fail("failed imports must not open an assessment"),
+    onError: (error) => errors.push(error.message),
+    onPending: () => {},
+  });
+  controller.setScope("7:arrays:PRE");
+  assert.equal(await controller.importTemplate({ scope: "7:arrays:PRE" }), false);
+  assert.deepEqual(errors, ["template unavailable"]);
+});
+
 test("teacher assessment candidate discovery preserves the canonical assessment ID", async () => {
   calls.length = 0;
   const originalGet = axios.get;

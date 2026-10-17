@@ -20,6 +20,7 @@ require("./teacherAnalytics.test");
 require("./teacherAnalyticsExport.test");
 require("./learningAnalyticsEvents.test");
 require("./assessmentPolicyService.test");
+require("./builtInAssessmentTemplates.test");
 require("./assessmentMigration.test");
 require("./assessmentBaselineService.test");
 require("./assessmentAttemptService.test");

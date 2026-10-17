@@ -14,6 +14,7 @@ const {
 } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
+const defaultBuiltInAssessmentTemplates = require("./builtInAssessmentTemplateService");
 const { validateExplicitCodingParameterNames } = require("./codingParameterNameService");
 const { buildAssessmentScoreSheetCsvData } = require("./teacherAssessmentScoreSheetExportService");
 
@@ -147,6 +148,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     || createAssessmentAttemptAllowanceService({ models });
   const secureCodingExecution = dependencies.secureCodingExecution
     || defaultSecureCodingExecution;
+  const builtInAssessmentTemplates = dependencies.builtInAssessmentTemplates
+    || defaultBuiltInAssessmentTemplates;
   const environment = dependencies.environment || process.env;
   const {
     LessonAssessment,
@@ -314,6 +317,69 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       };
     },
   );
+
+  const listBuiltInAssessmentTemplates = () => builtInAssessmentTemplates.listTemplates();
+
+  const importBuiltInAssessmentTemplate = ({
+    classroomId,
+    actorId,
+    actorRole,
+    templateKey,
+    templateVersion,
+  }) => sequelize.transaction(async (transaction) => {
+    const source = builtInAssessmentTemplates.resolveTemplate({ templateKey, templateVersion });
+    if (!source) {
+      throw new AssessmentApiError(404, "ASSESSMENT_TEMPLATE_NOT_FOUND", "Assessment template not found");
+    }
+    authorization.assertAcademicLessonKey(source.lessonKey);
+    await authorization.requireManagedClassroom({
+      classroomId,
+      actorId,
+      actorRole,
+      transaction,
+      lock: true,
+    });
+    const occupied = await LessonAssessment.findOne({
+      where: { classroomId, lessonKey: source.lessonKey, type: source.type },
+      attributes: ["id"],
+      transaction,
+    });
+    if (occupied) {
+      throw new AssessmentApiError(
+        409,
+        "ASSESSMENT_TYPE_EXISTS",
+        "An assessment of this type already exists",
+      );
+    }
+    let normalized;
+    try {
+      normalized = policy.normalizeAssessmentConfiguration({
+        lessonKey: source.lessonKey,
+        type: source.type,
+        title: source.title,
+        instructions: source.instructions,
+      });
+      policy.validateAssessmentDraft({ assessment: normalized, questions: source.questions });
+    } catch (error) {
+      throw mapValidationError(error, "ASSESSMENT_TEMPLATE_INVALID");
+    }
+    const created = await LessonAssessment.create({
+      ...normalized,
+      classroomId,
+      createdBy: actorId,
+      isPublished: false,
+      publishedAt: null,
+      version: 1,
+    }, { transaction });
+    await createQuestionGraph({ assessmentId: created.id, questions: source.questions, transaction });
+    const graph = await loadGraph(created.id, transaction);
+    return {
+      assessment: serialization.serializeTeacherEditor(graph, {
+        attemptsExist: false,
+        structureLocked: false,
+      }),
+    };
+  });
 
   const copyAssessment = async ({
     destinationClassroomId,
@@ -1194,6 +1260,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
 
   return {
     listAssessments,
+    listBuiltInAssessmentTemplates,
+    importBuiltInAssessmentTemplate,
     copyAssessment,
     createAssessment,
     deleteAssessment,

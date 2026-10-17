@@ -31,6 +31,7 @@ const HintFeedback = require("../src/models/HintFeedback");
 const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
 const LessonAssessment = require("../src/models/LessonAssessment");
 const AssessmentAttempt = require("../src/models/AssessmentAttempt");
+const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
 const sequelize = require("../src/config/database");
 const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
 const {
@@ -895,6 +896,7 @@ test("completed Arrays work remains immutable while required PRE blocks same-les
     [LevelContentOverride, "findAll", async () => []],
     [LessonAssessment, "findAll", async () => [requiredPre]],
     [AssessmentAttempt, "findAll", async () => []],
+    [AssessmentAttemptGrant, "findAll", async () => []],
     [AssessmentAttempt, "create", async () => {
       assessmentAttemptCreates += 1;
       return null;
@@ -966,6 +968,148 @@ test("completed Arrays work remains immutable while required PRE blocks same-les
   }, before);
   assert.equal(progressSaveCount, 0);
   assert.equal(assessmentAttemptCreates, 0);
+});
+
+test("grant-authorized POST practice rechecks every gameplay path without academic mutations", async () => {
+  const user = activeUser({ xpTotal: 125 });
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  const completedAt = new Date("2026-09-20T00:00:00Z");
+  let progressSaveCount = 0;
+  const rows = DEFAULT_LEVEL_PROGRESS.map((level, index) => ({
+    ...level,
+    id: index + 1,
+    userId: 1,
+    progressPercent: /^(tutorial|arrays)-/.test(level.levelKey) ? 100 : 0,
+    isCompleted: /^(tutorial|arrays)-/.test(level.levelKey),
+    completedAt: /^(tutorial|arrays)-/.test(level.levelKey) ? completedAt : null,
+    attemptCount: 2,
+    timeSpentSeconds: 73,
+    finalScore: 91,
+    startedAt: new Date("2026-09-19T00:00:00Z"),
+    activeSessionId: null,
+    hintUsed: false,
+    detailedHintUnlocked: false,
+    xpAwarded: 25,
+    xpAwardedAt: new Date("2026-09-20T00:00:01Z"),
+    save: async () => { progressSaveCount += 1; },
+  }));
+  const target = rows.find((row) => row.levelKey === "arrays-level-1");
+  const requiredPost = {
+    id: 92, classroomId: 9, lessonKey: "arrays", type: "POST",
+    isPublished: true, isRequired: true, maxAttempts: 2,
+    requirePassingForCompletion: true,
+  };
+  const attempts = [
+    {
+      id: 201, classroomId: 9, studentId: 1, assessmentId: 92,
+      status: "SUBMITTED", submittedAt: "2026-09-21T00:00:00Z",
+      attemptNumber: 1, percentage: 40, passed: false,
+    },
+    {
+      id: 202, classroomId: 9, studentId: 1, assessmentId: 92,
+      status: "SUBMITTED", submittedAt: "2026-09-22T00:00:00Z",
+      attemptNumber: 2, percentage: 50, passed: false,
+    },
+  ];
+  const grant = {
+    id: 301, classroomId: 9, studentId: 1, assessmentId: 92,
+    consumedByAttemptId: null,
+  };
+  const before = {
+    progressPercent: target.progressPercent,
+    isCompleted: target.isCompleted,
+    completedAt: target.completedAt,
+    attemptCount: target.attemptCount,
+    timeSpentSeconds: target.timeSpentSeconds,
+    finalScore: target.finalScore,
+    xpAwarded: target.xpAwarded,
+    xpAwardedAt: target.xpAwardedAt,
+    xpTotal: user.xpTotal,
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => user],
+    [User, "findAll", async () => []],
+    [ClassroomMembership, "findOne", async () => membership],
+    [ClassroomMembership, "findAll", async () => []],
+    [UserProgress, "findAll", async () => rows],
+    [UserProgress, "bulkCreate", async () => assert.fail("all default rows already exist")],
+    [UserProgress, "findOne", async ({ where }) => (
+      rows.find((row) => row.levelKey === where.levelKey) ?? null
+    )],
+    [LevelContentOverride, "findAll", async () => []],
+    [LessonAssessment, "findAll", async () => [requiredPost]],
+    [AssessmentAttempt, "findAll", async () => attempts],
+    [AssessmentAttemptGrant, "findAll", async () => [grant]],
+    [LearningAnalyticsEvent, "findOne", async () => null],
+    [LearningAnalyticsEvent, "create", async () => (
+      assert.fail("practice must not create an academic event")
+    )],
+    [XpTransaction, "findOne", async () => assert.fail("practice must not inspect XP awards")],
+    [XpTransaction, "create", async () => assert.fail("practice must not award XP")],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const token = authToken(1, "student");
+    const path = "/api/progress/level/arrays-level-1";
+    const openResults = [
+      await apiRequest(`${path}/content?classroomId=9`, { token }),
+      await apiRequest(`${path}/start?classroomId=9`, {
+        method: "POST", token, body: { sessionId: "remediation_practice_start_123" },
+      }),
+      await apiRequest(`${path}/attempt?classroomId=9`, {
+        method: "POST", token, body: { sourceCode: "", activityId: "remediation_attempt_123" },
+      }),
+      await apiRequest(`${path}?classroomId=9`, {
+        method: "PUT", token, body: { progressPercent: 100, isCompleted: true },
+      }),
+    ];
+    assert.deepEqual(openResults.map((result) => result.response.status), [200, 200, 200, 200]);
+    assert.equal(openResults[1].payload.ephemeral, true);
+    assert.equal(openResults[2].payload.replay, true);
+    assert.equal(openResults[2].payload.attemptRecorded, false);
+
+    for (const suffix of ["hint-use", "detailed-hint-purchase"]) {
+      const result = await apiRequest(`${path}/${suffix}?classroomId=9`, {
+        method: "POST", token, body: {},
+      });
+      assert.equal(result.response.status, 409, suffix);
+      assert.equal(result.payload.code, "LEVEL_ALREADY_COMPLETED", suffix);
+    }
+
+    grant.consumedByAttemptId = 203;
+    attempts.push({
+      id: 203, classroomId: 9, studentId: 1, assessmentId: 92,
+      status: "SUBMITTED", submittedAt: "2026-09-23T00:00:00Z",
+      attemptNumber: 3, percentage: 45, passed: false,
+    });
+    const closedRequests = [
+      [`${path}/content?classroomId=9`, {}],
+      [`${path}/start?classroomId=9`, { method: "POST", body: { sessionId: "closed_start_123" } }],
+      [`${path}/attempt?classroomId=9`, { method: "POST", body: { sourceCode: "", activityId: "closed_attempt_123" } }],
+      [`${path}?classroomId=9`, { method: "PUT", body: { progressPercent: 100, isCompleted: true } }],
+      [`${path}/hint-use?classroomId=9`, { method: "POST", body: {} }],
+      [`${path}/detailed-hint-purchase?classroomId=9`, { method: "POST", body: {} }],
+    ];
+    for (const [requestPath, options] of closedRequests) {
+      const result = await apiRequest(requestPath, { ...options, token });
+      assert.equal(result.response.status, 403, requestPath);
+      assert.equal(result.payload.code, "POST_ASSESSMENT_REQUIRED", requestPath);
+    }
+  });
+
+  assert.deepEqual({
+    progressPercent: target.progressPercent,
+    isCompleted: target.isCompleted,
+    completedAt: target.completedAt,
+    attemptCount: target.attemptCount,
+    timeSpentSeconds: target.timeSpentSeconds,
+    finalScore: target.finalScore,
+    xpAwarded: target.xpAwarded,
+    xpAwardedAt: target.xpAwardedAt,
+    xpTotal: user.xpTotal,
+  }, before);
+  assert.equal(progressSaveCount, 0);
+  assert.equal(grant.consumedByAttemptId, 203, "practice does not consume or relink the grant");
 });
 
 test("failed attempts unlock the free hint at the teacher-controlled threshold", async () => {

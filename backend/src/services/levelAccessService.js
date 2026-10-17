@@ -79,6 +79,30 @@ const evaluateStudentLevelAccess = ({
   if (target?.isEnabled && lessonProgressionState) {
     const debt = resolveRequiredAssessmentDebt(lessonProgressionState);
     if (debt?.kind === "required-assessment") {
+      const remediationReplay = debt.assessmentType === "POST"
+        && lessonProgressionState.postRemediationReplayAvailable === true
+        && lessonKeyForLevel(levelKey) === lessonProgressionState.lessonKey
+        && progress?.isCompleted === true;
+      if (remediationReplay) {
+        if (target.unlockAt && toTime(target.unlockAt) > now.getTime()) {
+          return {
+            allowed: false,
+            reason: "LEVEL_SCHEDULED",
+            completed: true,
+            unlockAt: target.unlockAt,
+            ...deadlines,
+          };
+        }
+        if (deadlines.effectiveDueAt && now.getTime() > deadlines.effectiveDueAt.getTime()) {
+          return { allowed: false, reason: "DEADLINE_PASSED", completed: true, ...deadlines };
+        }
+        return {
+          allowed: true,
+          reason: "POST_REMEDIATION_REPLAY",
+          completed: true,
+          ...deadlines,
+        };
+      }
       return {
         allowed: false,
         reason: debt.accessReason,
@@ -102,6 +126,13 @@ const evaluateStudentLevelAccess = ({
         ...deadlines,
       };
     }
+  }
+
+  if (lessonProgressionState?.postRemediationReplayAvailable === true
+    && lessonKeyForLevel(levelKey) === lessonProgressionState.lessonKey
+    && progress?.isCompleted === true
+    && !target?.isEnabled) {
+    return { allowed: false, reason: "LEVEL_DISABLED", completed: true, ...deadlines };
   }
 
   // Historical completion remains permanent except for target-lesson assessment debt above.

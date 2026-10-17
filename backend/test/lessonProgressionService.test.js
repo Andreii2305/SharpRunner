@@ -351,6 +351,87 @@ test("unused teacher grant makes failed required POST retryable without changing
   assert.equal(state.nextAction, "RETRY_POST");
 });
 
+test("required POST remediation replay follows only unused or grant-linked active recovery", () => {
+  const requiredPost = assessment({
+    id: 404, type: "POST", maxAttempts: 2, requirePassingForCompletion: true,
+  });
+  const submittedFailures = [
+    attempt({ id: 41, assessmentId: 404, attemptNumber: 1, percentage: 40, passed: false }),
+    attempt({ id: 42, assessmentId: 404, attemptNumber: 2, percentage: 50, passed: false }),
+  ];
+  const stateFor = ({ assessmentOverrides = {}, attempts = submittedFailures, grants = [] } = {}) => build({
+    publishedAssessments: [{ ...requiredPost, ...assessmentOverrides }],
+    attempts,
+    grants,
+    progressRows: [...playableRows("tutorial", 5), ...playableRows("arrays", 8)],
+  }).get("arrays");
+
+  assert.equal(stateFor({
+    grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: null }],
+  }).postRemediationReplayAvailable, true);
+  assert.equal(stateFor({
+    attempts: [...submittedFailures, attempt({
+      id: 43, assessmentId: 404, attemptNumber: 3, status: "IN_PROGRESS",
+      submittedAt: null, percentage: null, passed: null,
+    })],
+    grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: 43 }],
+  }).postRemediationReplayAvailable, true);
+
+  const gradingState = stateFor({
+    attempts: [...submittedFailures, attempt({
+      id: 43, assessmentId: 404, attemptNumber: 3, status: "GRADING",
+      submittedAt: null, percentage: null, passed: null,
+    })],
+    grants: [
+      { id: 1, assessmentId: 404, consumedByAttemptId: 43 },
+      { id: 2, assessmentId: 404, consumedByAttemptId: null },
+    ],
+  });
+  assert.equal(gradingState.postRemediationReplayAvailable, false);
+  assert.equal(gradingState.postAttemptInProgress, true);
+  assert.equal(gradingState.postAttemptsRemaining, 0);
+  assert.equal(gradingState.nextAction, "RESUME_POST");
+
+  for (const [label, overrides] of [
+    ["legacy active recovery", {
+      attempts: [...submittedFailures, attempt({
+        id: 43, assessmentId: 404, attemptNumber: 3, status: "IN_PROGRESS",
+        submittedAt: null, percentage: null, passed: null,
+      })],
+    }],
+    ["consumed submitted failure", {
+      attempts: [...submittedFailures, attempt({
+        id: 43, assessmentId: 404, attemptNumber: 3, percentage: 45, passed: false,
+      })],
+      grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: 43 }],
+    }],
+    ["unknown official outcome", {
+      attempts: submittedFailures.map((row) => ({ ...row, passed: null })),
+      grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: null }],
+    }],
+    ["optional POST", {
+      assessmentOverrides: { isRequired: false },
+      grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: null }],
+    }],
+    ["no passing requirement", {
+      assessmentOverrides: { requirePassingForCompletion: false },
+      grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: null }],
+    }],
+    ["unrelated grant", {
+      grants: [{ id: 1, assessmentId: 999, consumedByAttemptId: null }],
+    }],
+  ]) {
+    assert.equal(stateFor(overrides).postRemediationReplayAvailable, false, label);
+  }
+
+  assert.equal(stateFor({
+    attempts: [...submittedFailures, attempt({
+      id: 43, assessmentId: 404, attemptNumber: 3, percentage: 95, passed: true,
+    })],
+    grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: 43 }],
+  }).postRemediationReplayAvailable, false, "passing returns to normal progression");
+});
+
 test("official POST pass uses the Phase B highest-attempt selector", () => {
   const requiredPost = assessment({
     id: 505,
@@ -484,6 +565,7 @@ test("tutorial and final remain assessment-exempt with approved completion seman
     postAttemptsUsed: 0,
     postAttemptsRemaining: 0,
     postAttemptsExhausted: false,
+    postRemediationReplayAvailable: false,
     assessmentCompleted: true,
     lessonCompleted: true,
     preLatestSubmittedAttemptId: null,

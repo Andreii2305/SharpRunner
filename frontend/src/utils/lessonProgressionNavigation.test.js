@@ -592,4 +592,20 @@ test("level entry view model makes debt authoritative without losing completion"
   assert.equal(replay.kind, "game");
   assert.equal(replay.visualStatus, "completed");
   assert.equal(replay.href, "/array/level/1?classroomId=7");
+  assert.equal(replay.label, "Replay level");
+
+  const remediationPractice = createLevelEntryViewModel({
+    classroomId: 7,
+    level: {
+      lessonKey: "arrays",
+      isCompleted: true,
+      isAccessible: true,
+      accessReason: "POST_REMEDIATION_REPLAY",
+    },
+    gameHref: "/array/level/1?classroomId=7",
+  });
+  assert.equal(remediationPractice.kind, "game");
+  assert.equal(remediationPractice.visualStatus, "completed");
+  assert.equal(remediationPractice.label, "Practice level");
+  assert.equal(remediationPractice.href, "/array/level/1?classroomId=7");
 });

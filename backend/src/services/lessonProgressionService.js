@@ -292,9 +292,13 @@ const buildLessonProgressionStates = ({
     const submittedPostAttempts = postAttempts.filter(
       (attempt) => attempt.status === ATTEMPT_STATUSES.SUBMITTED,
     );
-    const postAttemptInProgress = postAttempts.some(
+    const grantLinkedPostAttempt = postAttempts.find(
       (attempt) => attempt.status === ATTEMPT_STATUSES.IN_PROGRESS,
+    ) ?? null;
+    const postAttemptGrading = postAttempts.some(
+      (attempt) => attempt.status === ATTEMPT_STATUSES.GRADING,
     );
+    const postAttemptInProgress = grantLinkedPostAttempt != null || postAttemptGrading;
     const officialPostAttempt = selectOfficialPostAttempt(postAttempts);
     const postCompleted = submittedPostAttempts.length > 0;
     const postRequired = postAssessment?.isRequired === true;
@@ -307,6 +311,22 @@ const buildLessonProgressionStates = ({
       : [];
     const postGrantCount = postGrants.length;
     const unusedPostGrantCount = postGrants.filter((grant) => grant.consumedByAttemptId == null).length;
+    const activeAttemptUsesGrant = Boolean(grantLinkedPostAttempt && postGrants.some(
+      (grant) => sameId(grant.consumedByAttemptId, grantLinkedPostAttempt.id),
+    ));
+    const standardPostAllowanceExhausted = Boolean(
+      postAssessment
+      && postAttemptsUsed >= Math.max(0, Number(postAssessment.maxAttempts) || 0),
+    );
+    const postRemediationReplayAvailable = Boolean(
+      postAssessment
+      && postRequired
+      && postPassingRequired
+      && officialPostAttempt?.passed === false
+      && standardPostAllowanceExhausted
+      && !postAttemptGrading
+      && (unusedPostGrantCount > 0 || activeAttemptUsesGrant)
+    );
     const effectivePostAllowance = postAssessment
       ? Math.max(Number(postAssessment.maxAttempts) + postGrantCount,
         postAttempts.reduce((maximum, attempt) => Math.max(maximum, Number(attempt.attemptNumber) || 0), 0)
@@ -355,6 +375,7 @@ const buildLessonProgressionStates = ({
       postAttemptsUsed,
       postAttemptsRemaining,
       postAttemptsExhausted,
+      postRemediationReplayAvailable,
       assessmentCompleted,
       lessonCompleted,
       preLatestSubmittedAttemptId: assessmentGated ? latestHistoricalPre?.id ?? null : null,

@@ -143,10 +143,13 @@ export const createLevelEntryViewModel = ({ classroomId, level, gameHref } = {})
   }
 
   if (level?.isAccessible === true) {
+    const replayLabel = level?.accessReason === "POST_REMEDIATION_REPLAY"
+      ? "Practice level"
+      : "Replay level";
     return {
       kind: "game",
       href: gameHref,
-      label: completed ? "Replay level" : "Play level",
+      label: completed ? replayLabel : "Play level",
       routable: true,
       visualStatus: completed ? "completed" : "current",
       completed,

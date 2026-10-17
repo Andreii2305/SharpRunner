@@ -6,6 +6,7 @@ const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
 const UserProgress = require("../src/models/UserProgress");
 const LessonAssessment = require("../src/models/LessonAssessment");
 const AssessmentAttempt = require("../src/models/AssessmentAttempt");
+const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
 const {
   heartbeatProgressSession,
   pauseProgressSession,
@@ -581,6 +582,7 @@ test("completed non-playable target replay is included beside the playable canon
       requirePassingForCompletion: false,
     }]],
     [AssessmentAttempt, "findAll", async () => []],
+    [AssessmentAttemptGrant, "findAll", async () => []],
   ], async () => {
     const access = await getStudentLevelAccess({
       userId: 1,
@@ -649,6 +651,70 @@ test("same-lesson POST actions including recovery win before completed replay", 
     assert.equal(access.assessmentAction, action, action);
     assert.equal(access.routable, action !== "POST_RECOVERY_REQUIRED", action);
   }
+});
+
+test("teacher-authorized POST remediation replays only completed assigned levels within timing rules", () => {
+  const now = new Date("2026-09-15T00:00:00Z");
+  const progressionState = lessonState("arrays", {
+    gameCompleted: true,
+    postRequired: true,
+    postAssessmentId: 92,
+    postCompleted: true,
+    postPassingRequired: true,
+    postPassed: false,
+    postAttemptsRemaining: 1,
+    postRemediationReplayAvailable: true,
+    nextAction: "RETRY_POST",
+  });
+  const decide = ({
+    levelKey = "arrays-level-1",
+    completed = true,
+    settingOverrides = {},
+    extensionDueAt = null,
+    state = progressionState,
+  } = {}) => evaluateStudentLevelAccess({
+    levelKey,
+    settings: [levelSetting(levelKey, 1, settingOverrides)],
+    progressByKey: new Map([[levelKey, progressRow({ levelKey, isCompleted: completed })]]),
+    lessonProgressionState: state,
+    extensionDueAt,
+    now,
+  });
+
+  assert.deepEqual(decide(), {
+    allowed: true,
+    reason: "POST_REMEDIATION_REPLAY",
+    completed: true,
+    classDueAt: null,
+    extensionDueAt: null,
+    effectiveDueAt: null,
+    hasExtension: false,
+  });
+  assert.equal(decide({ completed: false }).reason, "POST_ASSESSMENT_REQUIRED");
+  assert.equal(decide({ settingOverrides: { isEnabled: false } }).reason, "LEVEL_DISABLED");
+  assert.equal(decide({ settingOverrides: {
+    unlockAt: new Date("2026-09-20T00:00:00Z"),
+  } }).reason, "LEVEL_SCHEDULED");
+  assert.equal(decide({ settingOverrides: {
+    dueAt: new Date("2026-09-10T00:00:00Z"),
+  } }).reason, "DEADLINE_PASSED");
+  assert.equal(decide({
+    settingOverrides: { dueAt: new Date("2026-09-10T00:00:00Z") },
+    extensionDueAt: new Date("2026-09-20T00:00:00Z"),
+  }).reason, "POST_REMEDIATION_REPLAY");
+  assert.equal(evaluateStudentLevelAccess({
+    levelKey: "functions-level-1",
+    settings: [levelSetting("functions-level-1", 1)],
+    progressByKey: new Map([["functions-level-1", progressRow({
+      levelKey: "functions-level-1",
+      isCompleted: true,
+    })]]),
+    lessonProgressionState: lessonState("functions", {
+      curriculumPrerequisiteSatisfied: false,
+      nextAction: "COMPLETE_PREREQUISITE_LESSON",
+    }),
+    now,
+  }).reason, "COMPLETED");
 });
 
 test("unrelated earlier debt preserves completed later replay but blocks unfinished progression", () => {

@@ -392,6 +392,7 @@ test("final required game completion unlocks POST discovery and start only after
 
 const withProgressRoute = async (callback, {
   attempts: suppliedAttempts = null,
+  grants: suppliedGrants = [],
   configureRows = null,
 } = {}) => {
   stateCalls.length = 0;
@@ -433,7 +434,7 @@ const withProgressRoute = async (callback, {
         status: "SUBMITTED", percentage: 100, passed: true,
       }];
     }],
-    [AssessmentAttemptGrant, "findAll", async () => []],
+    [AssessmentAttemptGrant, "findAll", async () => suppliedGrants],
   ];
   const originals = stubs.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, replacement] of stubs) target[key] = replacement;
@@ -453,6 +454,78 @@ const withProgressRoute = async (callback, {
     for (const [target, key, original] of originals) target[key] = original;
   }
 };
+
+test("progress route opens and closes exact-class remediation replay from authoritative grant state", async () => {
+  const attempts = [
+    {
+      id: 101, classroomId: 9, studentId: 7, assessmentId: 91,
+      status: "SUBMITTED", submittedAt: "2026-09-27T00:00:00Z", attemptNumber: 1,
+    },
+    {
+      id: 201, classroomId: 9, studentId: 7, assessmentId: 92,
+      status: "SUBMITTED", submittedAt: "2026-09-28T00:00:00Z", attemptNumber: 1,
+      percentage: 40, passed: false,
+    },
+    {
+      id: 202, classroomId: 9, studentId: 7, assessmentId: 92,
+      status: "SUBMITTED", submittedAt: "2026-09-29T00:00:00Z", attemptNumber: 2,
+      percentage: 50, passed: false,
+    },
+  ];
+  const grants = [
+    {
+      id: 301, classroomId: 10, studentId: 7, assessmentId: 92,
+      consumedByAttemptId: null,
+    },
+    {
+      id: 302, classroomId: 10, studentId: 7, assessmentId: 92,
+      consumedByAttemptId: null,
+    },
+  ];
+
+  await withProgressRoute(async ({ payload: foreignGrantPayload, request }) => {
+    const arrayLevels = (payload) => payload.levels.filter(
+      (level) => level.levelKey.startsWith("arrays-level-"),
+    );
+    assert.ok(arrayLevels(foreignGrantPayload).every(
+      (level) => level.accessReason === "POST_ASSESSMENT_REQUIRED" && !level.isAccessible,
+    ));
+
+    grants[0].classroomId = 9;
+    const unusedGrantPayload = await request();
+    for (const level of arrayLevels(unusedGrantPayload)) {
+      assert.equal(level.isAccessible, true, level.levelKey);
+      assert.equal(level.accessReason, "POST_REMEDIATION_REPLAY", level.levelKey);
+      assert.equal(level.assessmentRequired, false, level.levelKey);
+    }
+
+    attempts.push({
+      id: 203, classroomId: 9, studentId: 7, assessmentId: 92,
+      status: "IN_PROGRESS", submittedAt: null, attemptNumber: 3,
+      percentage: null, passed: null,
+    });
+    grants[0].consumedByAttemptId = 203;
+    const activePayload = await request();
+    assert.ok(arrayLevels(activePayload).every(
+      (level) => level.accessReason === "POST_REMEDIATION_REPLAY",
+    ));
+
+    attempts.at(-1).status = "GRADING";
+    const gradingPayload = await request();
+    assert.ok(arrayLevels(gradingPayload).every(
+      (level) => level.accessReason === "POST_ASSESSMENT_REQUIRED" && !level.isAccessible,
+    ));
+
+    attempts.at(-1).status = "SUBMITTED";
+    attempts.at(-1).submittedAt = "2026-09-30T00:00:00Z";
+    attempts.at(-1).percentage = 45;
+    attempts.at(-1).passed = false;
+    const exhaustedPayload = await request();
+    assert.ok(arrayLevels(exhaustedPayload).every(
+      (level) => level.assessmentAction === "POST_RECOVERY_REQUIRED" && !level.isAccessible,
+    ));
+  }, { attempts, grants });
+});
 
 test("historical completed lesson advances PRE to POST to replay", async () => {
   const attempts = [];

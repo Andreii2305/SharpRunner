@@ -387,6 +387,43 @@ test("completed accessible nodes retain an explicit replay route", () => {
   assert.equal(entry.disabled, false);
 });
 
+test("teacher-authorized POST remediation keeps retry primary and relabels completed nodes for practice", () => {
+  const data = progress({
+    levels: [level("arrays", 1, {
+      isCompleted: true,
+      isAccessible: true,
+      accessReason: "POST_REMEDIATION_REPLAY",
+    })],
+    lessons: progress().lessons.map((row) => row.lessonKey === "arrays"
+      ? {
+          ...row,
+          completedLevels: 1,
+          totalLevels: 1,
+          progressPercent: 100,
+          gameCompleted: true,
+          postRequired: true,
+          postCompleted: true,
+          postPassingRequired: true,
+          postPassed: false,
+          postAttemptsRemaining: 1,
+          nextAction: "RETRY_POST",
+        }
+      : row),
+    summary: {
+      ...progress().summary,
+      nextAction: "RETRY_POST",
+      nextActionLessonKey: "arrays",
+    },
+  });
+  const model = createLessonMapViewModel(data);
+  const entry = createMapLevelEntry(model, "arrays-level-1", "/array/level/1?classroomId=7");
+
+  assert.equal(model.nextStep.progression.action.label, "Retry Post-Test");
+  assert.equal(entry.label, "Practice level");
+  assert.equal(entry.href, "/array/level/1?classroomId=7");
+  assert.equal(entry.disabled, false);
+});
+
 test("completed nodes without authoritative access remain locked", () => {
   const model = createLessonMapViewModel(progress({
     levels: [

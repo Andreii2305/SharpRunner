@@ -47,6 +47,7 @@ const build = ({
   publishedAssessments = [],
   historicalAssessments = publishedAssessments,
   attempts = [],
+  grants = [],
   progressRows = [],
   levelSettings = [],
 } = {}) => {
@@ -56,6 +57,7 @@ const build = ({
     publishedAssessments,
     historicalAssessments,
     attempts,
+    grants,
     progressRows,
     levelSettings,
   });
@@ -328,6 +330,25 @@ test("teacher-created active recovery reports zero remaining and RESUME_POST", (
   assert.equal(failedRecovery.postAttemptsRemaining, 0);
   assert.equal(failedRecovery.postAttemptsExhausted, true);
   assert.equal(failedRecovery.nextAction, "POST_RECOVERY_REQUIRED");
+});
+
+test("unused teacher grant makes failed required POST retryable without changing game completion", () => {
+  const requiredPost = assessment({
+    id: 404, type: "POST", maxAttempts: 2, requirePassingForCompletion: true,
+  });
+  const state = build({
+    publishedAssessments: [requiredPost],
+    attempts: [
+      attempt({ id: 41, assessmentId: 404, attemptNumber: 1, passed: false }),
+      attempt({ id: 42, assessmentId: 404, attemptNumber: 2, passed: false }),
+    ],
+    grants: [{ id: 1, assessmentId: 404, consumedByAttemptId: null }],
+    progressRows: [...playableRows("tutorial", 5), ...playableRows("arrays", 8)],
+  }).get("arrays");
+  assert.equal(state.gameCompleted, true);
+  assert.equal(state.postAttemptsRemaining, 1);
+  assert.equal(state.postAttemptsExhausted, false);
+  assert.equal(state.nextAction, "RETRY_POST");
 });
 
 test("official POST pass uses the Phase B highest-attempt selector", () => {

@@ -83,6 +83,7 @@ const makeHarness = (assessmentOptions = {}, {
   const store = {
     assessments: [makeGraph(assessmentOptions)],
     attempts: [],
+    grants: [],
     responses: [],
     memberships: [{ classroomId: 7, studentId: 42, status: "active" }],
     failResponseSave: false,
@@ -110,6 +111,11 @@ const makeHarness = (assessmentOptions = {}, {
         }
         return value;
       },
+    });
+    Object.defineProperty(value, "update", {
+      configurable: true,
+      enumerable: false,
+      value: async (values) => { Object.assign(value, values); return value; },
     });
     Object.defineProperty(value, "toJSON", {
       configurable: true,
@@ -159,6 +165,10 @@ const makeHarness = (assessmentOptions = {}, {
         return row(created, "responses");
       },
     },
+    AssessmentAttemptGrant: {
+      findAll: async ({ where }) => store.grants
+        .filter((item) => matches(item, where)).map((item) => row(item, "grants")),
+    },
     ClassroomMembership: {
       findOne: async ({ where }) => {
         store.operations.push("membership");
@@ -173,6 +183,7 @@ const makeHarness = (assessmentOptions = {}, {
         const snapshot = clone({
           attempts: store.attempts,
           responses: store.responses,
+          grants: store.grants,
           attemptId,
           responseId,
         });
@@ -182,6 +193,7 @@ const makeHarness = (assessmentOptions = {}, {
         } catch (error) {
           store.attempts = snapshot.attempts;
           store.responses = snapshot.responses;
+          store.grants = snapshot.grants;
           attemptId = snapshot.attemptId;
           responseId = snapshot.responseId;
           throw error;
@@ -298,6 +310,9 @@ const seedSubmittedAttempt = (store, overrides = {}) => {
   return attempt;
 };
 
+/* Legacy immediate-recovery tests were replaced by assessmentAttemptAllowanceService tests:
+ * a teacher grant no longer creates or validates a player attempt. */
+/*
 test("teacher recovery requires a caller transaction before touching persistence", async () => {
   const h = makeHarness();
   await expectCode(h.service.createTeacherGrantedPostAttempt({
@@ -484,6 +499,70 @@ test("teacher recovery rolls back a failed create inside the caller transaction"
     })
   )), /forced attempt persistence failure/);
   assert.deepEqual(h.store.attempts, before);
+});
+*/
+
+test("explicit Start consumes one grant atomically and marks an additional PRE supplemental", async () => {
+  const h = makeHarness({ type: "PRE", maxAttempts: 1, requirePassingForCompletion: false });
+  seedSubmittedAttempt(h.store, { attemptNumber: 1, passed: null, preBaselineStatus: "VALID" });
+  h.store.grants.push({
+    id: 1,
+    assessmentId: 10,
+    classroomId: 7,
+    studentId: 42,
+    grantedByUserId: 5,
+    consumedByAttemptId: null,
+    consumedAt: null,
+  });
+
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  assert.equal(started.resumed, false);
+  assert.equal(started.attempt.attemptNumber, 2);
+  assert.equal(h.store.attempts[1].preBaselineStatus, "SUPPLEMENTAL");
+  assert.equal(h.store.grants[0].consumedByAttemptId, started.attempt.id);
+  assert.ok(h.store.grants[0].consumedAt instanceof Date);
+  assert.deepEqual(started.allowance, {
+    standardAttemptAllowance: 1,
+    additionalAttemptsGranted: 1,
+    additionalAttemptsAvailable: 0,
+    totalAttemptAllowance: 2,
+    attemptsUsed: 1,
+    attemptsRemaining: 0,
+  });
+});
+
+test("explicit Start uses ordinary allowance before consuming an unused grant", async () => {
+  const h = makeHarness({ type: "POST", maxAttempts: 2, requirePassingForCompletion: false });
+  h.store.grants.push({
+    id: 1,
+    assessmentId: 10,
+    classroomId: 7,
+    studentId: 42,
+    grantedByUserId: 5,
+    consumedByAttemptId: null,
+    consumedAt: null,
+  });
+
+  const started = await h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 });
+  assert.equal(started.attempt.attemptNumber, 1);
+  assert.equal(h.store.attempts[0].preBaselineStatus, null);
+  assert.equal(h.store.grants[0].consumedByAttemptId, null);
+});
+
+test("failed granted-attempt creation rolls back grant consumption", async () => {
+  const h = makeHarness({ maxAttempts: 1 });
+  seedSubmittedAttempt(h.store, { attemptNumber: 1, passed: false });
+  h.store.grants.push({
+    id: 1, assessmentId: 10, classroomId: 7, studentId: 42,
+    grantedByUserId: 5, consumedByAttemptId: null, consumedAt: null,
+  });
+  h.store.failAttemptCreate = true;
+  await assert.rejects(
+    h.service.startOrResumeAttempt({ assessmentId: 10, studentId: 42 }),
+    /forced attempt persistence failure/,
+  );
+  assert.equal(h.store.grants[0].consumedByAttemptId, null);
+  assert.equal(h.store.attempts.length, 1);
 });
 
 test("creates the first attempt with stable safe shuffled question and choice order", async () => {

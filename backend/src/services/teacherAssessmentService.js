@@ -5,6 +5,7 @@ const defaultAuthorization = require("./assessmentAuthorizationService");
 const defaultPolicy = require("./assessmentPolicyService");
 const defaultSerialization = require("./assessmentSerializationService");
 const defaultAttemptService = require("./assessmentAttemptService");
+const { createAssessmentAttemptAllowanceService } = require("./assessmentAttemptAllowanceService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const {
   ASSESSMENT_TYPES,
@@ -142,6 +143,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
   const attemptService = dependencies.assessmentAttemptService
     || dependencies.attemptService
     || defaultAttemptService;
+  const allowanceService = dependencies.allowanceService
+    || createAssessmentAttemptAllowanceService({ models });
   const secureCodingExecution = dependencies.secureCodingExecution
     || defaultSecureCodingExecution;
   const environment = dependencies.environment || process.env;
@@ -152,6 +155,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     AssessmentCodingTestCase,
     AssessmentAttempt,
     AssessmentResponse,
+    AssessmentAttemptGrant,
     ClassroomMembership,
     UserProgress,
     User,
@@ -469,6 +473,14 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       }),
     ]);
 
+    const assessmentType = plain(assessment).type;
+    const originalPreAttemptIds = assessmentType === ASSESSMENT_TYPES.PRE
+      ? [...attempts.reduce((byStudent, attemptInput) => {
+        const attempt = plain(attemptInput);
+        if (!byStudent.has(String(attempt.studentId))) byStudent.set(String(attempt.studentId), attempt.id);
+        return byStudent;
+      }, new Map()).values()]
+      : null;
     const codingQuestions = codingQuestionRows.map(plain);
     const codingQuestionIds = codingQuestions.map((question) => question.id);
     const codingResponses = codingQuestionIds.length
@@ -480,7 +492,10 @@ const createTeacherAssessmentService = (dependencies = {}) => {
           as: "attempt",
           attributes: [],
           required: true,
-          where: { assessmentId, classroomId, status: ATTEMPT_STATUSES.SUBMITTED },
+          where: {
+            assessmentId, classroomId, status: ATTEMPT_STATUSES.SUBMITTED,
+            ...(originalPreAttemptIds ? { id: { [Op.in]: originalPreAttemptIds } } : {}),
+          },
         }],
       })
       : [];
@@ -1008,27 +1023,174 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     await assessment.destroy({ transaction });
   });
 
-  const grantAdditionalPostAttempt = async ({
+  const grantEligibility = async ({
     classroomId,
     assessmentId,
     studentId,
     actorId,
     actorRole,
-  }) => sequelize.transaction(async (transaction) => {
-    await authorization.requireManagedClassroom({
+    transaction,
+    lock = false,
+  }) => {
+    const classroom = plain(await authorization.requireManagedClassroom({
       classroomId,
       actorId,
       actorRole,
       transaction,
-    });
-    const attempt = await attemptService.createTeacherGrantedPostAttempt({
+    }));
+    if (classroom.isActive === false) {
+      throw new AssessmentApiError(409, "CLASSROOM_ARCHIVED", "Classroom is archived");
+    }
+    const assessmentRow = await authorization.requireAssessmentInClassroom({
       classroomId,
       assessmentId,
-      studentId,
       transaction,
+      lock,
     });
-    return { attempt: serialization.serializeTeacherGrantedAttempt(attempt) };
+    const assessment = plain(assessmentRow);
+    if (assessment.isPublished !== true) {
+      throw new AssessmentApiError(409, "ASSESSMENT_NOT_PUBLISHED", "Assessment is not published");
+    }
+    const membership = await ClassroomMembership.findOne({
+      where: { classroomId, studentId, status: "active" }, transaction,
+      ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
+    });
+    if (!membership) throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    const attempts = await AssessmentAttempt.findAll({
+      where: { assessmentId, classroomId, studentId }, transaction,
+      ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
+      order: [["attemptNumber", "ASC"], ["id", "ASC"]],
+    });
+    const grants = await allowanceService.loadGrants({
+      assessmentId, studentId, transaction, lock,
+    });
+    const allowance = allowanceService.summarizeAllowance({ assessment, attempts, grants });
+    const submitted = attempts.filter((attempt) => plain(attempt).status === ATTEMPT_STATUSES.SUBMITTED);
+    let code = null;
+    if (allowance.activeAttempt) code = "ACTIVE_ATTEMPT_EXISTS";
+    else if (allowance.additionalAttemptsAvailable > 0) code = "UNUSED_GRANT_EXISTS";
+    else if (allowance.attemptsRemaining > 0) code = "ATTEMPTS_REMAINING";
+    else if (!submitted.length) code = "NO_SUBMITTED_ATTEMPT";
+    else if (assessment.type === ASSESSMENT_TYPES.POST
+      && assessment.requirePassingForCompletion === true) {
+      const outcome = policy.selectOfficialPostAttempt(submitted)?.passed;
+      if (outcome === true) code = "POST_ALREADY_PASSED";
+      else if (outcome !== false) code = "POST_OUTCOME_UNAVAILABLE";
+    }
+    return {
+      assessment,
+      attempts,
+      grants,
+      allowance,
+      reviewPreviouslyAvailable: allowanceService.isAnswerReviewEligible({
+        assessment, attempts, grants,
+      }),
+      eligible: code == null,
+      ineligibleReason: code,
+      student: plain(await User.findByPk(studentId, {
+        attributes: ["id", "firstName", "lastName", "username"], transaction,
+      })),
+    };
+  };
+
+  const serializeGrantEligibility = (state) => ({
+    assessment: {
+      id: state.assessment.id,
+      classroomId: state.assessment.classroomId,
+      lessonKey: state.assessment.lessonKey,
+      type: state.assessment.type,
+      title: state.assessment.title,
+      requirePassingForCompletion: state.assessment.requirePassingForCompletion === true,
+    },
+    student: state.student,
+    eligible: state.eligible,
+    ineligibleReason: state.ineligibleReason,
+    reviewPreviouslyAvailable: state.reviewPreviouslyAvailable,
+    allowance: {
+      standardAttemptAllowance: state.allowance.standardAttemptAllowance,
+      additionalAttemptsGranted: state.allowance.additionalAttemptsGranted,
+      additionalAttemptsAvailable: state.allowance.additionalAttemptsAvailable,
+      totalAttemptAllowance: state.allowance.totalAttemptAllowance,
+      attemptsUsed: state.allowance.attemptsUsed,
+      attemptsRemaining: state.allowance.attemptsRemaining,
+      hasActiveAttempt: Boolean(state.allowance.activeAttempt),
+    },
+    grants: state.grants.map((grantInput) => {
+      const grant = plain(grantInput);
+      return {
+        id: grant.id,
+        reason: grant.reason ?? null,
+        grantedByUserId: grant.grantedByUserId,
+        createdAt: grant.createdAt,
+        consumedAt: grant.consumedAt ?? null,
+        consumedByAttemptId: grant.consumedByAttemptId ?? null,
+      };
+    }),
   });
+
+  const getAdditionalAttemptEligibility = async (input) => serializeGrantEligibility(
+    await grantEligibility(input),
+  );
+
+  const grantAdditionalAttempt = async ({ reason, idempotencyKey, ...input }) => sequelize.transaction(
+    async (transaction) => {
+      const normalizedReason = reason == null || String(reason).trim() === ""
+        ? null : String(reason).trim();
+      if (!/^[A-Za-z0-9_-]{8,96}$/.test(String(idempotencyKey || ""))
+        || (normalizedReason && normalizedReason.length > 500)) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const matchesRequest = (grantInput) => {
+        const saved = plain(grantInput);
+        return String(saved.assessmentId) === String(input.assessmentId)
+          && String(saved.classroomId) === String(input.classroomId)
+          && String(saved.studentId) === String(input.studentId)
+          && String(saved.grantedByUserId) === String(input.actorId)
+          && (saved.reason ?? null) === normalizedReason;
+      };
+      const replay = (state, grant) => ({
+        ...serializeGrantEligibility(state),
+        grant: serializeGrantEligibility({ ...state, grants: [grant] }).grants[0],
+        replayed: true,
+      });
+      const existing = await AssessmentAttemptGrant.findOne({
+        where: { idempotencyKey }, transaction, lock: transaction.LOCK.UPDATE,
+      });
+      if (existing) {
+        if (!matchesRequest(existing)) {
+          throw new AssessmentApiError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was reused");
+        }
+        const state = await grantEligibility({ ...input, transaction, lock: true });
+        return replay(state, existing);
+      }
+      const state = await grantEligibility({ ...input, transaction, lock: true });
+      const concurrentReplay = state.grants.find(
+        (grant) => plain(grant).idempotencyKey === idempotencyKey,
+      );
+      if (concurrentReplay) {
+        if (!matchesRequest(concurrentReplay)) {
+          throw new AssessmentApiError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was reused");
+        }
+        return replay(state, concurrentReplay);
+      }
+      if (!state.eligible) {
+        throw new AssessmentApiError(409, state.ineligibleReason, "An additional attempt cannot be granted");
+      }
+      const created = await AssessmentAttemptGrant.create({
+        assessmentId: state.assessment.id,
+        classroomId: state.assessment.classroomId,
+        studentId: input.studentId,
+        grantedByUserId: input.actorId,
+        reason: normalizedReason,
+        idempotencyKey,
+        answerReviewWasEligibleAtGrant: allowanceService.isAnswerReviewEligible({
+          assessment: state.assessment, attempts: state.attempts, grants: state.grants,
+        }),
+      }, { transaction });
+      const refreshed = await grantEligibility({ ...input, transaction, lock: true });
+      return { ...serializeGrantEligibility(refreshed), grant: serializeGrantEligibility({ ...refreshed, grants: [created] }).grants[0], replayed: false };
+    },
+  );
 
   return {
     listAssessments,
@@ -1038,7 +1200,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     getAssessmentResults,
     getAssessmentScoreSheet,
     getEditorAssessment,
-    grantAdditionalPostAttempt,
+    getAdditionalAttemptEligibility,
+    grantAdditionalAttempt,
     publishAssessment,
     saveAssessmentGraph,
     unpublishAssessment,

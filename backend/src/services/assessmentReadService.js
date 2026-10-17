@@ -3,6 +3,7 @@ const defaultAuthorizationService = require("./assessmentAuthorizationService");
 const defaultAttemptService = require("./assessmentAttemptService");
 const defaultSerializers = require("./assessmentSerializationService");
 const defaultProgressionService = require("./lessonProgressionService");
+const { createAssessmentAttemptAllowanceService } = require("./assessmentAttemptAllowanceService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const { ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS } = require("../constants/progressDefaults");
@@ -33,6 +34,7 @@ const createAssessmentReadService = ({
   progressionService = defaultProgressionService,
   serializers = defaultSerializers,
   selectors = { calculateLearningGain, selectFirstSubmittedPostAttempt, selectOfficialPostAttempt },
+  allowanceService = createAssessmentAttemptAllowanceService({ models }),
 } = {}) => {
   const {
     AssessmentAttempt,
@@ -86,6 +88,8 @@ const createAssessmentReadService = ({
     const attempts = (await AssessmentAttempt.findAll({
       where: { assessmentId: assessment.id, studentId },
     })).map(plain);
+    const grants = await allowanceService.loadGrants({ assessmentId: assessment.id, studentId });
+    const allowance = allowanceService.summarizeAllowance({ assessment, attempts, grants });
     const submittedAttempts = attempts.filter(
       (attempt) => attempt.status === ATTEMPT_STATUSES.SUBMITTED,
     );
@@ -109,7 +113,11 @@ const createAssessmentReadService = ({
       attemptStatus: activeAttempt?.status ?? latestSubmitted?.status ?? "NOT_STARTED",
       activeAttemptId: activeAttempt?.id,
       attemptsUsed,
-      attemptsRemaining: Math.max(0, Number(assessment.maxAttempts) - attemptsUsed),
+      attemptsRemaining: allowance.attemptsRemaining,
+      standardAttemptAllowance: allowance.standardAttemptAllowance,
+      additionalAttemptsGranted: allowance.additionalAttemptsGranted,
+      additionalAttemptsAvailable: allowance.additionalAttemptsAvailable,
+      totalAttemptAllowance: allowance.totalAttemptAllowance,
       hasSubmittedAttempt: submittedAttempts.length > 0,
       latestSubmitted,
       officialPost: type === "POST"
@@ -170,14 +178,15 @@ const createAssessmentReadService = ({
   const composePlayerAttempt = async (recovered) => {
     const attempt = plain(recovered.attempt);
     const assessment = plain(recovered.assessment);
-    let maxAttempts = recovered.maxAttempts ?? assessment.maxAttempts;
+    let maxAttempts = recovered.allowance?.totalAttemptAllowance
+      ?? recovered.maxAttempts ?? assessment.maxAttempts;
     if (maxAttempts == null) {
       const settings = await LessonAssessment.findByPk(attempt.assessmentId, {
         attributes: ["maxAttempts"],
       });
       maxAttempts = plain(settings)?.maxAttempts;
     }
-    const attemptsUsed = recovered.attemptsUsed
+    const attemptsUsed = recovered.allowance?.attemptsUsed ?? recovered.attemptsUsed
       ?? Math.max(0, Number(attempt.attemptNumber) - 1);
     const serialized = serializers.serializePlayerAttempt({
       assessment,
@@ -213,11 +222,15 @@ const createAssessmentReadService = ({
     await attemptService.startOrResumeAttempt({ assessmentId, studentId }),
   );
 
-  const canExposeAnswerReview = ({ assessment, submittedAttempts, activeAttempt }) => (
-    assessment.answerReviewPolicy === "AFTER_SUBMISSION"
-    || (assessment.answerReviewPolicy === "AFTER_FINAL_ATTEMPT"
-      && submittedAttempts.length >= Number(assessment.maxAttempts)
-      && !activeAttempt)
+  const canExposeAnswerReview = ({ assessment, submittedAttempts = [], activeAttempt = null }) => (
+    allowanceService.isAnswerReviewEligible({
+      assessment,
+      attempts: [
+        ...submittedAttempts.map((attempt) => ({ ...plain(attempt), status: ATTEMPT_STATUSES.SUBMITTED })),
+        ...(activeAttempt ? [activeAttempt] : []),
+      ],
+      grants: [],
+    })
   );
 
   const resultAttributes = [
@@ -287,9 +300,8 @@ const createAssessmentReadService = ({
       throw new AssessmentApiError(404, "ATTEMPT_NOT_FOUND", "Assessment attempt was not found");
     }
     const submittedAttempts = attempts.filter((row) => row.status === ATTEMPT_STATUSES.SUBMITTED);
-    const activeAttempt = attempts.find((row) => (
-      [ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING].includes(row.status)
-    )) ?? null;
+    const grants = await allowanceService.loadGrants({ assessmentId: assessment.id, studentId });
+    const allowance = allowanceService.summarizeAllowance({ assessment, attempts, grants });
     const officialGrade = assessment.type === "POST"
       ? selectors.selectOfficialPostAttempt(submittedAttempts) : null;
     const firstPost = assessment.type === "POST"
@@ -323,6 +335,7 @@ const createAssessmentReadService = ({
         submittedAt: attempt.submittedAt,
         ...(assessment.type === "PRE" ? { diagnosticCompleted: true } : {}),
         ...(assessment.type === "PRE" ? { baselineEligible: safe.result.baselineEligible } : {}),
+        ...(assessment.type === "PRE" ? { supplementalDiagnostic: attempt.preBaselineStatus === "SUPPLEMENTAL" } : {}),
         scoreVisible,
         ...(scoreVisible ? {
           pointsEarned: safe.result.pointsEarned,
@@ -332,9 +345,12 @@ const createAssessmentReadService = ({
         ...(assessment.type === "POST" ? { passed: safe.result.passed } : {}),
       },
       attempts: {
-        used: submittedAttempts.length,
-        max: Number(assessment.maxAttempts),
-        remaining: Math.max(0, Number(assessment.maxAttempts) - submittedAttempts.length),
+        used: allowance.attemptsUsed,
+        max: allowance.totalAttemptAllowance,
+        remaining: allowance.attemptsRemaining,
+        standard: allowance.standardAttemptAllowance,
+        additionalGranted: allowance.additionalAttemptsGranted,
+        additionalAvailable: allowance.additionalAttemptsAvailable,
       },
     };
     if (safe.officialGrade) {
@@ -356,7 +372,7 @@ const createAssessmentReadService = ({
       output.prePercentage = safe.prePercentage;
       output.learningGain = { ...safe.learningGain, prePercentage: safe.prePercentage };
     }
-    const reviewAvailable = canExposeAnswerReview({ assessment, submittedAttempts, activeAttempt });
+    const reviewAvailable = allowanceService.isAnswerReviewEligible({ assessment, attempts, grants });
     let questions = [];
     let responses = [];
     if (reviewAvailable) {

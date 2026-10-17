@@ -85,6 +85,17 @@ test("PRE is diagnostic and never receives inferred pass/fail semantics", () => 
   assert.equal(model.metrics.postPassRate, null);
 });
 
+test("supplemental PRE remains in history without replacing the original baseline", () => {
+  const alan = student(1, "Alan", "Turing");
+  const model = buildAssessmentAnalytics({ prePayload: prePayload([
+    result(alan, { attemptId: "pre-1", attemptNumber: 1, percentage: 40, preBaselineStatus: "VALID" }),
+    result(alan, { attemptId: "pre-2", attemptNumber: 2, percentage: 90, preBaselineStatus: "SUPPLEMENTAL" }),
+  ]) });
+  assert.equal(model.students[0].preAttempt.attemptId, "pre-1");
+  assert.equal(model.students[0].history[1].baselineLabel, "Supplemental diagnostic — not a baseline");
+  assert.equal(model.metrics.averageAllPrePercentage, 40);
+});
+
 test("mixed baseline provenance separates diagnostic averages, counts, and paired gain", () => {
   const validNegative = student(1, "Valid", "Negative");
   const validZero = student(2, "Valid", "Zero");

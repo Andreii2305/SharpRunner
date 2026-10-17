@@ -28,6 +28,7 @@ const LessonAssessment = require("./LessonAssessment");
 const AssessmentQuestion = require("./AssessmentQuestion");
 const AssessmentChoice = require("./AssessmentChoice");
 const AssessmentAttempt = require("./AssessmentAttempt");
+const AssessmentAttemptGrant = require("./AssessmentAttemptGrant");
 const AssessmentResponse = require("./AssessmentResponse");
 const AssessmentCodingTestCase = require("./AssessmentCodingTestCase");
 
@@ -401,6 +402,36 @@ AssessmentAttempt.belongsTo(User, {
   as: "student",
   onDelete: "RESTRICT",
 });
+LessonAssessment.hasMany(AssessmentAttemptGrant, {
+  foreignKey: "assessmentId", as: "attemptGrants", onDelete: "RESTRICT",
+});
+AssessmentAttemptGrant.belongsTo(LessonAssessment, {
+  foreignKey: "assessmentId", as: "assessment", onDelete: "RESTRICT",
+});
+Classroom.hasMany(AssessmentAttemptGrant, {
+  foreignKey: "classroomId", as: "assessmentAttemptGrants", onDelete: "RESTRICT",
+});
+AssessmentAttemptGrant.belongsTo(Classroom, {
+  foreignKey: "classroomId", as: "classroom", onDelete: "RESTRICT",
+});
+User.hasMany(AssessmentAttemptGrant, {
+  foreignKey: "studentId", as: "assessmentAttemptGrants", onDelete: "RESTRICT",
+});
+AssessmentAttemptGrant.belongsTo(User, {
+  foreignKey: "studentId", as: "student", onDelete: "RESTRICT",
+});
+User.hasMany(AssessmentAttemptGrant, {
+  foreignKey: "grantedByUserId", as: "grantedAssessmentAttempts", onDelete: "RESTRICT",
+});
+AssessmentAttemptGrant.belongsTo(User, {
+  foreignKey: "grantedByUserId", as: "grantedBy", onDelete: "RESTRICT",
+});
+AssessmentAttempt.hasOne(AssessmentAttemptGrant, {
+  foreignKey: "consumedByAttemptId", as: "consumingGrant", onDelete: "RESTRICT",
+});
+AssessmentAttemptGrant.belongsTo(AssessmentAttempt, {
+  foreignKey: "consumedByAttemptId", as: "consumedByAttempt", onDelete: "RESTRICT",
+});
 AssessmentAttempt.hasMany(AssessmentResponse, {
   foreignKey: "attemptId",
   as: "responses",
@@ -463,6 +494,7 @@ module.exports = {
   AssessmentQuestion,
   AssessmentChoice,
   AssessmentAttempt,
+  AssessmentAttemptGrant,
   AssessmentResponse,
   AssessmentCodingTestCase,
 };

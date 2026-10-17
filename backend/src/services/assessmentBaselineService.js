@@ -105,6 +105,9 @@ const createAssessmentBaselineService = ({ models = defaultModels } = {}) => {
 
   const classifyAtSubmission = async ({ assessment, attempt, studentId, transaction }) => {
     if (assessment?.type !== ASSESSMENT_TYPES.PRE) return null;
+    if (attempt?.preBaselineStatus === PRE_BASELINE_STATUSES.SUPPLEMENTAL) {
+      return PRE_BASELINE_STATUSES.SUPPLEMENTAL;
+    }
     const rows = await lockLessonProgressRows({
       lessonKey: assessment.lessonKey,
       studentId,

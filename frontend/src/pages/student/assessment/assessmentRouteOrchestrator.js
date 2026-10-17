@@ -420,7 +420,7 @@ export const createAssessmentRouteOrchestrator = (services) => {
     isCurrent = () => true,
   } = {}) => {
     const route = parseAssessmentPageRoute(params);
-    if (!route || route.type !== "POST") return { kind: "INVALID_ROUTE" };
+    if (!route) return { kind: "INVALID_ROUTE" };
     if (!isCurrent()) return { kind: "STALE" };
 
     try {
@@ -436,23 +436,21 @@ export const createAssessmentRouteOrchestrator = (services) => {
       if (!lessonProgression) return { kind: "UNAVAILABLE", route, progression };
       const shared = context(route, progression, lessonProgression);
 
-      if (
+      if (route.type === "POST" &&
         lessonProgression.postPassed === true
         || (
           lessonProgression.postPassingRequired === false
           && lessonProgression.postCompleted === true
         )
       ) return { kind: "COMPLETED", ...shared };
-      const attemptsExhausted = (
+      let attemptsExhausted = route.type === "POST" && (
         lessonProgression.postAttemptsExhausted === true
         || Number(lessonProgression.postAttemptsRemaining) <= 0
       );
-      const activeRecoveryExpected = lessonProgression.postAttemptInProgress === true;
+      const activeRecoveryExpected = route.type === "POST" && lessonProgression.postAttemptInProgress === true;
       if (attemptsExhausted && !activeRecoveryExpected) {
         return { kind: "EXHAUSTED", ...shared };
       }
-      if (lessonProgression.postPassingRequired !== true) throw stateMismatch();
-
       const discovery = await services.discoverAssessment({
         classroomId: route.classroomId,
         lessonKey: route.lessonKey,
@@ -464,7 +462,9 @@ export const createAssessmentRouteOrchestrator = (services) => {
         return { kind: "UNAVAILABLE", ...shared, discovery };
       }
       const assessmentId = Number(discovery.assessment.id);
-      verifyDiscovery(route, Number(lessonProgression.postAssessmentId) || null, discovery);
+      verifyDiscovery(route, Number(route.type === "POST"
+        ? lessonProgression.postAssessmentId : lessonProgression.preAssessmentId) || null, discovery);
+      attemptsExhausted = Number(discovery.status.attemptsRemaining) <= 0;
 
       const activeAttemptId = Number(discovery.status.activeAttemptId);
       if (isPositiveInteger(activeAttemptId)) {

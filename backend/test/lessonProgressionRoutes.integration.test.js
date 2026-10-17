@@ -9,7 +9,7 @@ const { DEFAULT_LEVEL_PROGRESS, PLAYABLE_LEVEL_KEYS } = require("../src/constant
 const { TERMS_VERSION, PRIVACY_POLICY_VERSION } = require("../src/constants/policyVersions");
 const {
   User, UserProgress, ClassroomMembership, LevelContentOverride,
-  LessonAssessment, AssessmentAttempt,
+  LessonAssessment, AssessmentAttempt, AssessmentAttemptGrant,
 } = require("../src/models");
 
 process.env.JWT_SECRET = "lesson-progression-route-test-secret";
@@ -433,6 +433,7 @@ const withProgressRoute = async (callback, {
         status: "SUBMITTED", percentage: 100, passed: true,
       }];
     }],
+    [AssessmentAttemptGrant, "findAll", async () => []],
   ];
   const originals = stubs.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, replacement] of stubs) target[key] = replacement;
@@ -656,6 +657,7 @@ const withMultipleClassroomProgressRoutes = async (callback) => {
         attemptNumber: 1,
       }] : [];
     }],
+    [AssessmentAttemptGrant, "findAll", async () => []],
   ];
   const originals = stubs.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, replacement] of stubs) target[key] = replacement;

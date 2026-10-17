@@ -60,6 +60,18 @@ test("student table and local history detail are accessible and not a leaderboar
   assert.equal(source.includes("sessionStorage"), false);
 });
 
+test("attempt-grant confirmation identifies the exact classroom and lesson", () => {
+  for (const marker of [
+    "Grant one additional attempt",
+    "classroomLabel={assessmentClassroomLabel(selectedClassroom)}",
+    "lessonTitle={selectedLesson?.title ?? lessonKey}",
+    "Current total allowance:",
+    "After this grant:",
+    "Answers may already have been available. This retake can affect the official POST grade.",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.equal(source.includes("value={classroom.id}"), true);
+});
+
 test("table and history present authoritative points without hiding independently available percentages", () => {
   for (const marker of [
     "attemptPointsLabel", "Percentage unavailable", "PRE attempt", "POST attempt",

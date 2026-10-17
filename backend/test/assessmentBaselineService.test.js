@@ -303,3 +303,21 @@ test("legacy null resolves UNKNOWN without persistence", () => {
   assert.equal(effectivePreBaselineStatus(attempt), PRE_BASELINE_STATUSES.UNKNOWN);
   assert.equal(saves, 0);
 });
+
+test("supplemental PRE remains non-baseline at submission even after game activity", async () => {
+  const service = createAssessmentBaselineService({
+    models: {
+      UserProgress: {
+        bulkCreate: async () => {},
+        findAll: async () => [{ levelKey: "arrays-level-1", startedAt: new Date() }],
+      },
+    },
+  });
+  const status = await service.classifyAtSubmission({
+    assessment: { type: "PRE", lessonKey: "arrays" },
+    attempt: { preBaselineStatus: "SUPPLEMENTAL" },
+    studentId: 42,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+  });
+  assert.equal(status, "SUPPLEMENTAL");
+});

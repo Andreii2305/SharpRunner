@@ -181,7 +181,8 @@ export default function AssessmentResult({
             >
               {syncChecking
                 ? "Checking for updates"
-                : retakeStatus === "starting" ? "Starting retake..." : "Retake Post-Test"}
+                : retakeStatus === "starting" ? "Starting retake..."
+                  : model.type === "PRE" ? "Take supplemental diagnostic" : "Retake Post-Test"}
             </button>
           )}
           <a className={styles.secondaryAction} href={model.returnHref}>Back to Lesson Map</a>

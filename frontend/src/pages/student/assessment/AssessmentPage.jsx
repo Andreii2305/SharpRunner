@@ -736,7 +736,7 @@ function AssessmentPage() {
     return operation;
   }, [classroomId, lessonKey, orchestrator, outcome, parsedRoute, type]);
   const startRetake = useCallback(() => {
-    if (!parsedRoute || parsedRoute.type !== "POST") return Promise.resolve(null);
+    if (!parsedRoute) return Promise.resolve(null);
     if (retakeInFlight.current) return retakeInFlight.current;
     const current = latestState.current;
     dispatchForCurrentAttempt({ type: "RETAKE_STARTED" });

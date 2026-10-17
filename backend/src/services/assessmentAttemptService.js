@@ -3,6 +3,7 @@ const defaultSequelize = require("../config/database");
 const defaultModels = require("../models");
 const defaultProgressionService = require("./lessonProgressionService");
 const { createAssessmentBaselineService } = require("./assessmentBaselineService");
+const { createAssessmentAttemptAllowanceService } = require("./assessmentAttemptAllowanceService");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const { MAX_SOURCE_BYTES } = require("./secureCodingExecutionContract");
 const {
@@ -18,7 +19,6 @@ const {
 const {
   assertAssessmentStructureMutable: assertStructureMutablePolicy,
   calculateAssessmentScore,
-  selectOfficialPostAttempt,
   shapePlayerAssessment,
   validateAssessmentForPublish,
 } = require("./assessmentPolicyService");
@@ -125,6 +125,7 @@ const createAssessmentAttemptService = ({
   now = () => new Date(),
   progressionService = defaultProgressionService,
   baselineService = createAssessmentBaselineService({ models }),
+  allowanceService = createAssessmentAttemptAllowanceService({ models }),
   secureCodingExecution = defaultSecureCodingExecution,
   environment = process.env,
   createLeaseToken = () => randomBytes(32).toString("base64url"),
@@ -135,6 +136,7 @@ const createAssessmentAttemptService = ({
     AssessmentCodingTestCase,
     AssessmentQuestion,
     AssessmentResponse,
+    AssessmentAttemptGrant,
     ClassroomMembership,
     LessonAssessment,
   } = models;
@@ -241,68 +243,14 @@ const createAssessmentAttemptService = ({
     }));
     return { questionOrder, choiceOrder };
   };
-
-  const createTeacherGrantedPostAttempt = async ({
-    classroomId,
-    assessmentId,
-    studentId,
-    transaction,
-  }) => {
-    if (!transaction?.LOCK?.UPDATE) {
-      fail("TRANSACTION_REQUIRED", "A caller transaction is required");
-    }
-
-    const assessmentRow = await requireAssessment(assessmentId, transaction, true);
-    const assessment = plain(assessmentRow);
-    if (!sameId(assessment.classroomId, classroomId)) {
-      fail("ASSESSMENT_NOT_FOUND", "Assessment was not found");
-    }
-    if (assessment.isPublished !== true || assessment.type !== "POST"
-      || assessment.requirePassingForCompletion !== true) {
-      fail(
-        "POST_RECOVERY_NOT_ALLOWED",
-        "An additional POST attempt cannot be granted for this assessment",
-      );
-    }
-    await requireMembership(assessment, studentId, transaction);
-
-    const attempts = await AssessmentAttempt.findAll({
-      where: { assessmentId: assessment.id, studentId },
-      transaction,
-      lock: transaction.LOCK.UPDATE,
-    });
-    const submittedCount = attempts.filter(
-      (attempt) => plain(attempt).status === ATTEMPT_STATUSES.SUBMITTED,
-    ).length;
-    if (submittedCount < Number(assessment.maxAttempts)) {
-      fail("POST_ATTEMPTS_NOT_EXHAUSTED", "Ordinary POST attempts are not exhausted");
-    }
-    if (selectOfficialPostAttempt(attempts)?.passed === true) {
-      fail("POST_ALREADY_PASSED", "The student already has a passing POST result");
-    }
-    if (attempts.some((attempt) => [ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING]
-      .includes(plain(attempt).status))) {
-      fail("ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt");
-    }
-
-    requirePublishedGraph(assessment);
-    const attemptNumber = attempts.reduce(
-      (maximum, attempt) => Math.max(maximum, Number(plain(attempt).attemptNumber)),
-      0,
-    ) + 1;
-    const order = buildOrder(assessment);
-    return AssessmentAttempt.create({
-      assessmentId: assessment.id,
-      classroomId: assessment.classroomId,
-      studentId,
-      attemptNumber,
-      status: ATTEMPT_STATUSES.IN_PROGRESS,
-      assessmentVersion: assessment.version,
-      startedAt: now(),
-      questionOrder: order.questionOrder,
-      choiceOrder: order.choiceOrder,
-    }, { transaction });
-  };
+  const safeAllowance = (allowance) => ({
+    standardAttemptAllowance: allowance.standardAttemptAllowance,
+    additionalAttemptsGranted: allowance.additionalAttemptsGranted,
+    additionalAttemptsAvailable: allowance.additionalAttemptsAvailable,
+    totalAttemptAllowance: allowance.totalAttemptAllowance,
+    attemptsUsed: allowance.attemptsUsed,
+    attemptsRemaining: allowance.attemptsRemaining,
+  });
 
   const startOrResumeAttempt = ({ assessmentId, studentId }) => sequelize.transaction(async (transaction) => {
     const assessmentRow = await requireAssessment(assessmentId, transaction, true);
@@ -329,11 +277,16 @@ const createAssessmentAttemptService = ({
     }
     if (active) {
       requireMatchingVersion(active, assessment);
+      const attempts = await AssessmentAttempt.findAll({
+        where: { assessmentId: assessment.id, studentId }, transaction,
+      });
+      const grants = await allowanceService.loadGrants({ assessmentId: assessment.id, studentId, transaction });
       return {
         attempt: safeAttempt(active),
         assessment: orderedPlayerAssessment(assessment, active),
         resumed: true,
         responses: await loadSafeResponses(active.id, transaction),
+        allowance: safeAllowance(allowanceService.summarizeAllowance({ assessment, attempts, grants })),
       };
     }
 
@@ -342,12 +295,17 @@ const createAssessmentAttemptService = ({
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
-    const submittedCount = attempts.filter(
-      (attempt) => attempt.status === ATTEMPT_STATUSES.SUBMITTED,
-    ).length;
-    if (submittedCount >= Number(assessment.maxAttempts)) {
+    const grants = await allowanceService.loadGrants({
+      assessmentId: assessment.id, studentId, transaction, lock: true,
+    });
+    const allowance = allowanceService.summarizeAllowance({ assessment, attempts, grants });
+    if (allowance.attemptsRemaining < 1) {
       fail("MAX_ATTEMPTS", "Maximum assessment attempts reached");
     }
+    const ordinaryAllowanceExhausted = allowance.attemptsUsed >= allowance.standardAttemptAllowance;
+    const unusedGrant = ordinaryAllowanceExhausted
+      ? (grants.find((grant) => plain(grant).consumedByAttemptId == null) ?? null)
+      : null;
 
     const attemptNumber = attempts.reduce(
       (maximum, attempt) => Math.max(maximum, Number(attempt.attemptNumber)),
@@ -355,7 +313,9 @@ const createAssessmentAttemptService = ({
     ) + 1;
     const order = buildOrder(assessment);
     const preBaselineStatus = assessment.type === ASSESSMENT_TYPES.PRE
-      ? await baselineService.classifyAtCreation({ assessment, studentId, transaction })
+      ? (unusedGrant
+        ? "SUPPLEMENTAL"
+        : await baselineService.classifyAtCreation({ assessment, studentId, transaction }))
       : null;
     const created = await AssessmentAttempt.create({
       assessmentId: assessment.id,
@@ -370,11 +330,20 @@ const createAssessmentAttemptService = ({
       preBaselineStatus,
     }, { transaction });
 
+    if (unusedGrant && AssessmentAttemptGrant) {
+      await unusedGrant.update({ consumedByAttemptId: created.id, consumedAt: now() }, { transaction });
+    }
+
     return {
       attempt: safeAttempt(created),
       assessment: orderedPlayerAssessment(assessment, created),
       resumed: false,
       responses: [],
+      allowance: safeAllowance(allowanceService.summarizeAllowance({
+        assessment,
+        attempts: [...attempts, created],
+        grants,
+      })),
     };
   });
 
@@ -398,6 +367,13 @@ const createAssessmentAttemptService = ({
       assessment: orderedPlayerAssessment(assessment, attempt),
       resumed: true,
       responses: await loadSafeResponses(attempt.id, transaction),
+      allowance: safeAllowance(allowanceService.summarizeAllowance({
+        assessment,
+        attempts: await AssessmentAttempt.findAll({
+          where: { assessmentId: assessment.id, studentId }, transaction,
+        }),
+        grants: await allowanceService.loadGrants({ assessmentId: assessment.id, studentId, transaction }),
+      })),
     };
   });
 
@@ -813,7 +789,6 @@ const createAssessmentAttemptService = ({
 
   return {
     assertAssessmentStructureMutable,
-    createTeacherGrantedPostAttempt,
     getActiveAttempt,
     getAttemptResult,
     runPublicCodingQuestion,

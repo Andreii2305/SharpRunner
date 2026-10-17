@@ -89,7 +89,7 @@ const mutationHarness = (overrides = {}, {
 } = {}) => {
   const graph = assessment({ shuffleQuestions: true, shuffleChoices: true,
     requirePassingForCompletion: true, ...overrides });
-  const store = { assessments: [graph], attempts: [], responses: [],
+  const store = { assessments: [graph], attempts: [], responses: [], grants: [],
     memberships: [{ classroomId: 7, studentId: 42, status: "active" }], saves: 0,
     graphReads: 0, responseReads: 0, siblingQueries: [],
     progress: DEFAULT_LEVEL_PROGRESS.map((level) => ({
@@ -147,6 +147,9 @@ const mutationHarness = (overrides = {}, {
     store.attempts.push(row);
     return row;
   });
+  stub(models.AssessmentAttemptGrant, "findAll", async ({ where }) => (
+    store.grants.filter((row) => matches(row, where))
+  ));
   stub(models.AssessmentResponse, "findOne", async ({ where }) => persisted(store.responses.find((row) => matches(row, where))));
   stub(models.AssessmentResponse, "findAll", async ({ where }) => {
     store.responseReads += 1;
@@ -363,7 +366,8 @@ test("submission maps the header to Phase B submissionKey and returns the result
   assert.deepEqual(payload.result, { attemptId: id, type: "POST", status: "SUBMITTED", attemptNumber: 1,
     submittedAt: h.store.attempts[0].submittedAt.toISOString(), scoreVisible: true,
     pointsEarned: 2, maxPoints: 2, percentage: 100, passed: true });
-  assert.deepEqual(payload.attempts, { used: 1, max: 3, remaining: 2 });
+  assert.deepEqual(payload.attempts, { used: 1, max: 3, remaining: 2,
+    standard: 3, additionalGranted: 0, additionalAvailable: 0 });
   assert.equal(payload.reviewAvailable, false);
   assert.equal("review" in payload, false);
   assertNoForbiddenKeys(payload);
@@ -417,7 +421,8 @@ test("PRE result is diagnostic and omits passed", async () => {
   assert.equal(payload.result.diagnosticCompleted, true);
   assert.equal("passed" in payload.result, false);
   assert.equal("officialGrade" in payload, false);
-  assert.deepEqual(payload.attempts, { used: 1, max: 1, remaining: 0 });
+  assert.deepEqual(payload.attempts, { used: 1, max: 1, remaining: 0,
+    standard: 1, additionalGranted: 0, additionalAvailable: 0 });
   assertNoForbiddenKeys(payload);
   const exhausted = await h.start();
   assert.equal(exhausted.response.status, 409);
@@ -635,6 +640,7 @@ test("AFTER_FINAL_ATTEMPT requires exhaustion and no active attempt", async () =
   assert.equal("review" in active.payload, false);
 });
 
+/* Replaced by grant-ledger and explicit Start tests.
 test("teacher recovery uses the normal student pipeline and recalculates final-attempt review", async () => {
   const h = mutationHarness();
   const originalMaxAttempts = h.graph.maxAttempts;
@@ -689,6 +695,7 @@ test("teacher recovery and ordinary student start serialize to at most one activ
   if (student.response.status === 200) assert.equal(student.payload.attempt.resumed, true);
   else assert.equal(student.payload.code, "MAX_ATTEMPTS_REACHED");
 });
+*/
 
 test("concurrent same-key submissions persist one immutable result", async () => {
   const h = mutationHarness();
@@ -870,6 +877,7 @@ test("discovery returns unavailable assessment state without a graph", async () 
 });
 
 test("discovery returns a null submitted attempt ID while only an active attempt exists", async () => {
+  stub(models.AssessmentAttemptGrant, "findAll", async () => []);
   stub(User, "findByPk", async () => activeUser(42));
   stub(models.ClassroomMembership, "findOne", async () => ({
     id: 1, classroomId: 7, studentId: 42, status: "active",
@@ -897,6 +905,7 @@ test("discovery returns a null submitted attempt ID while only an active attempt
 });
 
 test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without lesson completion fields", async () => {
+  stub(models.AssessmentAttemptGrant, "findAll", async () => []);
   stub(User, "findByPk", async () => activeUser(42));
   stub(models.ClassroomMembership, "findOne", async () => ({ id: 1 }));
   stub(models.LessonAssessment, "findOne", async () => assessment({
@@ -941,6 +950,7 @@ test("discovery returns hasSubmittedAttempt and PRE diagnosticCompleted without 
 });
 
 test("discovery never exposes questions choices or grading configuration", async () => {
+  stub(models.AssessmentAttemptGrant, "findAll", async () => []);
   stub(User, "findByPk", async () => activeUser(42));
   stub(models.ClassroomMembership, "findOne", async () => ({ id: 1 }));
   stub(models.LessonAssessment, "findOne", async () => assessment({
@@ -1005,7 +1015,7 @@ test("discovery never exposes questions choices or grading configuration", async
   assert.equal(payload.status.activeAttemptId, 31);
   assert.equal(payload.status.latestSubmittedAttemptId, 32);
   assert.equal(payload.status.attemptsUsed, 2);
-  assert.equal(payload.status.attemptsRemaining, 1);
+  assert.equal(payload.status.attemptsRemaining, 0);
   assert.equal(payload.status.unlocked, true);
   assert.equal(payload.status.lockReason, null);
   assert.deepEqual(payload.status.officialPost, { attemptNumber: 3, percentage: 80 });
@@ -1022,6 +1032,7 @@ test("discovery never exposes questions choices or grading configuration", async
 });
 
 test("discovery reports exact progression stage without exposing a graph or hidden numeric results", async () => {
+  stub(models.AssessmentAttemptGrant, "findAll", async () => []);
   stub(User, "findByPk", async () => activeUser(42));
   stub(models.ClassroomMembership, "findOne", async () => ({
     id: 1, classroomId: 7, studentId: 42, status: "active",

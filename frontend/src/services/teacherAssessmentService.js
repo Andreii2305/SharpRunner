@@ -103,6 +103,71 @@ export const getTeacherAssessmentResults = async ({ classroomId, assessmentId, s
   return response.data;
 };
 
+const additionalAttemptPath = ({ classroomId, assessmentId, studentId }) => (
+  `${base(classroomId)}/${segment(assessmentId)}/students/${segment(studentId)}/additional-attempt`
+);
+
+export const getAdditionalAttemptEligibility = async ({ signal, ...identity }) => {
+  const response = await axios.get(buildApiUrl(additionalAttemptPath(identity)), config(signal));
+  return response.data;
+};
+
+export const grantAdditionalAssessmentAttempt = async ({ reason, idempotencyKey, signal, ...identity }) => {
+  const response = await axios.post(buildApiUrl(additionalAttemptPath(identity)), { reason: reason || null }, {
+    ...config(signal),
+    headers: { ...getAuthHeaders(), "Idempotency-Key": idempotencyKey },
+  });
+  return response.data;
+};
+
+export const createAttemptGrantController = ({ request, reconcile, onPending, onSuccess, onError }) => {
+  let scope = "";
+  let version = 0;
+  let pending = false;
+  let controller = null;
+  return {
+    setScope(nextScope) {
+      if (scope === nextScope) return;
+      scope = nextScope;
+      version += 1;
+      controller?.abort();
+      controller = null;
+      pending = false;
+      onPending(false);
+    },
+    async grant(input) {
+      if (pending || !input?.scope || input.scope !== scope) return false;
+      pending = true;
+      const requestVersion = ++version;
+      controller = new AbortController();
+      onPending(true);
+      try {
+        let result;
+        try {
+          result = await request({ ...input, signal: controller.signal });
+        } catch (error) {
+          if (error?.response || error?.code === "ERR_CANCELED") throw error;
+          const authoritative = await reconcile({ ...input, signal: controller.signal });
+          if (Number(authoritative?.allowance?.additionalAttemptsAvailable) < 1) throw error;
+          result = { ...authoritative, reconciled: true };
+        }
+        if (requestVersion !== version || input.scope !== scope) return false;
+        onSuccess(result);
+        return true;
+      } catch (error) {
+        if (requestVersion === version && input.scope === scope && error?.code !== "ERR_CANCELED") onError(error);
+        return false;
+      } finally {
+        if (requestVersion === version) {
+          pending = false;
+          controller = null;
+          onPending(false);
+        }
+      }
+    },
+  };
+};
+
 const downloadFilename = (headers, fallback) => {
   const disposition = typeof headers?.get === "function"
     ? headers.get("content-disposition")
@@ -228,6 +293,15 @@ const SAFE_MESSAGES = Object.freeze({
   FORBIDDEN: "You do not have permission to manage this classroom.",
   ASSESSMENT_NOT_FOUND: "This assessment could not be found in the selected classroom.",
   INVALID_LESSON_KEY: "Select an eligible academic lesson.",
+  ACTIVE_ATTEMPT_EXISTS: "The student already has an active attempt.",
+  UNUSED_GRANT_EXISTS: "The student already has an unused teacher-granted attempt.",
+  ATTEMPTS_REMAINING: "The student still has an unused standard attempt.",
+  NO_SUBMITTED_ATTEMPT: "The student must submit an attempt before another can be granted.",
+  POST_ALREADY_PASSED: "The student has already passed this required POST assessment.",
+  POST_OUTCOME_UNAVAILABLE: "The required POST outcome is unavailable, so another attempt cannot be granted safely.",
+  IDEMPOTENCY_KEY_REUSED: "This request key was already used for a different grant.",
+  CLASSROOM_ARCHIVED: "Restore this classroom before granting an additional attempt.",
+  GRANT_REQUEST_CONFLICT: "Another grant request was processed. Eligibility has been refreshed.",
 });
 
 export const normalizeTeacherAssessmentError = (source) => {

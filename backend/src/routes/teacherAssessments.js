@@ -71,6 +71,15 @@ const assertNoBody = (req) => {
   }
 };
 
+const readGrantBody = (req) => {
+  const body = readObjectBody(req);
+  if (Object.keys(body).some((key) => key !== "reason")
+    || (Object.hasOwn(body, "reason") && body.reason !== null && typeof body.reason !== "string")) {
+    throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+  }
+  return { reason: body.reason ?? null, idempotencyKey: req.get("Idempotency-Key") };
+};
+
 const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
   const router = express.Router();
   router.use(authMiddleware, requireRole("teacher", "admin"));
@@ -217,15 +226,34 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
     }
   });
 
-  router.post(
+  router.get(
     "/classrooms/:classroomId/assessments/:assessmentId/students/:studentId/additional-attempt",
     async (req, res) => {
       try {
         assertNoBody(req);
-        const payload = await service.grantAdditionalPostAttempt({
+        const payload = await service.getAdditionalAttemptEligibility({
           classroomId: parsePositiveId(req.params.classroomId),
           assessmentId: parsePositiveId(req.params.assessmentId),
           studentId: parsePositiveId(req.params.studentId),
+          ...actor(req),
+        });
+        return res.status(200).json(payload);
+      } catch (error) {
+        return sendAssessmentError(res, error);
+      }
+    },
+  );
+
+  router.post(
+    "/classrooms/:classroomId/assessments/:assessmentId/students/:studentId/additional-attempt",
+    async (req, res) => {
+      try {
+        const input = readGrantBody(req);
+        const payload = await service.grantAdditionalAttempt({
+          classroomId: parsePositiveId(req.params.classroomId),
+          assessmentId: parsePositiveId(req.params.assessmentId),
+          studentId: parsePositiveId(req.params.studentId),
+          ...input,
           ...actor(req),
         });
         return res.status(201).json(payload);

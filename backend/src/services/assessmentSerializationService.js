@@ -142,6 +142,12 @@ const serializeDiscoveryStatus = (input = {}) => {
     status.diagnosticCompleted = status.hasSubmittedAttempt;
   }
   if (input.attemptsRemaining != null) status.attemptsRemaining = Number(input.attemptsRemaining);
+  for (const field of [
+    "standardAttemptAllowance", "additionalAttemptsGranted",
+    "additionalAttemptsAvailable", "totalAttemptAllowance",
+  ]) {
+    if (input[field] != null) status[field] = Number(input[field]);
+  }
   if (input.activeAttemptId != null) status.activeAttemptId = input.activeAttemptId;
   if (assessment?.showScoreAfterSubmission === true && input.latestSubmitted) {
     const latest = plain(input.latestSubmitted);

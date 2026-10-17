@@ -46,12 +46,13 @@ const token = (id) => jwt.sign(
   { expiresIn: "5m" },
 );
 
-const request = async (path, { actorId, method = "GET", body } = {}) => {
+const request = async (path, { actorId, method = "GET", body, headers = {} } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
       ...(actorId ? { Authorization: `Bearer ${token(actorId)}` } : {}),
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...headers,
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
@@ -149,6 +150,7 @@ const exhaustedFailedAttempts = (count = 3) => Array.from({ length: count }, (_,
 const cloneRows = (rows) => rows.map((row) => ({ ...row }));
 const matches = (row, where = {}) => Object.entries(where).every(([key, value]) => {
   if (Array.isArray(value)) return value.includes(row[key]);
+  if (value?.[Op.in]) return value[Op.in].includes(row[key]);
   return row[key] === value;
 });
 
@@ -164,6 +166,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
     choices: cloneRows(choices || baseChoices()),
     codingTests: cloneRows(codingTests || []),
     attempts: cloneRows(attempts || []),
+    grants: [],
     responses: cloneRows(responses || []),
     memberships: cloneRows(memberships || [{ classroomId: 7, studentId: 42, status: "active" }]),
     progress: cloneRows(progress || []),
@@ -223,7 +226,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
   };
 
   const restoreSnapshot = (snapshot) => {
-    for (const key of ["assessments", "questions", "choices", "codingTests", "attempts"]) {
+    for (const key of ["assessments", "questions", "choices", "codingTests", "attempts", "grants"]) {
       store[key].splice(0, store[key].length, ...cloneRows(snapshot[key]));
     }
   };
@@ -236,6 +239,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
       choices: cloneRows(store.choices),
       codingTests: cloneRows(store.codingTests),
       attempts: cloneRows(store.attempts),
+      grants: cloneRows(store.grants),
     };
     try {
       return await callback({ LOCK: { UPDATE: "UPDATE" } });
@@ -307,6 +311,17 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
     store.events.push("attempt-create");
     const row = { id: Math.max(0, ...store.attempts.map(({ id }) => id)) + 1, ...values };
     store.attempts.push(row);
+    return row;
+  });
+  stub(models.AssessmentAttemptGrant, "findOne", async ({ where }) => (
+    store.grants.find((row) => matches(row, where)) || null
+  ));
+  stub(models.AssessmentAttemptGrant, "findAll", async ({ where }) => (
+    store.grants.filter((row) => matches(row, where))
+  ));
+  stub(models.AssessmentAttemptGrant, "create", async (values) => {
+    const row = { id: store.grants.length + 1, createdAt: new Date("2026-10-16T00:00:00.000Z"), ...values };
+    store.grants.push(row);
     return row;
   });
   stub(models.ClassroomMembership, "findOne", async ({ where }) => (
@@ -583,6 +598,7 @@ test("teacher assessment routes require authentication and teacher or admin role
   assert.equal((await request("/api/teacher/classrooms/7/assessments?lessonKey=arrays", { actorId: 9 })).response.status, 200);
 });
 
+/* Obsolete immediate-attempt recovery contract retained below as historical test documentation.
 test("additional-attempt route requires authentication teacher role and exact classroom authority", async () => {
   const h = harness({
     assessments: [baseAssessment({ isPublished: true })],
@@ -752,6 +768,156 @@ test("additional-attempt route returns 201 with an attempt envelope and eight-fi
   assert.deepEqual(h.store.events.slice(-3), ["assessment-lock", "attempt-findAll", "attempt-create"]);
   assert.equal(h.store.attemptCounts, 0);
   assert.equal(h.store.assessments[0].maxAttempts, 3);
+});
+*/
+
+test("additional-attempt eligibility and grant preserve exact classroom authority and create no attempt", async () => {
+  const h = harness({
+    assessments: [baseAssessment({ isPublished: true })],
+    attempts: exhaustedFailedAttempts(),
+  });
+  const path = "/classrooms/7/assessments/12/students/42/additional-attempt";
+  const eligibility = await h.call(path);
+  assert.equal(eligibility.response.status, 200);
+  assert.equal(eligibility.payload.eligible, true);
+  assert.equal(eligibility.payload.allowance.attemptsRemaining, 0);
+  assert.equal(eligibility.payload.reviewPreviouslyAvailable, true);
+
+  const granted = await h.call(path, {
+    method: "POST",
+    body: { reason: "Additional support" },
+    headers: { "Idempotency-Key": "grant_test_key_001" },
+  });
+  assert.equal(granted.response.status, 201);
+  assert.equal(granted.payload.assessment.classroomId, 7);
+  assert.equal(granted.payload.allowance.additionalAttemptsAvailable, 1);
+  assert.equal(granted.payload.grant.reason, "Additional support");
+  assert.equal(h.store.attempts.length, 3);
+  assert.equal(h.store.grants.length, 1);
+
+  const wrongClass = await h.call(
+    "/classrooms/8/assessments/12/students/42/additional-attempt",
+  );
+  assert.equal(wrongClass.response.status, 403);
+});
+
+test("additional-attempt grant stays idempotent after consumption and rejects key reuse", async () => {
+  const h = harness({
+    assessments: [baseAssessment({ isPublished: true })],
+    attempts: exhaustedFailedAttempts(),
+  });
+  const path = "/classrooms/7/assessments/12/students/42/additional-attempt";
+  const input = { method: "POST", body: { reason: null }, headers: { "Idempotency-Key": "grant_test_key_002" } };
+  assert.equal((await h.call(path, input)).response.status, 201);
+  const duplicate = await h.call(path, {
+    method: "POST", body: {}, headers: { "Idempotency-Key": "grant_test_key_003" },
+  });
+  assert.equal(duplicate.response.status, 409);
+  assert.equal(duplicate.payload.code, "UNUSED_GRANT_EXISTS");
+
+  h.store.grants[0].consumedByAttemptId = 99;
+  h.store.grants[0].consumedAt = new Date("2026-09-26T12:10:00.000Z");
+  h.store.attempts.push(submittedAttempt({
+    id: 99, attemptNumber: 4, passed: false,
+    submittedAt: new Date("2026-09-26T12:10:00.000Z"),
+  }));
+  const replay = await h.call(path, input);
+  assert.equal(replay.response.status, 201);
+  assert.equal(replay.payload.replayed, true);
+  assert.equal(replay.payload.grant.consumedByAttemptId, 99);
+  assert.equal(h.store.grants.length, 1);
+
+  const mismatched = await h.call(path, {
+    method: "POST", body: { reason: "different request" },
+    headers: { "Idempotency-Key": "grant_test_key_002" },
+  });
+  assert.equal(mismatched.response.status, 409);
+  assert.equal(mismatched.payload.code, "IDEMPOTENCY_KEY_REUSED");
+});
+
+test("additional-attempt eligibility distinguishes PRE, optional POST, unused allowance, and outcomes", async () => {
+  const cases = [
+    {
+      assessment: baseAssessment({ type: "PRE", maxAttempts: 1, isPublished: true,
+        requirePassingForCompletion: false, passingPercentage: null }),
+      attempts: [submittedAttempt({ attemptNumber: 1, passed: null, preBaselineStatus: "VALID" })],
+      eligible: true, reason: null,
+    },
+    {
+      assessment: baseAssessment({ maxAttempts: 1, isPublished: true, requirePassingForCompletion: false }),
+      attempts: [submittedAttempt({ attemptNumber: 1, passed: null })],
+      eligible: true, reason: null,
+    },
+    {
+      assessment: baseAssessment({ maxAttempts: 2, isPublished: true }),
+      attempts: [submittedAttempt({ attemptNumber: 1, passed: false })],
+      eligible: false, reason: "ATTEMPTS_REMAINING",
+    },
+    {
+      assessment: baseAssessment({ maxAttempts: 1, isPublished: true }),
+      attempts: [submittedAttempt({ attemptNumber: 1, passed: true })],
+      eligible: false, reason: "POST_ALREADY_PASSED",
+    },
+    {
+      assessment: baseAssessment({ maxAttempts: 1, isPublished: true }),
+      attempts: [submittedAttempt({ attemptNumber: 1, passed: null })],
+      eligible: false, reason: "POST_OUTCOME_UNAVAILABLE",
+    },
+    {
+      assessment: baseAssessment({ maxAttempts: 1, isPublished: true }),
+      attempts: [submittedAttempt({ attemptNumber: 1, passed: false }), {
+        id: 99, assessmentId: 12, classroomId: 7, studentId: 42,
+        attemptNumber: 2, status: "IN_PROGRESS",
+      }],
+      eligible: false, reason: "ACTIVE_ATTEMPT_EXISTS",
+    },
+  ];
+  for (const fixture of cases) {
+    const h = harness({ assessments: [fixture.assessment], attempts: fixture.attempts });
+    const result = await h.call("/classrooms/7/assessments/12/students/42/additional-attempt");
+    assert.equal(result.response.status, 200);
+    assert.equal(result.payload.eligible, fixture.eligible);
+    assert.equal(result.payload.ineligibleReason, fixture.reason);
+    while (restorations.length) {
+      const [target, property, original] = restorations.pop();
+      target[property] = original;
+    }
+  }
+});
+
+test("additional-attempt eligibility rejects unpublished, archived, and inactive-classroom membership", async () => {
+  const unpublished = harness({ assessments: [baseAssessment({ isPublished: false })] });
+  const unpublishedResult = await unpublished.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+  );
+  assert.equal(unpublishedResult.response.status, 409);
+  assert.equal(unpublishedResult.payload.code, "ASSESSMENT_NOT_PUBLISHED");
+  while (restorations.length) {
+    const [target, property, original] = restorations.pop();
+    target[property] = original;
+  }
+
+  const archived = harness({ assessments: [baseAssessment({ isPublished: true })] });
+  archived.store.classrooms[0].isActive = false;
+  const archivedResult = await archived.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+  );
+  assert.equal(archivedResult.response.status, 409);
+  assert.equal(archivedResult.payload.code, "CLASSROOM_ARCHIVED");
+  while (restorations.length) {
+    const [target, property, original] = restorations.pop();
+    target[property] = original;
+  }
+
+  const inactive = harness({
+    assessments: [baseAssessment({ isPublished: true })],
+    memberships: [{ classroomId: 7, studentId: 42, status: "removed" }],
+  });
+  const inactiveResult = await inactive.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+  );
+  assert.equal(inactiveResult.response.status, 403);
+  assert.equal(inactiveResult.payload.code, "FORBIDDEN");
 });
 
 test("teacher cannot access another teacher classroom", async () => {
@@ -1936,6 +2102,7 @@ test("concurrent start versus teacher mutation is resolved by the assessment loc
   assert.equal(assessment.version, 1);
 });
 
+/* Replaced by ledger idempotency plus Start-consumption concurrency coverage.
 test("teacher recovery races share the assessment lock with recovery and student start", async () => {
   let lockOwner = null;
   const waiters = [];
@@ -2053,6 +2220,7 @@ test("teacher recovery races share the assessment lock with recovery and student
     }
   }
 });
+*/
 
 test("save publish unpublish and delete never query attempts before acquiring the assessment lock", async () => {
   const cases = [
@@ -2218,7 +2386,7 @@ test("result query count is constant as student and attempt counts grow", async 
   assert.equal(h.store.attemptCounts, 0);
 });
 
-test("coding analytics batches submitted response grades without loading source or hidden data", async () => {
+test("PRE coding analytics uses original diagnostics without supplemental or active responses", async () => {
   const codingQuestion = baseQuestion({
     id: 202,
     questionText: "Return the array length.",
@@ -2228,15 +2396,19 @@ test("coding analytics batches submitted response grades without loading source 
     referenceSolution: "return values.Length;",
   });
   const attempts = [
-    submittedAttempt({ id: 44, studentId: 42 }),
-    submittedAttempt({ id: 45, studentId: 43, student: baseStudent({ id: 43 }) }),
+    submittedAttempt({ id: 44, studentId: 42, attemptNumber: 1, preBaselineStatus: "VALID" }),
+    submittedAttempt({ id: 47, studentId: 42, attemptNumber: 2, preBaselineStatus: "SUPPLEMENTAL" }),
+    submittedAttempt({ id: 45, studentId: 43, attemptNumber: 1, preBaselineStatus: "VALID", student: baseStudent({ id: 43 }) }),
     submittedAttempt({ id: 46, studentId: 44, status: "IN_PROGRESS", student: baseStudent({ id: 44 }) }),
   ];
   const h = harness({
+    assessments: [baseAssessment({ type: "PRE", maxAttempts: 1, passingPercentage: null,
+      gradeCalculation: "FIRST", requirePassingForCompletion: false, answerReviewPolicy: "NEVER" })],
     questions: [baseQuestion(), codingQuestion],
     attempts,
     responses: [
       { id: 1, attemptId: 44, questionId: 202, sourceCode: "student secret one", isCorrect: true, pointsAwarded: 4 },
+      { id: 4, attemptId: 47, questionId: 202, sourceCode: "supplemental secret", isCorrect: true, pointsAwarded: 4 },
       { id: 2, attemptId: 45, questionId: 202, sourceCode: "student secret two", isCorrect: false, pointsAwarded: 2 },
       { id: 3, attemptId: 46, questionId: 202, sourceCode: "unfinished secret", isCorrect: true, pointsAwarded: 4 },
     ],
@@ -2263,6 +2435,7 @@ test("coding analytics batches submitted response grades without loading source 
     assessmentId: 12,
     classroomId: 7,
     status: "SUBMITTED",
+    id: { [Op.in]: [44, 45] },
   });
   const serialized = JSON.stringify(result.payload);
   for (const forbidden of [

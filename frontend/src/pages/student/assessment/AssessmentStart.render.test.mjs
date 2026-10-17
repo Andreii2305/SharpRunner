@@ -53,7 +53,7 @@ test("POST checkpoint presents authoritative facts and distinguishes before/afte
   assert.match(html, /3 questions/);
   assert.match(html, /6\.5 points/);
   assert.match(html, /75% or higher/);
-  assert.match(html, /3 total attempts/);
+  assert.match(html, /3 standard attempts/);
   assert.match(html, /2 attempts are available before you start/);
   assert.match(html, /After you start, 1 additional attempt will remain/);
   assert.match(html, /saved automatically/);

@@ -17,13 +17,14 @@ const finite = (value) => value !== null && value !== undefined && value !== "" 
 const rounded = (value) => Math.round((value + Number.EPSILON) * 10) / 10;
 const average = (values) => values.length ? rounded(values.reduce((sum, value) => sum + value, 0) / values.length) : null;
 
-const baselineStatus = (value) => ["VALID", "RETROACTIVE", "UNKNOWN"].includes(value)
+const baselineStatus = (value) => ["VALID", "RETROACTIVE", "UNKNOWN", "SUPPLEMENTAL"].includes(value)
   ? value
   : "UNKNOWN";
 export const baselineStatusLabel = (value) => ({
   VALID: "Valid baseline",
   RETROACTIVE: "Retroactive — game activity preceded PRE",
   UNKNOWN: "Unknown — legacy baseline timing",
+  SUPPLEMENTAL: "Supplemental diagnostic — not a baseline",
 }[baselineStatus(value)]);
 
 const numericOrNull = (value) => finite(value) ? Number(value) : null;

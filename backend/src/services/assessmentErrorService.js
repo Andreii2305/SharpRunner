@@ -104,6 +104,12 @@ const translateAssessmentError = (source) => {
       || constraint.includes("one_in_progress")) {
       return error(409, "ACTIVE_ATTEMPT_EXISTS", "The student already has an active assessment attempt");
     }
+    if (constraint.includes("assessment_attempt_grants_one_unused")) {
+      return error(409, "UNUSED_GRANT_EXISTS", "The student already has an unused teacher-granted attempt");
+    }
+    if (constraint.includes("assessment_attempt_grants_idempotency_key")) {
+      return error(409, "GRANT_REQUEST_CONFLICT", "Grant request conflict");
+    }
     return error(409, "ASSESSMENT_TYPE_EXISTS", "An assessment of this type already exists");
   }
   return null;

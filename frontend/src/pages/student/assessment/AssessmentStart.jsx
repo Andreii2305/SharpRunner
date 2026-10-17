@@ -53,6 +53,10 @@ export default function AssessmentStart({ outcome, onStart }) {
     ? `/Map?classroomId=${encodeURIComponent(outcome.route.classroomId)}`
     : "/Map";
   const requirement = passingCopy(type, information.passingRequirement);
+  const standardAllowance = Number.isFinite(status.standardAttemptAllowance)
+    ? status.standardAttemptAllowance : assessment.maxAttempts;
+  const grantedAllowance = Number.isFinite(status.additionalAttemptsGranted)
+    ? status.additionalAttemptsGranted : 0;
 
   return (
     <main className={`${styles.page} ${styles.startPage}`} data-view="assessment-start">
@@ -71,7 +75,7 @@ export default function AssessmentStart({ outcome, onStart }) {
         <dl className={styles.startFacts} aria-label="Assessment details">
           <div><dt>Questions</dt><dd>{plural(information.questionCount, "question")}</dd></div>
           <div><dt>Total points</dt><dd>{pointsLabel(information.totalPossiblePoints)}</dd></div>
-          <div><dt>Attempt allowance</dt><dd>{plural(assessment.maxAttempts, "total attempt")}</dd></div>
+          <div><dt>Attempt allowance</dt><dd>{plural(standardAllowance, "standard attempt")}{grantedAllowance > 0 ? ` + ${plural(grantedAllowance, "teacher-granted attempt")}` : ""}</dd></div>
         </dl>
 
         <section className={styles.startSection} aria-labelledby="attempt-availability-title">
@@ -86,6 +90,7 @@ export default function AssessmentStart({ outcome, onStart }) {
                   ? "no additional attempts will remain."
                   : `${plural(attemptsAfter, "additional attempt")} will remain.`}
               </p>
+              {type === "PRE" && status.additionalAttemptsAvailable > 0 && <p><strong>Additional diagnostic:</strong> this attempt will not replace your original PRE baseline.</p>}
             </>
           )}
         </section>

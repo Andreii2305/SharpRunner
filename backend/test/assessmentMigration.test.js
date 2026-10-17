@@ -30,6 +30,10 @@ const baselineStatusMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261003010000_historical_assessment_baseline_status.sql",
 );
+const attemptGrantsMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261016000000_assessment_attempt_grants.sql",
+);
 
 test("assessment models keep results normalized and out of level progress", () => {
   for (const name of [
@@ -39,6 +43,7 @@ test("assessment models keep results normalized and out of level progress", () =
     "AssessmentAttempt",
     "AssessmentResponse",
     "AssessmentCodingTestCase",
+    "AssessmentAttemptGrant",
   ]) {
     assert.ok(models[name], `${name} must be registered`);
   }
@@ -81,6 +86,26 @@ test("assessment models keep results normalized and out of level progress", () =
     assert.equal(models.UserProgress.rawAttributes[forbidden], undefined);
     assert.equal(models.ClassroomLessonProgress.rawAttributes[forbidden], undefined);
   }
+});
+
+test("assessment attempt grants are protected, auditable, and allow only one unused grant", () => {
+  assert.ok(models.AssessmentAttemptGrant);
+  for (const field of [
+    "assessmentId", "classroomId", "studentId", "grantedByUserId", "reason",
+    "idempotencyKey", "consumedByAttemptId", "consumedAt", "answerReviewWasEligibleAtGrant",
+  ]) assert.ok(models.AssessmentAttemptGrant.rawAttributes[field], field);
+
+  assert.equal(fs.existsSync(attemptGrantsMigrationPath), true);
+  const sql = fs.readFileSync(attemptGrantsMigrationPath, "utf8");
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS "AssessmentAttemptGrants"/);
+  assert.match(sql, /assessment_attempt_grants_one_unused[\s\S]*WHERE "consumedByAttemptId" IS NULL/);
+  assert.match(sql, /assessment_attempt_grants_idempotency_key/);
+  assert.match(sql, /ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE "AssessmentAttemptGrants" FROM PUBLIC/);
+  assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
+
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261016000000_assessment_attempt_grants");
 });
 
 test("assessment associations preserve submitted history", () => {
@@ -258,7 +283,7 @@ test("METHOD parameter-name migration is nullable additive and precedes baseline
   assert.equal(names[index + 1], "20261003010000_historical_assessment_baseline_status");
 });
 
-test("PRE baseline status migration is nullable, additive, constrained, and registered last", () => {
+test("PRE baseline status migration is nullable, additive, constrained, and precedes attempt grants", () => {
   const attribute = models.AssessmentAttempt.rawAttributes.preBaselineStatus;
   assert.ok(attribute, "AssessmentAttempt.preBaselineStatus must be modeled");
   assert.equal(attribute.allowNull, true);
@@ -274,6 +299,7 @@ test("PRE baseline status migration is nullable, additive, constrained, and regi
   assert.doesNotMatch(sql, /CREATE\s+(?:UNIQUE\s+)?INDEX/i);
 
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261003010000_historical_assessment_baseline_status");
-  assert.equal(names.at(-2), "20261003000000_method_parameter_names");
+  const index = names.indexOf("20261003010000_historical_assessment_baseline_status");
+  assert.equal(names[index - 1], "20261003000000_method_parameter_names");
+  assert.equal(names[index + 1], "20261016000000_assessment_attempt_grants");
 });

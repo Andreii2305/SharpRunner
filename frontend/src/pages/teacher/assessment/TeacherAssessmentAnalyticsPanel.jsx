@@ -2,6 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { FiDownload, FiX } from "react-icons/fi";
 import {
   createScoreSheetDownloadController,
+  createAttemptGrantController,
+  getAdditionalAttemptEligibility,
+  grantAdditionalAssessmentAttempt,
   getTeacherAssessmentScoreSheet,
   getTeacherAssessmentResults,
   listTeacherAssessments,
@@ -89,19 +92,52 @@ export function AssessmentEvidenceSummary({ metrics }) {
         <div><dt>Average submitted POST attempts</dt><dd>{metrics.averagePostAttempts ?? "Unavailable"}</dd></div>
       </dl>
       <p><strong>Learning gain:</strong> Each valid-baseline PRE is compared with that student&apos;s first submitted POST. It is not a comparison between the all-submitted PRE average and official POST grades.</p>
-      <p><strong>PRE baseline labels:</strong> Valid baseline; Retroactive — game activity preceded PRE; Unknown — legacy baseline timing.</p>
+      <p><strong>PRE baseline labels:</strong> Valid baseline; Retroactive — game activity preceded PRE; Unknown — legacy baseline timing; Supplemental diagnostic — not a baseline.</p>
       <p><strong>Submission rate:</strong> Enrollment denominator unavailable from the assessment-results contract. No enrollment-based rate is inferred.</p></div>
     </details>
   </>;
 }
 
-function AttemptHistoryDialog({ row, onClose }) {
+function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, slots, scope, onGranted, onClose }) {
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
+  const [eligibility, setEligibility] = useState({});
+  const [loadingEligibility, setLoadingEligibility] = useState(true);
+  const [grantType, setGrantType] = useState(null);
+  const [reason, setReason] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const controllerRef = useRef(null);
+  if (!controllerRef.current) controllerRef.current = createAttemptGrantController({
+    request: grantAdditionalAssessmentAttempt,
+    reconcile: grantAdditionalAssessmentAttempt,
+    onPending: setPending,
+    onSuccess: (result) => {
+      setGrantType(null); setReason(""); setError("");
+      setEligibility((current) => ({ ...current, [result.assessment.type]: result }));
+      onGranted();
+    },
+    onError: (source) => setError(normalizeTeacherAssessmentError(source).message),
+  });
+  useLayoutEffect(() => controllerRef.current.setScope(scope), [scope]);
+  useEffect(() => {
+    const abort = new AbortController();
+    setLoadingEligibility(true); setError("");
+    Promise.all(["PRE", "POST"].map(async (type) => {
+      if (!slots[type]?.published) return [type, null];
+      const value = await getAdditionalAttemptEligibility({
+        classroomId, assessmentId: slots[type].id, studentId: row.student.id, signal: abort.signal,
+      });
+      return [type, value];
+    })).then((entries) => setEligibility(Object.fromEntries(entries)))
+      .catch((source) => { if (source?.code !== "ERR_CANCELED") setError(normalizeTeacherAssessmentError(source).message); })
+      .finally(() => { if (!abort.signal.aborted) setLoadingEligibility(false); });
+    return () => abort.abort();
+  }, [classroomId, row.student.id, slots, scope]);
   useEffect(() => {
     closeRef.current?.focus();
     const onKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !pending) onClose();
       if (event.key === "Tab") {
         const focusable = [...(dialogRef.current?.querySelectorAll("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])") ?? [])];
         if (!focusable.length) return;
@@ -112,14 +148,53 @@ function AttemptHistoryDialog({ row, onClose }) {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-  return <div className={styles.backdrop} onMouseDown={onClose}>
+  }, [onClose, pending]);
+  const submitGrant = () => {
+    const selected = eligibility[grantType];
+    if (!selected?.eligible || pending) return;
+    setError("");
+    controllerRef.current.grant({
+      scope, classroomId, assessmentId: selected.assessment.id, studentId: row.student.id,
+      reason, idempotencyKey: crypto.randomUUID(),
+    });
+  };
+  return <div className={styles.backdrop} onMouseDown={() => { if (!pending) onClose(); }}>
     <section ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="assessment-history-title" onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><span>Submitted assessment history</span><h3 id="assessment-history-title">{row.name}</h3></div><button ref={closeRef} type="button" onClick={onClose} aria-label="Close assessment history"><FiX /></button></header>
+      <header><div><span>Submitted assessment history</span><h3 id="assessment-history-title">{row.name}</h3></div><button ref={closeRef} type="button" onClick={onClose} disabled={pending} aria-label="Close assessment history"><FiX /></button></header>
       <div className={styles.historyList}>{row.history.map((attempt) => <article key={`${attempt.type}-${attempt.attemptId}`}>
         <div><strong>{attempt.type === "PRE" ? `PRE attempt ${attempt.attemptNumber}` : `POST attempt ${attempt.attemptNumber}`}</strong><span>{submittedDate(attempt.submittedAt)}</span></div>
         <div className={styles.historyScore}><AttemptScore attempt={attempt} /><div className={styles.historyLabels}>{attempt.type === "PRE" && <b>{attempt.baselineLabel}</b>}{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && <b>{attempt.passingPercentageApplied == null ? "Required threshold unavailable" : `Required: ${attempt.passingPercentageApplied}%`}</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div></div>
       </article>)}</div>
+      <section className={styles.grantSection} aria-labelledby="grant-attempt-title">
+        <div><h4 id="grant-attempt-title">Grant one additional attempt</h4><p>The student starts it from the assessment Start screen. Existing submissions, grades, progress, and game access are unchanged.</p></div>
+        {loadingEligibility ? <p role="status">Checking current eligibility…</p> : <div className={styles.grantChoices}>{["PRE", "POST"].map((type) => {
+          const state = eligibility[type];
+          if (!state) return null;
+          const availableBefore = state.allowance.attemptsRemaining;
+          return <button key={type} type="button" disabled={!state.eligible || pending} onClick={() => { setGrantType(type); setError(""); }}>
+            <strong>{type === "PRE" ? "PRE diagnostic" : "POST assessment"}</strong>
+            <span>{state.eligible ? `${availableBefore} attempts available before grant` : normalizeTeacherAssessmentError({ response: { data: { code: state.ineligibleReason } } }).message}</span>
+          </button>;
+        })}</div>}
+        {grantType && <div className={styles.grantConfirm}>
+          <p><strong>Confirm one additional {grantType} attempt for {row.name}</strong></p>
+          <p>{classroomLabel} · {lessonTitle} · {eligibility[grantType].assessment.title} · Current total allowance: {eligibility[grantType].allowance.totalAttemptAllowance}. After this grant: {eligibility[grantType].allowance.totalAttemptAllowance + 1}.</p>
+          {grantType === "PRE" && <p>This is a supplemental diagnostic. It will not replace the original PRE baseline.</p>}
+          {eligibility[grantType].reviewPreviouslyAvailable && <p>{grantType === "POST"
+            ? "Answers may already have been available. This retake can affect the official POST grade."
+            : "Answers may already have been available for this diagnostic."}</p>}
+          <label>Reason (optional)<textarea maxLength="500" value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+          <div><button type="button" onClick={() => { setGrantType(null); setReason(""); }} disabled={pending}>Cancel</button><button type="button" onClick={submitGrant} disabled={pending}>{pending ? "Granting…" : "Grant additional attempt"}</button></div>
+        </div>}
+        {Object.values(eligibility).some((state) => state?.grants?.length) && <details className={styles.grantHistory}>
+          <summary>Teacher-grant history</summary>
+          {["PRE", "POST"].flatMap((type) => (eligibility[type]?.grants ?? []).map((grant) => <p key={`${type}-${grant.id}`}>
+            <strong>{type}</strong> · {new Date(grant.createdAt).toLocaleString()} · Granted by user {grant.grantedByUserId}
+            {grant.reason ? ` · ${grant.reason}` : ""} · {grant.consumedAt ? "Used" : "Available"}
+          </p>))}
+        </details>}
+        {error && <p className={styles.grantError} role="alert">{error}</p>}
+      </section>
     </section>
   </div>;
 }
@@ -147,6 +222,7 @@ export default function TeacherAssessmentAnalyticsPanel() {
   const launcherRef = useRef(null);
   const downloadControllerRef = useRef(null);
   const selectedLesson = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey) ?? null;
+  const selectedClassroom = classrooms.find((classroom) => String(classroom.id) === String(classroomId));
   const resultsScope = classroomId && lessonKey ? `${classroomId}:${lessonKey}` : "";
   if (!downloadControllerRef.current) {
     downloadControllerRef.current = createScoreSheetDownloadController({
@@ -273,6 +349,6 @@ export default function TeacherAssessmentAnalyticsPanel() {
         </tbody></table></div>
       </>
     </AssessmentResultsBoundary>
-    {selectedStudent && <AttemptHistoryDialog row={selectedStudent} onClose={closeHistory} />}
+    {selectedStudent && <AttemptHistoryDialog row={selectedStudent} classroomId={classroomId} classroomLabel={assessmentClassroomLabel(selectedClassroom)} lessonTitle={selectedLesson?.title ?? lessonKey} slots={slots} scope={`${resultsScope}:${selectedStudent.student.id}`} onGranted={() => setResultsRetryVersion((current) => current + 1)} onClose={closeHistory} />}
   </section>;
 }

@@ -1063,18 +1063,29 @@ test("two sequential retakes in one page lifetime start distinct attempts", asyn
   assert.equal(harness.calls.filter(({ name }) => name === "startOrResumeAttempt").length, 2);
 });
 
-test("retake is absent for PRE, passed POST, and exhausted POST and stale completion is ignored", async (t) => {
+test("supplemental PRE, passed POST, exhausted POST, and stale completion are handled authoritatively", async (t) => {
   const { createAssessmentRouteOrchestrator } = await loadModule();
 
   await t.test("PRE", async () => {
-    const harness = createHarness();
+    const harness = createHarness({
+      progress: progressDto({ lesson: lessonProgression({ preCompleted: true, moduleUnlocked: true }) }),
+      discovery: discoveryDto({ status: {
+        attemptsUsed: 1,
+        attemptsRemaining: 1,
+        hasSubmittedAttempt: true,
+        latestSubmittedAttemptId: 451,
+        diagnosticCompleted: true,
+        additionalAttemptsAvailable: 1,
+      } }),
+    });
     const outcome = await createAssessmentRouteOrchestrator(harness.services).retake({
       params: routeParams({ type: "pre" }),
       generation: 1,
       isCurrent: () => true,
     });
-    assert.equal(outcome.kind, "INVALID_ROUTE");
-    assert.deepEqual(harness.calls, []);
+    assert.equal(outcome.kind, "READY");
+    assert.equal(outcome.startMode, "retake");
+    assert.deepEqual(harness.calls.map(({ name }) => name), ["getProgress", "discoverAssessment"]);
   });
 
   for (const fixture of [

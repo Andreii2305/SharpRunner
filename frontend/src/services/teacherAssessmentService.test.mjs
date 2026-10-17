@@ -101,6 +101,53 @@ test("teacher assessment results request preserves exact classroom and assessmen
   assert.equal(calls[0].at(-1)?.headers?.Authorization, "Bearer teacher-token");
 });
 
+test("additional-attempt requests preserve classroom assessment and student identity", async () => {
+  calls.length = 0;
+  await service.getAdditionalAttemptEligibility({ classroomId: 47, assessmentId: 91, studentId: 23 });
+  await service.grantAdditionalAssessmentAttempt({
+    classroomId: 47, assessmentId: 91, studentId: 23,
+    reason: "Targeted support", idempotencyKey: "grant_key_123",
+  });
+  assert.match(calls[0][1], /classrooms\/47\/assessments\/91\/students\/23\/additional-attempt$/);
+  assert.match(calls[1][1], /classrooms\/47\/assessments\/91\/students\/23\/additional-attempt$/);
+  assert.deepEqual(calls[1][2], { reason: "Targeted support" });
+  assert.equal(calls[1][3].headers["Idempotency-Key"], "grant_key_123");
+});
+
+test("attempt grant controller single-flights, fences scope changes, and reconciles uncertain outcomes", async () => {
+  const requests = [];
+  const successes = [];
+  const errors = [];
+  const pending = [];
+  const reconciliations = [];
+  const controller = service.createAttemptGrantController({
+    request: ({ signal, scope }) => new Promise((resolve, reject) => requests.push({ resolve, reject, signal, scope })),
+    reconcile: async (input) => {
+      reconciliations.push(input);
+      return { allowance: { additionalAttemptsAvailable: 1 }, assessment: { type: "PRE" } };
+    },
+    onSuccess: (value) => successes.push(value),
+    onError: (error) => errors.push(error.message),
+    onPending: (value) => pending.push(value),
+  });
+  controller.setScope("7:arrays:42");
+  const first = controller.grant({ scope: "7:arrays:42", idempotencyKey: "grant_same_key_001" });
+  assert.equal(await controller.grant({ scope: "7:arrays:42" }), false);
+  requests[0].reject(new Error("uncertain network failure"));
+  assert.equal(await first, true);
+  assert.equal(successes[0].reconciled, true);
+  assert.equal(reconciliations[0].idempotencyKey, "grant_same_key_001");
+  assert.deepEqual(errors, []);
+
+  const stale = controller.grant({ scope: "7:arrays:42" });
+  controller.setScope("7:functions:42");
+  requests[1].resolve({ grant: { id: 2 } });
+  assert.equal(await stale, false);
+  assert.equal(requests[1].signal.aborted, true);
+  assert.equal(successes.length, 1);
+  assert.deepEqual(pending, [false, true, false, true, false]);
+});
+
 test("teacher assessment score sheet request preserves exact classroom and lesson identity", async () => {
   calls.length = 0;
   await service.getTeacherAssessmentScoreSheet({ classroomId: 47, lessonKey: "functions-with-arrays" });

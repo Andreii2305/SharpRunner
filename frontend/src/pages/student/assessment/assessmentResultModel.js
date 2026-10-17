@@ -139,7 +139,8 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
       : [],
     baselineEligible: isPre && result.baselineEligible === true,
     moduleUnlocked: isPre && lesson?.moduleUnlocked === true,
-    retakeAllowed: state === "RETRY_AVAILABLE",
+    retakeAllowed: Number(envelope?.attempts?.remaining) > 0
+      && (isPre || state === "RETRY_AVAILABLE" || state === "COMPLETED"),
     returnHref: mapHref(route?.classroomId),
     moduleHref,
     continuation: isPre ? createPreContinuation({ lesson, route, moduleHref }) : null,

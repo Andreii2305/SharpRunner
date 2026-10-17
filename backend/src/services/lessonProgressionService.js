@@ -210,6 +210,7 @@ const buildLessonProgressionStates = ({
   publishedAssessments = [],
   historicalAssessments = publishedAssessments,
   attempts = [],
+  grants = [],
   progressRows = [],
   levelSettings = [],
 } = {}) => {
@@ -225,6 +226,12 @@ const buildLessonProgressionStates = ({
     const key = String(attempt?.assessmentId);
     if (!attemptsByAssessmentId.has(key)) attemptsByAssessmentId.set(key, []);
     attemptsByAssessmentId.get(key).push(attempt);
+  }
+  const grantsByAssessmentId = new Map();
+  for (const grant of list(grants)) {
+    const key = String(grant?.assessmentId);
+    if (!grantsByAssessmentId.has(key)) grantsByAssessmentId.set(key, []);
+    grantsByAssessmentId.get(key).push(grant);
   }
 
   const historicalIdsByLessonAndType = new Map();
@@ -295,12 +302,22 @@ const buildLessonProgressionStates = ({
       && postAssessment?.requirePassingForCompletion === true;
     const postPassed = officialPostAttempt?.passed === true;
     const postAttemptsUsed = submittedPostAttempts.length;
+    const postGrants = postAssessment
+      ? (grantsByAssessmentId.get(String(postAssessment.id)) || [])
+      : [];
+    const postGrantCount = postGrants.length;
+    const unusedPostGrantCount = postGrants.filter((grant) => grant.consumedByAttemptId == null).length;
+    const effectivePostAllowance = postAssessment
+      ? Math.max(Number(postAssessment.maxAttempts) + postGrantCount,
+        postAttempts.reduce((maximum, attempt) => Math.max(maximum, Number(attempt.attemptNumber) || 0), 0)
+          + unusedPostGrantCount)
+      : 0;
     const postAttemptsRemaining = postAssessment
-      ? Math.max(0, Number(postAssessment.maxAttempts) - postAttemptsUsed)
+      ? (postAttemptInProgress ? 0 : Math.max(0, effectivePostAllowance - postAttemptsUsed))
       : 0;
     const postAttemptsExhausted = Boolean(
       postAssessment
-      && postAttemptsUsed >= Number(postAssessment.maxAttempts)
+      && postAttemptsUsed >= effectivePostAllowance
       && !postAttemptInProgress,
     );
     const postSatisfied = !postRequired
@@ -434,7 +451,7 @@ const createLessonProgressionService = ({
   authorizationService = defaultAuthorizationService,
   levelSettingsLoader = defaultLevelSettingsLoader,
 } = {}) => {
-  const { AssessmentAttempt, LessonAssessment, UserProgress } = models;
+  const { AssessmentAttempt, AssessmentAttemptGrant, LessonAssessment, UserProgress } = models;
 
   const requireExactMembership = async ({
     classroomId,
@@ -513,6 +530,7 @@ const createLessonProgressionService = ({
     );
     const assessmentIds = exactHistoricalAssessments.map((assessment) => assessment.id);
     let exactAttempts = [];
+    let exactGrants = [];
     if (assessmentIds.length > 0) {
       const assessmentIdSet = new Set(assessmentIds.map(String));
       const attemptRows = await AssessmentAttempt.findAll({
@@ -529,12 +547,22 @@ const createLessonProgressionService = ({
         && sameId(attempt.studentId, studentId)
         && assessmentIdSet.has(String(attempt.assessmentId))
       ));
+      if (AssessmentAttemptGrant) {
+        exactGrants = list(await AssessmentAttemptGrant.findAll({
+          where: { classroomId, studentId, assessmentId: { [Op.in]: assessmentIds } },
+          attributes: ["id", "assessmentId", "classroomId", "studentId", "consumedByAttemptId"],
+          ...transactionOption,
+        })).filter((grant) => sameId(grant.classroomId, classroomId)
+          && sameId(grant.studentId, studentId)
+          && assessmentIdSet.has(String(grant.assessmentId)));
+      }
     }
 
     return buildLessonProgressionStates({
       publishedAssessments: exactAssessments,
       historicalAssessments: exactHistoricalAssessments,
       attempts: exactAttempts,
+      grants: exactGrants,
       progressRows: loadedProgressRows,
       levelSettings: loadedLevelSettings,
     });

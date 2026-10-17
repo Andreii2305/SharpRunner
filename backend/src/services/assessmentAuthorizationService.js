@@ -1,5 +1,8 @@
 const defaultModels = require("../models");
-const { ACADEMIC_LESSON_KEYS } = require("../constants/assessmentConfig");
+const {
+  ACADEMIC_LESSON_KEYS,
+  ASSESSMENT_TARGET_KINDS,
+} = require("../constants/assessmentConfig");
 const { AssessmentApiError } = require("./assessmentErrorService");
 
 const withLock = (options, { lock, transaction, model }) => {
@@ -60,7 +63,8 @@ const createAssessmentAuthorizationService = ({ models = defaultModels } = {}) =
       ...(transaction ? { transaction } : {}),
     }, { lock, transaction, model: LessonAssessment });
     const assessment = await LessonAssessment.findOne(options);
-    if (!assessment) {
+    if (!assessment || (assessment.targetKind != null
+      && assessment.targetKind !== ASSESSMENT_TARGET_KINDS.BUILT_IN)) {
       throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
     }
     return assessment;

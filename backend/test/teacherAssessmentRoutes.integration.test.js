@@ -1046,6 +1046,23 @@ test("creation is always unpublished version one", async () => {
   assert.equal(injected.payload.code, "INVALID_REQUEST");
 });
 
+test("existing built-in creation endpoint rejects dormant custom target fields", async () => {
+  harness({ assessments: [], questions: [], choices: [] });
+  for (const customField of [
+    { targetKind: "CLASSROOM_LESSON_PLACEMENT" },
+    { classroomLessonPlacementId: 41 },
+    { targetLessonVersion: 3 },
+  ]) {
+    const result = await request("/api/teacher/classrooms/7/assessments", {
+      actorId: 5,
+      method: "POST",
+      body: { ...postDraft(), ...customField },
+    });
+    assert.equal(result.response.status, 400);
+    assert.equal(result.payload.code, "INVALID_REQUEST");
+  }
+});
+
 test("teacher catalog exposes safe summaries while student access is rejected", async () => {
   harness({ assessments: [], questions: [], choices: [] });
   const teacher = await request("/api/teacher/assessment-templates", { actorId: 5 });

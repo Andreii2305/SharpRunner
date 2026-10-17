@@ -105,7 +105,9 @@ test("assessment attempt grants are protected, auditable, and allow only one unu
   assert.doesNotMatch(sql, /DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM/i);
 
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261016000000_assessment_attempt_grants");
+  const grantIndex = names.indexOf("20261016000000_assessment_attempt_grants");
+  assert.notEqual(grantIndex, -1);
+  assert.equal(names[grantIndex + 1], "20261017000000_custom_lesson_assessment_foundation");
 });
 
 test("assessment associations preserve submitted history", () => {
@@ -244,7 +246,7 @@ test("teacher-only coding reference solution migration is additive and size-boun
   assert.equal(names[index - 1], "20261001000000_coding_assessments");
 });
 
-test("grading lease migration is additive, constrained, and registered last", () => {
+test("grading lease migration is additive, constrained, and follows the coding reference migration", () => {
   assert.equal(fs.existsSync(gradingLeaseMigrationPath), true);
   const sql = fs.readFileSync(gradingLeaseMigrationPath, "utf8");
   assert.match(sql, /ADD COLUMN IF NOT EXISTS "gradingLeaseToken" VARCHAR\(96\)/);

@@ -8,6 +8,7 @@ const {
   publicationFields,
   derivePublicationStatus,
   safeImageMetadata,
+  hasLessonContentChanged,
 } = require("../src/services/lessonBuilderService");
 
 test("lesson builder normalizes structured topic content and stable ordering", () => {
@@ -70,4 +71,27 @@ test("lesson builder rejects unsafe links and constrains image metadata", () => 
     altText: "diagram",
     caption: "caption",
   });
+});
+
+test("content revision ignores safe metadata but changes for taught content and resources", () => {
+  const lesson = { title: "Arrays", lessonNumber: 2, description: "Read this", externalUrl: null };
+  const topics = [{ id: 8, title: "Basics", displayOrder: 0, content: { format: "markdown", body: "Values" } }];
+  assert.equal(hasLessonContentChanged({
+    lesson,
+    existingTopics: topics,
+    nextMetadata: { title: "Arrays renamed", lessonNumber: 3, description: "Read this", externalUrl: null },
+    nextTopics: topics,
+  }), false);
+  assert.equal(hasLessonContentChanged({
+    lesson,
+    existingTopics: topics,
+    nextMetadata: { title: "Arrays", lessonNumber: 2, description: "Updated reading", externalUrl: null },
+    nextTopics: topics,
+  }), true);
+  assert.equal(hasLessonContentChanged({
+    lesson,
+    existingTopics: topics,
+    nextMetadata: { title: "Arrays", lessonNumber: 2, description: "Read this", externalUrl: null },
+    nextTopics: [{ ...topics[0], content: { format: "markdown", body: "Changed values" } }],
+  }), true);
 });

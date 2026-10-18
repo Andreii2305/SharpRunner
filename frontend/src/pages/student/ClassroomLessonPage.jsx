@@ -14,6 +14,10 @@ import LessonRenderer from "../../Components/LessonRenderer/LessonRenderer.jsx";
 
 const isOfficeFile = (name = "") => /\.(docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(name);
 const isPreviewable = (mimeType = "", name = "") => /^(video\/|audio\/|image\/|application\/pdf$|text\/)/i.test(mimeType) || isOfficeFile(name);
+const classroomFileUrl = (attachment, classroomId, preview = false) => {
+  const query = classroomId ? `?classroomId=${encodeURIComponent(classroomId)}` : "";
+  return `/api/lesson-content/classroom-files/${attachment.id}${preview ? "/preview" : ""}${query}`;
+};
 
 const formatFileSize = (value) => {
   const bytes = Number(value) || 0;
@@ -48,6 +52,7 @@ function ClassroomLessonPage() {
   const toast = useToast();
   const isTeacherPreview = ["teacher", "admin"].includes(getUserRole());
   const previewUrlRef = useRef(null);
+  const classroomScopeRef = useRef(classroomId);
   const [lesson, setLesson] = useState(null);
   const [lessonContext, setLessonContext] = useState({ classroom: null, module: null });
   const [loading, setLoading] = useState(true);
@@ -66,7 +71,7 @@ function ClassroomLessonPage() {
     setPreview({ attachment, url: "", loading: true, error: "" });
     try {
       const response = await axios.get(
-        buildApiUrl(`/api/lesson-content/classroom-files/${attachment.id}${isOfficeFile(attachment.originalName) ? "/preview" : ""}`),
+        buildApiUrl(classroomFileUrl(attachment, classroomScopeRef.current, isOfficeFile(attachment.originalName))),
         { headers: getAuthHeaders(), responseType: "blob" },
       );
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
@@ -91,6 +96,7 @@ function ClassroomLessonPage() {
   useEffect(() => {
     let mounted = true;
     const loadLesson = async () => {
+      classroomScopeRef.current = classroomId;
       try {
         const response = await axios.get(
           buildApiUrl(`/api/lesson-content/classroom-lessons/${lessonId}${classroomId ? `?classroomId=${encodeURIComponent(classroomId)}` : ""}`),
@@ -98,6 +104,7 @@ function ClassroomLessonPage() {
         );
         if (!mounted) return;
         const loadedLesson = response.data?.lesson ?? null;
+        classroomScopeRef.current = loadedLesson?.classroomId ?? classroomId;
         setLesson(loadedLesson);
         setLessonContext(response.data?.context ?? { classroom: null, module: null });
         setProgress(response.data?.progress ?? null);
@@ -125,7 +132,7 @@ function ClassroomLessonPage() {
   const downloadAttachment = async (attachment) => {
     try {
       const response = await axios.get(
-        buildApiUrl(`/api/lesson-content/classroom-files/${attachment.id}`),
+        buildApiUrl(classroomFileUrl(attachment, classroomScopeRef.current)),
         { headers: getAuthHeaders(), responseType: "blob" },
       );
       const url = URL.createObjectURL(response.data);
@@ -209,7 +216,7 @@ function ClassroomLessonPage() {
         ) : lesson.topics?.length ? (
           <>
             {isTeacherPreview && <aside className={styles.previewBanner}><div><strong>Preview as Student</strong><span>This read-only view matches the lesson presentation students receive.</span></div><button type="button" onClick={() => navigate(`/teacher/lessons/${lesson.id}/edit`)}>Back to Editor</button></aside>}
-            <LessonRenderer lesson={lesson} preview={isTeacherPreview} onOpenAttachment={downloadAttachment} />
+            <LessonRenderer lesson={lesson} classroomId={lesson?.classroomId ?? classroomId} preview={isTeacherPreview} onOpenAttachment={downloadAttachment} />
             {!isTeacherPreview && <section className={styles.completionPanel}><FiCheckCircle /><div><span>{progress?.completedAt ? "Lesson complete" : "You’ve reached the end of this lesson."}</span><p>{progress?.completedAt ? "You can keep reviewing the topics and practice activities anytime." : "Mark it complete when you’re satisfied with your review."}</p></div><button type="button" className={styles.completeButton} onClick={toggleCompletion} disabled={completionBusy}><FiCheckCircle /> {completionBusy ? "Saving…" : progress?.completedAt ? "Mark as incomplete" : "Mark Lesson Complete"}</button></section>}
           </>
         ) : (

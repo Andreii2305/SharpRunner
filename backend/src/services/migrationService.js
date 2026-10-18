@@ -59,6 +59,7 @@ const migrations = [
   ["20261003010000_historical_assessment_baseline_status", sqlMigration("20261003010000_historical_assessment_baseline_status.sql")],
   ["20261016000000_assessment_attempt_grants", sqlMigration("20261016000000_assessment_attempt_grants.sql")],
   ["20261017000000_custom_lesson_assessment_foundation", sqlMigration("20261017000000_custom_lesson_assessment_foundation.sql")],
+  ["20261018000000_custom_lesson_lifecycle", sqlMigration("20261018000000_custom_lesson_lifecycle.sql")],
 ];
 
 const runMigrations = async () => {

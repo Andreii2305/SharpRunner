@@ -120,6 +120,23 @@ const safeImageMetadata = (body = {}) => ({
   caption: normalizeString(body.caption, 500),
 });
 
+const comparableTopic = (topic) => {
+  const value = topic?.toJSON ? topic.toJSON() : topic;
+  return {
+    id: Number(value?.id) || null,
+    title: value?.title || "",
+    displayOrder: Number(value?.displayOrder) || 0,
+    content: value?.content || {},
+  };
+};
+
+const hasLessonContentChanged = ({ lesson, existingTopics, nextMetadata, nextTopics }) => {
+  if ((lesson.description || null) !== (nextMetadata.description || null)) return true;
+  if ((lesson.externalUrl || null) !== (nextMetadata.externalUrl || null)) return true;
+  return JSON.stringify((existingTopics || []).map(comparableTopic))
+    !== JSON.stringify((nextTopics || []).map(comparableTopic));
+};
+
 module.exports = {
   MAX_TOPICS,
   MAX_BLOCKS,
@@ -132,4 +149,5 @@ module.exports = {
   publicationFields,
   derivePublicationStatus,
   safeImageMetadata,
+  hasLessonContentChanged,
 };

@@ -57,6 +57,7 @@ const ClassroomLesson = sequelize.define("ClassroomLessons", {
   maxFileSizeMb: { type: DataTypes.INTEGER, allowNull: false, defaultValue: lessonUploadPolicy.maxFileSizeMb },
   assignedStudentIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
+  contentVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1, validate: { min: 1 } },
 });
 
 module.exports = ClassroomLesson;

@@ -14,6 +14,7 @@ const PasswordResetToken = require("./PasswordResetToken");
 const ClassroomLesson = require("./ClassroomLesson");
 const ClassroomLessonAttachment = require("./ClassroomLessonAttachment");
 const ClassroomLessonProgress = require("./ClassroomLessonProgress");
+const ClassroomLessonContentAccess = require("./ClassroomLessonContentAccess");
 const ClassroomLessonReadingCompletion = require("./ClassroomLessonReadingCompletion");
 const ClassroomLessonSubmission = require("./ClassroomLessonSubmission");
 const ClassroomLessonSubmissionAttachment = require("./ClassroomLessonSubmissionAttachment");
@@ -164,7 +165,7 @@ ClassroomLesson.belongsTo(ClassroomLesson, {
 User.hasMany(ClassroomLesson, { foreignKey: "teacherId", as: "ownedLessons", onDelete: "CASCADE" });
 ClassroomLesson.belongsTo(User, { foreignKey: "teacherId", as: "owner" });
 
-ClassroomLesson.hasMany(ClassroomLessonPlacement, { foreignKey: "lessonId", as: "placements", onDelete: "CASCADE" });
+ClassroomLesson.hasMany(ClassroomLessonPlacement, { foreignKey: "lessonId", as: "placements", onDelete: "RESTRICT" });
 ClassroomLessonPlacement.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
 Classroom.hasMany(ClassroomLessonPlacement, { foreignKey: "classroomId", as: "lessonPlacements", onDelete: "CASCADE" });
 ClassroomLessonPlacement.belongsTo(Classroom, { foreignKey: "classroomId", as: "classroom" });
@@ -190,6 +191,47 @@ ClassroomLesson.hasMany(ClassroomLessonProgress, { foreignKey: "lessonId", as: "
 ClassroomLessonProgress.belongsTo(ClassroomLesson, { foreignKey: "lessonId", as: "lesson" });
 User.hasMany(ClassroomLessonProgress, { foreignKey: "studentId", as: "classroomLessonProgress", onDelete: "CASCADE" });
 ClassroomLessonProgress.belongsTo(User, { foreignKey: "studentId", as: "student" });
+
+ClassroomLessonPlacement.hasMany(ClassroomLessonContentAccess, {
+  foreignKey: "classroomLessonPlacementId",
+  as: "contentAccesses",
+  onDelete: "RESTRICT",
+});
+ClassroomLessonContentAccess.belongsTo(ClassroomLessonPlacement, {
+  foreignKey: "classroomLessonPlacementId",
+  as: "placement",
+  onDelete: "RESTRICT",
+});
+ClassroomLesson.hasMany(ClassroomLessonContentAccess, {
+  foreignKey: "lessonId",
+  as: "contentAccesses",
+  onDelete: "RESTRICT",
+});
+ClassroomLessonContentAccess.belongsTo(ClassroomLesson, {
+  foreignKey: "lessonId",
+  as: "lesson",
+  onDelete: "RESTRICT",
+});
+Classroom.hasMany(ClassroomLessonContentAccess, {
+  foreignKey: "classroomId",
+  as: "lessonContentAccesses",
+  onDelete: "RESTRICT",
+});
+ClassroomLessonContentAccess.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+User.hasMany(ClassroomLessonContentAccess, {
+  foreignKey: "studentId",
+  as: "lessonContentAccesses",
+  onDelete: "RESTRICT",
+});
+ClassroomLessonContentAccess.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+  onDelete: "RESTRICT",
+});
 
 ClassroomLessonPlacement.hasMany(LessonAssessment, {
   foreignKey: "classroomLessonPlacementId",
@@ -532,6 +574,7 @@ module.exports = {
   ClassroomLesson,
   ClassroomLessonAttachment,
   ClassroomLessonProgress,
+  ClassroomLessonContentAccess,
   ClassroomLessonReadingCompletion,
   ClassroomLessonSubmission,
   ClassroomLessonSubmissionAttachment,

@@ -20,6 +20,10 @@ const migrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261017000000_custom_lesson_assessment_foundation.sql",
 );
+const lifecycleMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261018000000_custom_lesson_lifecycle.sql",
+);
 
 const validAssessment = (overrides = {}) => models.LessonAssessment.build({
   classroomId: 7,
@@ -66,7 +70,9 @@ test("assessment targets accept only an exclusive built-in or placement identity
 });
 
 test("revision-specific reading acknowledgements are modeled separately from legacy progress", () => {
+  assert.ok(models.ClassroomLessonContentAccess);
   assert.ok(models.ClassroomLessonReadingCompletion);
+  assert.ok(models.ClassroomLesson.rawAttributes.contentVersion);
   for (const field of [
     "classroomLessonPlacementId",
     "classroomId",
@@ -81,7 +87,23 @@ test("revision-specific reading acknowledgements are modeled separately from leg
   assert.equal(models.ClassroomLessonProgress.rawAttributes.lessonVersion, undefined);
 });
 
+test("content access evidence is immutable and scoped to an exact placement revision", () => {
+  for (const field of [
+    "classroomLessonPlacementId",
+    "classroomId",
+    "lessonId",
+    "studentId",
+    "lessonVersion",
+    "accessedAt",
+  ]) {
+    assert.ok(models.ClassroomLessonContentAccess.rawAttributes[field], field);
+  }
+  assert.equal(models.ClassroomLessonPlacement.associations.contentAccesses.options.onDelete, "RESTRICT");
+  assert.equal(models.ClassroomLesson.associations.contentAccesses.options.onDelete, "RESTRICT");
+});
+
 test("placement assessment and reading history relationships are restrictive", () => {
+  assert.equal(models.ClassroomLesson.associations.placements.options.onDelete, "RESTRICT");
   assert.equal(models.ClassroomLessonPlacement.associations.assessments.options.onDelete, "RESTRICT");
   assert.equal(models.ClassroomLessonPlacement.associations.readingCompletions.options.onDelete, "RESTRICT");
   assert.equal(models.ClassroomLesson.associations.readingCompletions.options.onDelete, "RESTRICT");
@@ -96,7 +118,7 @@ test("managed custom targets require ownership, exact placement scope, and curre
     classroomId: 7,
     lessonId: 91,
     archivedAt: null,
-    lesson: { id: 91, contentType: "lesson", archivedAt: null, version: 3 },
+    lesson: { id: 91, contentType: "lesson", archivedAt: null, version: 8, contentVersion: 3 },
   };
   const service = createAssessmentTargetService({
     models: {
@@ -161,7 +183,7 @@ test("student target resolution requires active membership and exact placement s
             classroomId: 7,
             lessonId: 91,
             archivedAt: null,
-            lesson: { id: 91, contentType: "lesson", archivedAt: null, version: 3 },
+            lesson: { id: 91, contentType: "lesson", archivedAt: null, version: 8, contentVersion: 3 },
           }
           : null,
       },
@@ -241,6 +263,30 @@ test("foundation migration backfills built-ins and enforces target and history c
   assert.doesNotMatch(sql, /UPDATE "ClassroomLessonProgresses"/);
 
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261017000000_custom_lesson_assessment_foundation");
-  assert.equal(names.at(-2), "20261016000000_assessment_attempt_grants");
+  assert.equal(names.at(-2), "20261017000000_custom_lesson_assessment_foundation");
+  assert.equal(names.at(-3), "20261016000000_assessment_attempt_grants");
+});
+
+test("lifecycle migration adds current content revisions and immutable exact access evidence", () => {
+  assert.equal(fs.existsSync(lifecycleMigrationPath), true);
+  const sql = fs.readFileSync(lifecycleMigrationPath, "utf8");
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS "contentVersion" INTEGER/);
+  assert.doesNotMatch(sql, /ADD COLUMN IF NOT EXISTS "contentVersion" INTEGER DEFAULT/);
+  assert.match(sql, /SET "contentVersion" = COALESCE\(NULLIF\("version", 0\), 1\)/);
+  assert.match(sql, /ALTER COLUMN "contentVersion" SET NOT NULL/);
+  assert.doesNotMatch(sql, /UPDATE "ClassroomLessonProgresses"/);
+  assert.doesNotMatch(sql, /INSERT INTO "ClassroomLessonReadingCompletions"/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS "ClassroomLessonContentAccesses"/);
+  assert.match(sql, /classroom_lesson_placements_lesson_restrict_fkey/);
+  assert.match(sql, /FOREIGN KEY \("classroomLessonPlacementId", "classroomId", "lessonId"\)/);
+  assert.match(sql, /REFERENCES "ClassroomLessonPlacements" \("id", "classroomId", "lessonId"\)\s+ON DELETE RESTRICT/);
+  assert.match(sql, /UNIQUE \("classroomLessonPlacementId", "studentId", "lessonVersion"\)/);
+  assert.match(sql, /prevent_classroom_lesson_content_access_mutation/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON "ClassroomLessonContentAccesses"/);
+  assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE "ClassroomLessonContentAccesses" FROM PUBLIC/);
+
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261018000000_custom_lesson_lifecycle");
+  assert.equal(names.at(-2), "20261017000000_custom_lesson_assessment_foundation");
 });

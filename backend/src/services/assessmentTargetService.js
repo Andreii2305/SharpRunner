@@ -72,9 +72,9 @@ const createAssessmentTargetService = ({
     if (!allowArchived && (placement.archivedAt || placement.lesson.archivedAt)) {
       throw new AssessmentApiError(409, "ASSESSMENT_TARGET_ARCHIVED", "Assessment target is archived");
     }
-    if (Number(placement.lesson.version) !== targetLessonVersion) {
+    if (Number(placement.lesson.contentVersion) !== targetLessonVersion) {
       throw new AssessmentApiError(409, "LESSON_VERSION_CONFLICT", "Lesson version conflict", {
-        currentVersion: placement.lesson.version,
+        currentVersion: placement.lesson.contentVersion,
       });
     }
     return {

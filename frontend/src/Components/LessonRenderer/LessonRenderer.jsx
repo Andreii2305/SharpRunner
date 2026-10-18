@@ -65,18 +65,19 @@ function MarkdownContent({ value }) {
   })}</div>;
 }
 
-export function SecureLessonImage({ image, eager = false }) {
+export function SecureLessonImage({ image, classroomId = null, eager = false }) {
   const [src, setSrc] = useState("");
   const [state, setState] = useState("loading");
   useEffect(() => {
     let active = true;
     let objectUrl = "";
     setState("loading");
-    axios.get(buildApiUrl(`/api/lesson-content/classroom-files/${image.id}`), { headers: getAuthHeaders(), responseType: "blob" })
+    const query = classroomId ? `?classroomId=${encodeURIComponent(classroomId)}` : "";
+    axios.get(buildApiUrl(`/api/lesson-content/classroom-files/${image.id}${query}`), { headers: getAuthHeaders(), responseType: "blob" })
       .then(({ data }) => { if (active) { objectUrl = URL.createObjectURL(data); setSrc(objectUrl); setState("ready"); } })
       .catch(() => { if (active) { setSrc(""); setState("error"); } });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [image.id]);
+  }, [classroomId, image.id]);
   return <figure className={styles.topicImage}>{src ? <img src={src} alt={image.altText || ""} loading={eager ? "eager" : "lazy"} /> : <div className={styles.imageLoading}>{state === "error" ? "This image is unavailable." : "Loading image…"}</div>}{image.caption && <figcaption>{image.caption}</figcaption>}</figure>;
 }
 
@@ -93,18 +94,18 @@ const PracticeBlock = memo(function PracticeBlock({ block, lessonId, topicKey, b
   return <section className={styles.practice}><span>Try It Yourself</span><h3>{block.title || "Try It Yourself"}</h3>{block.prompt && <p>{block.prompt}</p>}<PracticeCompiler code={block.starterCode || ""} editable expectedOutput={block.expectedOutput} label="Run code" storageId={`lesson:${lessonId}:topic:${topicKey}:${block.id || blockIndex}`} /></section>;
 });
 
-const TopicBlock = memo(function TopicBlock({ block, topic, lessonId, topicKey, blockIndex, eagerImage }) {
+const TopicBlock = memo(function TopicBlock({ block, topic, lessonId, classroomId, topicKey, blockIndex, eagerImage }) {
   if (block.type === "content") return <MarkdownContent value={block.body} />;
   if (block.type === "code") return <CodeExample block={block} />;
   if (block.type === "practice") return <PracticeBlock block={block} lessonId={lessonId} topicKey={topicKey} blockIndex={blockIndex} />;
   if (block.type === "image") {
     const image = findTopicImage(topic, block);
-    return image ? <SecureLessonImage image={image} eager={eagerImage} /> : null;
+    return image ? <SecureLessonImage image={image} classroomId={classroomId} eager={eagerImage} /> : null;
   }
   return null;
 });
 
-export default function LessonRenderer({ lesson, onOpenAttachment, preview = false }) {
+export default function LessonRenderer({ lesson, classroomId = null, onOpenAttachment, preview = false }) {
   const topics = useMemo(() => [...(lesson?.topics || [])]
     .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .map((topic, index) => ({
@@ -173,7 +174,7 @@ export default function LessonRenderer({ lesson, onOpenAttachment, preview = fal
           const firstImageIndex = topic.blocks.findIndex((block) => block.type === "image");
           return <section id={topic.anchorId} data-topic-key={topic.navigationKey} ref={(element) => { if (element) topicRefs.current.set(topic.navigationKey, element); else topicRefs.current.delete(topic.navigationKey); }} className={styles.topic} key={topic.navigationKey}>
             <div className={styles.topicKicker}>Topic {index + 1}</div><h2>{topic.title || `Topic ${index + 1}`}</h2>
-            {topic.blocks.map((block, blockIndex) => <TopicBlock block={block} topic={topic} lessonId={lesson.id} topicKey={topic.navigationKey} blockIndex={blockIndex} eagerImage={index === 0 && blockIndex === firstImageIndex} key={block.id} />)}
+            {topic.blocks.map((block, blockIndex) => <TopicBlock block={block} topic={topic} lessonId={lesson.id} classroomId={classroomId} topicKey={topic.navigationKey} blockIndex={blockIndex} eagerImage={index === 0 && blockIndex === firstImageIndex} key={block.id} />)}
           </section>;
         })}
         {lesson.attachments?.length > 0 && <section className={styles.resources}><div><FiBookOpen /><span>Additional resources</span></div><h2>Files for this lesson</h2><div>{lesson.attachments.map((file) => <button type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}><span><strong>{file.originalName}</strong><small>{Math.max(1, Math.round(Number(file.sizeBytes || 0) / 1024))} KB · Open or download</small></span><FiDownload /></button>)}</div></section>}

@@ -21,7 +21,9 @@ const {
   derivePublicationStatus,
   safeImageMetadata,
   remapTopicImageBlocks,
+  hasLessonContentChanged,
 } = require("../services/lessonBuilderService");
+const customLessonLifecycle = require("../services/customLessonLifecycleService");
 
 router.use(authMiddleware, requireRole("teacher", "admin"));
 
@@ -108,6 +110,7 @@ const deepCopyLesson = async (req, source, { title, placement: placementOptions 
         isPublished: false,
         publishAt: null,
         version: 1,
+        contentVersion: 1,
         archivedAt: null,
       }, { transaction });
 
@@ -216,6 +219,7 @@ router.post("/", async (req, res) => {
         ...metadata,
         ...publication,
         version: 1,
+        contentVersion: 1,
       }, { transaction });
       if (topics.length) await LessonTopic.bulkCreate(topics.map(({ id, clientId, ...topic }) => ({ ...topic, lessonId: created.id })), { transaction });
       await ClassroomLessonVersion.create({ classroomId: null, lessonId: created.id, editorId: req.userId, versionNumber: 1, snapshot: { ...metadata, ...publication, topics } }, { transaction });
@@ -267,6 +271,19 @@ router.put("/:lessonId", async (req, res) => {
         throw conflict;
       }
       const existingTopics = await LessonTopic.findAll({ where: { lessonId }, transaction, lock: transaction.LOCK.UPDATE });
+      const contentChanged = hasLessonContentChanged({
+        lesson: lockedLesson,
+        existingTopics,
+        nextMetadata: metadata,
+        nextTopics: topics,
+      });
+      if (contentChanged) {
+        await customLessonLifecycle.lockContentRevisionForEdit({
+          lessonId,
+          transaction,
+          lockedLesson,
+        });
+      }
       const existingIds = new Set(existingTopics.map((topic) => topic.id));
       const keptIds = new Set(topics.map((topic) => topic.id).filter(Boolean));
       for (const topic of topics) {
@@ -290,11 +307,15 @@ router.put("/:lessonId", async (req, res) => {
         snapshot: { title: lockedLesson.title, description: lockedLesson.description, lessonNumber: lockedLesson.lessonNumber, isPublished: lockedLesson.isPublished, publishAt: lockedLesson.publishAt, topics: existingTopics },
       }, { transaction });
       Object.assign(lockedLesson, metadata, publication, { version: lockedLesson.version + 1 });
+      if (contentChanged) customLessonLifecycle.advanceContentVersion(lockedLesson);
       await lockedLesson.save({ transaction });
     });
     await Promise.all(filesToDelete.map((file) => lessonStorage.deleteFile(file).catch(() => undefined)));
     return res.json({ message: "Lesson saved", lesson: serializeLesson(await loadLesson(req, lessonId)) });
   } catch (error) {
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) {
+      return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    }
     if (error.code === "LESSON_VERSION_CONFLICT") {
       return res.status(409).json({ message: error.message, currentVersion: error.currentVersion });
     }
@@ -323,13 +344,22 @@ router.post("/:lessonId/topics/:topicId/duplicate", async (req, res) => {
   try {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
-    const topic = await LessonTopic.findOne({ where: { id: Number(req.params.topicId), lessonId: lesson.id }, include: [{ model: ClassroomLessonAttachment, as: "images" }] });
+    let topic = await LessonTopic.findOne({ where: { id: Number(req.params.topicId), lessonId: lesson.id }, include: [{ model: ClassroomLessonAttachment, as: "images" }] });
     if (!topic) return res.status(404).json({ message: "Topic not found" });
     const duplicate = await sequelize.transaction(async (transaction) => {
-      await LessonTopic.increment("displayOrder", { by: 1, where: { lessonId: lesson.id, displayOrder: { [Op.gt]: topic.displayOrder } }, transaction });
+      const lockedLesson = await customLessonLifecycle.lockContentRevisionForEdit({ lessonId: lesson.id, transaction });
+      const lockedTopic = await LessonTopic.findOne({
+        where: { id: topic.id, lessonId: lesson.id },
+        include: [{ model: ClassroomLessonAttachment, as: "images" }],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!lockedTopic) throw new Error("Lesson topic not found");
+      topic = lockedTopic;
+      await LessonTopic.increment("displayOrder", { by: 1, where: { lessonId: lesson.id, displayOrder: { [Op.gt]: lockedTopic.displayOrder } }, transaction });
       const created = await LessonTopic.create({ lessonId: lesson.id, title: `${topic.title} — Copy`.slice(0, 180), displayOrder: topic.displayOrder + 1, content: JSON.parse(JSON.stringify(topic.content)) }, { transaction });
       const imageIdMap = new Map();
-      for (const image of topic.images || []) {
+      for (const image of lockedTopic.images || []) {
         const stored = await lessonStorage.cloneFile(image, `teachers/${lesson.teacherId}/lessons/${lesson.id}/topics/${created.id}`);
         createdStorage.push(stored);
         const clonedImage = await ClassroomLessonAttachment.create({
@@ -340,15 +370,19 @@ router.post("/:lessonId/topics/:topicId/duplicate", async (req, res) => {
         }, { transaction });
         imageIdMap.set(image.id, clonedImage.id);
       }
-      created.content = remapTopicImageBlocks(topic.content, imageIdMap);
+      created.content = remapTopicImageBlocks(lockedTopic.content, imageIdMap);
       await created.save({ transaction });
-      lesson.version += 1;
-      await lesson.save({ transaction });
+      lockedLesson.version += 1;
+      customLessonLifecycle.advanceContentVersion(lockedLesson);
+      await lockedLesson.save({ transaction });
       return created;
     });
     return res.status(201).json({ message: "Topic duplicated", topicId: duplicate.id, lesson: serializeLesson(await loadLesson(req, lesson.id)) });
   } catch (error) {
     await Promise.all(createdStorage.map((stored) => lessonStorage.deleteFile(stored).catch(() => undefined)));
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) {
+      return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    }
     console.error(error);
     return res.status(500).json({ message: "The topic could not be duplicated" });
   }
@@ -365,7 +399,10 @@ router.post("/:lessonId/topics/:topicId/images", uploadLessonFiles, async (req, 
       return res.status(400).json({ message: "Choose one or more supported image files" });
     }
     const metadata = safeImageMetadata(req.body);
-    const images = await sequelize.transaction(async (transaction) => {
+    const result = await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await customLessonLifecycle.lockContentRevisionForEdit({ lessonId: lesson.id, transaction });
+      const lockedTopic = await LessonTopic.findOne({ where: { id: topic.id, lessonId: lesson.id }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!lockedTopic) throw new Error("Lesson topic not found");
       const currentCount = await ClassroomLessonAttachment.count({ where: { topicId: topic.id }, transaction });
       const createdImages = [];
       for (const [index, file] of req.files.entries()) {
@@ -377,15 +414,19 @@ router.post("/:lessonId/topics/:topicId/images", uploadLessonFiles, async (req, 
           sizeBytes: file.size, displayOrder: currentCount + index, ...stored,
         }, { transaction }));
       }
-      lesson.version += 1;
-      await lesson.save({ transaction });
-      return createdImages;
+      lockedLesson.version += 1;
+      customLessonLifecycle.advanceContentVersion(lockedLesson);
+      await lockedLesson.save({ transaction });
+      return { images: createdImages, version: lockedLesson.version };
     });
     await removeUploadedFiles(req.files);
-    return res.status(201).json({ message: "Topic images added", images: images.map((image) => ({ id: image.id, originalName: image.originalName, mimeType: image.mimeType, sizeBytes: Number(image.sizeBytes), displayOrder: image.displayOrder, placement: image.placement, altText: image.altText, caption: image.caption })), version: lesson.version });
+    return res.status(201).json({ message: "Topic images added", images: result.images.map((image) => ({ id: image.id, originalName: image.originalName, mimeType: image.mimeType, sizeBytes: Number(image.sizeBytes), displayOrder: image.displayOrder, placement: image.placement, altText: image.altText, caption: image.caption })), version: result.version });
   } catch (error) {
     await removeUploadedFiles(req.files);
     await Promise.all(storedFiles.map((stored) => lessonStorage.deleteFile(stored).catch(() => undefined)));
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) {
+      return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    }
     console.error(error);
     return res.status(500).json({ message: "Image upload failed. Please try again." });
   }
@@ -394,26 +435,59 @@ router.post("/:lessonId/topics/:topicId/images", uploadLessonFiles, async (req, 
 router.patch("/:lessonId/topics/:topicId/images/:imageId", async (req, res) => {
   try {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
-    const image = lesson && await ClassroomLessonAttachment.findOne({ where: { id: Number(req.params.imageId), lessonId: lesson.id, topicId: Number(req.params.topicId), purpose: "topic_image" } });
+    let image = lesson && await ClassroomLessonAttachment.findOne({ where: { id: Number(req.params.imageId), lessonId: lesson.id, topicId: Number(req.params.topicId), purpose: "topic_image" } });
     if (!lesson || !image) return res.status(404).json({ message: "Topic image not found" });
-    Object.assign(image, safeImageMetadata(req.body));
-    if (Number.isInteger(Number(req.body.displayOrder))) image.displayOrder = Math.max(0, Number(req.body.displayOrder));
-    await image.save();
-    return res.json({ message: "Image updated" });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Unable to update the image" }); }
+    const version = await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await customLessonLifecycle.lockContentRevisionForEdit({ lessonId: lesson.id, transaction });
+      image = await ClassroomLessonAttachment.findOne({
+        where: { id: image.id, lessonId: lesson.id, topicId: Number(req.params.topicId), purpose: "topic_image" },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!image) throw new Error("Topic image not found");
+      Object.assign(image, safeImageMetadata(req.body));
+      if (Number.isInteger(Number(req.body.displayOrder))) image.displayOrder = Math.max(0, Number(req.body.displayOrder));
+      await image.save({ transaction });
+      lockedLesson.version += 1;
+      customLessonLifecycle.advanceContentVersion(lockedLesson);
+      await lockedLesson.save({ transaction });
+      return lockedLesson.version;
+    });
+    return res.json({ message: "Image updated", version });
+  } catch (error) {
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to update the image" });
+  }
 });
 
 router.delete("/:lessonId/topics/:topicId/images/:imageId", async (req, res) => {
   try {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
-    const image = lesson && await ClassroomLessonAttachment.findOne({ where: { id: Number(req.params.imageId), lessonId: lesson.id, topicId: Number(req.params.topicId), purpose: "topic_image" } });
+    let image = lesson && await ClassroomLessonAttachment.findOne({ where: { id: Number(req.params.imageId), lessonId: lesson.id, topicId: Number(req.params.topicId), purpose: "topic_image" } });
     if (!lesson || !image) return res.status(404).json({ message: "Topic image not found" });
-    await image.destroy();
+    const version = await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await customLessonLifecycle.lockContentRevisionForEdit({ lessonId: lesson.id, transaction });
+      image = await ClassroomLessonAttachment.findOne({
+        where: { id: image.id, lessonId: lesson.id, topicId: Number(req.params.topicId), purpose: "topic_image" },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!image) throw new Error("Topic image not found");
+      await image.destroy({ transaction });
+      lockedLesson.version += 1;
+      customLessonLifecycle.advanceContentVersion(lockedLesson);
+      await lockedLesson.save({ transaction });
+      return lockedLesson.version;
+    });
     await lessonStorage.deleteFile(image);
     await removeStoredFiles([image.storedName]);
-    lesson.version += 1; await lesson.save();
-    return res.json({ message: "Image removed", version: lesson.version });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Unable to remove the image" }); }
+    return res.json({ message: "Image removed", version });
+  } catch (error) {
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to remove the image" });
+  }
 });
 
 router.post("/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
@@ -423,6 +497,7 @@ router.post("/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
     if (!lesson) { await removeUploadedFiles(req.files); return res.status(404).json({ message: "Lesson not found" }); }
     if (!req.files?.length) return res.status(400).json({ message: "Choose at least one file" });
     await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await customLessonLifecycle.lockContentRevisionForEdit({ lessonId: lesson.id, transaction });
       const currentCount = await ClassroomLessonAttachment.count({ where: { lessonId: lesson.id, topicId: null }, transaction });
       for (const [index, file] of req.files.entries()) {
         const stored = await lessonStorage.uploadFile(file, `teachers/${lesson.teacherId}/lessons/${lesson.id}/attachments`);
@@ -433,14 +508,18 @@ router.post("/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
           sizeBytes: file.size, displayOrder: currentCount + index, ...stored,
         }, { transaction });
       }
-      lesson.version += 1;
-      await lesson.save({ transaction });
+      lockedLesson.version += 1;
+      customLessonLifecycle.advanceContentVersion(lockedLesson);
+      await lockedLesson.save({ transaction });
     });
     await removeUploadedFiles(req.files);
     return res.status(201).json({ message: "Resources added", lesson: serializeLesson(await loadLesson(req, lesson.id)) });
   } catch (error) {
     await removeUploadedFiles(req.files);
     await Promise.all(storedFiles.map((stored) => lessonStorage.deleteFile(stored).catch(() => undefined)));
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) {
+      return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    }
     console.error(error);
     return res.status(500).json({ message: "Resources could not be uploaded" });
   }
@@ -449,17 +528,29 @@ router.post("/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
 router.delete("/:lessonId/attachments/:attachmentId", async (req, res) => {
   try {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
-    const attachment = lesson && await ClassroomLessonAttachment.findOne({
+    let attachment = lesson && await ClassroomLessonAttachment.findOne({
       where: { id: Number(req.params.attachmentId), lessonId: lesson.id, topicId: null },
     });
     if (!lesson || !attachment) return res.status(404).json({ message: "Resource not found" });
-    await attachment.destroy();
+    const version = await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await customLessonLifecycle.lockContentRevisionForEdit({ lessonId: lesson.id, transaction });
+      attachment = await ClassroomLessonAttachment.findOne({
+        where: { id: attachment.id, lessonId: lesson.id, topicId: null },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!attachment) throw new Error("Resource not found");
+      await attachment.destroy({ transaction });
+      lockedLesson.version += 1;
+      customLessonLifecycle.advanceContentVersion(lockedLesson);
+      await lockedLesson.save({ transaction });
+      return lockedLesson.version;
+    });
     await lessonStorage.deleteFile(attachment);
     await removeStoredFiles([attachment.storedName]);
-    lesson.version += 1;
-    await lesson.save();
-    return res.json({ message: "Resource removed", version: lesson.version });
+    return res.json({ message: "Resource removed", version });
   } catch (error) {
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
     console.error(error);
     return res.status(500).json({ message: "Unable to remove the resource" });
   }
@@ -481,16 +572,37 @@ router.post("/:lessonId/placements", async (req, res) => {
       return res.status(201).json({ message: "Independent copy added to classroom", lessonId: lesson.id, placement });
     }
     const lesson = source;
-    const [placement, created] = await ClassroomLessonPlacement.findOrCreate({
-      where: { lessonId: lesson.id, classroomId },
-      defaults: { moduleId, displayOrder: await ClassroomLessonPlacement.count({ where: { classroomId } }) },
+    const { placement, created, restored } = await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await ClassroomLesson.findByPk(lesson.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!lockedLesson) throw new customLessonLifecycle.LessonLifecycleError(404, "LESSON_NOT_FOUND", "Lesson not found");
+      const [found, wasCreated] = await ClassroomLessonPlacement.findOrCreate({
+        where: { lessonId: lesson.id, classroomId },
+        defaults: {
+          moduleId,
+          displayOrder: await ClassroomLessonPlacement.count({ where: { classroomId }, transaction }),
+        },
+        transaction,
+      });
+      const locked = await ClassroomLessonPlacement.findOne({
+        where: { id: found.id, lessonId: lesson.id, classroomId },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      }) || found;
+      const wasArchived = Boolean(locked.archivedAt);
+      locked.moduleId = moduleId;
+      locked.archivedAt = null;
+      if (!wasCreated) await locked.save({ transaction });
+      return { placement: locked, created: wasCreated, restored: wasArchived };
     });
-    if (!created) {
-      placement.moduleId = moduleId;
-      await placement.save();
-    }
     return res.status(created ? 201 : 200).json({
-      message: created ? "Shared lesson added to classroom" : moduleId ? "Lesson moved to the selected module" : "Lesson moved out of its module",
+      message: created
+        ? "Shared lesson added to classroom"
+        : restored
+          ? "Shared lesson placement restored"
+          : moduleId ? "Lesson moved to the selected module" : "Lesson moved out of its module",
       lessonId: lesson.id,
       placement,
     });
@@ -502,8 +614,18 @@ router.delete("/:lessonId/placements/:classroomId", async (req, res) => {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
     const classroom = await Classroom.findOne({ where: { id: Number(req.params.classroomId), ...(req.userRole === "admin" ? {} : { teacherId: req.userId }) } });
     if (!lesson || !classroom) return res.status(404).json({ message: "Placement not found" });
-    const removed = await ClassroomLessonPlacement.destroy({ where: { lessonId: lesson.id, classroomId: classroom.id } });
-    return removed ? res.json({ message: "Lesson removed from classroom" }) : res.status(404).json({ message: "Placement not found" });
+    const result = await sequelize.transaction((transaction) => customLessonLifecycle.removeOrArchivePlacement({
+      lessonId: lesson.id,
+      classroomId: classroom.id,
+      transaction,
+    }));
+    if (!result) return res.status(404).json({ message: "Placement not found" });
+    return res.json({
+      message: result.archived
+        ? "Lesson placement archived to preserve its history"
+        : "Lesson removed from classroom",
+      archived: result.archived,
+    });
   } catch (error) { console.error(error); return res.status(500).json({ message: "Unable to remove the lesson from this classroom" }); }
 });
 
@@ -511,24 +633,43 @@ router.patch("/:lessonId/archive", async (req, res) => {
   try {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
-    lesson.archivedAt = req.body?.archived === false ? null : new Date();
-    await lesson.save();
-    return res.json({ message: lesson.archivedAt ? "Lesson archived" : "Lesson restored" });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Unable to update the lesson" }); }
+    const archivedAt = req.body?.archived === false ? null : new Date();
+    const updatedLesson = await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await ClassroomLesson.findByPk(lesson.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!lockedLesson) throw new customLessonLifecycle.LessonLifecycleError(404, "LESSON_NOT_FOUND", "Lesson not found");
+      lockedLesson.archivedAt = archivedAt;
+      await lockedLesson.save({ transaction });
+      return lockedLesson;
+    });
+    return res.json({ message: updatedLesson.archivedAt ? "Lesson archived" : "Lesson restored" });
+  } catch (error) {
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) return res.status(error.status).json({ message: error.message, code: error.code });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to update the lesson" });
+  }
 });
 
 router.delete("/:lessonId", async (req, res) => {
   try {
     const lesson = await findOwnedLesson(req, Number(req.params.lessonId));
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
-    const usageCount = await ClassroomLessonPlacement.count({ where: { lessonId: lesson.id } });
-    if (usageCount) return res.status(409).json({ message: `This lesson is currently used in ${usageCount} classroom${usageCount === 1 ? "" : "s"}. Remove those placements or archive it instead.`, usageCount });
-    const files = await ClassroomLessonAttachment.findAll({ where: { lessonId: lesson.id } });
-    await lesson.destroy();
+    let files = [];
+    await sequelize.transaction(async (transaction) => {
+      const lockedLesson = await customLessonLifecycle.lockLessonForDeletion({ lessonId: lesson.id, transaction });
+      files = await ClassroomLessonAttachment.findAll({ where: { lessonId: lesson.id }, transaction, lock: transaction.LOCK.UPDATE });
+      await lockedLesson.destroy({ transaction });
+    });
     await Promise.all(files.map((file) => lessonStorage.deleteFile(file).catch(() => undefined)));
     await removeStoredFiles(files.map((file) => file.storedName));
     return res.json({ message: "Lesson permanently deleted" });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Unable to delete the lesson" }); }
+  } catch (error) {
+    if (error instanceof customLessonLifecycle.LessonLifecycleError) return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+    console.error(error);
+    return res.status(500).json({ message: "Unable to delete the lesson" });
+  }
 });
 
 module.exports = router;

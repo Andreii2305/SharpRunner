@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const { Op } = require("sequelize");
+const sequelize = require("../config/database");
 const User = require("../models/User");
 const UserProgress = require("../models/UserProgress");
 const Classroom = require("../models/Classroom");
@@ -34,6 +35,7 @@ const {
   lessonUploadPolicy,
 } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
+const customLessonLifecycle = require("../services/customLessonLifecycleService");
 const { getEffectiveDueAt } = require("../services/levelAccessService");
 const { calculateDifficulty, formatDuration, getTeacherAnalytics } = require("../services/teacherAnalyticsService");
 const { sendCsv } = require("../services/csvService");
@@ -53,6 +55,30 @@ const MAX_LESSON_DESCRIPTION_LENGTH = 4000;
 const DEFAULT_LEVEL_KEYS = DEFAULT_LEVEL_PROGRESS.map((level) => level.levelKey);
 const LEVEL_KEY_SET = new Set(DEFAULT_LEVEL_KEYS);
 const PLAYABLE_LEVEL_KEY_SET = new Set(PLAYABLE_LEVEL_KEYS);
+
+const mutateClassroomLesson = async ({ lessonId, contentChanged = true }, mutation) => sequelize.transaction(async (transaction) => {
+  const lesson = await ClassroomLesson.findByPk(lessonId, {
+    transaction,
+    lock: transaction.LOCK.UPDATE,
+  });
+  if (!lesson) throw new customLessonLifecycle.LessonLifecycleError(404, "LESSON_NOT_FOUND", "Lesson not found");
+  if (contentChanged) {
+    await customLessonLifecycle.lockContentRevisionForEdit({ lessonId, transaction, lockedLesson: lesson });
+  }
+  const result = await mutation(lesson, transaction);
+  lesson.version = Number(lesson.version || 1) + 1;
+  if (contentChanged) customLessonLifecycle.advanceContentVersion(lesson);
+  await lesson.save({ transaction });
+  return { lesson, result };
+});
+
+const sendLessonLifecycleError = (res, error, fallback = "Server error") => {
+  if (error instanceof customLessonLifecycle.LessonLifecycleError) {
+    return res.status(error.status).json({ message: error.message, code: error.code, ...error.details });
+  }
+  console.error(error);
+  return res.status(500).json({ message: fallback });
+};
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -1396,11 +1422,15 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/versions/:versionId/rest
     const lesson = await ClassroomLesson.findOne({ where: { id: lessonId, classroomId }, include: [{ model: ClassroomLessonAttachment, as: "attachments", attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder", "scanStatus"] }] });
     const version = await ClassroomLessonVersion.findOne({ where: { id: versionId, lessonId, classroomId } });
     if (!lesson || !version) return res.status(404).json({ message: "Version not found" });
-    await ClassroomLessonVersion.create({ classroomId, lessonId, editorId: req.userId, versionNumber: lesson.version || 1, snapshot: lessonSnapshot(lesson) });
-    Object.assign(lesson, version.snapshot, { version: (lesson.version || 1) + 1 }); await lesson.save();
-    await recordLessonAudit(req, classroomId, lessonId, "restored_version", { restoredVersion: version.versionNumber, newVersion: lesson.version });
-    return res.json({ message: "Version restored", lesson: sanitizeClassroomLesson(lesson) });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+    const restoredContentChanges = (lesson.description || null) !== (version.snapshot?.description || null)
+      || (lesson.externalUrl || null) !== (version.snapshot?.externalUrl || null);
+    const mutation = await mutateClassroomLesson({ lessonId, contentChanged: restoredContentChanges }, async (lockedLesson, transaction) => {
+      await ClassroomLessonVersion.create({ classroomId, lessonId, editorId: req.userId, versionNumber: lockedLesson.version || 1, snapshot: lessonSnapshot(lockedLesson) }, { transaction });
+      Object.assign(lockedLesson, version.snapshot);
+    });
+    await recordLessonAudit(req, classroomId, lessonId, "restored_version", { restoredVersion: version.versionNumber, newVersion: mutation.lesson.version });
+    return res.json({ message: "Version restored", lesson: sanitizeClassroomLesson(mutation.lesson) });
+  } catch (error) { return sendLessonLifecycleError(res, error); }
 });
 
 router.post("/classrooms/:classroomId/lessons/:lessonId/release-feedback", async (req, res) => {
@@ -1546,7 +1576,7 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, 
       allowSubmissions: source.allowSubmissions, maxScore: source.maxScore,
       rubric: source.rubric, feedbackReleaseAt: source.feedbackReleaseAt, allowLateSubmissions: source.allowLateSubmissions,
       maxAttempts: source.maxAttempts, allowedFileTypes: source.allowedFileTypes, maxFileSizeMb: source.maxFileSizeMb,
-      assignedStudentIds: source.assignedStudentIds, version: 1,
+      assignedStudentIds: source.assignedStudentIds, version: 1, contentVersion: 1,
       displayOrder: await ClassroomLesson.count({ where: { classroomId } }),
     });
     const attachments = [];
@@ -1571,6 +1601,8 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/duplicate", async (req, 
 });
 
 router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLessonFiles, async (req, res) => {
+  const attachments = [];
+  let mutationCommitted = false;
   try {
     const classroomId = parseInteger(req.params.classroomId);
     const lessonId = parseInteger(req.params.lessonId);
@@ -1592,35 +1624,39 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLess
     }
     if (!req.files?.length) return res.status(400).json({ message: "Choose at least one file" });
 
-    const legacyAttachments = await ClassroomLessonAttachment.findAll({
-      where: { lessonId, classroomId, data: null },
-      attributes: ["id", "storedName"],
-    });
-    const missingLegacyIds = legacyAttachments
-      .filter((attachment) => !fs.existsSync(path.join(uploadDirectory, path.basename(attachment.storedName))))
-      .map((attachment) => attachment.id);
-    if (missingLegacyIds.length) {
-      await ClassroomLessonAttachment.destroy({ where: { id: { [Op.in]: missingLegacyIds } } });
-    }
-
-    const attachments = [];
     const duplicateNames = [];
-    const currentCount = await ClassroomLessonAttachment.count({ where: { lessonId, classroomId } });
-    for (const [index, file] of req.files.entries()) {
-      const stored = await lessonStorage.uploadFile(file, `classrooms/${classroomId}/lessons/${lessonId}`);
-      const duplicate = stored.sha256 && await ClassroomLessonAttachment.findOne({ where: { lessonId, sha256: stored.sha256 }, attributes: ["id", "originalName"] });
-      if (duplicate) { duplicateNames.push(file.originalname); await lessonStorage.deleteFile(stored); continue; }
-      attachments.push(await ClassroomLessonAttachment.create({
-        classroomId,
-        lessonId,
-        originalName: file.originalname.slice(0, 255),
-        storedName: file.filename,
-        mimeType: file.mimetype || "application/octet-stream",
-        sizeBytes: file.size,
-        ...stored,
-        displayOrder: currentCount + index,
-      }));
-    }
+    let missingLegacyIds = [];
+    await mutateClassroomLesson({ lessonId }, async (_lockedLesson, transaction) => {
+      const legacyAttachments = await ClassroomLessonAttachment.findAll({
+        where: { lessonId, classroomId, data: null },
+        attributes: ["id", "storedName"],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      missingLegacyIds = legacyAttachments
+        .filter((attachment) => !fs.existsSync(path.join(uploadDirectory, path.basename(attachment.storedName))))
+        .map((attachment) => attachment.id);
+      if (missingLegacyIds.length) {
+        await ClassroomLessonAttachment.destroy({ where: { id: { [Op.in]: missingLegacyIds } }, transaction });
+      }
+      const currentCount = await ClassroomLessonAttachment.count({ where: { lessonId, classroomId }, transaction });
+      for (const [index, file] of req.files.entries()) {
+        const stored = await lessonStorage.uploadFile(file, `classrooms/${classroomId}/lessons/${lessonId}`);
+        const duplicate = stored.sha256 && await ClassroomLessonAttachment.findOne({ where: { lessonId, sha256: stored.sha256 }, attributes: ["id", "originalName"], transaction });
+        if (duplicate) { duplicateNames.push(file.originalname); await lessonStorage.deleteFile(stored); continue; }
+        attachments.push(await ClassroomLessonAttachment.create({
+          classroomId,
+          lessonId,
+          originalName: file.originalname.slice(0, 255),
+          storedName: file.filename,
+          mimeType: file.mimetype || "application/octet-stream",
+          sizeBytes: file.size,
+          ...stored,
+          displayOrder: currentCount + index,
+        }, { transaction }));
+      }
+    });
+    mutationCommitted = true;
     await removeUploadedFiles(req.files);
     const savedAttachments = await ClassroomLessonAttachment.findAll({
       where: { lessonId, classroomId },
@@ -1635,8 +1671,10 @@ router.post("/classrooms/:classroomId/lessons/:lessonId/attachments", uploadLess
     });
   } catch (error) {
     await removeUploadedFiles(req.files);
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    if (!mutationCommitted) {
+      await Promise.all(attachments.map((attachment) => lessonStorage.deleteFile(attachment).catch(() => undefined)));
+    }
+    return sendLessonLifecycleError(res, error);
   }
 });
 
@@ -1661,6 +1699,8 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
       }],
     });
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
+    const originalDescription = lesson.description || null;
+    const originalExternalUrl = lesson.externalUrl || null;
 
     const requestedContentType = normalizeString(req.body?.contentType).toLowerCase();
     if (requestedContentType && requestedContentType !== lesson.contentType) {
@@ -1683,9 +1723,6 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
       if (Number.isNaN(dueAt.getTime())) return res.status(400).json({ message: "Due date must be valid" });
     }
 
-    await ClassroomLessonVersion.create({ classroomId, lessonId, editorId: req.userId, versionNumber: lesson.version || 1, snapshot: lessonSnapshot(lesson) });
-    lesson.title = title;
-    lesson.description = description || null;
     let options;
     try { options = parseLessonOptions({ ...req.body, contentType: lesson.contentType }); } catch (optionError) {
       return res.status(400).json({ message: optionError.message });
@@ -1698,24 +1735,34 @@ router.put("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => {
       const moduleRow = await ClassroomLesson.findOne({ where: { id: options.moduleId, classroomId, contentType: "module" }, attributes: ["id"] });
       if (!moduleRow || moduleRow.id === lesson.id) return res.status(400).json({ message: "Selected module does not belong to this classroom" });
     }
-    lesson.isPublished = options.isPublished;
-    lesson.contentType = options.contentType;
-    lesson.dueAt = dueAt;
-    lesson.moduleId = options.moduleId;
-    lesson.externalUrl = options.externalUrl;
-    lesson.publishAt = options.publishAt;
-    lesson.allowSubmissions = options.allowSubmissions;
-    lesson.maxScore = options.maxScore;
-    lesson.rubric = options.rubric; lesson.feedbackReleaseAt = options.feedbackReleaseAt;
-    lesson.allowLateSubmissions = options.allowLateSubmissions; lesson.maxAttempts = options.maxAttempts;
-    lesson.allowedFileTypes = options.allowedFileTypes; lesson.maxFileSizeMb = options.maxFileSizeMb;
-    lesson.assignedStudentIds = options.assignedStudentIds; lesson.version = (lesson.version || 1) + 1;
-    await lesson.save();
-    await recordLessonAudit(req, classroomId, lessonId, "updated", { version: lesson.version, published: lesson.isPublished });
-    return res.json({ message: "Lesson updated", lesson: sanitizeClassroomLesson(lesson) });
+    const contentChanged = originalDescription !== (description || null)
+      || originalExternalUrl !== (options.externalUrl || null);
+    const mutation = await mutateClassroomLesson({ lessonId, contentChanged }, async (lockedLesson, transaction) => {
+      await ClassroomLessonVersion.create({ classroomId, lessonId, editorId: req.userId, versionNumber: lockedLesson.version || 1, snapshot: lessonSnapshot(lockedLesson) }, { transaction });
+      Object.assign(lockedLesson, {
+        title,
+        description: description || null,
+        isPublished: options.isPublished,
+        contentType: options.contentType,
+        dueAt,
+        moduleId: options.moduleId,
+        externalUrl: options.externalUrl,
+        publishAt: options.publishAt,
+        allowSubmissions: options.allowSubmissions,
+        maxScore: options.maxScore,
+        rubric: options.rubric,
+        feedbackReleaseAt: options.feedbackReleaseAt,
+        allowLateSubmissions: options.allowLateSubmissions,
+        maxAttempts: options.maxAttempts,
+        allowedFileTypes: options.allowedFileTypes,
+        maxFileSizeMb: options.maxFileSizeMb,
+        assignedStudentIds: options.assignedStudentIds,
+      });
+    });
+    await recordLessonAudit(req, classroomId, lessonId, "updated", { version: mutation.lesson.version, published: mutation.lesson.isPublished });
+    return res.json({ message: "Lesson updated", lesson: sanitizeClassroomLesson(mutation.lesson) });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return sendLessonLifecycleError(res, error);
   }
 });
 
@@ -1726,11 +1773,17 @@ router.put("/classrooms/:classroomId/lessons/:lessonId/attachments/reorder", asy
     if (!classroom) return res.status(404).json({ message: "Classroom not found" });
     if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
     const attachmentIds = Array.isArray(req.body?.attachmentIds) ? req.body.attachmentIds.map(parseInteger).filter(Boolean) : [];
-    const existing = await ClassroomLessonAttachment.findAll({ where: { classroomId, lessonId, id: { [Op.in]: attachmentIds } }, attributes: ["id"] });
-    if (!attachmentIds.length || existing.length !== new Set(attachmentIds).size) return res.status(400).json({ message: "Invalid attachment order" });
-    await Promise.all(attachmentIds.map((id, displayOrder) => ClassroomLessonAttachment.update({ displayOrder }, { where: { id, classroomId, lessonId } })));
+    if (!attachmentIds.length || attachmentIds.length !== new Set(attachmentIds).size) return res.status(400).json({ message: "Invalid attachment order" });
+    await mutateClassroomLesson({ lessonId }, async (_lesson, transaction) => {
+      const existing = await ClassroomLessonAttachment.findAll({ where: { classroomId, lessonId, id: { [Op.in]: attachmentIds } }, attributes: ["id"], transaction, lock: transaction.LOCK.UPDATE });
+      if (existing.length !== attachmentIds.length) throw new Error("INVALID_ATTACHMENT_ORDER");
+      await Promise.all(attachmentIds.map((id, displayOrder) => ClassroomLessonAttachment.update({ displayOrder }, { where: { id, classroomId, lessonId }, transaction })));
+    });
     return res.json({ message: "Attachments reordered" });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+  } catch (error) {
+    if (error.message === "INVALID_ATTACHMENT_ORDER") return res.status(400).json({ message: "Invalid attachment order" });
+    return sendLessonLifecycleError(res, error);
+  }
 });
 
 router.patch("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachmentId", async (req, res) => {
@@ -1741,40 +1794,59 @@ router.patch("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachment
     const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
     if (!classroom) return res.status(404).json({ message: "Classroom not found" });
     if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
-    const attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId } });
+    let attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId } });
     if (!attachment) return res.status(404).json({ message: "Attachment not found" });
     const name = normalizeString(req.body?.originalName);
-    if (name) attachment.originalName = name.slice(0, 255);
-    if (Number.isInteger(req.body?.displayOrder)) {
-      const nextOrder = Math.max(0, req.body.displayOrder);
-      const displaced = await ClassroomLessonAttachment.findOne({ where: { lessonId, classroomId, displayOrder: nextOrder, id: { [Op.ne]: attachment.id } } });
-      if (displaced) { displaced.displayOrder = attachment.displayOrder; await displaced.save(); }
-      attachment.displayOrder = nextOrder;
-    }
-    await attachment.save();
+    await mutateClassroomLesson({ lessonId }, async (_lesson, transaction) => {
+      attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!attachment) throw new Error("ATTACHMENT_NOT_FOUND");
+      if (name) attachment.originalName = name.slice(0, 255);
+      if (Number.isInteger(req.body?.displayOrder)) {
+        const nextOrder = Math.max(0, req.body.displayOrder);
+        const displaced = await ClassroomLessonAttachment.findOne({ where: { lessonId, classroomId, displayOrder: nextOrder, id: { [Op.ne]: attachment.id } }, transaction, lock: transaction.LOCK.UPDATE });
+        if (displaced) { displaced.displayOrder = attachment.displayOrder; await displaced.save({ transaction }); }
+        attachment.displayOrder = nextOrder;
+      }
+      await attachment.save({ transaction });
+    });
     return res.json({ message: "Attachment updated", attachment: sanitizeAttachment(attachment) });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+  } catch (error) {
+    if (error.message === "ATTACHMENT_NOT_FOUND") return res.status(404).json({ message: "Attachment not found" });
+    return sendLessonLifecycleError(res, error);
+  }
 });
 
 router.put("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachmentId/file", uploadLessonFiles, async (req, res) => {
+  let uploadedStored = null;
   try {
     const classroomId = parseInteger(req.params.classroomId);
     const lessonId = parseInteger(req.params.lessonId);
     const attachmentId = parseInteger(req.params.attachmentId);
     const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
     if (!classroom || (req.userRole !== "admin" && classroom.teacherId !== req.userId)) { await removeUploadedFiles(req.files); return res.status(classroom ? 403 : 404).json({ message: classroom ? "Access denied" : "Classroom not found" }); }
-    const attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId } });
+    let attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId } });
     const file = req.files?.[0];
     if (!attachment || !file) { await removeUploadedFiles(req.files); return res.status(attachment ? 400 : 404).json({ message: attachment ? "Choose a replacement file" : "Attachment not found" }); }
-    const previous = { storedName: attachment.storedName, storageProvider: attachment.storageProvider, storageKey: attachment.storageKey };
-    const stored = await lessonStorage.uploadFile(file, `classrooms/${classroomId}/lessons/${lessonId}`);
-    attachment.originalName = file.originalname.slice(0, 255); attachment.storedName = file.filename;
-    attachment.mimeType = file.mimetype || "application/octet-stream"; attachment.sizeBytes = file.size;
-    attachment.data = stored.data; attachment.storageProvider = stored.storageProvider; attachment.storageKey = stored.storageKey;
-    await attachment.save();
+    let previous = null;
+    uploadedStored = await lessonStorage.uploadFile(file, `classrooms/${classroomId}/lessons/${lessonId}`);
+    await mutateClassroomLesson({ lessonId }, async (_lesson, transaction) => {
+      attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!attachment) throw new Error("ATTACHMENT_NOT_FOUND");
+      previous = { storedName: attachment.storedName, storageProvider: attachment.storageProvider, storageKey: attachment.storageKey };
+      attachment.originalName = file.originalname.slice(0, 255); attachment.storedName = file.filename;
+      attachment.mimeType = file.mimetype || "application/octet-stream"; attachment.sizeBytes = file.size;
+      attachment.data = uploadedStored.data; attachment.storageProvider = uploadedStored.storageProvider; attachment.storageKey = uploadedStored.storageKey;
+      await attachment.save({ transaction });
+    });
     await Promise.all([lessonStorage.deleteFile(previous), removeStoredFiles([previous.storedName]), removeUploadedFiles(req.files)]);
+    uploadedStored = null;
     return res.json({ message: "Attachment replaced", attachment: sanitizeAttachment(attachment) });
-  } catch (error) { await removeUploadedFiles(req.files); console.error(error); return res.status(500).json({ message: "Server error" }); }
+  } catch (error) {
+    await removeUploadedFiles(req.files);
+    if (uploadedStored) await lessonStorage.deleteFile(uploadedStored).catch(() => undefined);
+    if (error.message === "ATTACHMENT_NOT_FOUND") return res.status(404).json({ message: "Attachment not found" });
+    return sendLessonLifecycleError(res, error);
+  }
 });
 
 router.delete("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachmentId", async (req, res) => {
@@ -1785,13 +1857,20 @@ router.delete("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachmen
     const classroom = classroomId ? await Classroom.findByPk(classroomId) : null;
     if (!classroom) return res.status(404).json({ message: "Classroom not found" });
     if (req.userRole !== "admin" && classroom.teacherId !== req.userId) return res.status(403).json({ message: "Access denied" });
-    const attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId } });
+    let attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId } });
     if (!attachment) return res.status(404).json({ message: "Attachment not found" });
+    await mutateClassroomLesson({ lessonId }, async (_lesson, transaction) => {
+      attachment = await ClassroomLessonAttachment.findOne({ where: { id: attachmentId, lessonId, classroomId }, transaction, lock: transaction.LOCK.UPDATE });
+      if (!attachment) throw new Error("ATTACHMENT_NOT_FOUND");
+      await attachment.destroy({ transaction });
+    });
     await lessonStorage.deleteFile(attachment);
     await removeStoredFiles([attachment.storedName]);
-    await attachment.destroy();
     return res.json({ message: "Attachment removed" });
-  } catch (error) { console.error(error); return res.status(500).json({ message: "Server error" }); }
+  } catch (error) {
+    if (error.message === "ATTACHMENT_NOT_FOUND") return res.status(404).json({ message: "Attachment not found" });
+    return sendLessonLifecycleError(res, error);
+  }
 });
 
 router.get("/classrooms/:classroomId/lessons/:lessonId/submissions", async (req, res) => {
@@ -1857,19 +1936,26 @@ router.delete("/classrooms/:classroomId/lessons/:lessonId", async (req, res) => 
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const attachments = await ClassroomLessonAttachment.findAll({
-      where: { lessonId, classroomId },
-      attributes: ["storedName", "storageProvider", "storageKey"],
+    let attachments = [];
+    let deletedLesson = null;
+    await sequelize.transaction(async (transaction) => {
+      deletedLesson = await customLessonLifecycle.lockLessonForDeletion({ lessonId, transaction });
+      if (!deletedLesson || Number(deletedLesson.classroomId) !== classroomId) return;
+      attachments = await ClassroomLessonAttachment.findAll({
+        where: { lessonId, classroomId },
+        attributes: ["storedName", "storageProvider", "storageKey"],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      await deletedLesson.destroy({ transaction });
     });
-    await recordLessonAudit(req, classroomId, lessonId, "deleted", { title: (await ClassroomLesson.findByPk(lessonId, { attributes: ["title"] }))?.title });
-    const deleted = await ClassroomLesson.destroy({ where: { id: lessonId, classroomId } });
-    if (!deleted) return res.status(404).json({ message: "Lesson not found" });
+    if (!deletedLesson || Number(deletedLesson.classroomId) !== classroomId) return res.status(404).json({ message: "Lesson not found" });
+    await recordLessonAudit(req, classroomId, lessonId, "deleted", { title: deletedLesson.title });
     await Promise.all(attachments.map((attachment) => lessonStorage.deleteFile(attachment)));
     await removeStoredFiles(attachments.map((attachment) => attachment.storedName));
     return res.json({ message: "Lesson removed" });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return sendLessonLifecycleError(res, error);
   }
 });
 

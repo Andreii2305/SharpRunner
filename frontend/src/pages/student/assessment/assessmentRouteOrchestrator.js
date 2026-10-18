@@ -57,6 +57,15 @@ const context = (route, progression, lessonProgression, discovery = null) => ({
   lessonProgression,
   discovery,
 });
+const isCustomRoute = (route) => route?.targetKind === "CLASSROOM_LESSON_PLACEMENT";
+const CUSTOM_LOCK_MESSAGES = Object.freeze({
+  READING_ACKNOWLEDGEMENT_REQUIRED: "Finish reading this lesson before starting its Post-Test.",
+  PLACEMENT_ARCHIVED: "This classroom lesson is archived. New assessment attempts are unavailable.",
+});
+const targetMatches = (route, assessment) => isCustomRoute(route)
+  ? assessment?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    && Number(assessment.classroomLessonPlacementId) === route.placementId
+  : assessment?.lessonKey === route.lessonKey;
 
 export const assessmentActionsForOutcome = (outcome, {
   routeKey,
@@ -110,9 +119,9 @@ const verifyDiscovery = (route, assessmentId, discovery) => {
   if (
     !isPositiveInteger(assessment.id)
     || (assessmentId !== null && Number(assessment.id) !== assessmentId)
-    || assessment.lessonKey !== route.lessonKey
+    || !targetMatches(route, assessment)
     || String(assessment.type).toUpperCase() !== route.type
-    || (status.lessonKey !== undefined && status.lessonKey !== route.lessonKey)
+    || (!isCustomRoute(route) && status.lessonKey !== undefined && status.lessonKey !== route.lessonKey)
     || (status.type !== undefined && String(status.type).toUpperCase() !== route.type)
   ) {
     throw stateMismatch();
@@ -126,7 +135,7 @@ const verifyAttemptEnvelope = (route, assessmentId, envelope, expectedAttemptId 
     !assessment
     || !attempt
     || Number(assessment.id) !== assessmentId
-    || assessment.lessonKey !== route.lessonKey
+    || !targetMatches(route, assessment)
     || String(assessment.type).toUpperCase() !== route.type
     || !isPositiveInteger(attempt.attemptId)
     || !["IN_PROGRESS", "GRADING"].includes(attempt.status)
@@ -146,7 +155,7 @@ const verifyResultEnvelope = (route, attemptId, envelope) => {
     || String(result.type).toUpperCase() !== route.type
     || result.status !== "SUBMITTED"
     || Number(assessment.classroomId) !== route.classroomId
-    || assessment.lessonKey !== route.lessonKey
+    || !targetMatches(route, assessment)
     || String(assessment.type).toUpperCase() !== route.type
   ) {
     throw stateMismatch();
@@ -187,16 +196,22 @@ export const createAssessmentRouteOrchestrator = (services) => {
         attemptId: latestSubmittedAttemptId,
         classroomId: route.classroomId,
         lessonKey: route.lessonKey,
+        ...(isCustomRoute(route) ? { placementId: route.placementId } : {}),
         type: route.type,
         signal,
       });
       if (!isCurrent()) return { kind: "STALE" };
       verifyResultEnvelope(route, latestSubmittedAttemptId, resultEnvelope);
+      const boundedResultEnvelope = isCustomRoute(route) ? {
+        ...resultEnvelope,
+        retakeAvailable: shared?.discovery?.status?.newAttemptAllowed === true
+          && Number(shared?.discovery?.status?.attemptsRemaining) > 0,
+      } : resultEnvelope;
       return {
         kind: "RESULT",
         resultDisposition,
         latestSubmittedAttemptId,
-        resultEnvelope,
+        resultEnvelope: boundedResultEnvelope,
         ...shared,
       };
     } catch (error) {
@@ -212,6 +227,64 @@ export const createAssessmentRouteOrchestrator = (services) => {
     }
   };
 
+  const resolveCustom = async ({ route, signal, isCurrent, allowReady }) => {
+    const discovery = await services.discoverCustomAssessment({
+      classroomId: route.classroomId,
+      placementId: route.placementId,
+      type: route.type,
+      signal,
+    });
+    if (!isCurrent()) return { kind: "STALE" };
+    if (!discovery?.status?.available || !discovery?.assessment) {
+      return { kind: "UNAVAILABLE", route, discovery };
+    }
+    verifyDiscovery(route, null, discovery);
+    const shared = { route, progression: null, lessonProgression: null, discovery };
+    const assessmentId = Number(discovery.assessment.id);
+    const activeAttemptId = Number(discovery.status.activeAttemptId);
+    if (isPositiveInteger(activeAttemptId)) {
+      const envelope = await services.getAttempt({
+        attemptId: activeAttemptId,
+        classroomId: route.classroomId,
+        placementId: route.placementId,
+        type: route.type,
+        signal,
+      });
+      if (!isCurrent()) return { kind: "STALE" };
+      verifyAttemptEnvelope(route, assessmentId, envelope, activeAttemptId);
+      return { kind: "ACTIVE", source: "resume", envelope, ...shared };
+    }
+    const latestSubmittedAttemptId = isPositiveInteger(discovery.status.latestSubmittedAttemptId)
+      ? Number(discovery.status.latestSubmittedAttemptId) : null;
+    const hasSubmitted = discovery.status.hasSubmittedAttempt === true || latestSubmittedAttemptId != null;
+    if (hasSubmitted) {
+      let disposition = "COMPLETED";
+      if (route.type === "POST" && discovery.status.latestSubmitted?.passed !== true) {
+        disposition = discovery.status.newAttemptAllowed === true
+          && Number(discovery.status.attemptsRemaining) > 0
+          ? "RETAKE_AVAILABLE"
+          : discovery.status.newAttemptAllowed === false ? "SUBMITTED" : "EXHAUSTED";
+      }
+      return loadSubmittedResult({
+        route,
+        latestSubmittedAttemptId,
+        resultDisposition: disposition,
+        signal,
+        isCurrent,
+        shared,
+      });
+    }
+    if (discovery.status.unlocked !== true) {
+      return {
+        kind: "LOCKED",
+        ...shared,
+        message: CUSTOM_LOCK_MESSAGES[discovery.status.lockReason],
+      };
+    }
+    if (!allowReady) throw stateMismatch();
+    return { kind: "READY", startMode: "initial", ...shared };
+  };
+
   const resolve = async ({
     params,
     signal,
@@ -222,6 +295,28 @@ export const createAssessmentRouteOrchestrator = (services) => {
     if (!route) return { kind: "INVALID_ROUTE" };
     if (!isCurrent()) return { kind: "STALE" };
     if (isPositiveInteger(route.attemptId)) {
+      if (isCustomRoute(route)) {
+        let discovery = null;
+        try {
+          discovery = await services.discoverCustomAssessment({
+            classroomId: route.classroomId,
+            placementId: route.placementId,
+            type: route.type,
+            signal,
+          });
+        } catch {
+          // The scoped result route remains authoritative for historical access.
+        }
+        if (!isCurrent()) return { kind: "STALE" };
+        return loadSubmittedResult({
+          route,
+          latestSubmittedAttemptId: route.attemptId,
+          resultDisposition: "SUBMITTED",
+          signal,
+          isCurrent,
+          shared: { route, progression: null, progressionError: null, discovery },
+        });
+      }
       let progression = null;
       let progressionError = null;
       try {
@@ -241,6 +336,9 @@ export const createAssessmentRouteOrchestrator = (services) => {
     }
 
     try {
+      if (isCustomRoute(route)) {
+        return await resolveCustom({ route, signal, isCurrent, allowReady });
+      }
       const progression = await services.getProgress({
         classroomId: route.classroomId,
         signal,
@@ -404,13 +502,27 @@ export const createAssessmentRouteOrchestrator = (services) => {
     const route = parseAssessmentPageRoute(params);
     if (!route) return { kind: "INVALID_ROUTE" };
     if (!isCurrent()) return { kind: "STALE" };
+    let discovery = null;
+    if (isCustomRoute(route)) {
+      try {
+        discovery = await services.discoverCustomAssessment({
+          classroomId: route.classroomId,
+          placementId: route.placementId,
+          type: route.type,
+          signal,
+        });
+      } catch {
+        discovery = null;
+      }
+      if (!isCurrent()) return { kind: "STALE" };
+    }
     return loadSubmittedResult({
       route,
       latestSubmittedAttemptId: Number(attemptId),
       resultDisposition: "SUBMITTED",
       signal,
       isCurrent,
-      shared: { route },
+      shared: { route, discovery },
     });
   };
 
@@ -422,6 +534,22 @@ export const createAssessmentRouteOrchestrator = (services) => {
     const route = parseAssessmentPageRoute(params);
     if (!route) return { kind: "INVALID_ROUTE" };
     if (!isCurrent()) return { kind: "STALE" };
+
+    if (isCustomRoute(route)) {
+      try {
+        const resolved = await resolveCustom({ route, signal, isCurrent, allowReady: true });
+        if (resolved.kind !== "RESULT") return resolved;
+        if (resolved.resultEnvelope?.retakeAvailable === true) {
+          return { ...resolved, kind: "READY", startMode: "retake" };
+        }
+        return {
+          ...resolved,
+          kind: resolved.resultDisposition === "EXHAUSTED" ? "EXHAUSTED" : "COMPLETED",
+        };
+      } catch (error) {
+        return classifyError(error, isCurrent);
+      }
+    }
 
     try {
       const progression = await services.getProgress({
@@ -511,7 +639,15 @@ export const createAssessmentRouteOrchestrator = (services) => {
     const startKey = `${startMode}:${route.routeKey}:${generation}`;
     return startOnce(startKey, async () => {
       try {
-        const envelope = await services.startOrResumeAttempt({ assessmentId, signal });
+        const envelope = await services.startOrResumeAttempt({
+          assessmentId,
+          ...(isCustomRoute(route) ? {
+            classroomId: route.classroomId,
+            placementId: route.placementId,
+            type: route.type,
+          } : {}),
+          signal,
+        });
         if (!isCurrent()) return { kind: "STALE" };
         verifyAttemptEnvelope(route, assessmentId, envelope);
         return {

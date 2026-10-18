@@ -62,12 +62,13 @@ after(() => new Promise((resolve, reject) => {
 const authToken = (id, role, tokenVersion = 0) =>
   jwt.sign({ id, role, tokenVersion }, process.env.JWT_SECRET, { expiresIn: "5m" });
 
-const apiRequest = async (path, { method = "GET", token, body } = {}) => {
+const apiRequest = async (path, { method = "GET", token, body, headers = {} } = {}) => {
   const response = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
@@ -1798,6 +1799,7 @@ test("placement discovery is identity-only, reports a safe PRE gate, and records
     assert.equal(payload.classroomLessons.length, 1);
     const item = payload.classroomLessons[0];
     assert.equal(item.id, lesson.id);
+    assert.equal(item.placementId, placement.id);
     assert.equal(item.title, lesson.title);
     assert.equal(item.description, null);
     assert.equal(item.externalUrl, null);
@@ -1808,6 +1810,8 @@ test("placement discovery is identity-only, reports a safe PRE gate, and records
       assessmentId: 77,
       assessmentType: "PRE",
       required: true,
+      classroomId: 90,
+      classroomLessonPlacementId: placement.id,
     });
   });
 });
@@ -1892,6 +1896,7 @@ test("reader records exact revision access and returns acknowledgement context",
     toJSON() { return { ...this, toJSON: undefined }; },
   };
   const placement = { id: 905, classroomId: 90, lessonId: lesson.id, moduleId: null, archivedAt: null, lesson };
+  const completedAt = new Date("2026-10-18T03:00:00.000Z");
   let accessDefaults;
   await withStubs([
     [User, "findByPk", async () => student],
@@ -1907,6 +1912,16 @@ test("reader records exact revision access and returns acknowledgement context",
       accessDefaults = defaults;
       return [{ id: 906 }, true];
     }],
+    [ClassroomLessonReadingCompletion, "findOne", async ({ where }) => {
+      assert.deepEqual(where, {
+        classroomLessonPlacementId: placement.id,
+        classroomId: placement.classroomId,
+        lessonId: lesson.id,
+        studentId: student.id,
+        lessonVersion: lesson.contentVersion,
+      });
+      return { completedAt };
+    }],
     [ClassroomLessonSubmission, "findOne", async () => null],
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
   ], async () => {
@@ -1915,7 +1930,11 @@ test("reader records exact revision access and returns acknowledgement context",
       { token: authToken(student.id, "student") },
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(payload.readingAcknowledgement, { placementId: 905, lessonVersion: 5 });
+    assert.deepEqual(payload.readingAcknowledgement, {
+      placementId: 905,
+      lessonVersion: 5,
+      completedAt: completedAt.toISOString(),
+    });
     assert.equal(accessDefaults.classroomId, 90);
     assert.equal(accessDefaults.lessonId, lesson.id);
   });
@@ -2232,6 +2251,129 @@ test("required custom PRE blocks direct attachment, topic-image, and preview del
       assert.equal(payload.gate.assessmentId, 79, route);
     }
     assert.equal(fileReads, 0);
+  });
+});
+
+test("custom GRADING result and submit recovery validate exact target identity", async () => {
+  const student = activeUser({ id: 70351, role: "student" });
+  const lesson = {
+    id: 9151,
+    contentType: "lesson",
+    contentVersion: 6,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+  };
+  const placement = {
+    id: 9152,
+    classroomId: 92,
+    lessonId: lesson.id,
+    archivedAt: null,
+    lesson,
+  };
+  const assessment = {
+    id: 9153,
+    classroomId: 92,
+    targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomLessonPlacementId: placement.id,
+    targetLessonVersion: 6,
+    type: "POST",
+    title: "Lesson check",
+    instructions: "Choose one answer.",
+    isRequired: true,
+    isPublished: true,
+    maxAttempts: 1,
+    showScoreAfterSubmission: true,
+    passingPercentage: 75,
+    requirePassingForCompletion: true,
+    gradeCalculation: "HIGHEST",
+    answerReviewPolicy: "AFTER_SUBMISSION",
+    version: 1,
+    questions: [{
+      id: 9161,
+      questionText: "Which answer is correct?",
+      questionType: "MULTIPLE_CHOICE",
+      displayOrder: 0,
+      points: 1,
+      choices: [
+        { id: 9162, choiceText: "A", displayOrder: 0, isCorrect: true },
+        { id: 9163, choiceText: "B", displayOrder: 1, isCorrect: false },
+      ],
+    }],
+  };
+  const attempt = {
+    id: 9154,
+    assessmentId: assessment.id,
+    classroomId: 92,
+    studentId: student.id,
+    status: "GRADING",
+    assessmentVersion: 1,
+    submissionKey: "grading_key_9154",
+    gradingLeaseToken: "grading-lease-token-that-is-long-enough",
+    gradingLeaseExpiresAt: new Date("2099-01-01T00:00:00.000Z"),
+  };
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
+    [AssessmentAttempt, "findByPk", async () => attempt],
+    [LessonAssessment, "findByPk", async () => assessment],
+    [ClassroomLessonPlacement, "findOne", async ({ where }) => (
+      Number(where.id) === placement.id && Number(where.classroomId) === placement.classroomId
+        ? placement
+        : null
+    )],
+    [Classroom, "findOne", async () => ({ id: 92, isActive: true })],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const generic = await apiRequest(`/api/assessments/attempts/${attempt.id}/result`, {
+      token: authToken(student.id, "student"),
+    });
+    assert.equal(generic.response.status, 403);
+
+    const wrongPlacement = await apiRequest(
+      `/api/assessments/classrooms/92/lesson-placements/9999/assessments/post/attempts/${attempt.id}/result`,
+      { token: authToken(student.id, "student") },
+    );
+    assert.equal(wrongPlacement.response.status, 403);
+
+    const exact = await apiRequest(
+      `/api/assessments/classrooms/92/lesson-placements/${placement.id}/assessments/post/attempts/${attempt.id}/result`,
+      { token: authToken(student.id, "student") },
+    );
+    assert.equal(exact.response.status, 200);
+    assert.deepEqual(exact.payload, {
+      result: { attemptId: attempt.id, status: "GRADING" },
+      reviewAvailable: false,
+    });
+
+    for (const path of [
+      `/api/assessments/attempts/${attempt.id}/submit`,
+      `/api/assessments/classrooms/92/lesson-placements/9999/assessments/post/attempts/${attempt.id}/submit`,
+    ]) {
+      const denied = await apiRequest(path, {
+        method: "POST",
+        token: authToken(student.id, "student"),
+        body: {},
+        headers: { "Idempotency-Key": attempt.submissionKey },
+      });
+      assert.equal(denied.response.status, 404, path);
+    }
+
+    const exactSubmit = await apiRequest(
+      `/api/assessments/classrooms/92/lesson-placements/${placement.id}/assessments/post/attempts/${attempt.id}/submit`,
+      {
+        method: "POST",
+        token: authToken(student.id, "student"),
+        body: {},
+        headers: { "Idempotency-Key": attempt.submissionKey },
+      },
+    );
+    assert.equal(exactSubmit.response.status, 202);
+    assert.deepEqual(exactSubmit.payload, {
+      result: { attemptId: attempt.id, status: "GRADING" },
+      reviewAvailable: false,
+    });
   });
 });
 

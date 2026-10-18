@@ -177,12 +177,147 @@ const createHarness = ({
     services: {
       getProgress: (args) => invoke("getProgress", args, progress),
       discoverAssessment: (args) => invoke("discoverAssessment", args, discovery),
+      discoverCustomAssessment: (args) => invoke("discoverCustomAssessment", args, discovery),
       getAttempt: (args) => invoke("getAttempt", args, attempt),
       startOrResumeAttempt: (args) => invoke("startOrResumeAttempt", args, started),
       getAttemptResult: (args) => invoke("getAttemptResult", args, result),
     },
   };
 };
+
+test("custom placement discovery is non-mutating and explicit Start preserves exact scope", async () => {
+  const customDiscovery = {
+    assessment: {
+      id: 191, targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomLessonPlacementId: 31, targetLessonVersion: 4,
+      type: "PRE", title: "Lesson diagnostic", maxAttempts: 1,
+      studentInformation: { lessonTitle: "Teacher lesson", questionCount: 1, totalPossiblePoints: 1 },
+    },
+    status: { available: true, type: "PRE", unlocked: true, attemptsRemaining: 1, hasSubmittedAttempt: false },
+  };
+  const customAttempt = {
+    assessment: {
+      id: 191, targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomLessonPlacementId: 31, targetLessonVersion: 4,
+      type: "PRE", title: "Lesson diagnostic", version: 1, questions: [],
+    },
+    attempt: { attemptId: 501, status: "IN_PROGRESS", attemptNumber: 1, responses: [] },
+  };
+  const harness = createHarness({ discovery: customDiscovery, started: customAttempt });
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+  const params = { classroomId: "47", placementId: "31", type: "pre" };
+  const ready = await orchestrator.load({ params, isCurrent: () => true });
+  assert.equal(ready.kind, "READY");
+  assert.deepEqual(harness.calls.map(({ name }) => name), ["discoverCustomAssessment"]);
+
+  const active = await orchestrator.start({ params, ready, generation: 3, isCurrent: () => true });
+  assert.equal(active.kind, "ACTIVE");
+  assert.deepEqual(harness.calls.at(-1), {
+    name: "startOrResumeAttempt",
+    args: { assessmentId: 191, classroomId: 47, placementId: 31, type: "PRE", signal: undefined },
+  });
+});
+
+test("custom supplemental PRE and optional POST retakes return to the explicit Start checkpoint", async () => {
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  for (const type of ["PRE", "POST"]) {
+    const assessmentId = type === "PRE" ? 191 : 192;
+    const attemptId = type === "PRE" ? 501 : 502;
+    const discovery = {
+      assessment: {
+        id: assessmentId,
+        targetKind: "CLASSROOM_LESSON_PLACEMENT",
+        classroomLessonPlacementId: 31,
+        targetLessonVersion: 4,
+        type,
+        title: type === "PRE" ? "Lesson diagnostic" : "Lesson check",
+      },
+      status: {
+        available: true,
+        type,
+        unlocked: true,
+        newAttemptAllowed: true,
+        attemptsRemaining: 1,
+        hasSubmittedAttempt: true,
+        latestSubmittedAttemptId: attemptId,
+        ...(type === "POST" ? { latestSubmitted: { passed: true } } : {}),
+      },
+    };
+    const result = {
+      assessment: {
+        id: assessmentId,
+        classroomId: 47,
+        targetKind: "CLASSROOM_LESSON_PLACEMENT",
+        classroomLessonPlacementId: 31,
+        targetLessonVersion: 4,
+        type,
+        ...(type === "POST" ? { passingRequirement: { required: false } } : {}),
+      },
+      result: { attemptId, type, status: "SUBMITTED", ...(type === "POST" ? { passed: true } : {}) },
+      attempts: { used: 1, remaining: 1 },
+      reviewAvailable: false,
+    };
+    const started = {
+      assessment: {
+        id: assessmentId,
+        targetKind: "CLASSROOM_LESSON_PLACEMENT",
+        classroomLessonPlacementId: 31,
+        targetLessonVersion: 4,
+        type,
+        version: 1,
+        questions: [],
+      },
+      attempt: { attemptId: attemptId + 100, status: "IN_PROGRESS", attemptNumber: 2, responses: [] },
+    };
+    const harness = createHarness({ discovery, result, started });
+    const orchestrator = createAssessmentRouteOrchestrator(harness.services);
+    const params = { classroomId: "47", placementId: "31", type: type.toLowerCase() };
+
+    const ready = await orchestrator.retake({ params, isCurrent: () => true });
+    assert.equal(ready.kind, "READY");
+    assert.equal(ready.startMode, "retake");
+
+    const active = await orchestrator.start({ params, ready, generation: 4, isCurrent: () => true });
+    assert.equal(active.kind, "ACTIVE");
+    assert.equal(harness.calls.at(-1).name, "startOrResumeAttempt");
+  }
+});
+
+test("custom discovery explains reading and archive locks without exposing policy internals", async () => {
+  const { createAssessmentRouteOrchestrator } = await loadModule();
+  const cases = [
+    ["READING_ACKNOWLEDGEMENT_REQUIRED", "Finish reading this lesson before starting its Post-Test."],
+    ["PLACEMENT_ARCHIVED", "This classroom lesson is archived. New assessment attempts are unavailable."],
+  ];
+  for (const [lockReason, message] of cases) {
+    const discovery = {
+      assessment: {
+        id: 192,
+        targetKind: "CLASSROOM_LESSON_PLACEMENT",
+        classroomLessonPlacementId: 31,
+        targetLessonVersion: 4,
+        type: "POST",
+        title: "Lesson check",
+      },
+      status: {
+        available: true,
+        type: "POST",
+        unlocked: false,
+        lockReason,
+        attemptsRemaining: 1,
+        hasSubmittedAttempt: false,
+      },
+    };
+    const harness = createHarness({ discovery });
+    const outcome = await createAssessmentRouteOrchestrator(harness.services).load({
+      params: { classroomId: "47", placementId: "31", type: "post" },
+      isCurrent: () => true,
+    });
+    assert.equal(outcome.kind, "LOCKED");
+    assert.equal(outcome.message, message);
+  }
+});
 
 const load = async (harness, params = routeParams(), options = {}) => {
   const { createAssessmentRouteOrchestrator } = await loadModule();

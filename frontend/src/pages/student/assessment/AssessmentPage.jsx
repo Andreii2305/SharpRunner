@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useParams } from "react-router-dom";
 import {
   discoverAssessment,
+  discoverCustomAssessment,
   getAttempt,
   getAttemptResult,
   getProgress,
@@ -38,6 +39,7 @@ import { createAssessmentSessionGuard } from "./assessmentSessionGuard.js";
 import {
   buildAssessmentHref,
   buildAssessmentPageHref,
+  buildCustomAssessmentHref,
 } from "../../../utils/lessonProgressionNavigation.js";
 
 const shellCopy = {
@@ -109,7 +111,9 @@ const shellCopy = {
 };
 
 const returnHref = (outcome) => outcome?.route?.classroomId
-  ? `/Map?classroomId=${encodeURIComponent(outcome.route.classroomId)}`
+  ? outcome.route.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    ? "/lesson"
+    : `/Map?classroomId=${encodeURIComponent(outcome.route.classroomId)}`
   : "/Map";
 
 export function AssessmentStatusView({ outcome, onRetry }) {
@@ -128,7 +132,7 @@ export function AssessmentStatusView({ outcome, onRetry }) {
       <section className={styles.statusCard}>
         <span className={styles.statusEyebrow}>Student assessment</span>
         <h1>{copy.title}</h1>
-        <p>{copy.message}</p>
+        <p>{visibleOutcome?.message ?? copy.message}</p>
         {visibleOutcome?.kind !== "LOADING" && (
           <div className={styles.statusActions}>
             {["ERROR", "RESULT_ERROR"].includes(visibleOutcome?.kind) && (
@@ -137,7 +141,7 @@ export function AssessmentStatusView({ outcome, onRetry }) {
             {visibleOutcome?.kind === "AUTH_REQUIRED" ? (
               <a href="/login">Sign in</a>
             ) : (
-              <a href={returnHref(visibleOutcome)}>Return to lesson map</a>
+              <a href={returnHref(visibleOutcome)}>{visibleOutcome?.route?.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? "Return to classwork" : "Return to lesson map"}</a>
             )}
           </div>
         )}
@@ -306,18 +310,23 @@ function AssessmentPage() {
   const orchestrator = useMemo(() => createAssessmentRouteOrchestrator({
     getProgress,
     discoverAssessment,
+    discoverCustomAssessment,
     getAttempt,
     getAttemptResult,
     startOrResumeAttempt,
   }), []);
 
-  const { classroomId, lessonKey, type, attemptId } = params;
+  const { classroomId, lessonKey, placementId, type, attemptId } = params;
+  const routeParams = useMemo(
+    () => ({ classroomId, lessonKey, placementId, type, attemptId }),
+    [attemptId, classroomId, lessonKey, placementId, type],
+  );
   const parsedRoute = useMemo(
-    () => parseAssessmentPageRoute({ classroomId, lessonKey, type, attemptId }),
-    [attemptId, classroomId, lessonKey, type],
+    () => parseAssessmentPageRoute(routeParams),
+    [routeParams],
   );
   const routeKey = parsedRoute?.routeKey
-    ?? `invalid:${classroomId ?? ""}:${lessonKey ?? ""}:${type ?? ""}`;
+    ?? `invalid:${classroomId ?? ""}:${lessonKey ?? ""}:${placementId ?? ""}:${type ?? ""}`;
   const syncAttemptId = assessmentState.attempt?.attemptId
     ?? assessmentState.result?.result?.attemptId
     ?? null;
@@ -328,7 +337,9 @@ function AssessmentPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const historyHref = ["READY", "START_ERROR"].includes(outcome?.kind)
-      ? buildAssessmentHref(parsedRoute)
+      ? parsedRoute?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+        ? buildCustomAssessmentHref(parsedRoute)
+        : buildAssessmentHref(parsedRoute)
       : buildAssessmentPageHref({
         route: parsedRoute,
         screen: assessmentState.screen,
@@ -362,7 +373,7 @@ function AssessmentPage() {
 
     const loadAssessment = async () => {
       const nextOutcome = await orchestrator.load({
-        params: { classroomId, lessonKey, type, attemptId },
+        params: routeParams,
         generation,
         signal: controller.signal,
         isCurrent,
@@ -383,7 +394,7 @@ function AssessmentPage() {
       controller.abort();
       startAbortController.current?.abort();
     };
-  }, [attemptId, classroomId, lessonKey, orchestrator, parsedRoute, retryGeneration, routeKey, type]);
+  }, [orchestrator, parsedRoute, retryGeneration, routeKey, routeParams]);
 
   const revalidateAssessment = useCallback(async ({ isActive = () => true } = {}) => {
     const current = latestState.current;
@@ -403,7 +414,7 @@ function AssessmentPage() {
       requestGeneration: generation,
     });
     const nextOutcome = await orchestrator.revalidate({
-      params: { classroomId, lessonKey, type },
+      params: routeParams,
       generation,
       isCurrent,
     });
@@ -435,7 +446,7 @@ function AssessmentPage() {
     });
     setOutcome(nextOutcome);
     return nextOutcome;
-  }, [classroomId, lessonKey, orchestrator, parsedRoute, syncAttemptId, type]);
+  }, [orchestrator, parsedRoute, routeParams, syncAttemptId]);
 
   useEffect(() => {
     if (!syncIdentity || !syncAttemptId) {
@@ -478,7 +489,13 @@ function AssessmentPage() {
       initialSavedSourceByQuestion: latestState.current.savedSourceByQuestion,
       routeKey: assessmentState.routeKey,
       requestGeneration: assessmentState.requestGeneration,
-      saveResponse,
+      saveResponse: (input) => saveResponse({ ...input, ...(
+        parsedRoute.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? {
+          classroomId: parsedRoute.classroomId,
+          placementId: parsedRoute.placementId,
+          type: parsedRoute.type,
+        } : {}
+      ) }),
       dispatch,
       getState: () => latestState.current,
       onSaved: () => sessionGuard.current?.announceSaved(),
@@ -501,9 +518,18 @@ function AssessmentPage() {
       requestGeneration: assessmentState.requestGeneration,
       getState: () => latestState.current,
       flushAll: controller.flushAll,
-      submitAttempt,
-      getAttemptResult,
-      getProgress,
+      submitAttempt: (input) => submitAttempt({ ...input, ...(
+        parsedRoute.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? {
+          classroomId: parsedRoute.classroomId, placementId: parsedRoute.placementId, type: parsedRoute.type,
+        } : {}
+      ) }),
+      getAttemptResult: (input) => getAttemptResult({ ...input, ...(
+        parsedRoute.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? {
+          classroomId: parsedRoute.classroomId, placementId: parsedRoute.placementId, type: parsedRoute.type,
+        } : {}
+      ) }),
+      getProgress: parsedRoute.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+        ? async () => null : getProgress,
       getSubmissionReadiness,
       getIdempotencyKey: (attemptId) => submissionKeys.get(attemptId),
       dispatch,
@@ -542,7 +568,7 @@ function AssessmentPage() {
       const previousOutcome = outcome;
       setOutcome({ kind: "LOADING", route: parsedRoute });
       const nextOutcome = await orchestrator.loadResult({
-        params: { classroomId, lessonKey, type },
+        params: routeParams,
         attemptId: previousOutcome.latestSubmittedAttemptId,
         generation,
         isCurrent: () => requestGeneration.current === generation,
@@ -558,7 +584,7 @@ function AssessmentPage() {
     }
     setReviewReady(false);
     setRetryGeneration((value) => value + 1);
-  }, [classroomId, lessonKey, orchestrator, outcome, parsedRoute, routeKey, type]);
+  }, [orchestrator, outcome, parsedRoute, routeKey, routeParams]);
   const dispatchForCurrentAttempt = useCallback((action) => {
     const current = latestState.current;
     dispatch({
@@ -618,7 +644,13 @@ function AssessmentPage() {
       }
       dispatchForCurrentAttempt({ type: "CODING_RUN_STARTED", questionId });
       try {
-        const payload = await runCodingQuestion({ attemptId, questionId });
+        const payload = await runCodingQuestion({
+          attemptId,
+          questionId,
+          ...(parsedRoute?.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? {
+            classroomId: parsedRoute.classroomId, placementId: parsedRoute.placementId, type: parsedRoute.type,
+          } : {}),
+        });
         if (latestState.current.attempt?.attemptId !== attemptId) return false;
         dispatchForCurrentAttempt({ type: "CODING_RUN_SUCCEEDED", questionId, result: payload.result });
         return true;
@@ -639,7 +671,7 @@ function AssessmentPage() {
         codingRunInFlight.current.delete(runKey);
       }
     }
-  }, [dispatchForCurrentAttempt]);
+  }, [dispatchForCurrentAttempt, parsedRoute]);
   const retrySave = useCallback((questionId) => (
     playerController.current?.retrySave(questionId) ?? false
   ), []);
@@ -712,7 +744,7 @@ function AssessmentPage() {
 
     setOutcome({ ...ready, startStatus: "starting" });
     const operation = orchestrator.start({
-      params: { classroomId, lessonKey, type },
+      params: routeParams,
       ready,
       generation,
       signal: controller.signal,
@@ -734,14 +766,14 @@ function AssessmentPage() {
     });
     startInFlight.current = operation;
     return operation;
-  }, [classroomId, lessonKey, orchestrator, outcome, parsedRoute, type]);
+  }, [orchestrator, outcome, parsedRoute, routeParams]);
   const startRetake = useCallback(() => {
     if (!parsedRoute) return Promise.resolve(null);
     if (retakeInFlight.current) return retakeInFlight.current;
     const current = latestState.current;
     dispatchForCurrentAttempt({ type: "RETAKE_STARTED" });
     const operation = orchestrator.retake({
-      params: { classroomId, lessonKey, type },
+      params: routeParams,
       generation: current.requestGeneration,
       isCurrent: () => (
         requestGeneration.current === current.requestGeneration
@@ -788,7 +820,7 @@ function AssessmentPage() {
     });
     retakeInFlight.current = operation;
     return operation;
-  }, [classroomId, dispatchForCurrentAttempt, lessonKey, orchestrator, parsedRoute, type]);
+  }, [dispatchForCurrentAttempt, orchestrator, parsedRoute, routeParams]);
 
   return (
     <AssessmentPageContent

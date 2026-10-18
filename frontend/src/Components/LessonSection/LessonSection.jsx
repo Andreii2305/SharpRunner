@@ -300,11 +300,17 @@ function ClassroomContentCard({ lesson, navigate, moduleTitle = null }) {
   const isModule = lesson.contentType === "module";
   const classroomQuery = lesson.classroomId ? `?classroomId=${lesson.classroomId}` : "";
   const contentRoute = `${isAssignment ? "/assignment" : "/lesson"}/classroom/${lesson.id}${classroomQuery}`;
+  const requiredPreRoute = lesson.assessmentGate?.code === "CUSTOM_PRE_REQUIRED"
+    && lesson.classroomId && lesson.placementId
+    ? `/classrooms/${encodeURIComponent(lesson.classroomId)}`
+      + `/lesson-placements/${encodeURIComponent(lesson.placementId)}/assessment/pre`
+    : null;
+  const actionRoute = requiredPreRoute ?? contentRoute;
   return (
-    <div className={`${styles.lessonCard} ${styles.cardActive} ${styles.classLessonCard}`} role="link" tabIndex={0} onClick={() => navigate(contentRoute)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") navigate(contentRoute); }}>
+    <div className={`${styles.lessonCard} ${styles.cardActive} ${styles.classLessonCard}`} role="link" tabIndex={0} onClick={() => navigate(actionRoute)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") navigate(actionRoute); }}>
       <div className={`${styles.cardIcon} ${styles.iconWrapActive}`}><LessonIcon status="active" /></div>
       <div className={styles.cardBody}><div className={styles.cardTop}><span className={styles.cardTitle}>{lesson.title}</span><span className={`${styles.cardBadge} ${styles.badgeActive}`}>{isAssignment ? "Assignment" : isModule ? "Module" : "Lesson"}</span></div><p className={styles.cardRegion}>{moduleTitle ? `Module: ${moduleTitle}` : "Your classroom"}</p><p className={styles.cardDesc}>{lesson.description || "No additional instructions."}</p>{lesson.dueAt && <div className={styles.progressLabel}>Due {new Date(lesson.dueAt).toLocaleString()}</div>}{lesson.attachments?.length > 0 && <div className={styles.classAttachments}><span><FiPaperclip /> {lesson.attachments.length} attachment{lesson.attachments.length === 1 ? "" : "s"}</span></div>}</div>
-      <div className={styles.classLessonOpen}><FiArrowRight /></div>
+      <div className={styles.classLessonOpen} aria-label={requiredPreRoute ? "Take required Pre-Test" : "Open lesson"}>{requiredPreRoute ? "Pre-Test" : <FiArrowRight />}</div>
     </div>
   );
 }

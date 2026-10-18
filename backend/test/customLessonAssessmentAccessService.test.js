@@ -123,6 +123,8 @@ test("access after a requirement cutoff does not bypass that required PRE", asyn
     assessmentId: 71,
     assessmentType: "PRE",
     required: true,
+    classroomId: 7,
+    classroomLessonPlacementId: 31,
   });
   assert.equal(Object.hasOwn(result.gate, "questions"), false);
   assert.equal(Object.hasOwn(result.gate, "score"), false);

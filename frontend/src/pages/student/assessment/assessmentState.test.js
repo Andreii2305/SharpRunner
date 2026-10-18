@@ -94,6 +94,20 @@ test("route parsing accepts only canonical Phase F assessment routes", () => {
   }
 });
 
+test("route parsing preserves exact custom classroom placement identity", () => {
+  assert.deepEqual(parseAssessmentRoute({
+    classroomId: "47", placementId: "31", type: "pre", attemptId: "312",
+  }), {
+    targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomId: 47,
+    placementId: 31,
+    type: "PRE",
+    attemptId: 312,
+    routeKey: "47:placement:31:pre",
+  });
+  assert.equal(parseAssessmentRoute({ classroomId: "47", placementId: "bad", type: "pre" }), null);
+});
+
 test("discovery classification distinguishes unavailable, locked, resumable, result, and ready states", () => {
   assert.equal(classifyAssessmentDiscovery({ assessment: null, status: { available: false } }), "unavailable");
   assert.equal(classifyAssessmentDiscovery({ assessment: { id: 91 }, status: { available: true, unlocked: false } }), "locked");

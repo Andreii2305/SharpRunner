@@ -127,6 +127,22 @@ function App() {
           }
         />
         <Route
+          path="/classrooms/:classroomId/lesson-placements/:placementId/assessment/:type"
+          element={
+            <ProtectedRoute allowedRoles={["student"]} requireClassMembership>
+              <AssessmentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/classrooms/:classroomId/lesson-placements/:placementId/assessment/:type/results/:attemptId"
+          element={
+            <ProtectedRoute allowedRoles={["student"]} requireClassMembership>
+              <AssessmentPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/:lessonSlug/level/:levelNumber"
           element={
             <ProtectedRoute requireClassMembership>

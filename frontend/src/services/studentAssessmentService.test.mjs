@@ -104,6 +104,38 @@ test("assessment and attempt reads return server DTOs without reshaping them", a
   calls.forEach(([, config]) => assertAuthorizedConfig(config, controller.signal));
 });
 
+test("custom assessment operations preserve exact classroom placement and type identity", async () => {
+  const calls = [];
+  const originalGet = axios.get;
+  const originalPost = axios.post;
+  const originalPut = axios.put;
+  axios.get = async (...args) => { calls.push(["get", ...args]); return { data: {} }; };
+  axios.post = async (...args) => { calls.push(["post", ...args]); return { data: {} }; };
+  axios.put = async (...args) => { calls.push(["put", ...args]); return { data: {} }; };
+  const scope = { classroomId: 7, placementId: 31, type: "post" };
+  try {
+    await service.discoverCustomAssessment(scope);
+    await service.startOrResumeAttempt({ ...scope, assessmentId: 91 });
+    await service.getAttempt({ ...scope, attemptId: 301 });
+    await service.saveResponse({ ...scope, attemptId: 301, questionId: 11, selectedChoiceId: 12 });
+    await service.runCodingQuestion({ ...scope, attemptId: 301, questionId: 11 });
+    await service.submitAttempt({ ...scope, attemptId: 301, idempotencyKey: "custom-submit-301" });
+    await service.getAttemptResult({ ...scope, attemptId: 301 });
+  } finally {
+    axios.get = originalGet; axios.post = originalPost; axios.put = originalPut;
+  }
+  const base = "http://localhost:5000/api/assessments/classrooms/7/lesson-placements/31/assessments/POST";
+  assert.deepEqual(calls.map((call) => call[1]), [
+    base,
+    `${base}/91/attempts`,
+    `${base}/attempts/301`,
+    `${base}/attempts/301/responses/11`,
+    `${base}/attempts/301/questions/11/run`,
+    `${base}/attempts/301/submit`,
+    `${base}/attempts/301/result`,
+  ]);
+});
+
 test("attempt start, typed response saves, public run, and submission use exact bodies", async () => {
   const controller = new AbortController();
   const startDto = { attempt: { attemptId: 312, resumed: false }, assessment: { id: 91 } };

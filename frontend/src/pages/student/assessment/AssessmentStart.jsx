@@ -49,7 +49,8 @@ export default function AssessmentStart({ outcome, onStart }) {
   const attemptsAfter = attemptsBefore === null ? null : Math.max(0, attemptsBefore - 1);
   const starting = outcome?.startStatus === "starting";
   const failed = outcome?.kind === "START_ERROR" || outcome?.startStatus === "error";
-  const lessonMapHref = outcome?.route?.classroomId
+  const custom = outcome?.route?.targetKind === "CLASSROOM_LESSON_PLACEMENT";
+  const lessonMapHref = custom ? "/lesson" : outcome?.route?.classroomId
     ? `/Map?classroomId=${encodeURIComponent(outcome.route.classroomId)}`
     : "/Map";
   const requirement = passingCopy(type, information.passingRequirement);
@@ -118,7 +119,7 @@ export default function AssessmentStart({ outcome, onStart }) {
           <button type="button" onClick={onStart} disabled={starting}>
             {starting ? "Starting assessment…" : (failed ? "Try starting again" : "Start assessment")}
           </button>
-          <a href={lessonMapHref}>Back to Lesson Map</a>
+          <a href={lessonMapHref}>{custom ? "Back to classwork" : "Back to Lesson Map"}</a>
         </div>
       </section>
     </main>

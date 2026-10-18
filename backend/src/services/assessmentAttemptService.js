@@ -2,6 +2,7 @@ const { randomBytes } = require("crypto");
 const defaultSequelize = require("../config/database");
 const defaultModels = require("../models");
 const defaultProgressionService = require("./lessonProgressionService");
+const defaultCustomStudentPolicy = require("./customAssessmentStudentPolicyService");
 const { createAssessmentBaselineService } = require("./assessmentBaselineService");
 const { createAssessmentAttemptAllowanceService } = require("./assessmentAttemptAllowanceService");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
@@ -14,6 +15,7 @@ const {
 } = require("./codingAssessmentService");
 const {
   ASSESSMENT_TYPES,
+  ASSESSMENT_TARGET_KINDS,
   ATTEMPT_STATUSES,
 } = require("../constants/assessmentConfig");
 const {
@@ -124,6 +126,7 @@ const createAssessmentAttemptService = ({
   random = Math.random,
   now = () => new Date(),
   progressionService = defaultProgressionService,
+  customStudentPolicy = defaultCustomStudentPolicy,
   baselineService = createAssessmentBaselineService({ models }),
   allowanceService = createAssessmentAttemptAllowanceService({ models }),
   secureCodingExecution = defaultSecureCodingExecution,
@@ -192,6 +195,20 @@ const createAssessmentAttemptService = ({
     return membership;
   };
 
+  const requireAttemptClassroomMembership = async (attemptInput, studentId, transaction) => {
+    const attempt = plain(attemptInput);
+    const membership = await ClassroomMembership.findOne({
+      where: {
+        classroomId: attempt.classroomId,
+        studentId,
+        status: "active",
+      },
+      transaction,
+    });
+    if (!membership) fail("NOT_ENROLLED", "Student is not active in the assessment classroom");
+    return membership;
+  };
+
   const requireOwnedAttempt = async (attemptId, studentId, transaction) => {
     const attempt = await AssessmentAttempt.findByPk(attemptId, {
       transaction,
@@ -210,6 +227,30 @@ const createAssessmentAttemptService = ({
     if (Number(attempt.assessmentVersion) !== Number(assessment.version)) {
       fail("ASSESSMENT_VERSION_MISMATCH", "Assessment changed after this attempt began");
     }
+  };
+
+  const assertExpectedTarget = (assessment, expectedTarget) => {
+    const targetKind = assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN;
+    const expectedKind = expectedTarget?.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN;
+    const matches = targetKind === expectedKind
+      && (expectedTarget?.classroomId == null
+        || sameId(assessment.classroomId, expectedTarget.classroomId))
+      && (expectedKind !== ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT
+        || (sameId(assessment.classroomLessonPlacementId, expectedTarget.classroomLessonPlacementId)
+          && assessment.type === expectedTarget.type));
+    if (!matches) fail("ASSESSMENT_NOT_FOUND", "Assessment route does not match its target");
+  };
+
+  const assertInteractionAllowed = async ({
+    assessment, studentId, membership, transaction, operation,
+  }) => {
+    if ((assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+      === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      return customStudentPolicy.assertAllowed({ assessment, studentId, transaction, operation });
+    }
+    return progressionService.assertAssessmentInteractionAllowed({
+      assessment, studentId, authorizedMembership: membership, transaction,
+    });
   };
 
   const loadSafeResponses = async (attemptId, transaction) => safeSavedResponses(
@@ -252,16 +293,23 @@ const createAssessmentAttemptService = ({
     attemptsRemaining: allowance.attemptsRemaining,
   });
 
-  const startOrResumeAttempt = ({ assessmentId, studentId }) => sequelize.transaction(async (transaction) => {
+  const startOrResumeAttempt = ({ assessmentId, studentId, expectedTarget }) => sequelize.transaction(async (transaction) => {
     const assessmentRow = await requireAssessment(assessmentId, transaction, true);
     const assessment = requirePublishedGraph(assessmentRow);
+    assertExpectedTarget(assessment, expectedTarget);
     const membership = await requireMembership(assessment, studentId, transaction);
-    await progressionService.assertAssessmentInteractionAllowed({
-      assessment,
-      studentId,
-      authorizedMembership: membership,
-      transaction,
-    });
+    const isCustomTarget = (assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+      === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT;
+
+    if (!isCustomTarget) {
+      await assertInteractionAllowed({
+        assessment,
+        studentId,
+        membership,
+        transaction,
+        operation: "START",
+      });
+    }
 
     let active = await AssessmentAttempt.findOne({
       where: { assessmentId: assessment.id, studentId, status: ATTEMPT_STATUSES.IN_PROGRESS },
@@ -273,6 +321,15 @@ const createAssessmentAttemptService = ({
         where: { assessmentId: assessment.id, studentId, status: ATTEMPT_STATUSES.GRADING },
         transaction,
         lock: transaction.LOCK.UPDATE,
+      });
+    }
+    if (isCustomTarget) {
+      await assertInteractionAllowed({
+        assessment,
+        studentId,
+        membership,
+        transaction,
+        operation: active ? "ACTIVE_ATTEMPT" : "START",
       });
     }
     if (active) {
@@ -358,21 +415,17 @@ const createAssessmentAttemptService = ({
     };
   });
 
-  const getActiveAttempt = ({ attemptId, studentId }) => sequelize.transaction(async (transaction) => {
+  const getActiveAttempt = ({ attemptId, studentId, expectedTarget }) => sequelize.transaction(async (transaction) => {
     const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
     if (![ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING].includes(attempt.status)) {
       fail("ATTEMPT_SUBMITTED", "Submitted assessment attempts cannot be changed");
     }
     const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
     const assessment = requirePublishedGraph(assessmentRow);
+    assertExpectedTarget(assessment, expectedTarget);
     requireMatchingVersion(attempt, assessment);
     const membership = await requireMembership(assessment, studentId, transaction);
-    await progressionService.assertAssessmentInteractionAllowed({
-      assessment,
-      studentId,
-      authorizedMembership: membership,
-      transaction,
-    });
+    await assertInteractionAllowed({ assessment, studentId, membership, transaction, operation: "ACTIVE_ATTEMPT" });
     return {
       attempt: safeAttempt(attempt),
       assessment: orderedPlayerAssessment(assessment, attempt),
@@ -388,7 +441,7 @@ const createAssessmentAttemptService = ({
     };
   });
 
-  const saveResponse = ({ attemptId, studentId, questionId, selectedChoiceId, sourceCode }) => sequelize.transaction(
+  const saveResponse = ({ attemptId, studentId, questionId, selectedChoiceId, sourceCode, expectedTarget }) => sequelize.transaction(
     async (transaction) => {
       const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
       if (attempt.status === ATTEMPT_STATUSES.GRADING) {
@@ -399,14 +452,10 @@ const createAssessmentAttemptService = ({
       }
       const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
       const assessment = requirePublishedGraph(assessmentRow);
+      assertExpectedTarget(assessment, expectedTarget);
       requireMatchingVersion(attempt, assessment);
       const membership = await requireMembership(assessment, studentId, transaction);
-      await progressionService.assertAssessmentInteractionAllowed({
-        assessment,
-        studentId,
-        authorizedMembership: membership,
-        transaction,
-      });
+      await assertInteractionAllowed({ assessment, studentId, membership, transaction, operation: "ACTIVE_ATTEMPT" });
 
       if (!(attempt.questionOrder || []).some((id) => sameId(id, questionId))) {
         fail("QUESTION_NOT_PRESENTED", "Question was not presented in this attempt");
@@ -458,7 +507,7 @@ const createAssessmentAttemptService = ({
     },
   );
 
-  const runPublicCodingQuestion = async ({ attemptId, studentId, questionId }) => {
+  const runPublicCodingQuestion = async ({ attemptId, studentId, questionId, expectedTarget }) => {
     const execution = await sequelize.transaction(async (transaction) => {
       const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
       if (attempt.status === ATTEMPT_STATUSES.GRADING) {
@@ -469,14 +518,10 @@ const createAssessmentAttemptService = ({
       }
       const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
       const assessment = requirePublishedGraph(assessmentRow);
+      assertExpectedTarget(assessment, expectedTarget);
       requireMatchingVersion(attempt, assessment);
       const membership = await requireMembership(assessment, studentId, transaction);
-      await progressionService.assertAssessmentInteractionAllowed({
-        assessment,
-        studentId,
-        authorizedMembership: membership,
-        transaction,
-      });
+      await assertInteractionAllowed({ assessment, studentId, membership, transaction, operation: "ACTIVE_ATTEMPT" });
       if (!(attempt.questionOrder || []).some((id) => sameId(id, questionId))) {
         fail("QUESTION_NOT_PRESENTED", "Question was not presented in this attempt");
       }
@@ -519,9 +564,24 @@ const createAssessmentAttemptService = ({
     return shapePublicCodingExecutionResult({ tests: execution.publicTests, result, executionMode: execution.executionMode });
   };
 
-  const reserveSubmission = ({ attemptId, studentId, submissionKey }) => sequelize.transaction(
+  const reserveSubmission = ({ attemptId, studentId, submissionKey, expectedTarget }) => sequelize.transaction(
     async (transaction) => {
       const attempt = await requireOwnedAttempt(attemptId, studentId, transaction);
+      const membership = await requireAttemptClassroomMembership(attempt, studentId, transaction);
+      const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
+      const assessment = requirePublishedGraph(assessmentRow);
+      assertExpectedTarget(assessment, expectedTarget);
+      requireMatchingVersion(attempt, assessment);
+      if (!sameId(assessment.classroomId, attempt.classroomId)) {
+        fail("ATTEMPT_FORBIDDEN", "Assessment attempt does not match its classroom");
+      }
+      const isCustomTarget = (assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+        === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT;
+      if (isCustomTarget) {
+        await assertInteractionAllowed({
+          assessment, studentId, membership, transaction, operation: "ACTIVE_ATTEMPT",
+        });
+      }
       if (attempt.status === ATTEMPT_STATUSES.SUBMITTED) {
         if (attempt.submissionKey === submissionKey) {
           return { kind: "submitted", result: safeSubmittedResult(attempt) };
@@ -552,16 +612,11 @@ const createAssessmentAttemptService = ({
         fail("SUBMISSION_KEY_CONFLICT", "submissionKey was already used for another attempt");
       }
 
-      const assessmentRow = await requireAssessment(attempt.assessmentId, transaction);
-      const assessment = requirePublishedGraph(assessmentRow);
-      requireMatchingVersion(attempt, assessment);
-      const membership = await requireMembership(assessment, studentId, transaction);
-      await progressionService.assertAssessmentInteractionAllowed({
-        assessment,
-        studentId,
-        authorizedMembership: membership,
-        transaction,
-      });
+      if (!isCustomTarget) {
+        await assertInteractionAllowed({
+          assessment, studentId, membership, transaction, operation: "ACTIVE_ATTEMPT",
+        });
+      }
 
       const questionById = new Map(assessment.questions.map((question) => [String(question.id), question]));
       const presentedQuestions = (attempt.questionOrder || []).map((questionId) => {
@@ -738,8 +793,8 @@ const createAssessmentAttemptService = ({
     throw new Error("Assessment finalization retry loop exhausted");
   };
 
-  const submitAttempt = async ({ attemptId, studentId, submissionKey }) => {
-    const reservation = await reserveSubmission({ attemptId, studentId, submissionKey });
+  const submitAttempt = async ({ attemptId, studentId, submissionKey, expectedTarget }) => {
+    const reservation = await reserveSubmission({ attemptId, studentId, submissionKey, expectedTarget });
     if (reservation.kind !== "execute") return reservation.result;
     try {
       const responseByQuestion = new Map(

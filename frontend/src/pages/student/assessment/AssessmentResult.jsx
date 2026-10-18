@@ -45,7 +45,8 @@ export default function AssessmentResult({
   const model = createAssessmentResultModel({ envelope, progression, route });
   const isPre = model.type === "PRE";
   const syncChecking = externalSyncStatus === "checking";
-  const progressionReady = progression != null && !progressionError;
+  const customTarget = route?.targetKind === "CLASSROOM_LESSON_PLACEMENT";
+  const progressionReady = customTarget || (progression != null && !progressionError);
   const reviewByQuestionId = new Map(
     model.review.map((entry) => [String(entry.questionId), entry]),
   );
@@ -149,7 +150,7 @@ export default function AssessmentResult({
             <p>Your result is saved, but the next lesson step could not be refreshed.</p>
           </div>
         )}
-        {!progression && !progressionError && (
+        {!customTarget && !progression && !progressionError && (
           <p className={styles.resultStatus} role="status">Checking the next lesson step…</p>
         )}
         {retakeError && (
@@ -185,7 +186,7 @@ export default function AssessmentResult({
                   : model.type === "PRE" ? "Take supplemental diagnostic" : "Retake Post-Test"}
             </button>
           )}
-          <a className={styles.secondaryAction} href={model.returnHref}>Back to Lesson Map</a>
+          <a className={styles.secondaryAction} href={model.returnHref}>{route?.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? "Back to classwork" : "Back to Lesson Map"}</a>
         </nav>
 
         {model.reviewAvailable && orderedReview.length > 0 && (

@@ -45,6 +45,8 @@ const createCustomLessonAssessmentAccessService = ({
     assessmentId: pre.id,
     assessmentType: ASSESSMENT_TYPES.PRE,
     required: true,
+    classroomId: pre.classroomId,
+    classroomLessonPlacementId: pre.classroomLessonPlacementId,
   });
 
   const hasExactTarget = (pre, placement) => (

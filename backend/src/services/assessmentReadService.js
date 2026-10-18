@@ -3,9 +3,11 @@ const defaultAuthorizationService = require("./assessmentAuthorizationService");
 const defaultAttemptService = require("./assessmentAttemptService");
 const defaultSerializers = require("./assessmentSerializationService");
 const defaultProgressionService = require("./lessonProgressionService");
+const defaultCustomStudentPolicy = require("./customAssessmentStudentPolicyService");
 const { createAssessmentAttemptAllowanceService } = require("./assessmentAttemptAllowanceService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const { ATTEMPT_STATUSES } = require("../constants/assessmentConfig");
+const { ASSESSMENT_TARGET_KINDS } = require("../constants/assessmentConfig");
 const { LESSON_DEFINITIONS } = require("../constants/progressDefaults");
 const {
   calculateLearningGain,
@@ -32,6 +34,7 @@ const createAssessmentReadService = ({
   authorizationService = defaultAuthorizationService,
   attemptService = defaultAttemptService,
   progressionService = defaultProgressionService,
+  customStudentPolicy = defaultCustomStudentPolicy,
   serializers = defaultSerializers,
   selectors = { calculateLearningGain, selectFirstSubmittedPostAttempt, selectOfficialPostAttempt },
   allowanceService = createAssessmentAttemptAllowanceService({ models }),
@@ -126,6 +129,69 @@ const createAssessmentReadService = ({
     });
   };
 
+  const discoverCustomAssessment = async ({ classroomId, placementId, type, studentId }) => {
+    await authorizationService.requireActiveStudentMembership({ classroomId, studentId });
+    const assessmentRow = await LessonAssessment.findOne({
+      where: {
+        classroomId,
+        targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        classroomLessonPlacementId: placementId,
+        type,
+        isPublished: true,
+      },
+      include: [{
+        model: AssessmentQuestion,
+        as: "questions",
+        attributes: ["id", "questionType", "points"],
+      }],
+    });
+    if (!assessmentRow) {
+      return serializers.serializeDiscoveryStatus({
+        assessment: null, available: false, type, attemptStatus: "NOT_AVAILABLE",
+        attemptsUsed: 0, hasSubmittedAttempt: false, unlocked: false,
+      });
+    }
+    const assessment = plain(assessmentRow);
+    const attempts = (await AssessmentAttempt.findAll({
+      where: { assessmentId: assessment.id, classroomId, studentId },
+    })).map(plain);
+    const submittedAttempts = attempts.filter((attempt) => attempt.status === ATTEMPT_STATUSES.SUBMITTED);
+    const activeAttempt = attempts.find((attempt) => (
+      [ATTEMPT_STATUSES.IN_PROGRESS, ATTEMPT_STATUSES.GRADING].includes(attempt.status)
+    )) ?? null;
+    const latestSubmitted = newestSubmitted(submittedAttempts);
+    const operation = activeAttempt ? "ACTIVE_ATTEMPT" : latestSubmitted ? "RESULT" : "START";
+    const decision = await customStudentPolicy.evaluate({ assessment, studentId, operation });
+    const startDecision = activeAttempt
+      ? { allowed: false }
+      : await customStudentPolicy.evaluate({ assessment, studentId, operation: "START" });
+    const grants = await allowanceService.loadGrants({ assessmentId: assessment.id, studentId });
+    const allowance = allowanceService.summarizeAllowance({ assessment, attempts, grants });
+    const questions = assessment.questions || [];
+    return serializers.serializeDiscoveryStatus({
+      assessment,
+      lessonTitle: decision.placement?.lesson?.title ?? assessment.title,
+      questionCount: questions.length,
+      totalPossiblePoints: totalQuestionPoints(questions),
+      available: true,
+      unlocked: decision.allowed,
+      newAttemptAllowed: startDecision.allowed,
+      lockReason: decision.allowed ? null : decision.reason,
+      type,
+      attemptStatus: activeAttempt?.status ?? latestSubmitted?.status ?? "NOT_STARTED",
+      activeAttemptId: activeAttempt?.id,
+      attemptsUsed: submittedAttempts.length,
+      attemptsRemaining: allowance.attemptsRemaining,
+      standardAttemptAllowance: allowance.standardAttemptAllowance,
+      additionalAttemptsGranted: allowance.additionalAttemptsGranted,
+      additionalAttemptsAvailable: allowance.additionalAttemptsAvailable,
+      totalAttemptAllowance: allowance.totalAttemptAllowance,
+      hasSubmittedAttempt: submittedAttempts.length > 0,
+      latestSubmitted,
+      officialPost: type === "POST" ? selectors.selectOfficialPostAttempt(submittedAttempts) : null,
+    });
+  };
+
   const getPlayerAssessment = async ({ assessmentId, studentId }) => {
     const assessmentRow = await LessonAssessment.findByPk(assessmentId, {
       include: [{
@@ -156,6 +222,10 @@ const createAssessmentReadService = ({
       throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
     }
     const assessment = plain(assessmentRow);
+    if ((assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+      !== ASSESSMENT_TARGET_KINDS.BUILT_IN) {
+      throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
+    }
     if (!assessment.isPublished) {
       throw new AssessmentApiError(
         404,
@@ -214,12 +284,12 @@ const createAssessmentReadService = ({
     };
   };
 
-  const getActiveAttempt = async ({ attemptId, studentId }) => composePlayerAttempt(
-    await attemptService.getActiveAttempt({ attemptId, studentId }),
+  const getActiveAttempt = async ({ attemptId, studentId, expectedTarget }) => composePlayerAttempt(
+    await attemptService.getActiveAttempt({ attemptId, studentId, expectedTarget }),
   );
 
-  const startOrResumeAttempt = async ({ assessmentId, studentId }) => composePlayerAttempt(
-    await attemptService.startOrResumeAttempt({ assessmentId, studentId }),
+  const startOrResumeAttempt = async ({ assessmentId, studentId, expectedTarget }) => composePlayerAttempt(
+    await attemptService.startOrResumeAttempt({ assessmentId, studentId, expectedTarget }),
   );
 
   const canExposeAnswerReview = ({ assessment, submittedAttempts = [], activeAttempt = null }) => (
@@ -244,6 +314,7 @@ const createAssessmentReadService = ({
     expectedClassroomId = null,
     expectedLessonKey = null,
     expectedType = null,
+    expectedTarget = null,
   }) => {
     // Authorize metadata first. Scores and answer graphs are loaded only after
     // ownership, exact current membership, and submitted status are established.
@@ -263,6 +334,34 @@ const createAssessmentReadService = ({
       classroomId: identity.classroomId,
       studentId,
     });
+    const assessment = plain(await LessonAssessment.findByPk(identity.assessmentId, {
+      attributes: ["id", "classroomId", "targetKind", "lessonKey", "classroomLessonPlacementId",
+        "targetLessonVersion", "type", "title", "maxAttempts",
+        "showScoreAfterSubmission", "answerReviewPolicy", "passingPercentage",
+        "requirePassingForCompletion"],
+    }));
+    if (!assessment) {
+      throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
+    }
+    const targetKind = assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN;
+    const requiredKind = expectedTarget?.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN;
+    if (targetKind !== requiredKind
+      || (requiredKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT
+        && (String(assessment.classroomLessonPlacementId) !== String(expectedTarget.classroomLessonPlacementId)
+          || assessment.type !== expectedTarget.type))) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
+    if (String(assessment.classroomId) !== String(identity.classroomId)) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
+    if ((assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+      === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      await customStudentPolicy.assertAllowed({ assessment, studentId, operation: "RESULT" });
+    }
+    if ((expectedLessonKey != null && assessment.lessonKey !== expectedLessonKey)
+      || (expectedType != null && assessment.type !== expectedType)) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
     if (identity.status !== ATTEMPT_STATUSES.SUBMITTED) {
       if (identity.status === ATTEMPT_STATUSES.GRADING) {
         return {
@@ -274,20 +373,6 @@ const createAssessmentReadService = ({
         };
       }
       throw new AssessmentApiError(409, "ATTEMPT_IN_PROGRESS", "Assessment attempt has not been submitted");
-    }
-    const assessment = plain(await LessonAssessment.findByPk(identity.assessmentId, {
-      attributes: ["id", "classroomId", "lessonKey", "type", "title", "maxAttempts",
-        "showScoreAfterSubmission", "answerReviewPolicy"],
-    }));
-    if (!assessment) {
-      throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
-    }
-    if (String(assessment.classroomId) !== String(identity.classroomId)) {
-      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
-    }
-    if ((expectedLessonKey != null && assessment.lessonKey !== expectedLessonKey)
-      || (expectedType != null && assessment.type !== expectedType)) {
-      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
     }
     // One scoped sibling query supports both centralized selectors and review
     // exhaustion, including any active attempt. Never query once per attempt.
@@ -309,7 +394,14 @@ const createAssessmentReadService = ({
     let learningGain = null;
     if (assessment.type === "POST" && assessment.showScoreAfterSubmission === true) {
       const preAssessment = plain(await LessonAssessment.findOne({
-        where: { classroomId: assessment.classroomId, lessonKey: assessment.lessonKey, type: "PRE" },
+        where: assessment.targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT
+          ? {
+              classroomId: assessment.classroomId,
+              targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+              classroomLessonPlacementId: assessment.classroomLessonPlacementId,
+              type: "PRE",
+            }
+          : { classroomId: assessment.classroomId, lessonKey: assessment.lessonKey, type: "PRE" },
         attributes: ["id", "showScoreAfterSubmission"],
       }));
       const preAttempt = preAssessment?.showScoreAfterSubmission === true
@@ -411,6 +503,7 @@ const createAssessmentReadService = ({
   return {
     canExposeAnswerReview,
     discoverAssessment,
+    discoverCustomAssessment,
     getActiveAttempt,
     getPlayerAssessment,
     getStudentResult,

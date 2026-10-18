@@ -57,6 +57,7 @@ function ClassroomLessonPage() {
   const [lessonContext, setLessonContext] = useState({ classroom: null, module: null });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [accessGate, setAccessGate] = useState(null);
   const [preview, setPreview] = useState({ attachment: null, url: "", loading: false, error: "" });
   const [progress, setProgress] = useState(null);
   const [submission, setSubmission] = useState(null);
@@ -65,6 +66,9 @@ function ClassroomLessonPage() {
   const [uploadPolicy, setUploadPolicy] = useState(DEFAULT_UPLOAD_POLICY);
   const [submitting, setSubmitting] = useState(false);
   const [completionBusy, setCompletionBusy] = useState(false);
+  const [readingContext, setReadingContext] = useState(null);
+  const [assessments, setAssessments] = useState({ PRE: null, POST: null });
+  const [readingBusy, setReadingBusy] = useState(false);
 
   const loadPreview = useCallback(async (attachment) => {
     if (!attachment || !isPreviewable(attachment.mimeType, attachment.originalName)) return;
@@ -106,16 +110,20 @@ function ClassroomLessonPage() {
         const loadedLesson = response.data?.lesson ?? null;
         classroomScopeRef.current = loadedLesson?.classroomId ?? classroomId;
         setLesson(loadedLesson);
+        setAccessGate(null);
         setLessonContext(response.data?.context ?? { classroom: null, module: null });
         setProgress(response.data?.progress ?? null);
         setSubmission(response.data?.submission ?? null);
         setUploadPolicy(normalizeUploadPolicy(response.data?.uploadPolicy));
+        setReadingContext(response.data?.readingAcknowledgement ?? null);
+        setAssessments(response.data?.assessments ?? { PRE: null, POST: null });
         setSubmissionComment(response.data?.submission?.comment ?? "");
         const firstPreviewable = loadedLesson?.attachments?.find((attachment) => isPreviewable(attachment.mimeType, attachment.originalName));
         if (firstPreviewable) loadPreview(firstPreviewable);
       } catch (requestError) {
         if (mounted) {
           const status = requestError.response?.status;
+          setAccessGate(requestError.response?.data?.gate ?? null);
           setError(status === 404 ? "This lesson is not available yet or is no longer assigned to you." : status === 403 ? "You do not have access to this lesson." : "The lesson could not be loaded. Please try again.");
         }
       } finally {
@@ -156,6 +164,24 @@ function ClassroomLessonPage() {
       setProgress(response.data.progress); toast.success(response.data.message);
     } catch (requestError) { toast.error(requestError.response?.data?.message ?? "Unable to update lesson."); }
     finally { setCompletionBusy(false); }
+  };
+
+  const acknowledgeReading = async () => {
+    if (readingBusy || !readingContext || !lesson?.classroomId) return;
+    setReadingBusy(true);
+    try {
+      const { data } = await axios.post(
+        buildApiUrl(`/api/lesson-content/classroom-lessons/${lesson.id}/placements/${readingContext.placementId}/reading-acknowledgement`),
+        { classroomId: lesson.classroomId, lessonVersion: readingContext.lessonVersion },
+        { headers: getAuthHeaders() },
+      );
+      setReadingContext((current) => ({ ...current, completedAt: data.readingCompletion.completedAt }));
+      toast.success(data.message);
+    } catch (requestError) {
+      toast.error(requestError.response?.data?.message ?? "Unable to record that you finished reading.");
+    } finally {
+      setReadingBusy(false);
+    }
   };
 
   const submitWork = async (event) => {
@@ -199,6 +225,30 @@ function ClassroomLessonPage() {
   };
 
   const isEmptyLesson = lesson && lesson.contentType !== "assignment" && !lesson.topics?.length && !lesson.description && !lesson.externalUrl && !lesson.attachments?.length;
+  const assessmentHref = (type) => readingContext && lesson?.classroomId
+    ? `/classrooms/${encodeURIComponent(lesson.classroomId)}`
+      + `/lesson-placements/${encodeURIComponent(readingContext.placementId)}`
+      + `/assessment/${type.toLowerCase()}`
+    : null;
+  const readingAcknowledged = Boolean(
+    readingContext?.completedAt || assessments.POST?.status?.unlocked,
+  );
+  const readingCheckpoint = !isTeacherPreview && readingContext ? (
+    <section className={`${styles.completionPanel} ${styles.readingCheckpoint}`} aria-label="Reading and assessment checkpoint">
+      <FiCheckCircle />
+      <div>
+        <span>{readingAcknowledged ? "Reading acknowledged" : "Finished this revision?"}</span>
+        <p>This records that you reached the end of this lesson. It is separate from lesson completion.</p>
+        <div className={styles.assessmentLinks}>
+          {assessments.PRE?.assessment && <a href={assessmentHref("PRE")}>Open Pre-Test</a>}
+          {assessments.POST?.assessment && readingAcknowledged && <a href={assessmentHref("POST")}>Continue to Post-Test</a>}
+        </div>
+      </div>
+      <button type="button" className={styles.completeButton} onClick={acknowledgeReading} disabled={readingBusy || readingAcknowledged}>
+        {readingBusy ? "Saving…" : readingContext.completedAt ? "Finished reading" : "Finished reading"}
+      </button>
+    </section>
+  ) : null;
 
   return (
     <div className={styles.root}>
@@ -210,13 +260,14 @@ function ClassroomLessonPage() {
         </header>
 
         {loading ? <div className={styles.lessonSkeleton} aria-label="Loading lesson"><span /><i /><i /><i /></div> : error || !lesson ? (
-          <div className={styles.status}><h1>Class content unavailable</h1><p>{error || "This item could not be found."}</p><button type="button" onClick={() => navigate("/lesson")}>Return to classwork</button></div>
+          <div className={styles.status}><h1>Class content unavailable</h1><p>{error || "This item could not be found."}</p>{accessGate?.code === "CUSTOM_PRE_REQUIRED" && accessGate.classroomId && accessGate.classroomLessonPlacementId && <button type="button" onClick={() => navigate(`/classrooms/${encodeURIComponent(accessGate.classroomId)}/lesson-placements/${encodeURIComponent(accessGate.classroomLessonPlacementId)}/assessment/pre`)}>Take required Pre-Test</button>}<button type="button" onClick={() => navigate("/lesson")}>Return to classwork</button></div>
         ) : isEmptyLesson ? (
           <div className={styles.status}><FiBookOpen /><h1>{isTeacherPreview ? "This lesson doesn’t contain any topics yet." : "This lesson doesn’t have content yet."}</h1><p>{isTeacherPreview ? "Return to the editor to add the first topic." : "Your teacher is still preparing this lesson."}</p>{isTeacherPreview && <button type="button" onClick={() => navigate(`/teacher/lessons/${lesson.id}/edit`)}>Back to editor</button>}</div>
         ) : lesson.topics?.length ? (
           <>
             {isTeacherPreview && <aside className={styles.previewBanner}><div><strong>Preview as Student</strong><span>This read-only view matches the lesson presentation students receive.</span></div><button type="button" onClick={() => navigate(`/teacher/lessons/${lesson.id}/edit`)}>Back to Editor</button></aside>}
             <LessonRenderer lesson={lesson} classroomId={lesson?.classroomId ?? classroomId} preview={isTeacherPreview} onOpenAttachment={downloadAttachment} />
+            {readingCheckpoint}
             {!isTeacherPreview && <section className={styles.completionPanel}><FiCheckCircle /><div><span>{progress?.completedAt ? "Lesson complete" : "You’ve reached the end of this lesson."}</span><p>{progress?.completedAt ? "You can keep reviewing the topics and practice activities anytime." : "Mark it complete when you’re satisfied with your review."}</p></div><button type="button" className={styles.completeButton} onClick={toggleCompletion} disabled={completionBusy}><FiCheckCircle /> {completionBusy ? "Saving…" : progress?.completedAt ? "Mark as incomplete" : "Mark Lesson Complete"}</button></section>}
           </>
         ) : (
@@ -268,6 +319,7 @@ function ClassroomLessonPage() {
                 {!isTeacherPreview && lesson.contentType === "assignment" && <AssignmentSubmissionPanel lesson={lesson} submission={submission} comment={submissionComment} setComment={setSubmissionComment} files={submissionFiles} uploadPolicy={uploadPolicy} submitting={submitting} onSubmit={submitWork} onDownload={downloadSubmissionFile} onFilesSelected={selectSubmissionFiles} />}
               </aside>
             </div>
+            {readingCheckpoint}
             {!isTeacherPreview && lesson.contentType !== "assignment" && <section className={`${styles.completionPanel} ${styles.legacyCompletion}`}><FiCheckCircle /><div><span>{progress?.completedAt ? "Lesson complete" : "You’ve reached the end of this lesson."}</span><p>{progress?.completedAt ? "You can keep reviewing this material anytime." : "Mark it complete when you’re satisfied with your review."}</p></div><button type="button" className={styles.completeButton} onClick={toggleCompletion} disabled={completionBusy}><FiCheckCircle /> {completionBusy ? "Saving…" : progress?.completedAt ? "Mark as incomplete" : "Mark Lesson Complete"}</button></section>}
           </>
         )}

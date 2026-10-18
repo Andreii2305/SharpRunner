@@ -48,15 +48,23 @@ export const buildAssessmentHref = ({ classroomId, lessonKey, type }) => (
   + `/lessons/${segment(lessonKey)}/assessment/${segment(String(type).toLowerCase())}`
 );
 
+export const buildCustomAssessmentHref = ({ classroomId, placementId, type }) => (
+  `/classrooms/${segment(positiveId(classroomId))}`
+  + `/lesson-placements/${segment(positiveId(placementId))}`
+  + `/assessment/${segment(String(type).toLowerCase())}`
+);
+
 export const buildAssessmentResultHref = ({ classroomId, lessonKey, type, attemptId }) => (
   `${buildAssessmentHref({ classroomId, lessonKey, type })}/results/${segment(positiveId(attemptId))}`
 );
 
 export const buildAssessmentPageHref = ({ route, screen, resultAttemptId }) => {
   if (!route || !["active", "result"].includes(screen)) return null;
-  if (screen === "active") return buildAssessmentHref(route);
+  const base = route.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    ? buildCustomAssessmentHref(route) : buildAssessmentHref(route);
+  if (screen === "active") return base;
   if (!positiveId(resultAttemptId)) return null;
-  return buildAssessmentResultHref({ ...route, attemptId: resultAttemptId });
+  return `${base}/results/${segment(positiveId(resultAttemptId))}`;
 };
 
 const LEVEL_ASSESSMENT_LESSONS = new Set([

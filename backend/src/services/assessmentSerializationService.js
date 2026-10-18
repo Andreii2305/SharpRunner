@@ -7,13 +7,22 @@ const DISCOVERY_LOCK_REASONS = new Set([
   "LESSON_PREREQUISITE_REQUIRED",
   "PRE_ASSESSMENT_REQUIRED",
   "GAME_INCOMPLETE",
+  "READING_ACKNOWLEDGEMENT_REQUIRED",
+  "PLACEMENT_ARCHIVED",
 ]);
+const targetIdentity = (assessment) => assessment.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+  ? {
+      targetKind: assessment.targetKind,
+      classroomLessonPlacementId: assessment.classroomLessonPlacementId,
+      targetLessonVersion: Number(assessment.targetLessonVersion),
+    }
+  : { lessonKey: assessment.lessonKey };
 
 const serializePlayerAssessment = (assessmentInput) => {
   const assessment = plain(assessmentInput);
   return {
     id: assessment.id,
-    lessonKey: assessment.lessonKey,
+    ...targetIdentity(assessment),
     type: assessment.type,
     title: assessment.title,
     instructions: assessment.instructions ?? null,
@@ -99,7 +108,7 @@ const serializeDiscoveryAssessment = (assessmentInput, studentInformation = {}) 
     : null;
   return {
     id: assessment.id,
-    lessonKey: assessment.lessonKey,
+    ...targetIdentity(assessment),
     type: assessment.type,
     title: assessment.title,
     instructions: assessment.instructions ?? null,
@@ -149,6 +158,7 @@ const serializeDiscoveryStatus = (input = {}) => {
     if (input[field] != null) status[field] = Number(input[field]);
   }
   if (input.activeAttemptId != null) status.activeAttemptId = input.activeAttemptId;
+  if (input.newAttemptAllowed != null) status.newAttemptAllowed = input.newAttemptAllowed === true;
   if (assessment?.showScoreAfterSubmission === true && input.latestSubmitted) {
     const latest = plain(input.latestSubmitted);
     status.latestSubmitted = {
@@ -209,9 +219,17 @@ const serializeStudentResult = (input = {}) => {
     assessment: {
       id: assessment.id,
       classroomId: assessment.classroomId,
-      lessonKey: assessment.lessonKey,
+      ...targetIdentity(assessment),
       type: assessment.type,
       title: assessment.title,
+      ...(assessment.targetKind === "CLASSROOM_LESSON_PLACEMENT" && assessment.type === "POST" ? {
+        passingRequirement: {
+          required: assessment.requirePassingForCompletion === true,
+          ...(assessment.requirePassingForCompletion === true
+            ? { minimumPercentage: numberOrNull(assessment.passingPercentage) }
+            : {}),
+        },
+      } : {}),
     },
     result,
   };

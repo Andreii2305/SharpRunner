@@ -61,6 +61,14 @@ const request = async (operation) => {
 };
 
 const segment = (value) => encodeURIComponent(String(value));
+const customBase = ({ classroomId, placementId, type }) => (
+  `/api/assessments/classrooms/${segment(classroomId)}`
+  + `/lesson-placements/${segment(placementId)}/assessments/${segment(String(type).toUpperCase())}`
+);
+
+export const discoverCustomAssessment = ({ classroomId, placementId, type, signal }) => request(
+  () => axios.get(buildApiUrl(customBase({ classroomId, placementId, type })), authorizedConfig(signal)),
+);
 
 export const discoverAssessment = ({ classroomId, lessonKey, type, signal }) => request(
   () => axios.get(
@@ -79,17 +87,21 @@ export const getAssessment = ({ assessmentId, signal }) => request(
   ),
 );
 
-export const startOrResumeAttempt = ({ assessmentId, signal }) => request(
+export const startOrResumeAttempt = ({ assessmentId, classroomId, placementId, type, signal }) => request(
   () => axios.post(
-    buildApiUrl(`/api/assessments/${segment(assessmentId)}/attempts`),
+    buildApiUrl(placementId
+      ? `${customBase({ classroomId, placementId, type })}/${segment(assessmentId)}/attempts`
+      : `/api/assessments/${segment(assessmentId)}/attempts`),
     {},
     authorizedConfig(signal),
   ),
 );
 
-export const getAttempt = ({ attemptId, signal }) => request(
+export const getAttempt = ({ attemptId, classroomId, placementId, type, signal }) => request(
   () => axios.get(
-    buildApiUrl(`/api/assessments/attempts/${segment(attemptId)}`),
+    buildApiUrl(placementId
+      ? `${customBase({ classroomId, placementId, type })}/attempts/${segment(attemptId)}`
+      : `/api/assessments/attempts/${segment(attemptId)}`),
     authorizedConfig(signal),
   ),
 );
@@ -99,6 +111,9 @@ export const saveResponse = ({
   questionId,
   selectedChoiceId,
   sourceCode,
+  classroomId,
+  placementId,
+  type,
   signal,
 }) => {
   const hasChoice = selectedChoiceId !== undefined;
@@ -111,7 +126,8 @@ export const saveResponse = ({
   const body = hasChoice ? { selectedChoiceId } : { sourceCode };
   return request(() => axios.put(
     buildApiUrl(
-      `/api/assessments/attempts/${segment(attemptId)}`
+      (placementId ? `${customBase({ classroomId, placementId, type })}/attempts/${segment(attemptId)}`
+        : `/api/assessments/attempts/${segment(attemptId)}`)
       + `/responses/${segment(questionId)}`,
     ),
     body,
@@ -119,10 +135,11 @@ export const saveResponse = ({
   ));
 };
 
-export const runCodingQuestion = ({ attemptId, questionId, signal }) => request(
+export const runCodingQuestion = ({ attemptId, questionId, classroomId, placementId, type, signal }) => request(
   () => axios.post(
     buildApiUrl(
-      `/api/assessments/attempts/${segment(attemptId)}`
+      (placementId ? `${customBase({ classroomId, placementId, type })}/attempts/${segment(attemptId)}`
+        : `/api/assessments/attempts/${segment(attemptId)}`)
       + `/questions/${segment(questionId)}/run`,
     ),
     {},
@@ -130,9 +147,11 @@ export const runCodingQuestion = ({ attemptId, questionId, signal }) => request(
   ),
 );
 
-export const submitAttempt = ({ attemptId, idempotencyKey, signal }) => request(
+export const submitAttempt = ({ attemptId, idempotencyKey, classroomId, placementId, type, signal }) => request(
   () => axios.post(
-    buildApiUrl(`/api/assessments/attempts/${segment(attemptId)}/submit`),
+    buildApiUrl(placementId
+      ? `${customBase({ classroomId, placementId, type })}/attempts/${segment(attemptId)}/submit`
+      : `/api/assessments/attempts/${segment(attemptId)}/submit`),
     {},
     authorizedConfig(signal, { "Idempotency-Key": idempotencyKey }),
   ),
@@ -142,12 +161,14 @@ export const getAttemptResult = ({
   attemptId,
   classroomId,
   lessonKey,
+  placementId,
   type,
   signal,
 }) => request(
   () => axios.get(
-    buildApiUrl(classroomId && lessonKey && type
-      ? `/api/assessments/classrooms/${segment(classroomId)}`
+    buildApiUrl(classroomId && placementId && type
+      ? `${customBase({ classroomId, placementId, type })}/attempts/${segment(attemptId)}/result`
+      : classroomId && lessonKey && type ? `/api/assessments/classrooms/${segment(classroomId)}`
         + `/lessons/${segment(lessonKey)}/${segment(String(type).toUpperCase())}`
         + `/attempts/${segment(attemptId)}/result`
       : `/api/assessments/attempts/${segment(attemptId)}/result`),

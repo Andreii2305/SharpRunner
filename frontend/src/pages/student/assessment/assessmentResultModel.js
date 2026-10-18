@@ -75,6 +75,7 @@ const createPreContinuation = ({ lesson, route, moduleHref }) => {
 };
 
 export const createAssessmentResultModel = ({ envelope, progression, route }) => {
+  const custom = route?.targetKind === "CLASSROOM_LESSON_PLACEMENT";
   const result = envelope?.result ?? {};
   const lesson = lessonFor(progression, route?.lessonKey);
   const type = String(result.type ?? route?.type ?? "").toUpperCase();
@@ -91,6 +92,12 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
     state = "DIAGNOSTIC_COMPLETE";
   } else if (attemptOutcome === "PASSED") {
     state = "PASSED";
+  } else if (custom && envelope?.assessment?.passingRequirement?.required === false) {
+    state = "COMPLETED";
+  } else if (custom && envelope?.retakeAvailable === true) {
+    state = "RETRY_AVAILABLE";
+  } else if (custom && Number(envelope?.attempts?.remaining) === 0) {
+    state = "EXHAUSTED";
   } else if (lesson?.postPassed === true) {
     state = "REQUIREMENT_COMPLETED";
   } else if (lesson?.postPassingRequired === false && lesson?.postCompleted === true) {
@@ -139,12 +146,18 @@ export const createAssessmentResultModel = ({ envelope, progression, route }) =>
       : [],
     baselineEligible: isPre && result.baselineEligible === true,
     moduleUnlocked: isPre && lesson?.moduleUnlocked === true,
-    retakeAllowed: Number(envelope?.attempts?.remaining) > 0
-      && (isPre || state === "RETRY_AVAILABLE" || state === "COMPLETED"),
-    returnHref: mapHref(route?.classroomId),
+    retakeAllowed: custom
+      ? envelope?.retakeAvailable === true
+      : Number(envelope?.attempts?.remaining) > 0
+        && (isPre || state === "RETRY_AVAILABLE" || state === "COMPLETED"),
+    returnHref: custom ? "/lesson" : mapHref(route?.classroomId),
     moduleHref,
-    continuation: isPre ? createPreContinuation({ lesson, route, moduleHref }) : null,
-    nextHref: resolveAssessmentNextHref({
+    continuation: isPre
+      ? custom
+        ? { kind: "classwork", label: "Back to classwork", href: "/lesson", disabled: false }
+        : createPreContinuation({ lesson, route, moduleHref })
+      : null,
+    nextHref: custom ? "/lesson" : resolveAssessmentNextHref({
       nextAction: summary.nextAction ?? lesson?.nextAction,
       nextActionLessonKey: summary.nextActionLessonKey,
       route,

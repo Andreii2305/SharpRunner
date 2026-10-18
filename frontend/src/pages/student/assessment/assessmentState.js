@@ -18,6 +18,7 @@ const positiveInteger = (value) => {
 export const parseAssessmentRoute = ({
   classroomId,
   lessonKey,
+  placementId,
   type,
   attemptId = null,
 } = {}) => {
@@ -27,6 +28,20 @@ export const parseAssessmentRoute = ({
   const parsedAttemptId = attemptId === null || attemptId === undefined || attemptId === ""
     ? null
     : positiveInteger(attemptId);
+  const parsedPlacementId = placementId == null || placementId === ""
+    ? null : positiveInteger(placementId);
+  if (parsedPlacementId) {
+    if (!parsedClassroomId || !ASSESSMENT_TYPES.has(normalizedType)
+      || (attemptId != null && attemptId !== "" && !parsedAttemptId)) return null;
+    return {
+      targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomId: parsedClassroomId,
+      placementId: parsedPlacementId,
+      type: normalizedType,
+      attemptId: parsedAttemptId,
+      routeKey: `${parsedClassroomId}:placement:${parsedPlacementId}:${normalizedType.toLowerCase()}`,
+    };
+  }
 
   if (
     !parsedClassroomId

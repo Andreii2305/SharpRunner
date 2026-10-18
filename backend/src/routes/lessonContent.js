@@ -11,6 +11,7 @@ const ClassroomLessonSubmissionAttachment = require("../models/ClassroomLessonSu
 const Classroom = require("../models/Classroom");
 const ClassroomMembership = require("../models/ClassroomMembership");
 const ClassroomLessonPlacement = require("../models/ClassroomLessonPlacement");
+const ClassroomLessonReadingCompletion = require("../models/ClassroomLessonReadingCompletion");
 const LessonTopic = require("../models/LessonTopic");
 const fs = require("fs");
 const path = require("path");
@@ -22,6 +23,7 @@ const { isStudentAssigned, submissionPolicyError } = require("../services/classr
 const { findPrimaryActiveMembership } = require("../services/studentClassService");
 const customLessonLifecycle = require("../services/customLessonLifecycleService");
 const customLessonAssessmentAccess = require("../services/customLessonAssessmentAccessService");
+const assessmentReadService = require("../services/assessmentReadService");
 
 const visibleLessonWhere = (classroomId) => ({
   classroomId,
@@ -124,6 +126,7 @@ const placementDiscoveryItem = ({ placement, access }) => {
     lessonNumber: lesson.lessonNumber ?? null,
     contentType: lesson.contentType,
     classroomId: placement.classroomId,
+    placementId: placement.id,
     moduleId: placement.moduleId,
     dueAt: lesson.dueAt ?? null,
     allowSubmissions: Boolean(lesson.allowSubmissions),
@@ -278,9 +281,21 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
             studentId: req.userId,
             transaction,
           });
+          const readingCompletion = await ClassroomLessonReadingCompletion.findOne({
+            where: {
+              classroomLessonPlacementId: authoritativePlacement.id,
+              classroomId: authoritativePlacement.classroomId,
+              lessonId,
+              studentId: req.userId,
+              lessonVersion: Number(authoritativePlacement.lesson.contentVersion),
+            },
+            attributes: ["completedAt"],
+            transaction,
+          });
           readingAcknowledgement = {
             placementId: authoritativePlacement.id,
             lessonVersion: Number(authoritativePlacement.lesson.contentVersion),
+            ...(readingCompletion?.completedAt ? { completedAt: readingCompletion.completedAt } : {}),
           };
         }
         [progress] = await ClassroomLessonProgress.findOrCreate({
@@ -322,7 +337,20 @@ router.get("/classroom-lessons/:lessonId", authMiddleware, async (req, res) => {
       submission: sanitizeSubmission(submission, { releaseFeedback }),
       uploadPolicy: lessonUploadPolicy,
     };
-    if (readingAcknowledgement) responsePayload.readingAcknowledgement = readingAcknowledgement;
+    if (readingAcknowledgement) {
+      responsePayload.readingAcknowledgement = readingAcknowledgement;
+      const discoveries = await Promise.all(["PRE", "POST"].map((type) => (
+        assessmentReadService.discoverCustomAssessment({
+          classroomId: placement.classroomId,
+          placementId: placement.id,
+          type,
+          studentId: req.userId,
+        })
+      )));
+      responsePayload.assessments = Object.fromEntries(
+        discoveries.map((discovery, index) => [["PRE", "POST"][index], discovery]),
+      );
+    }
     return res.json(responsePayload);
   } catch (error) {
     if (isLessonAccessError(error)) {

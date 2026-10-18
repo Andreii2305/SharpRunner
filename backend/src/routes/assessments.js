@@ -6,6 +6,7 @@ const defaultReadService = require("../services/assessmentReadService");
 const defaultAttemptService = require("../services/assessmentAttemptService");
 const { AssessmentApiError, sendAssessmentError } = require("../services/assessmentErrorService");
 const { ASSESSMENT_TYPES } = require("../constants/assessmentConfig");
+const { ASSESSMENT_TARGET_KINDS } = require("../constants/assessmentConfig");
 
 const codingRunRateLimit = createRateLimit({
   windowMs: 60_000,
@@ -71,6 +72,121 @@ const createAssessmentRouter = ({
 } = {}) => {
   const router = express.Router();
   router.use(authMiddleware, requireRole("student"));
+
+  const customTarget = (req) => ({
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+    classroomId: parsePositiveId(req.params.classroomId),
+    classroomLessonPlacementId: parsePositiveId(req.params.placementId),
+    type: normalizeType(req.params.type),
+  });
+
+  const customBase = "/classrooms/:classroomId/lesson-placements/:placementId/assessments/:type";
+
+  router.get(customBase, async (req, res) => {
+    try {
+      const target = customTarget(req);
+      const payload = await readService.discoverCustomAssessment({
+        classroomId: target.classroomId,
+        placementId: target.classroomLessonPlacementId,
+        type: target.type,
+        studentId: req.userId,
+      });
+      return res.status(200).json(payload);
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
+
+  router.post(`${customBase}/:assessmentId/attempts`, async (req, res) => {
+    try {
+      validateMutationBody(req);
+      const payload = await readService.startOrResumeAttempt({
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        studentId: req.userId,
+        expectedTarget: customTarget(req),
+      });
+      return res.status(payload.attempt.resumed ? 200 : 201).json(payload);
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
+
+  router.get(`${customBase}/attempts/:attemptId`, async (req, res) => {
+    try {
+      return res.status(200).json(await readService.getActiveAttempt({
+        attemptId: parsePositiveId(req.params.attemptId),
+        studentId: req.userId,
+        expectedTarget: customTarget(req),
+      }));
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
+
+  router.put(`${customBase}/attempts/:attemptId/responses/:questionId`, async (req, res) => {
+    try {
+      const keys = req.body && typeof req.body === "object" && !Array.isArray(req.body)
+        ? Object.keys(req.body) : [];
+      if (keys.length !== 1 || !["selectedChoiceId", "sourceCode"].includes(keys[0])) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const body = validateMutationBody(req, keys);
+      if (Object.hasOwn(body, "selectedChoiceId") && body.selectedChoiceId !== null
+        && (typeof body.selectedChoiceId !== "number"
+          || !Number.isSafeInteger(body.selectedChoiceId) || body.selectedChoiceId <= 0)) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      if (Object.hasOwn(body, "sourceCode") && typeof body.sourceCode !== "string") {
+        throw new AssessmentApiError(400, "INVALID_CODING_RESPONSE", "Invalid coding response");
+      }
+      const saved = await attemptService.saveResponse({
+        attemptId: parsePositiveId(req.params.attemptId),
+        questionId: parsePositiveId(req.params.questionId),
+        studentId: req.userId,
+        expectedTarget: customTarget(req),
+        ...(Object.hasOwn(body, "selectedChoiceId")
+          ? { selectedChoiceId: body.selectedChoiceId }
+          : { sourceCode: body.sourceCode }),
+      });
+      return res.status(200).json({ response: saved });
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
+
+  router.post(`${customBase}/attempts/:attemptId/questions/:questionId/run`, codingRunRateLimit, async (req, res) => {
+    try {
+      validateMutationBody(req);
+      const result = await attemptService.runPublicCodingQuestion({
+        attemptId: parsePositiveId(req.params.attemptId),
+        questionId: parsePositiveId(req.params.questionId),
+        studentId: req.userId,
+        expectedTarget: customTarget(req),
+      });
+      return res.status(200).json({ result });
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
+
+  router.post(`${customBase}/attempts/:attemptId/submit`, async (req, res) => {
+    try {
+      validateMutationBody(req);
+      const attemptId = parsePositiveId(req.params.attemptId);
+      const expectedTarget = customTarget(req);
+      const submitted = await attemptService.submitAttempt({
+        attemptId, studentId: req.userId, submissionKey: submissionKeyFromHeader(req), expectedTarget,
+      });
+      if (submitted.status === "GRADING") {
+        return res.status(202).json({ result: { attemptId, status: "GRADING" }, reviewAvailable: false });
+      }
+      return res.status(200).json(await readService.getStudentResult({
+        attemptId, studentId: req.userId, expectedClassroomId: expectedTarget.classroomId,
+        expectedType: expectedTarget.type, expectedTarget,
+      }));
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
+
+  router.get(`${customBase}/attempts/:attemptId/result`, async (req, res) => {
+    try {
+      const expectedTarget = customTarget(req);
+      return res.status(200).json(await readService.getStudentResult({
+        attemptId: parsePositiveId(req.params.attemptId), studentId: req.userId,
+        expectedClassroomId: expectedTarget.classroomId, expectedType: expectedTarget.type,
+        expectedTarget,
+      }));
+    } catch (error) { return sendAssessmentError(res, error); }
+  });
 
   router.post("/:assessmentId/attempts", async (req, res) => {
     try {

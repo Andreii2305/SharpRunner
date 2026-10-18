@@ -106,6 +106,35 @@ test("historical POST attempt outcome stays separate from a later lesson pass", 
   assert.equal(diagnostic.state, "DIAGNOSTIC_COMPLETE");
 });
 
+test("custom POST results use authoritative retake applicability without game progression", () => {
+  const customRoute = {
+    targetKind: "CLASSROOM_LESSON_PLACEMENT", classroomId: 47, placementId: 31, type: "POST",
+  };
+  const retry = createAssessmentResultModel({
+    envelope: resultEnvelope({ retakeAvailable: true, assessment: { passingRequirement: { required: true } } }),
+    progression: null,
+    route: customRoute,
+  });
+  assert.equal(retry.state, "RETRY_AVAILABLE");
+  assert.equal(retry.retakeAllowed, true);
+  assert.equal(retry.returnHref, "/lesson");
+  assert.equal(retry.nextHref, "/lesson");
+
+  const archived = createAssessmentResultModel({
+    envelope: resultEnvelope({ retakeAvailable: false, assessment: { passingRequirement: { required: true } } }),
+    progression: null,
+    route: customRoute,
+  });
+  assert.equal(archived.retakeAllowed, false);
+
+  const optional = createAssessmentResultModel({
+    envelope: resultEnvelope({ assessment: { passingRequirement: { required: false } } }),
+    progression: null,
+    route: customRoute,
+  });
+  assert.equal(optional.state, "COMPLETED");
+});
+
 test("hidden numeric fields stay absent while the server passed boolean remains usable", () => {
   const envelope = resultEnvelope({
     result: {

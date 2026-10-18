@@ -23,6 +23,7 @@ require("./assessmentPolicyService.test");
 require("./builtInAssessmentTemplates.test");
 require("./assessmentMigration.test");
 require("./assessmentBaselineService.test");
+require("./customLessonAssessmentAccessService.test");
 require("./assessmentAttemptService.test");
 require("./assessmentSerialization.test");
 require("./assessmentRoutes.integration.test");

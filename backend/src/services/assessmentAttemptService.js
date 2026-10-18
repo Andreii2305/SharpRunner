@@ -312,11 +312,22 @@ const createAssessmentAttemptService = ({
       0,
     ) + 1;
     const order = buildOrder(assessment);
+    let startedAt = null;
+    const captureStartedAt = () => {
+      startedAt ||= now();
+      return startedAt;
+    };
     const preBaselineStatus = assessment.type === ASSESSMENT_TYPES.PRE
       ? (unusedGrant
         ? "SUPPLEMENTAL"
-        : await baselineService.classifyAtCreation({ assessment, studentId, transaction }))
+        : await baselineService.classifyAtCreation({
+          assessment,
+          studentId,
+          transaction,
+          captureStartedAt,
+        }))
       : null;
+    captureStartedAt();
     const created = await AssessmentAttempt.create({
       assessmentId: assessment.id,
       classroomId: assessment.classroomId,
@@ -324,7 +335,7 @@ const createAssessmentAttemptService = ({
       attemptNumber,
       status: ATTEMPT_STATUSES.IN_PROGRESS,
       assessmentVersion: assessment.version,
-      startedAt: now(),
+      startedAt,
       questionOrder: order.questionOrder,
       choiceOrder: order.choiceOrder,
       preBaselineStatus,

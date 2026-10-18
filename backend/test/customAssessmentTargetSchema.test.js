@@ -24,6 +24,10 @@ const lifecycleMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261018000000_custom_lesson_lifecycle.sql",
 );
+const preAccessPolicyMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261019000000_custom_lesson_pre_access_policy.sql",
+);
 
 const validAssessment = (overrides = {}) => models.LessonAssessment.build({
   classroomId: 7,
@@ -100,6 +104,13 @@ test("content access evidence is immutable and scoped to an exact placement revi
   }
   assert.equal(models.ClassroomLessonPlacement.associations.contentAccesses.options.onDelete, "RESTRICT");
   assert.equal(models.ClassroomLesson.associations.contentAccesses.options.onDelete, "RESTRICT");
+});
+
+test("custom PRE policy timestamps distinguish historical coverage from requirement enforcement", () => {
+  assert.ok(models.ClassroomLessonPlacement.rawAttributes.accessPolicyEstablishedAt);
+  assert.equal(models.ClassroomLessonPlacement.rawAttributes.accessPolicyEstablishedAt.allowNull, true);
+  assert.ok(models.LessonAssessment.rawAttributes.accessGateEstablishedAt);
+  assert.equal(models.LessonAssessment.rawAttributes.accessGateEstablishedAt.allowNull, true);
 });
 
 test("placement assessment and reading history relationships are restrictive", () => {
@@ -263,8 +274,9 @@ test("foundation migration backfills built-ins and enforces target and history c
   assert.doesNotMatch(sql, /UPDATE "ClassroomLessonProgresses"/);
 
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-2), "20261017000000_custom_lesson_assessment_foundation");
-  assert.equal(names.at(-3), "20261016000000_assessment_attempt_grants");
+  const foundationIndex = names.indexOf("20261017000000_custom_lesson_assessment_foundation");
+  assert.equal(names[foundationIndex - 1], "20261016000000_assessment_attempt_grants");
+  assert.equal(names[foundationIndex + 1], "20261018000000_custom_lesson_lifecycle");
 });
 
 test("lifecycle migration adds current content revisions and immutable exact access evidence", () => {
@@ -287,6 +299,25 @@ test("lifecycle migration adds current content revisions and immutable exact acc
   assert.match(sql, /REVOKE ALL PRIVILEGES ON TABLE "ClassroomLessonContentAccesses" FROM PUBLIC/);
 
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261018000000_custom_lesson_lifecycle");
-  assert.equal(names.at(-2), "20261017000000_custom_lesson_assessment_foundation");
+  const lifecycleIndex = names.indexOf("20261018000000_custom_lesson_lifecycle");
+  assert.equal(names[lifecycleIndex - 1], "20261017000000_custom_lesson_assessment_foundation");
+  assert.equal(names[lifecycleIndex + 1], "20261019000000_custom_lesson_pre_access_policy");
+});
+
+test("PRE access policy migration preserves uncertainty and makes policy timestamps durable", () => {
+  assert.equal(fs.existsSync(preAccessPolicyMigrationPath), true);
+  const sql = fs.readFileSync(preAccessPolicyMigrationPath, "utf8");
+
+  assert.match(sql, /ClassroomLessonPlacements"\s+ADD COLUMN IF NOT EXISTS "accessPolicyEstablishedAt" TIMESTAMPTZ/);
+  assert.match(sql, /LessonAssessments"\s+ADD COLUMN IF NOT EXISTS "accessGateEstablishedAt" TIMESTAMPTZ/);
+  assert.doesNotMatch(sql, /UPDATE "ClassroomLessonPlacements"[\s\S]*accessPolicyEstablishedAt/);
+  assert.doesNotMatch(sql, /DEFAULT\s+(NOW\(\)|CURRENT_TIMESTAMP)/i);
+  assert.match(sql, /prevent_classroom_lesson_access_policy_timestamp_change/);
+  assert.match(sql, /OLD\."accessPolicyEstablishedAt" IS DISTINCT FROM NEW\."accessPolicyEstablishedAt"/);
+  assert.match(sql, /prevent_custom_pre_access_gate_timestamp_change/);
+  assert.match(sql, /OLD\."accessGateEstablishedAt" IS NOT NULL[\s\S]*IS DISTINCT FROM NEW\."accessGateEstablishedAt"/);
+
+  const names = migrations.map(([name]) => name);
+  assert.equal(names.at(-1), "20261019000000_custom_lesson_pre_access_policy");
+  assert.equal(names.at(-2), "20261018000000_custom_lesson_lifecycle");
 });

@@ -37,6 +37,7 @@ const LessonAssessment = require("../src/models/LessonAssessment");
 const AssessmentAttempt = require("../src/models/AssessmentAttempt");
 const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
 const sequelize = require("../src/config/database");
+const lessonStorage = require("../src/services/lessonFileStorageService");
 const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
 const {
   TERMS_VERSION,
@@ -1742,6 +1743,138 @@ test("student lesson discovery excludes archived reusable placements", async () 
   });
 });
 
+test("placement discovery is identity-only, reports a safe PRE gate, and records no access", async () => {
+  const student = activeUser({ id: 70311, role: "student" });
+  const lesson = {
+    id: 9031,
+    title: "Gated arrays reading",
+    description: "Instructional description must stay hidden",
+    contentType: "lesson",
+    externalUrl: "https://example.test/instructions",
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+    contentVersion: 3,
+    attachments: [{ id: 1, originalName: "answers.pdf", mimeType: "application/pdf", sizeBytes: 42 }],
+    toJSON() { const { toJSON, ...value } = this; return value; },
+  };
+  const placement = {
+    id: 9032,
+    lessonId: lesson.id,
+    classroomId: 90,
+    moduleId: null,
+    archivedAt: null,
+    lesson,
+  };
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 90, studentId: student.id, status: "active" })],
+    [ClassroomLesson, "findAll", async () => []],
+    [ClassroomLesson, "findByPk", async () => lesson],
+    [ClassroomLessonPlacement, "findAll", async () => [placement]],
+    [ClassroomLessonPlacement, "findOne", async () => placement],
+    [Classroom, "findOne", async () => ({ id: 90, isActive: true })],
+    [LessonAssessment, "findOne", async () => ({
+      id: 77,
+      classroomId: 90,
+      targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomLessonPlacementId: placement.id,
+      type: "PRE",
+      isRequired: true,
+      isPublished: true,
+      targetLessonVersion: 3,
+      accessGateEstablishedAt: new Date("2026-10-18T00:00:00Z"),
+    })],
+    [AssessmentAttempt, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOrCreate", async () => assert.fail("listing must not record content access")],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/lesson-content", {
+      token: authToken(student.id, "student"),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(payload.classroomLessons.length, 1);
+    const item = payload.classroomLessons[0];
+    assert.equal(item.id, lesson.id);
+    assert.equal(item.title, lesson.title);
+    assert.equal(item.description, null);
+    assert.equal(item.externalUrl, null);
+    assert.deepEqual(item.attachments, []);
+    assert.equal(item.contentAvailable, false);
+    assert.deepEqual(item.assessmentGate, {
+      code: "CUSTOM_PRE_REQUIRED",
+      assessmentId: 77,
+      assessmentType: "PRE",
+      required: true,
+    });
+  });
+});
+
+test("required custom PRE blocks reader disclosure without recording access", async () => {
+  const student = activeUser({ id: 70312, role: "student" });
+  const lesson = {
+    id: 9033,
+    classroomId: null,
+    teacherId: 704,
+    title: "Blocked lesson",
+    description: "Hidden reading",
+    contentType: "lesson",
+    contentVersion: 2,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+    attachments: [],
+  };
+  const placement = { id: 9034, classroomId: 90, lessonId: lesson.id, moduleId: null, archivedAt: null, lesson };
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLesson, "findByPk", async () => lesson],
+    [ClassroomMembership, "findAll", async () => [{ classroomId: 90 }]],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 90, studentId: student.id, status: "active" })],
+    [ClassroomLessonPlacement, "findOne", async () => placement],
+    [Classroom, "findOne", async () => ({ id: 90, isActive: true })],
+    [LessonAssessment, "findOne", async () => ({
+      id: 78,
+      classroomId: 90,
+      targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomLessonPlacementId: placement.id,
+      type: "PRE",
+      isRequired: true,
+      isPublished: true,
+      targetLessonVersion: 2,
+      accessGateEstablishedAt: new Date("2026-10-18T00:00:00Z"),
+    })],
+    [AssessmentAttempt, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOrCreate", async () => assert.fail("denied reader must not record access")],
+    [ClassroomLessonProgress, "findOrCreate", async () => assert.fail("denied reader must not record progress")],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const { response, payload } = await apiRequest(
+      `/api/lesson-content/classroom-lessons/${lesson.id}?classroomId=90`,
+      { token: authToken(student.id, "student") },
+    );
+    assert.equal(response.status, 403);
+    assert.equal(payload.code, "CUSTOM_PRE_REQUIRED");
+    assert.equal(payload.gate.assessmentId, 78);
+    assert.equal(JSON.stringify(payload).includes("Hidden reading"), false);
+
+    const completion = await apiRequest(
+      `/api/lesson-content/classroom-lessons/${lesson.id}/completion`,
+      {
+        method: "PUT",
+        token: authToken(student.id, "student"),
+        body: { classroomId: 90, completed: true },
+      },
+    );
+    assert.equal(completion.response.status, 403);
+    assert.equal(completion.payload.code, "CUSTOM_PRE_REQUIRED");
+  });
+});
+
 test("reader records exact revision access and returns acknowledgement context", async () => {
   const student = activeUser({ id: 7032, role: "student" });
   const lesson = {
@@ -1767,6 +1900,7 @@ test("reader records exact revision access and returns acknowledgement context",
     [ClassroomMembership, "findOne", async () => ({ classroomId: 90, studentId: student.id, status: "active" })],
     [ClassroomLessonPlacement, "findOne", async () => placement],
     [Classroom, "findOne", async () => ({ id: 90, isActive: true })],
+    [LessonAssessment, "findOne", async () => null],
     [Classroom, "findByPk", async () => ({ id: 90, className: "DSA", section: "3E" })],
     [ClassroomLessonProgress, "findOrCreate", async () => [{ viewedAt: new Date(), completedAt: null }, false]],
     [ClassroomLessonContentAccess, "findOrCreate", async ({ defaults }) => {
@@ -1811,6 +1945,7 @@ test("reading acknowledgement route uses exact placement identity without changi
     }],
     [Classroom, "findOne", async () => ({ id: 91, isActive: true })],
     [ClassroomMembership, "findOne", async () => ({ classroomId: 91, studentId: student.id, status: "active" })],
+    [LessonAssessment, "findOne", async () => null],
     [ClassroomLessonContentAccess, "findOne", async () => ({ id: 909, lessonVersion: 2 })],
     [ClassroomLessonReadingCompletion, "findOrCreate", async () => [{ id: 910, lessonVersion: 2, completedAt: new Date() }, true]],
     [ClassroomLessonProgress, "findOrCreate", async () => { legacyCompletionTouched = true; return []; }],
@@ -1827,6 +1962,60 @@ test("reading acknowledgement route uses exact placement identity without changi
     assert.equal(response.status, 201);
     assert.equal(payload.readingCompletion.lessonVersion, 2);
     assert.equal(legacyCompletionTouched, false);
+  });
+});
+
+test("reading acknowledgement enforces the same required PRE gate as content delivery", async () => {
+  const student = activeUser({ id: 70331, role: "student" });
+  const lesson = {
+    id: 9071,
+    contentType: "lesson",
+    contentVersion: 2,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+  };
+  const placement = { id: 9081, classroomId: 91, lessonId: lesson.id, archivedAt: null, lesson };
+  let completionWrites = 0;
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLesson, "findByPk", async () => lesson],
+    [ClassroomLessonPlacement, "findOne", async () => placement],
+    [Classroom, "findOne", async () => ({ id: 91, isActive: true })],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 91, studentId: student.id, status: "active" })],
+    [LessonAssessment, "findOne", async () => ({
+      id: 781,
+      classroomId: 91,
+      targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomLessonPlacementId: placement.id,
+      type: "PRE",
+      isRequired: true,
+      isPublished: true,
+      targetLessonVersion: 2,
+      accessGateEstablishedAt: new Date("2026-10-18T00:00:00Z"),
+    })],
+    [AssessmentAttempt, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOne", async ({ where }) => (
+      where.accessedAt ? null : { id: 9091, lessonVersion: 2 }
+    )],
+    [ClassroomLessonReadingCompletion, "findOrCreate", async () => {
+      completionWrites += 1;
+      return [{ id: 9101 }, true];
+    }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const { response, payload } = await apiRequest(
+      `/api/lesson-content/classroom-lessons/${lesson.id}/placements/${placement.id}/reading-acknowledgement`,
+      {
+        method: "POST",
+        token: authToken(student.id, "student"),
+        body: { classroomId: 91, lessonVersion: 2 },
+      },
+    );
+    assert.equal(response.status, 403);
+    assert.equal(payload.code, "CUSTOM_PRE_REQUIRED");
+    assert.equal(completionWrites, 0);
   });
 });
 
@@ -1862,6 +2051,7 @@ test("student file delivery records access for the requested exact placement rev
       return placement;
     }],
     [Classroom, "findOne", async () => ({ id: 92, isActive: true })],
+    [LessonAssessment, "findOne", async () => null],
     [ClassroomLessonContentAccess, "findOrCreate", async ({ where }) => {
       recordedWhere = where;
       return [{ id: 914 }, true];
@@ -1885,6 +2075,163 @@ test("student file delivery records access for the requested exact placement rev
     });
     assert.equal(ambiguous.status, 403);
     assert.equal(recordedWhere, null);
+  });
+});
+
+test("failed file materialization does not record content-access evidence", async () => {
+  const student = activeUser({ id: 70342, role: "student" });
+  const lesson = {
+    id: 9112,
+    classroomId: null,
+    contentType: "lesson",
+    contentVersion: 6,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+  };
+  const placement = { id: 9122, classroomId: 92, lessonId: lesson.id, archivedAt: null, lesson };
+  let accessWrites = 0;
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLessonAttachment, "findByPk", async () => ({
+      id: 9132,
+      originalName: "missing.txt",
+      storedName: "definitely-missing-lesson-file.txt",
+      mimeType: "text/plain",
+      data: null,
+      storageProvider: "database",
+      storageKey: null,
+      lesson,
+    })],
+    [ClassroomMembership, "findAll", async () => [{ classroomId: 92 }]],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
+    [ClassroomLesson, "findByPk", async () => lesson],
+    [ClassroomLessonPlacement, "findOne", async () => placement],
+    [Classroom, "findOne", async () => ({ id: 92, isActive: true })],
+    [LessonAssessment, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOrCreate", async () => {
+      accessWrites += 1;
+      return [{ id: 9142 }, true];
+    }],
+    [lessonStorage, "readFile", async () => null],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const { response } = await apiRequest(
+      "/api/lesson-content/classroom-files/9132?classroomId=92",
+      { token: authToken(student.id, "student") },
+    );
+    assert.equal(response.status, 404);
+    assert.equal(accessWrites, 0);
+  });
+});
+
+test("file delivery rejects a revision change after materialization without recording access", async () => {
+  const student = activeUser({ id: 70343, role: "student" });
+  const loadedLesson = {
+    id: 9113,
+    classroomId: null,
+    contentType: "lesson",
+    contentVersion: 6,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+  };
+  const changedLesson = { ...loadedLesson, contentVersion: 7 };
+  const placement = { id: 9123, classroomId: 92, lessonId: loadedLesson.id, archivedAt: null, lesson: loadedLesson };
+  let lessonLoads = 0;
+  let accessWrites = 0;
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLessonAttachment, "findByPk", async () => ({
+      id: 9133,
+      originalName: "arrays.txt",
+      storedName: "arrays.txt",
+      mimeType: "text/plain",
+      data: Buffer.from("revision six"),
+      lesson: loadedLesson,
+    })],
+    [ClassroomMembership, "findAll", async () => [{ classroomId: 92 }]],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
+    [ClassroomLesson, "findByPk", async () => (++lessonLoads === 1 ? loadedLesson : changedLesson)],
+    [ClassroomLessonPlacement, "findOne", async () => placement],
+    [Classroom, "findOne", async () => ({ id: 92, isActive: true })],
+    [LessonAssessment, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOrCreate", async () => {
+      accessWrites += 1;
+      return [{ id: 9143 }, true];
+    }],
+    [lessonStorage, "readFile", async () => Buffer.from("revision six")],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    const response = await fetch(`${baseUrl}/api/lesson-content/classroom-files/9133?classroomId=92`, {
+      headers: { Authorization: `Bearer ${authToken(student.id, "student")}` },
+    });
+    assert.equal(response.status, 409);
+    const payload = await response.json();
+    assert.equal(payload.code, "STALE_LESSON_REVISION");
+    assert.equal(accessWrites, 0);
+  });
+});
+
+test("required custom PRE blocks direct attachment, topic-image, and preview delivery", async () => {
+  const student = activeUser({ id: 70341, role: "student" });
+  const lesson = {
+    id: 9111,
+    classroomId: null,
+    contentType: "lesson",
+    contentVersion: 6,
+    isPublished: true,
+    publishAt: null,
+    archivedAt: null,
+    assignedStudentIds: [],
+  };
+  const placement = { id: 9121, classroomId: 92, lessonId: lesson.id, archivedAt: null, lesson };
+  let fileReads = 0;
+  await withStubs([
+    [User, "findByPk", async () => student],
+    [ClassroomLessonAttachment, "findByPk", async (id) => ({
+      id,
+      originalName: Number(id) === 9141 ? "topic-image.png" : "lesson-notes.docx",
+      storedName: Number(id) === 9141 ? "topic-image.png" : "lesson-notes.docx",
+      mimeType: Number(id) === 9141 ? "image/png" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      data: Buffer.from("hidden"),
+      lesson,
+    })],
+    [ClassroomMembership, "findAll", async () => [{ classroomId: 92 }]],
+    [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
+    [ClassroomLesson, "findByPk", async () => lesson],
+    [ClassroomLessonPlacement, "findOne", async () => placement],
+    [Classroom, "findOne", async () => ({ id: 92, isActive: true })],
+    [LessonAssessment, "findOne", async () => ({
+      id: 79,
+      classroomId: 92,
+      targetKind: "CLASSROOM_LESSON_PLACEMENT",
+      classroomLessonPlacementId: placement.id,
+      type: "PRE",
+      isRequired: true,
+      isPublished: true,
+      targetLessonVersion: 6,
+      accessGateEstablishedAt: new Date("2026-10-18T00:00:00Z"),
+    })],
+    [AssessmentAttempt, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOne", async () => null],
+    [ClassroomLessonContentAccess, "findOrCreate", async () => assert.fail("denied files must not record access")],
+    [lessonStorage, "readFile", async () => { fileReads += 1; return Buffer.from("hidden"); }],
+    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+  ], async () => {
+    for (const route of [
+      "/api/lesson-content/classroom-files/9141?classroomId=92",
+      "/api/lesson-content/classroom-files/9142?classroomId=92",
+      "/api/lesson-content/classroom-files/9142/preview?classroomId=92",
+    ]) {
+      const { response, payload } = await apiRequest(route, { token: authToken(student.id, "student") });
+      assert.equal(response.status, 403, route);
+      assert.equal(payload.code, "CUSTOM_PRE_REQUIRED", route);
+      assert.equal(payload.gate.assessmentId, 79, route);
+    }
+    assert.equal(fileReads, 0);
   });
 });
 
@@ -2155,12 +2502,16 @@ test("reusing a lesson preserves its identity and safely updates its module plac
   const source = { id: 91, teacherId: teacher.id, title: "Shared loops", contentType: "lesson", topics: [], attachments: [] };
   const placement = { lessonId: source.id, classroomId: 12, moduleId: null, saveCalled: false, async save() { this.saveCalled = true; } };
 
+  let placementDefaults;
   await withStubs([
     [User, "findByPk", async () => teacher],
     [ClassroomLesson, "findOne", async ({ where }) => Number(where.id) === source.id ? source : { id: 44, classroomId: 12, contentType: "module" }],
     [Classroom, "findOne", async () => ({ id: 12, teacherId: teacher.id })],
     [ClassroomLessonPlacement, "count", async () => 1],
-    [ClassroomLessonPlacement, "findOrCreate", async () => [placement, false]],
+    [ClassroomLessonPlacement, "findOrCreate", async ({ defaults }) => {
+      placementDefaults = defaults;
+      return [placement, false];
+    }],
     [ClassroomLessonPlacement, "findOne", async () => placement],
     [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
   ], async () => {
@@ -2173,6 +2524,7 @@ test("reusing a lesson preserves its identity and safely updates its module plac
     assert.equal(payload.lessonId, source.id);
     assert.equal(placement.moduleId, 44);
     assert.equal(placement.saveCalled, true);
+    assert.ok(placementDefaults.accessPolicyEstablishedAt instanceof Date);
     assert.match(payload.message, /moved to the selected module/i);
   });
 });
@@ -2186,6 +2538,7 @@ test("reusing an archived placement restores its original identity", async () =>
     classroomId: 112,
     moduleId: null,
     archivedAt: new Date("2026-10-01T00:00:00Z"),
+    accessPolicyEstablishedAt: new Date("2026-09-15T00:00:00Z"),
     async save() {},
   };
   await withStubs([
@@ -2205,6 +2558,7 @@ test("reusing an archived placement restores its original identity", async () =>
     assert.equal(response.status, 200);
     assert.equal(payload.placement.id, 712);
     assert.equal(placement.archivedAt, null);
+    assert.deepEqual(placement.accessPolicyEstablishedAt, new Date("2026-09-15T00:00:00Z"));
     assert.match(payload.message, /restored/i);
   });
 });
@@ -2290,6 +2644,7 @@ test("copy placement creates an independent draft with copied topics", async () 
     assert.equal(source.topics[0].content.body, "Intro");
     assert.equal(createdPlacement.lessonId, createdLesson.id);
     assert.equal(createdPlacement.classroomId, 13);
+    assert.ok(createdPlacement.accessPolicyEstablishedAt instanceof Date);
   });
 });
 

@@ -52,9 +52,51 @@ explicit acknowledgement may then record that same current revision. Legacy
 versioned reading evidence.
 
 Rollout order is the dormant custom-target foundation migration, this lifecycle
-migration, and then the backend/frontend release. Application rollback may use
+migration, the PRE access-policy migration, and then the backend/frontend
+release. Application rollback may use
 the earlier code only while the additive columns, restrictive placement foreign
 key, and immutable access table remain in place. Do not roll the database back
 by dropping revision columns, deleting access/acknowledgement rows, or restoring
 cascading placement deletion; once evidence exists, any schema rollback needs a
 new forward, data-preserving migration.
+
+## Phase 3 dormant PRE access policy and baseline foundation
+
+`ClassroomLessonPlacements.accessPolicyEstablishedAt` is the server time from
+which the application can prove that all successful instructional-content
+delivery for that placement is represented by immutable access evidence. New
+placements set it in the placement-creation transaction. Placements that
+predate this policy intentionally retain `NULL`; migration, ordinary updates,
+archive, restore, and reuse must never convert uncertain historical coverage
+into confirmed coverage.
+
+`LessonAssessments.accessGateEstablishedAt` is the first time a particular
+required custom PRE and its bound lesson revision becomes enforceable. It is
+set once by the future publication workflow and retained across unpublish and
+republish. Prior-access protection is requirement-specific: only immutable
+access for the same placement, student, and target content revision at or
+before this first-enforcement timestamp satisfies that gate. Access recorded
+after one requirement does not become an unrestricted exemption for another
+revision or assessment.
+
+Student placement listings are identity/status-only and do not create content
+access evidence. Descriptions, external URLs, attachments, topics, images, and
+other instructional content are disclosed only after the central placement
+access evaluator allows the request; successful disclosure then records exact
+placement/revision access. The application can protect its own reader, file,
+image, preview, and external-link disclosure paths, but cannot revoke files
+already downloaded or control a public external resource after its URL was
+previously disclosed.
+
+For custom PRE baselines, immutable content access at or before the locked
+attempt `startedAt` is `RETROACTIVE`. No access under complete placement
+coverage is `VALID`; no access under uncertain historical coverage is
+`UNKNOWN`. Supplemental PRE attempts remain `SUPPLEMENTAL`. Built-in baseline
+classification is unchanged.
+
+Custom publication remains disabled. Before enabling it, the publication
+transaction must resolve and lock the exact placement, reject required PRE for
+`NULL` coverage, set the assessment's first-enforcement timestamp once, and
+complete teacher authoring, student Start/resume/submission/results, all reader
+and file gates, lifecycle protections, and teacher history/export access end to
+end.

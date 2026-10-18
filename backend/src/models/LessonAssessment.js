@@ -34,6 +34,7 @@ const LessonAssessment = sequelize.define("LessonAssessment", {
   isRequired: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   isPublished: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   publishedAt: { type: DataTypes.DATE, allowNull: true },
+  accessGateEstablishedAt: { type: DataTypes.DATE, allowNull: true },
   passingPercentage: {
     type: DataTypes.DECIMAL(5, 2),
     allowNull: true,
@@ -93,6 +94,14 @@ const LessonAssessment = sequelize.define("LessonAssessment", {
       }
       if (this.isPublished || this.publishedAt != null) {
         throw new Error("Custom assessment target publication is not enabled");
+      }
+    },
+  },
+  hooks: {
+    beforeUpdate(assessment) {
+      if (assessment.previous("accessGateEstablishedAt") != null
+        && assessment.changed("accessGateEstablishedAt")) {
+        throw new Error("Custom PRE access gate establishment is immutable");
       }
     },
   },

@@ -7,6 +7,7 @@ const ClassroomLessonPlacement = sequelize.define("ClassroomLessonPlacements", {
   moduleId: { type: DataTypes.INTEGER, allowNull: true },
   displayOrder: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   archivedAt: { type: DataTypes.DATE, allowNull: true },
+  accessPolicyEstablishedAt: { type: DataTypes.DATE, allowNull: true },
 }, {
   indexes: [
     { unique: true, fields: ["lessonId", "classroomId"] },
@@ -22,6 +23,13 @@ const ClassroomLessonPlacement = sequelize.define("ClassroomLessonPlacements", {
     },
     { fields: ["classroomId", "moduleId", "displayOrder"] },
   ],
+  hooks: {
+    beforeUpdate(placement) {
+      if (placement.changed("accessPolicyEstablishedAt")) {
+        throw new Error("Placement access policy establishment is immutable");
+      }
+    },
+  },
 });
 
 module.exports = ClassroomLessonPlacement;

@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const defaultModels = require("../models");
 const {
+  ASSESSMENT_TARGET_KINDS,
   ASSESSMENT_TYPES,
   PRE_BASELINE_STATUSES,
 } = require("../constants/assessmentConfig");
@@ -62,7 +63,12 @@ const effectivePreBaselineStatus = (attempt) => {
 };
 
 const createAssessmentBaselineService = ({ models = defaultModels } = {}) => {
-  const { UserProgress } = models;
+  const {
+    UserProgress,
+    ClassroomLesson,
+    ClassroomLessonPlacement,
+    ClassroomLessonContentAccess,
+  } = models;
 
   const lockLessonProgressRows = async ({ lessonKey, studentId, transaction }) => {
     const levelKeys = lessonPlayableLevelKeys(lessonKey);
@@ -91,13 +97,83 @@ const createAssessmentBaselineService = ({ models = defaultModels } = {}) => {
     });
   };
 
-  const classifyAtCreation = async ({ assessment, studentId, transaction }) => {
+  const lockCustomTarget = async ({ assessment, transaction }) => {
+    const initialPlacement = await ClassroomLessonPlacement.findOne({
+      where: {
+        id: assessment.classroomLessonPlacementId,
+        classroomId: assessment.classroomId,
+      },
+      attributes: ["id", "lessonId"],
+      transaction,
+    });
+    if (!initialPlacement) throw new Error("Custom PRE placement was not found");
+    const lesson = await ClassroomLesson.findByPk(initialPlacement.lessonId, {
+      transaction,
+      lock: transaction?.LOCK?.UPDATE ?? true,
+    });
+    const placement = await ClassroomLessonPlacement.findOne({
+      where: {
+        id: assessment.classroomLessonPlacementId,
+        classroomId: assessment.classroomId,
+        lessonId: lesson?.id,
+      },
+      transaction,
+      lock: transaction?.LOCK?.UPDATE ?? true,
+    });
+    if (!lesson || !placement) throw new Error("Custom PRE placement was not found");
+    if (Number(lesson.contentVersion) !== Number(assessment.targetLessonVersion)) {
+      throw new Error("Custom PRE target lesson revision no longer matches");
+    }
+    return placement;
+  };
+
+  const classifyCustomAtStart = async ({ assessment, studentId, startedAt, transaction }) => {
+    const placement = await lockCustomTarget({ assessment, transaction });
+    const access = await ClassroomLessonContentAccess.findOne({
+      where: {
+        classroomLessonPlacementId: placement.id,
+        studentId,
+        lessonVersion: Number(assessment.targetLessonVersion),
+        accessedAt: { [Op.lte]: startedAt },
+      },
+      transaction,
+    });
+    if (access) return PRE_BASELINE_STATUSES.RETROACTIVE;
+    return placement.accessPolicyEstablishedAt
+      ? PRE_BASELINE_STATUSES.VALID
+      : PRE_BASELINE_STATUSES.UNKNOWN;
+  };
+
+  const classifyAtCreation = async ({
+    assessment,
+    studentId,
+    transaction,
+    captureStartedAt = () => new Date(),
+  }) => {
     if (assessment?.type !== ASSESSMENT_TYPES.PRE) return null;
+    if (assessment.targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      const placement = await lockCustomTarget({ assessment, transaction });
+      const startedAt = captureStartedAt();
+      const access = await ClassroomLessonContentAccess.findOne({
+        where: {
+          classroomLessonPlacementId: placement.id,
+          studentId,
+          lessonVersion: Number(assessment.targetLessonVersion),
+          accessedAt: { [Op.lte]: startedAt },
+        },
+        transaction,
+      });
+      if (access) return PRE_BASELINE_STATUSES.RETROACTIVE;
+      return placement.accessPolicyEstablishedAt
+        ? PRE_BASELINE_STATUSES.VALID
+        : PRE_BASELINE_STATUSES.UNKNOWN;
+    }
     const rows = await lockLessonProgressRows({
       lessonKey: assessment.lessonKey,
       studentId,
       transaction,
     });
+    captureStartedAt();
     return hasMeaningfulLessonGameActivity(rows)
       ? PRE_BASELINE_STATUSES.RETROACTIVE
       : PRE_BASELINE_STATUSES.VALID;
@@ -107,6 +183,17 @@ const createAssessmentBaselineService = ({ models = defaultModels } = {}) => {
     if (assessment?.type !== ASSESSMENT_TYPES.PRE) return null;
     if (attempt?.preBaselineStatus === PRE_BASELINE_STATUSES.SUPPLEMENTAL) {
       return PRE_BASELINE_STATUSES.SUPPLEMENTAL;
+    }
+    if (assessment.targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      const status = await classifyCustomAtStart({
+        assessment,
+        studentId,
+        startedAt: attempt.startedAt,
+        transaction,
+      });
+      return status === PRE_BASELINE_STATUSES.RETROACTIVE
+        ? status
+        : effectivePreBaselineStatus(attempt);
     }
     const rows = await lockLessonProgressRows({
       lessonKey: assessment.lessonKey,

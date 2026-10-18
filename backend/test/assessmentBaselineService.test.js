@@ -321,3 +321,122 @@ test("supplemental PRE remains non-baseline at submission even after game activi
   });
   assert.equal(status, "SUPPLEMENTAL");
 });
+
+const customAssessment = {
+  id: 71,
+  classroomId: 7,
+  targetKind: "CLASSROOM_LESSON_PLACEMENT",
+  classroomLessonPlacementId: 31,
+  targetLessonVersion: 4,
+  lessonKey: null,
+  type: "PRE",
+};
+
+const customBaselineHarness = ({ policyEstablishedAt, access = null, lessonContentVersion = 4 } = {}) => {
+  const lockOrder = [];
+  const calls = { accessWhere: null };
+  const lesson = { id: 9, contentVersion: lessonContentVersion };
+  const placement = {
+    id: 31,
+    classroomId: 7,
+    lessonId: 9,
+    accessPolicyEstablishedAt: policyEstablishedAt,
+  };
+  const service = createAssessmentBaselineService({
+    models: {
+      UserProgress: {},
+      ClassroomLesson: {
+        findByPk: async () => { lockOrder.push("lesson"); return lesson; },
+      },
+      ClassroomLessonPlacement: {
+        findOne: async (options) => {
+          if (options.lock) lockOrder.push("placement");
+          return placement;
+        },
+      },
+      ClassroomLessonContentAccess: {
+        findOne: async ({ where }) => { calls.accessWhere = where; return access; },
+      },
+    },
+  });
+  return { calls, lockOrder, service };
+};
+
+test("custom PRE creation uses exact-placement access evidence and conservative timestamp ordering", async () => {
+  const startedAt = new Date("2026-10-18T01:00:00.000Z");
+  const { calls, lockOrder, service } = customBaselineHarness({
+    policyEstablishedAt: new Date("2026-10-01T00:00:00.000Z"),
+    access: { id: 81, accessedAt: startedAt },
+  });
+  let capturedAt = null;
+  const status = await service.classifyAtCreation({
+    assessment: customAssessment,
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+    captureStartedAt: () => { capturedAt = startedAt; return startedAt; },
+  });
+
+  assert.equal(status, PRE_BASELINE_STATUSES.RETROACTIVE);
+  assert.deepEqual(lockOrder, ["lesson", "placement"]);
+  assert.deepEqual(capturedAt, startedAt);
+  assert.equal(calls.accessWhere.classroomLessonPlacementId, 31);
+  assert.equal(calls.accessWhere.studentId, 22);
+  assert.equal(calls.accessWhere.lessonVersion, 4);
+  assert.deepEqual(calls.accessWhere.accessedAt[Op.lte], startedAt);
+});
+
+test("custom PRE is VALID only when complete coverage has no prior access", async () => {
+  const { service } = customBaselineHarness({
+    policyEstablishedAt: new Date("2026-10-01T00:00:00.000Z"),
+  });
+  assert.equal(await service.classifyAtCreation({
+    assessment: customAssessment,
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+    captureStartedAt: () => new Date("2026-10-18T01:00:00.000Z"),
+  }), PRE_BASELINE_STATUSES.VALID);
+});
+
+test("custom PRE remains UNKNOWN when historical access coverage is uncertain", async () => {
+  const { service } = customBaselineHarness({ policyEstablishedAt: null });
+  assert.equal(await service.classifyAtCreation({
+    assessment: customAssessment,
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+    captureStartedAt: () => new Date("2026-10-18T01:00:00.000Z"),
+  }), PRE_BASELINE_STATUSES.UNKNOWN);
+});
+
+test("custom PRE classification rejects a stale bound lesson revision", async () => {
+  const { service } = customBaselineHarness({
+    policyEstablishedAt: new Date("2026-10-01T00:00:00.000Z"),
+    lessonContentVersion: 5,
+  });
+  await assert.rejects(service.classifyAtCreation({
+    assessment: customAssessment,
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+    captureStartedAt: () => new Date("2026-10-18T01:00:00.000Z"),
+  }), /revision/i);
+});
+
+test("custom PRE submission preserves supplemental and creation classification semantics", async () => {
+  const { service } = customBaselineHarness({
+    policyEstablishedAt: new Date("2026-10-01T00:00:00.000Z"),
+  });
+  assert.equal(await service.classifyAtSubmission({
+    assessment: customAssessment,
+    attempt: { preBaselineStatus: PRE_BASELINE_STATUSES.SUPPLEMENTAL, startedAt: new Date() },
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+  }), PRE_BASELINE_STATUSES.SUPPLEMENTAL);
+  assert.equal(await service.classifyAtSubmission({
+    assessment: customAssessment,
+    attempt: {
+      preBaselineStatus: PRE_BASELINE_STATUSES.UNKNOWN,
+      startedAt: new Date("2026-10-18T01:00:00.000Z"),
+    },
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+  }), PRE_BASELINE_STATUSES.UNKNOWN);
+});

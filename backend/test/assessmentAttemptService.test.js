@@ -687,12 +687,14 @@ test("persists deterministic display order when shuffling is disabled", async ()
 
 test("new PRE classification is server-owned, persisted, and omitted from player output", async () => {
   const calls = [];
+  let authoritativeStartedAt;
   const baselineService = {
     classifyAtCreation: async (input) => {
       calls.push(input);
       assert.equal(input.assessment.type, "PRE");
       assert.equal(input.studentId, 42);
       assert.equal(input.transaction.LOCK.UPDATE, "UPDATE");
+      authoritativeStartedAt = input.captureStartedAt();
       return "RETROACTIVE";
     },
     classifyAtSubmission: defaultBaselineService.classifyAtSubmission,
@@ -702,6 +704,7 @@ test("new PRE classification is server-owned, persisted, and omitted from player
 
   assert.equal(calls.length, 1);
   assert.equal(h.store.attempts[0].preBaselineStatus, "RETROACTIVE");
+  assert.deepEqual(h.store.attempts[0].startedAt, authoritativeStartedAt);
   assert.equal(Object.hasOwn(started.attempt, "preBaselineStatus"), false);
   assert.equal(JSON.stringify(started).includes("RETROACTIVE"), false);
 });

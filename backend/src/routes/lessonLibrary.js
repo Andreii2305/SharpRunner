@@ -164,10 +164,12 @@ const deepCopyLesson = async (req, source, { title, placement: placementOptions 
         snapshot: { title: copy.title, description: copy.description, lessonNumber: copy.lessonNumber, topics: source.topics || [] },
       }, { transaction });
       if (placementOptions) {
+        const accessPolicyEstablishedAt = new Date();
         await ClassroomLessonPlacement.create({
           lessonId: copy.id,
           classroomId: placementOptions.classroomId,
           moduleId: placementOptions.moduleId || null,
+          accessPolicyEstablishedAt,
           displayOrder: await ClassroomLessonPlacement.count({
             where: { classroomId: placementOptions.classroomId },
             transaction,
@@ -582,6 +584,7 @@ router.post("/:lessonId/placements", async (req, res) => {
         where: { lessonId: lesson.id, classroomId },
         defaults: {
           moduleId,
+          accessPolicyEstablishedAt: new Date(),
           displayOrder: await ClassroomLessonPlacement.count({ where: { classroomId }, transaction }),
         },
         transaction,

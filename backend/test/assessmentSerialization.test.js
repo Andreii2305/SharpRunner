@@ -24,6 +24,7 @@ const assessment = (overrides = {}) => ({
   isRequired: true,
   isPublished: true,
   publishedAt: "2026-09-25T12:00:00.000Z",
+  accessGateEstablishedAt: "2026-09-25T11:59:00.000Z",
   passingPercentage: 75,
   maxAttempts: 3,
   gradeCalculation: "HIGHEST",
@@ -94,7 +95,7 @@ test("player serializers recursively exclude answer and teacher configuration fi
     "createdBy", "studentId", "submissionKey", "pointsAwarded", "displayOrder",
     "referenceSolution", "codingTestCases", "visibility", "weight",
     "gradingLeaseToken", "gradingLeaseExpiresAt", "internalHarness", "harnessSource",
-    "containerId", "runnerConfig",
+    "containerId", "runnerConfig", "accessGateEstablishedAt", "accessPolicyEstablishedAt",
   ]);
   assert.equal(findForbiddenKey(output, forbidden), null);
   assert.equal(output.attempt.responses[0].selectedChoiceId, 1001);

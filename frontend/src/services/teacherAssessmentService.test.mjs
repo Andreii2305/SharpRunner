@@ -25,6 +25,53 @@ test("teacher assessment service preserves exact classroom, lesson, assessment, 
   assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
 });
 
+test("custom lesson draft service preserves exact classroom and placement identity", async () => {
+  calls.length = 0;
+  await service.listCustomLessonAssessmentDrafts({ classroomId: 7, placementId: 71 });
+  await service.createCustomLessonAssessmentDraft({
+    classroomId: 7, placementId: 71, type: "PRE", title: "Lesson diagnostic",
+  });
+  await service.loadCustomLessonAssessmentDraft({ classroomId: 7, placementId: 71, assessmentId: 91 });
+  await service.saveCustomLessonAssessmentDraft({
+    classroomId: 7, placementId: 71, assessmentId: 91,
+    graph: { version: 2, settings: { title: "Lesson diagnostic" }, questions: [] },
+  });
+  await service.reviewCustomLessonAssessmentRevision({
+    classroomId: 7, placementId: 71, assessmentId: 91, version: 3, targetLessonVersion: 4,
+  });
+  await service.deleteCustomLessonAssessmentDraft({ classroomId: 7, placementId: 71, assessmentId: 91 });
+
+  assert.deepEqual(calls.map(([method]) => method), ["get", "post", "get", "put", "post", "delete"]);
+  assert.equal(calls.every((call) => call[1].includes("classrooms/7/lesson-placements/71/assessments")), true);
+  assert.deepEqual(calls[1][2], { type: "PRE", title: "Lesson diagnostic" });
+  assert.deepEqual(calls[4][2], { version: 3, targetLessonVersion: 4 });
+  assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
+});
+
+test("custom editor normalization retains safe target and revision-review metadata", () => {
+  const normalized = service.normalizeTeacherAssessmentGraph({
+    id: 91,
+    classroomId: 7,
+    targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    lessonKey: null,
+    classroomLessonPlacementId: 71,
+    targetLessonVersion: 3,
+    currentLessonVersion: 4,
+    revisionReviewRequired: true,
+    type: "POST",
+    title: "Lesson check",
+    isPublished: false,
+    version: 2,
+    questions: [],
+    accessGateEstablishedAt: "private",
+  });
+  assert.equal(normalized.classroomLessonPlacementId, 71);
+  assert.equal(normalized.targetLessonVersion, 3);
+  assert.equal(normalized.currentLessonVersion, 4);
+  assert.equal(normalized.revisionReviewRequired, true);
+  assert.equal(normalized.accessGateEstablishedAt, undefined);
+});
+
 test("built-in template requests keep catalog answers server-side and preserve exact classroom identity", async () => {
   calls.length = 0;
   await service.listBuiltInAssessmentTemplates();
@@ -283,6 +330,12 @@ test("score sheet save revokes its object URL after triggering the named downloa
 test("safe teacher errors never expose transport internals", () => {
   const error = { message: "secret stack", stack: "ORM password", config: { headers: { Authorization: "token" } }, response: { status: 409, data: { error: { code: "VERSION_CONFLICT", message: "Version conflict" } } } };
   assert.deepEqual(service.normalizeTeacherAssessmentError(error), { code: "VERSION_CONFLICT", message: "This assessment changed elsewhere. Reload it before continuing.", status: 409 });
+  assert.deepEqual(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED", currentVersion: 8 } } }), {
+    code: "CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED",
+    message: "Review the current lesson revision before saving this draft.",
+    status: 409,
+    currentVersion: 8,
+  });
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_PUBLISHED" } } }).message, "Unpublish this assessment before deleting it.");
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_TYPE_MISMATCH" } } }).message, "Only assessments of the same type can be copied.");
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 422, data: { code: "SOURCE_ASSESSMENT_INVALID" } } }).message, "The source assessment cannot be copied in its current state.");

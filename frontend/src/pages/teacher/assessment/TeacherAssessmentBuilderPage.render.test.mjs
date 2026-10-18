@@ -11,6 +11,7 @@ const codingEditor = fs.readFileSync(new URL("./CodingQuestionEditor.jsx", impor
 const codeEditor = fs.readFileSync(new URL("./AssessmentCodeEditor.jsx", import.meta.url), "utf8");
 const sharedCodeEditor = fs.readFileSync(new URL("../../../Components/AssessmentCodeEditor/AssessmentCodeEditor.jsx", import.meta.url), "utf8");
 const codingPreview = fs.readFileSync(new URL("./CodingQuestionPreview.jsx", import.meta.url), "utf8");
+const lessonLibrarySource = fs.readFileSync(new URL("../TeacherLessonLibraryPage.jsx", import.meta.url), "utf8");
 
 const vite = await createServer({
   server: { middlewareMode: true }, appType: "custom", optimizeDeps: { noDiscovery: true },
@@ -130,6 +131,49 @@ test("sticky editor actions preserve lesson, assessment, status, and save contex
   assert.match(html, /Save Draft/);
   assert.match(html, /Preview/);
   assert.match(html, /Publish/);
+});
+
+test("custom draft chrome removes publication and explains revision review", async () => {
+  const { EditorActionBar, CustomDraftNotice } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentBuilderChrome.jsx");
+  const bar = renderToStaticMarkup(React.createElement(EditorActionBar, {
+    lessonTitle: "Teacher arrays lesson", assessmentType: "PRE", status: "Draft",
+    saveState: "saved", dirty: false, locked: false, saving: false, published: false,
+    publishDisabled: true, publicationAvailable: false,
+    onPreview() {}, onSave() {}, onPublish() {}, onUnpublish() {},
+  }));
+  assert.doesNotMatch(bar, />Publish</);
+  assert.match(bar, /Draft only/);
+  const notice = renderToStaticMarkup(React.createElement(CustomDraftNotice, {
+    revisionReviewRequired: true, boundVersion: 2, currentVersion: 3,
+    pending: false, onReview() {},
+  }));
+  assert.match(notice, /Publishing is not available yet/);
+  assert.match(notice, /Revision 2/);
+  assert.match(notice, /revision 3/);
+  assert.match(notice, /Review current revision/);
+});
+
+test("lesson placements expose compact exact-scope PRE and POST draft entry points", () => {
+  assert.match(lessonLibrarySource, /placement\.id/);
+  assert.match(lessonLibrarySource, /assessmentType=PRE/);
+  assert.match(lessonLibrarySource, /assessmentType=POST/);
+  assert.match(lessonLibrarySource, /classroomId/);
+  assert.match(lessonLibrarySource, /placementId/);
+});
+
+test("custom mutations fence assessment-type and route changes with the shared request generation", () => {
+  for (const [name, nextName] of [
+    ["create", "openCopyDialog"],
+    ["save", "runAction"],
+    ["runAction", "reviewRevision"],
+    ["reviewRevision", "issues"],
+  ]) {
+    const start = source.indexOf(`const ${name} =`);
+    const end = source.indexOf(`const ${nextName} =`, start + 1);
+    const block = source.slice(start, end);
+    assert.match(block, /const request = \+\+requestId\.current/);
+    assert.match(block, /request === requestId\.current/);
+  }
 });
 
 test("builder exposes labelled settings, question controls, preview, and lifecycle confirmations", () => {

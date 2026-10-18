@@ -15,7 +15,7 @@ const questionLabel = (question, index) => {
 
 export function EditorActionBar({
   lessonTitle, assessmentType, status, saveState, dirty, locked, saving,
-  published, publishDisabled, onPreview, onSave, onPublish, onUnpublish,
+  published, publishDisabled, publicationAvailable = true, onPreview, onSave, onPublish, onUnpublish,
 }) {
   return <section className={styles.editorActionBar} aria-label="Assessment editor actions">
     <div className={styles.actionContext}>
@@ -27,10 +27,23 @@ export function EditorActionBar({
       <span className={styles.saveState} role="status" aria-live="polite" aria-atomic="true">{saveStateLabel(saveState)}</span>
       <button type="button" onClick={onPreview}><FiEye /> Preview</button>
       <button type="button" className={styles.saveButton} disabled={locked || !dirty || saving} onClick={onSave}><FiSave /> Save Draft</button>
-      {published
+      {!publicationAvailable ? <span className={styles.draftOnly}>Draft only</span> : published
         ? <button type="button" disabled={locked || dirty} onClick={onUnpublish}>Unpublish</button>
         : <button type="button" className={styles.primaryButton} disabled={publishDisabled} onClick={onPublish}>Publish</button>}
     </div>
+  </section>;
+}
+
+export function CustomDraftNotice({
+  revisionReviewRequired, boundVersion, currentVersion, pending, onReview,
+}) {
+  return <section className={styles.customDraftNotice} aria-label="Custom lesson assessment status">
+    <div>
+      <strong>Custom lesson draft</strong>
+      <span>Publishing is not available yet. You can build and review questions now.</span>
+      {revisionReviewRequired && <span role="alert">Revision {boundVersion} is bound to this draft. The lesson is now revision {currentVersion}.</span>}
+    </div>
+    {revisionReviewRequired && <button type="button" disabled={pending} onClick={onReview}>{pending ? "Reviewing…" : "Review current revision"}</button>}
   </section>;
 }
 

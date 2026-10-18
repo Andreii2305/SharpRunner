@@ -33,7 +33,9 @@
 .placements summary { cursor: pointer; font-weight: 700; }
 .placements > div { width: min(430px, 70vw); display: grid; gap: 7px; margin-top: 8px; padding: 10px; border: 1px solid #d9e4ec; border-radius: 9px; background: #f8fbfd; }
 .placements > div > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.placements button { border: 0; background: transparent; color: #a63232; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.placementActions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.placements .placementActions button { min-height: 36px; padding: 6px 9px; border: 1px solid #cbd8e3; border-radius: 8px; background: #fff; color: #355970; font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.placements .placementActions .removePlacement { border-color: transparent; color: #a63232; }
 .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; max-width: 360px; }
 .actions details { position: relative; }
 .actions summary { min-height: 40px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #cbd8e3; border-radius: 9px; color: #355970; font-size: 14px; font-weight: 750; cursor: pointer; list-style: none; }

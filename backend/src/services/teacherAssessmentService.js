@@ -8,6 +8,7 @@ const defaultAttemptService = require("./assessmentAttemptService");
 const { createAssessmentAttemptAllowanceService } = require("./assessmentAttemptAllowanceService");
 const { AssessmentApiError } = require("./assessmentErrorService");
 const {
+  ASSESSMENT_TARGET_KINDS,
   ASSESSMENT_TYPES,
   ATTEMPT_STATUSES,
   QUESTION_TYPES,
@@ -162,7 +163,73 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     ClassroomMembership,
     UserProgress,
     User,
+    ClassroomLesson,
+    ClassroomLessonPlacement,
   } = models;
+
+  const loadManagedCustomTarget = async ({
+    classroomId, placementId, actorId, actorRole, transaction, lock = false,
+    allowArchived = false,
+  }) => {
+    const classroom = plain(await authorization.requireManagedClassroom({
+      classroomId, actorId, actorRole, transaction, lock: false,
+    }));
+    const initialPlacement = await ClassroomLessonPlacement.findOne({
+      where: { id: placementId, classroomId },
+      ...(transaction ? { transaction } : {}),
+    });
+    if (!initialPlacement) {
+      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
+    }
+    const lesson = plain(await ClassroomLesson.findByPk(initialPlacement.lessonId, {
+      ...(transaction ? { transaction } : {}),
+      ...(lock ? { lock: transaction?.LOCK?.UPDATE ?? true } : {}),
+    }));
+    const placement = plain(await ClassroomLessonPlacement.findOne({
+      where: { id: placementId, classroomId, lessonId: lesson?.id },
+      ...(transaction ? { transaction } : {}),
+      ...(lock ? { lock: transaction?.LOCK?.UPDATE ?? true } : {}),
+    }));
+    if (!lesson || !placement || lesson.contentType !== "lesson") {
+      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
+    }
+    if (!allowArchived && (placement.archivedAt || lesson.archivedAt)) {
+      throw new AssessmentApiError(409, "ASSESSMENT_TARGET_ARCHIVED", "Assessment target is archived");
+    }
+    return { classroom, placement, lesson };
+  };
+
+  const requireCustomAssessment = async ({
+    classroomId, placementId, assessmentId, transaction, lock = false,
+  }) => {
+    const assessment = await LessonAssessment.findOne({
+      where: {
+        id: assessmentId,
+        classroomId,
+        targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        classroomLessonPlacementId: placementId,
+      },
+      ...(transaction ? { transaction } : {}),
+      ...(lock ? { lock: transaction?.LOCK?.UPDATE ?? true } : {}),
+    });
+    if (!assessment) throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
+    return assessment;
+  };
+
+  const customTargetPayload = ({ classroom, placement, lesson }) => ({
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+    classroomId: placement.classroomId,
+    placementId: placement.id,
+    lessonId: lesson.id,
+    lessonTitle: lesson.title,
+    currentLessonVersion: Number(lesson.contentVersion),
+    archived: Boolean(placement.archivedAt || lesson.archivedAt),
+    classroom: {
+      id: classroom.id,
+      className: classroom.className,
+      section: classroom.section ?? null,
+    },
+  });
 
   const loadGraph = (assessmentId, transaction) => LessonAssessment.findOne({
     where: { id: assessmentId },
@@ -317,6 +384,99 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       };
     },
   );
+
+  const listCustomLessonAssessmentDrafts = async ({
+    classroomId, placementId, actorId, actorRole,
+  }) => {
+    const target = await loadManagedCustomTarget({
+      classroomId, placementId, actorId, actorRole, allowArchived: true,
+    });
+    const rows = await LessonAssessment.findAll({
+      where: {
+        classroomId,
+        targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        classroomLessonPlacementId: placementId,
+      },
+      attributes: {
+        include: [
+          [fn("COUNT", fn("DISTINCT", col("questions.id"))), "questionCount"],
+          [fn("COUNT", fn("DISTINCT", col("attempts.id"))), "attemptCount"],
+        ],
+      },
+      include: [
+        { model: AssessmentQuestion, as: "questions", attributes: [], required: false },
+        { model: AssessmentAttempt, as: "attempts", attributes: [], required: false },
+      ],
+      group: ["LessonAssessment.id"],
+      order: [["type", "ASC"]],
+    });
+    const assessments = {
+      [ASSESSMENT_TYPES.PRE]: { exists: false },
+      [ASSESSMENT_TYPES.POST]: { exists: false },
+    };
+    for (const row of rows) {
+      const assessment = plain(row);
+      assessments[assessment.type] = serialization.serializeTeacherSummary({
+        assessment,
+        questionCount: readAggregate(row, "questionCount"),
+        attemptsExist: readAggregate(row, "attemptCount") > 0,
+        currentLessonVersion: target.lesson.contentVersion,
+      });
+    }
+    return { target: customTargetPayload(target), assessments };
+  };
+
+  const createCustomLessonAssessmentDraft = ({
+    classroomId, placementId, actorId, actorRole, input,
+  }) => sequelize.transaction(async (transaction) => {
+    const target = await loadManagedCustomTarget({
+      classroomId, placementId, actorId, actorRole, transaction, lock: true,
+    });
+    rejectUnknownFields(input, new Set([...CREATE_FIELDS].filter((field) => field !== "lessonKey")));
+    const occupied = await LessonAssessment.findOne({
+      where: {
+        classroomId,
+        targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        classroomLessonPlacementId: placementId,
+        type: input.type,
+      },
+      attributes: ["id"],
+      transaction,
+    });
+    if (occupied) {
+      throw new AssessmentApiError(409, "ASSESSMENT_TYPE_EXISTS", "An assessment of this type already exists");
+    }
+    let normalized;
+    try {
+      normalized = policy.normalizeAssessmentConfiguration({
+        ...input,
+        targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        lessonKey: null,
+        classroomLessonPlacementId: placementId,
+        targetLessonVersion: Number(target.lesson.contentVersion),
+      });
+      validateSettingTypes(input, normalized.type);
+      policy.validateAssessmentDraft({ assessment: normalized, questions: [] });
+    } catch (error) {
+      throw mapValidationError(error);
+    }
+    const created = await LessonAssessment.create({
+      ...normalized,
+      classroomId,
+      createdBy: actorId,
+      isPublished: false,
+      publishedAt: null,
+      accessGateEstablishedAt: null,
+      version: 1,
+    }, { transaction });
+    return {
+      target: customTargetPayload(target),
+      assessment: serialization.serializeTeacherEditor(
+        { ...plain(created), questions: [] },
+        { attemptsExist: false, structureLocked: false, currentLessonVersion: target.lesson.contentVersion },
+      ),
+    };
+  });
 
   const listBuiltInAssessmentTemplates = () => builtInAssessmentTemplates.listTemplates();
 
@@ -485,6 +645,27 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       assessment: serialization.serializeTeacherEditor(assessment, {
         attemptsExist: Number(attemptCount) > 0,
         structureLocked: Number(attemptCount) > 0,
+      }),
+    };
+  };
+
+  const getCustomLessonAssessmentDraft = async ({
+    classroomId, placementId, assessmentId, actorId, actorRole,
+  }) => {
+    const target = await loadManagedCustomTarget({
+      classroomId, placementId, actorId, actorRole, allowArchived: true,
+    });
+    await requireCustomAssessment({ classroomId, placementId, assessmentId });
+    const [assessment, attemptCount] = await Promise.all([
+      loadGraph(assessmentId),
+      AssessmentAttempt.count({ where: { assessmentId } }),
+    ]);
+    return {
+      target: customTargetPayload(target),
+      assessment: serialization.serializeTeacherEditor(assessment, {
+        attemptsExist: Number(attemptCount) > 0,
+        structureLocked: Number(attemptCount) > 0,
+        currentLessonVersion: target.lesson.contentVersion,
       }),
     };
   };
@@ -884,19 +1065,33 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     actorId,
     actorRole,
     input,
+    placementId = null,
   }) => sequelize.transaction(async (transaction) => {
-    await authorization.requireManagedClassroom({
-      classroomId,
-      actorId,
-      actorRole,
-      transaction,
-    });
-    const assessment = await authorization.requireAssessmentInClassroom({
-      classroomId,
-      assessmentId,
-      transaction,
-      lock: true,
-    });
+    let target = null;
+    let assessment;
+    if (placementId) {
+      target = await loadManagedCustomTarget({
+        classroomId, placementId, actorId, actorRole, transaction, lock: true,
+      });
+      assessment = await requireCustomAssessment({
+        classroomId, placementId, assessmentId, transaction, lock: true,
+      });
+      if (Number(assessment.targetLessonVersion) !== Number(target.lesson.contentVersion)) {
+        throw new AssessmentApiError(
+          409,
+          "CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED",
+          "Review the current lesson revision before saving this assessment",
+          { currentVersion: target.lesson.contentVersion },
+        );
+      }
+    } else {
+      await authorization.requireManagedClassroom({
+        classroomId, actorId, actorRole, transaction,
+      });
+      assessment = await authorization.requireAssessmentInClassroom({
+        classroomId, assessmentId, transaction, lock: true,
+      });
+    }
     if (!input || typeof input !== "object" || Array.isArray(input)
       || !Number.isSafeInteger(input.version) || input.version < 1) {
       throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
@@ -985,6 +1180,41 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       assessment: serialization.serializeTeacherEditor(reloaded, {
         attemptsExist: false,
         structureLocked: false,
+        ...(target ? { currentLessonVersion: target.lesson.contentVersion } : {}),
+      }),
+      ...(target ? { target: customTargetPayload(target) } : {}),
+    };
+  });
+
+  const acknowledgeCustomLessonAssessmentRevision = ({
+    classroomId, placementId, assessmentId, actorId, actorRole, version, targetLessonVersion,
+  }) => sequelize.transaction(async (transaction) => {
+    const target = await loadManagedCustomTarget({
+      classroomId, placementId, actorId, actorRole, transaction, lock: true,
+    });
+    const assessment = await requireCustomAssessment({
+      classroomId, placementId, assessmentId, transaction, lock: true,
+    });
+    const currentVersion = assertVersion(assessment, version);
+    await assertNoAttempts(assessmentId, transaction);
+    if (assessment.isPublished || assessment.publishedAt != null) {
+      throw new AssessmentApiError(409, "CUSTOM_ASSESSMENT_PUBLICATION_UNAVAILABLE", "Custom assessment publication is unavailable");
+    }
+    if (Number(targetLessonVersion) !== Number(target.lesson.contentVersion)) {
+      throw new AssessmentApiError(409, "LESSON_VERSION_CONFLICT", "Lesson version conflict", {
+        currentVersion: target.lesson.contentVersion,
+      });
+    }
+    assessment.targetLessonVersion = Number(target.lesson.contentVersion);
+    assessment.version = currentVersion + 1;
+    await assessment.save({ transaction });
+    const graph = await loadGraph(assessmentId, transaction);
+    return {
+      target: customTargetPayload(target),
+      assessment: serialization.serializeTeacherEditor(graph, {
+        attemptsExist: false,
+        structureLocked: false,
+        currentLessonVersion: target.lesson.contentVersion,
       }),
     };
   });
@@ -1065,19 +1295,22 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     assessmentId,
     actorId,
     actorRole,
+    placementId = null,
   }) => sequelize.transaction(async (transaction) => {
-    await authorization.requireManagedClassroom({
-      classroomId,
-      actorId,
-      actorRole,
-      transaction,
-    });
-    const assessment = await authorization.requireAssessmentInClassroom({
-      classroomId,
-      assessmentId,
-      transaction,
-      lock: true,
-    });
+    let assessment;
+    if (placementId) {
+      await loadManagedCustomTarget({
+        classroomId, placementId, actorId, actorRole, transaction, lock: true,
+      });
+      assessment = await requireCustomAssessment({
+        classroomId, placementId, assessmentId, transaction, lock: true,
+      });
+    } else {
+      await authorization.requireManagedClassroom({ classroomId, actorId, actorRole, transaction });
+      assessment = await authorization.requireAssessmentInClassroom({
+        classroomId, assessmentId, transaction, lock: true,
+      });
+    }
     await assertNoAttempts(assessmentId, transaction);
     if (assessment.isPublished) {
       throw new AssessmentApiError(
@@ -1259,19 +1492,24 @@ const createTeacherAssessmentService = (dependencies = {}) => {
   );
 
   return {
+    acknowledgeCustomLessonAssessmentRevision,
     listAssessments,
+    listCustomLessonAssessmentDrafts,
     listBuiltInAssessmentTemplates,
     importBuiltInAssessmentTemplate,
     copyAssessment,
     createAssessment,
+    createCustomLessonAssessmentDraft,
     deleteAssessment,
     getAssessmentResults,
     getAssessmentScoreSheet,
     getEditorAssessment,
+    getCustomLessonAssessmentDraft,
     getAdditionalAttemptEligibility,
     grantAdditionalAttempt,
     publishAssessment,
     saveAssessmentGraph,
+    saveCustomLessonAssessmentDraft: saveAssessmentGraph,
     unpublishAssessment,
   };
 };

@@ -21,6 +21,7 @@ const CREATE_FIELDS = new Set([
 ]);
 const COPY_FIELDS = new Set(["sourceClassroomId", "sourceAssessmentId", "lessonKey", "type"]);
 const TEMPLATE_IMPORT_FIELDS = new Set(["templateKey", "templateVersion"]);
+const CUSTOM_CREATE_FIELDS = new Set([...CREATE_FIELDS].filter((field) => field !== "lessonKey"));
 
 const parsePositiveId = (value) => {
   if (!/^[1-9][0-9]*$/.test(String(value || ""))) {
@@ -120,6 +121,111 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
         ...actor(req),
       });
       return res.status(201).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.get("/classrooms/:classroomId/lesson-placements/:placementId/assessments", async (req, res) => {
+    try {
+      assertNoBody(req);
+      const payload = await service.listCustomLessonAssessmentDrafts({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.post("/classrooms/:classroomId/lesson-placements/:placementId/assessments", async (req, res) => {
+    try {
+      const input = readObjectBody(req);
+      if (Object.keys(input).some((key) => !CUSTOM_CREATE_FIELDS.has(key))) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const payload = await service.createCustomLessonAssessmentDraft({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        input,
+        ...actor(req),
+      });
+      return res.status(201).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.get("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId", async (req, res) => {
+    try {
+      assertNoBody(req);
+      const payload = await service.getCustomLessonAssessmentDraft({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.put("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId", async (req, res) => {
+    try {
+      const input = readObjectBody(req);
+      const saveFields = ["version", "settings", "questions"];
+      if (Object.keys(input).length !== saveFields.length
+        || !saveFields.every((key) => Object.hasOwn(input, key))) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const payload = await service.saveCustomLessonAssessmentDraft({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        input,
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.post("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId/review-revision", async (req, res) => {
+    try {
+      const body = readObjectBody(req);
+      if (Object.keys(body).length !== 2
+        || !Number.isSafeInteger(body.version) || body.version < 1
+        || !Number.isSafeInteger(body.targetLessonVersion) || body.targetLessonVersion < 1) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const payload = await service.acknowledgeCustomLessonAssessmentRevision({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        version: body.version,
+        targetLessonVersion: body.targetLessonVersion,
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.delete("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId", async (req, res) => {
+    try {
+      assertNoBody(req);
+      await service.deleteAssessment({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        ...actor(req),
+      });
+      return res.status(204).end();
     } catch (error) {
       return sendAssessmentError(res, error);
     }

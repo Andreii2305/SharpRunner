@@ -91,6 +91,16 @@ const baseAssessment = (overrides = {}) => ({
   ...overrides,
 });
 
+const customAssessment = (overrides = {}) => baseAssessment({
+  targetKind: "CLASSROOM_LESSON_PLACEMENT",
+  lessonKey: null,
+  classroomLessonPlacementId: 71,
+  targetLessonVersion: 3,
+  isPublished: false,
+  publishedAt: null,
+  ...overrides,
+});
+
 const baseQuestion = (overrides = {}) => ({
   id: 101,
   assessmentId: 12,
@@ -154,13 +164,21 @@ const matches = (row, where = {}) => Object.entries(where).every(([key, value]) 
   return row[key] === value;
 });
 
-const harness = ({ assessments, questions, choices, codingTests, attempts, responses, memberships, progress } = {}) => {
+const harness = ({ assessments, questions, choices, codingTests, attempts, responses, memberships, progress,
+  lessons, placements } = {}) => {
   const store = {
     classrooms: [
       { id: 7, teacherId: 5, className: "Section =A", section: "A" },
       { id: 8, teacherId: 6, className: "Foreign", section: "B" },
       { id: 10, teacherId: 5, className: "Other", section: "C" },
     ],
+    lessons: cloneRows(lessons || [{
+      id: 61, teacherId: 5, contentType: "lesson", title: "Teacher arrays lesson",
+      contentVersion: 3, archivedAt: null,
+    }]),
+    placements: cloneRows(placements || [{
+      id: 71, lessonId: 61, classroomId: 7, moduleId: null, archivedAt: null,
+    }]),
     assessments: cloneRows(assessments || [baseAssessment()]),
     questions: cloneRows(questions || [baseQuestion()]),
     choices: cloneRows(choices || baseChoices()),
@@ -251,6 +269,14 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
   stub(models.Classroom, "findByPk", async (id, options = {}) => {
     if (options.lock) store.events.push("classroom-lock");
     return store.classrooms.find((row) => row.id === Number(id)) || null;
+  });
+  stub(models.ClassroomLesson, "findByPk", async (id, options = {}) => {
+    if (options.lock) store.events.push("lesson-lock");
+    return store.lessons.find((row) => row.id === Number(id)) || null;
+  });
+  stub(models.ClassroomLessonPlacement, "findOne", async (options = {}) => {
+    if (options.lock) store.events.push("placement-lock");
+    return store.placements.find((row) => matches(row, options.where)) || null;
   });
   stub(models.LessonAssessment, "findOne", async (options = {}) => {
     if (options.lock) store.events.push("assessment-lock");
@@ -1061,6 +1087,171 @@ test("existing built-in creation endpoint rejects dormant custom target fields",
     assert.equal(result.response.status, 400);
     assert.equal(result.payload.code, "INVALID_REQUEST");
   }
+});
+
+test("custom lesson draft routes create and list exact placement PRE and POST slots", async () => {
+  const h = harness({ assessments: [], questions: [], choices: [] });
+  const created = await h.call("/classrooms/7/lesson-placements/71/assessments", {
+    method: "POST",
+    body: { type: "PRE", title: "Teacher arrays diagnostic" },
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.payload.assessment.targetKind, "CLASSROOM_LESSON_PLACEMENT");
+  assert.equal(created.payload.assessment.lessonKey, null);
+  assert.equal(created.payload.assessment.classroomLessonPlacementId, 71);
+  assert.equal(created.payload.assessment.targetLessonVersion, 3);
+  assert.equal(created.payload.assessment.isPublished, false);
+
+  const listed = await h.call("/classrooms/7/lesson-placements/71/assessments");
+  assert.equal(listed.response.status, 200);
+  assert.equal(listed.payload.target.lessonTitle, "Teacher arrays lesson");
+  assert.equal(listed.payload.assessments.PRE.id, created.payload.assessment.id);
+  assert.equal(listed.payload.assessments.POST.exists, false);
+  assert.deepEqual(h.store.events.slice(0, 2), ["lesson-lock", "placement-lock"]);
+});
+
+test("custom draft authoring enforces placement ownership, occupied slots, and rollback", async () => {
+  const h = harness({ assessments: [], questions: [], choices: [] });
+  const foreign = await request("/api/teacher/classrooms/8/lesson-placements/71/assessments", {
+    actorId: 5, method: "POST", body: { type: "PRE", title: "No" },
+  });
+  assert.equal(foreign.response.status, 403);
+  assert.equal(h.store.assessments.length, 0);
+
+  await h.call("/classrooms/7/lesson-placements/71/assessments", {
+    method: "POST", body: { type: "PRE", title: "First" },
+  });
+  const duplicate = await h.call("/classrooms/7/lesson-placements/71/assessments", {
+    method: "POST", body: { type: "PRE", title: "Second" },
+  });
+  assert.equal(duplicate.response.status, 409);
+  assert.equal(duplicate.payload.code, "ASSESSMENT_TYPE_EXISTS");
+  assert.equal(h.store.assessments.length, 1);
+
+  h.store.assessments.splice(0);
+  h.store.duplicateOnCreate = true;
+  const raced = await h.call("/classrooms/7/lesson-placements/71/assessments", {
+    method: "POST", body: { type: "POST", title: "Race" },
+  });
+  assert.equal(raced.response.status, 409);
+  assert.equal(h.store.assessments.length, 0);
+});
+
+test("custom draft routes reject cross-placement IDs, target overrides, and archived mutations", async () => {
+  const h = harness({
+    assessments: [customAssessment({ type: "PRE", targetLessonVersion: 2 })],
+    questions: [], choices: [],
+    placements: [
+      { id: 71, lessonId: 61, classroomId: 7, moduleId: null, archivedAt: null },
+      { id: 72, lessonId: 61, classroomId: 7, moduleId: null, archivedAt: null },
+    ],
+  });
+  const wrongPlacement = await h.call("/classrooms/7/lesson-placements/72/assessments/12");
+  assert.equal(wrongPlacement.response.status, 404);
+
+  const targetOverride = await h.call("/classrooms/7/lesson-placements/71/assessments/12", {
+    method: "PUT", body: { ...saveBody(), type: "POST" },
+  });
+  assert.equal(targetOverride.response.status, 400);
+  assert.equal(h.store.assessments[0].type, "PRE");
+
+  h.store.placements[0].archivedAt = new Date("2026-10-18T00:00:00.000Z");
+  const create = await h.call("/classrooms/7/lesson-placements/71/assessments", {
+    method: "POST", body: { type: "POST", title: "Archived" },
+  });
+  const save = await h.call("/classrooms/7/lesson-placements/71/assessments/12", {
+    method: "PUT", body: saveBody(),
+  });
+  const review = await h.call("/classrooms/7/lesson-placements/71/assessments/12/review-revision", {
+    method: "POST", body: { version: 1, targetLessonVersion: 3 },
+  });
+  const remove = await h.call("/classrooms/7/lesson-placements/71/assessments/12", { method: "DELETE" });
+  for (const result of [create, save, review, remove]) {
+    assert.equal(result.response.status, 409);
+    assert.equal(result.payload.code, "ASSESSMENT_TARGET_ARCHIVED");
+  }
+  assert.equal(h.store.assessments.length, 1);
+});
+
+test("custom draft requires explicit current-revision review before saving and remains unpublished", async () => {
+  const h = harness({
+    assessments: [customAssessment({ targetLessonVersion: 2 })],
+    questions: [], choices: [],
+  });
+  const path = "/classrooms/7/lesson-placements/71/assessments/12";
+  const loaded = await h.call(path);
+  assert.equal(loaded.response.status, 200);
+  assert.equal(loaded.payload.assessment.revisionReviewRequired, true);
+  assert.equal(loaded.payload.assessment.currentLessonVersion, 3);
+
+  const staleSave = await h.call(path, { method: "PUT", body: saveBody() });
+  assert.equal(staleSave.response.status, 409);
+  assert.equal(staleSave.payload.code, "CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED");
+
+  const reviewed = await h.call(`${path}/review-revision`, {
+    method: "POST", body: { version: 1, targetLessonVersion: 3 },
+  });
+  assert.equal(reviewed.response.status, 200);
+  assert.equal(reviewed.payload.assessment.targetLessonVersion, 3);
+  assert.equal(reviewed.payload.assessment.version, 2);
+  assert.equal(reviewed.payload.assessment.isPublished, false);
+  assert.equal(reviewed.payload.assessment.accessGateEstablishedAt, undefined);
+
+  const publish = await h.call(`${path}/publish`, { method: "POST", body: { version: 2 } });
+  assert.equal(publish.response.status, 404);
+  assert.equal(h.store.assessments[0].isPublished, false);
+});
+
+test("custom draft update creates fresh authoring IDs and delete rejects attempt history", async () => {
+  const h = harness({ assessments: [customAssessment()], questions: [], choices: [] });
+  const path = "/classrooms/7/lesson-placements/71/assessments/12";
+  const saved = await h.call(path, {
+    method: "PUT",
+    body: saveBody({ questions: [{
+      questionText: "Which array has three values?", questionType: "MULTIPLE_CHOICE",
+      points: 1, explanation: null, objectiveKey: "array-length",
+      choices: [{ choiceText: "new int[3]", isCorrect: true }, { choiceText: "new int[2]", isCorrect: false }],
+    }] }),
+  });
+  assert.equal(saved.response.status, 200);
+  assert.equal(saved.payload.assessment.questions.length, 1);
+  assert.ok(saved.payload.assessment.questions[0].id);
+  assert.equal(saved.payload.assessment.questions[0].choices.length, 2);
+
+  const snapshot = JSON.parse(JSON.stringify({
+    assessments: h.store.assessments,
+    questions: h.store.questions,
+    choices: h.store.choices,
+  }));
+  h.store.failChoiceCreate = true;
+  const failedReplacement = await h.call(path, {
+    method: "PUT",
+    body: saveBody({ version: 2, questions: [{
+      questionText: "Replacement", questionType: "MULTIPLE_CHOICE", points: 1,
+      choices: [{ choiceText: "Yes", isCorrect: true }, { choiceText: "No", isCorrect: false }],
+    }] }),
+  });
+  assert.equal(failedReplacement.response.status, 500);
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    assessments: h.store.assessments,
+    questions: h.store.questions,
+    choices: h.store.choices,
+  })), snapshot);
+  h.store.failChoiceCreate = false;
+
+  h.store.attempts.push(submittedAttempt({ assessmentId: 12 }));
+  const blockedSave = await h.call(path, { method: "PUT", body: saveBody({ version: 2 }) });
+  assert.equal(blockedSave.response.status, 409);
+  assert.equal(blockedSave.payload.code, "ASSESSMENT_LOCKED");
+  const blockedReview = await h.call(`${path}/review-revision`, {
+    method: "POST", body: { version: 2, targetLessonVersion: 3 },
+  });
+  assert.equal(blockedReview.response.status, 409);
+  assert.equal(blockedReview.payload.code, "ASSESSMENT_LOCKED");
+  const blocked = await h.call(path, { method: "DELETE" });
+  assert.equal(blocked.response.status, 409);
+  assert.equal(blocked.payload.code, "ASSESSMENT_LOCKED");
+  assert.equal(h.store.assessments.length, 1);
 });
 
 test("teacher catalog exposes safe summaries while student access is rejected", async () => {

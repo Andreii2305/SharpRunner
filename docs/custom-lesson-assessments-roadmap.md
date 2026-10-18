@@ -100,3 +100,27 @@ transaction must resolve and lock the exact placement, reject required PRE for
 complete teacher authoring, student Start/resume/submission/results, all reader
 and file gates, lifecycle protections, and teacher history/export access end to
 end.
+
+## Phase 4 bounded teacher draft authoring
+
+Teachers and administrators may author one unpublished PRE draft and one
+unpublished POST draft for an exact classroom lesson placement. These routes
+use the typed `CLASSROOM_LESSON_PLACEMENT` target directly; they do not invent a
+game lesson key and do not enable built-in templates or cross-target copying.
+Normal graph validation, optimistic versions, fresh question/choice IDs,
+transactional replacement, and immutable-after-attempt checks still apply.
+
+A new draft binds to the lesson's authoritative `contentVersion`. If that
+instructional revision later changes, ordinary saves remain blocked until the
+teacher explicitly reviews and acknowledges the current revision. That action
+is server-validated, is unavailable after attempt history exists, and does not
+publish the assessment or establish `accessGateEstablishedAt`.
+
+Publication remains unavailable in both the custom builder and server routes.
+The next release phase must deliver exact-placement student discovery, Start,
+resume, submission, results, and teacher history/score-sheet access together
+with the publication transaction and required-PRE activation checks described
+above. Actual execution of the existing custom-assessment migrations against a
+representative disposable PostgreSQL predecessor database is still a mandatory
+pre-deployment check; mocked fixtures and source assertions do not satisfy that
+rollout requirement.

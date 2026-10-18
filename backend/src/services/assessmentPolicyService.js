@@ -3,6 +3,7 @@ const {
   ANSWER_REVIEW_POLICIES,
   ASSESSMENT_DEFAULTS,
   ASSESSMENT_LIMITS,
+  ASSESSMENT_TARGET_KINDS,
   ASSESSMENT_TYPES,
   ATTEMPT_STATUSES,
   GRADE_CALCULATIONS,
@@ -59,8 +60,24 @@ const normalizeAssessmentConfiguration = (input = {}) => {
 
 const validateAssessmentConfiguration = (input = {}) => {
   const assessment = normalizeAssessmentConfiguration(input);
-  if (!ACADEMIC_LESSON_KEY_SET.has(assessment.lessonKey)) {
+  const targetKind = assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN;
+  if (!Object.values(ASSESSMENT_TARGET_KINDS).includes(targetKind)) {
+    throw new TypeError("Assessment target kind is invalid");
+  }
+  const customTarget = targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT;
+  if (!customTarget && !ACADEMIC_LESSON_KEY_SET.has(assessment.lessonKey)) {
     throw new TypeError("Assessment lessonKey must be a valid academic lesson key");
+  }
+  if (!customTarget && (assessment.classroomLessonPlacementId != null
+    || assessment.targetLessonVersion != null)) {
+    throw new TypeError("Assessment built-in target is invalid");
+  }
+  if (customTarget && (assessment.lessonKey != null
+    || !Number.isSafeInteger(Number(assessment.classroomLessonPlacementId))
+    || Number(assessment.classroomLessonPlacementId) < 1
+    || !Number.isSafeInteger(Number(assessment.targetLessonVersion))
+    || Number(assessment.targetLessonVersion) < 1)) {
+    throw new TypeError("Assessment custom target is invalid");
   }
   if (!Number.isInteger(Number(assessment.maxAttempts))
     || Number(assessment.maxAttempts) < 1

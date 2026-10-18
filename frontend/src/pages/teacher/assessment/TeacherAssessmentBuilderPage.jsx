@@ -7,12 +7,15 @@ import CodingQuestionEditor from "./CodingQuestionEditor.jsx";
 import { StudentCodingPreview, TeacherCodingConfigurationPreview } from "./CodingQuestionPreview.jsx";
 import TeacherAssessmentCopyDialog from "./TeacherAssessmentCopyDialog.jsx";
 import TeacherAssessmentTemplateDialog from "./TeacherAssessmentTemplateDialog.jsx";
-import { EditorActionBar, QuestionNavigator } from "./TeacherAssessmentBuilderChrome.jsx";
+import { CustomDraftNotice, EditorActionBar, QuestionNavigator } from "./TeacherAssessmentBuilderChrome.jsx";
 import {
+  createCustomLessonAssessmentDraft,
   copyTeacherAssessment, createTeacherAssessment, createTemplateImportController,
-  deleteTeacherAssessment, importBuiltInAssessmentTemplate, listBuiltInAssessmentTemplates,
+  deleteCustomLessonAssessmentDraft, deleteTeacherAssessment, importBuiltInAssessmentTemplate, listBuiltInAssessmentTemplates,
+  listCustomLessonAssessmentDrafts,
   listTeacherAssessments, listTeacherClassrooms, loadTeacherAssessment, normalizeTeacherAssessmentError,
-  publishTeacherAssessment, saveTeacherAssessment, unpublishTeacherAssessment,
+  loadCustomLessonAssessmentDraft, publishTeacherAssessment, reviewCustomLessonAssessmentRevision,
+  saveCustomLessonAssessmentDraft, saveTeacherAssessment, unpublishTeacherAssessment,
 } from "../../../services/teacherAssessmentService.js";
 import {
   ACADEMIC_LESSONS, addChoice, addQuestion, assessmentStatus, availableQuestionTypes, buildSaveGraph,
@@ -98,6 +101,9 @@ export default function TeacherAssessmentBuilderPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const classroomId = searchParams.get("classroomId") || "";
   const lessonKey = searchParams.get("lessonKey") || "";
+  const placementId = searchParams.get("placementId") || "";
+  const customMode = Boolean(classroomId && placementId);
+  const requestedType = searchParams.get("assessmentType");
   const [classrooms, setClassrooms] = useState([]);
   const [slots, setSlots] = useState(emptySlots);
   const [activeType, setActiveType] = useState("PRE");
@@ -122,9 +128,16 @@ export default function TeacherAssessmentBuilderPage() {
   const [templateTarget, setTemplateTarget] = useState("");
   const [templatePending, setTemplatePending] = useState(false);
   const [templateError, setTemplateError] = useState("");
+  const [customTarget, setCustomTarget] = useState(null);
+  const [revisionPending, setRevisionPending] = useState(false);
   const requestId = useRef(0);
   const copyRequestId = useRef(0);
   const copyingRef = useRef(false);
+  const creationRef = useRef(false);
+  const revisionRef = useRef(false);
+  const saveRef = useRef(false);
+  const scopeRef = useRef("");
+  scopeRef.current = `${classroomId}:${placementId || lessonKey}`;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -148,17 +161,36 @@ export default function TeacherAssessmentBuilderPage() {
     const id = ++requestId.current;
     if (!preserveDraft) setDraft(null);
     setSlots(emptySlots());
-    if (!classroomId || !lessonKey) return;
+    setCustomTarget(null);
+    if (!classroomId || (!lessonKey && !placementId)) return;
     setLoading(true); setError("");
     try {
-      const payload = await listTeacherAssessments({ classroomId, lessonKey });
+      const payload = customMode
+        ? await listCustomLessonAssessmentDrafts({ classroomId, placementId })
+        : await listTeacherAssessments({ classroomId, lessonKey });
       if (id !== requestId.current) return;
-      setSlots(payload.assessments ?? emptySlots());
+      const nextSlots = payload.assessments ?? emptySlots();
+      setSlots(nextSlots);
+      setCustomTarget(payload.target ?? null);
+      if (!preserveDraft && customMode && ["PRE", "POST"].includes(requestedType)
+        && nextSlots[requestedType]?.exists) {
+        const editor = await loadCustomLessonAssessmentDraft({
+          classroomId,
+          placementId,
+          assessmentId: nextSlots[requestedType].id,
+        });
+        if (id !== requestId.current) return;
+        setCustomTarget(editor.target ?? payload.target ?? null);
+        setDraft(hydrateAssessmentDraft(editor.assessment));
+      }
     } catch (source) {
       if (id === requestId.current) setError(normalizeTeacherAssessmentError(source).message);
     } finally { if (id === requestId.current) setLoading(false); }
-  }, [classroomId, lessonKey]);
+  }, [classroomId, customMode, lessonKey, placementId, requestedType]);
   useEffect(() => { loadSlots(); }, [loadSlots]);
+  useEffect(() => {
+    if (customMode && ["PRE", "POST"].includes(requestedType)) setActiveType(requestedType);
+  }, [customMode, requestedType]);
 
   const templateImportController = useMemo(() => createTemplateImportController({
     request: importBuiltInAssessmentTemplate,
@@ -254,21 +286,41 @@ export default function TeacherAssessmentBuilderPage() {
     const id = ++requestId.current;
     setLoading(true);
     try {
-      const payload = await loadTeacherAssessment({ classroomId, assessmentId: summary.id });
-      if (id === requestId.current) setDraft(hydrateAssessmentDraft(payload.assessment));
+      const payload = customMode
+        ? await loadCustomLessonAssessmentDraft({ classroomId, placementId, assessmentId: summary.id })
+        : await loadTeacherAssessment({ classroomId, assessmentId: summary.id });
+      if (id === requestId.current) {
+        setCustomTarget(payload.target ?? customTarget);
+        setDraft(hydrateAssessmentDraft(payload.assessment));
+      }
     } catch (source) { if (id === requestId.current) setError(normalizeTeacherAssessmentError(source).message); }
     finally { if (id === requestId.current) setLoading(false); }
   });
 
   const create = async (type) => {
+    if (creationRef.current) return;
+    creationRef.current = true;
     setError(""); setCopyNotice(""); setLoading(true);
-    const lessonTitle = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title ?? "Lesson";
+    const lessonTitle = customTarget?.lessonTitle
+      ?? ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title ?? "Lesson";
+    const scope = scopeRef.current;
+    const request = ++requestId.current;
     try {
-      const payload = await createTeacherAssessment({ classroomId, lessonKey, type, title: `${lessonTitle} ${type === "PRE" ? "Pre-Test" : "Post-Test"}` });
+      const payload = customMode
+        ? await createCustomLessonAssessmentDraft({ classroomId, placementId, type, title: `${lessonTitle} ${type === "PRE" ? "Pre-Test" : "Post-Test"}` })
+        : await createTeacherAssessment({ classroomId, lessonKey, type, title: `${lessonTitle} ${type === "PRE" ? "Pre-Test" : "Post-Test"}` });
+      if (scope !== scopeRef.current || request !== requestId.current) return;
       setActiveType(type); setDraft(hydrateAssessmentDraft(payload.assessment)); setDirty(false); setValidationAttempted(false);
+      setCustomTarget(payload.target ?? customTarget);
       await loadSlots({ preserveDraft: true });
-    } catch (source) { setError(normalizeTeacherAssessmentError(source).message); }
-    finally { setLoading(false); }
+    } catch (source) {
+      if (scope === scopeRef.current && request === requestId.current) {
+        setError(normalizeTeacherAssessmentError(source).message);
+      }
+    } finally {
+      creationRef.current = false;
+      if (scope === scopeRef.current && request === requestId.current) setLoading(false);
+    }
   };
 
   const openCopyDialog = (type) => {
@@ -342,33 +394,109 @@ export default function TeacherAssessmentBuilderPage() {
     setDirty(true); setSaveState("unsaved"); setError("");
   };
   const save = async () => {
-    if (!draft || draft.structureLocked) return;
+    if (!draft || draft.structureLocked || saveRef.current) return;
+    saveRef.current = true;
+    const scope = scopeRef.current;
+    const request = ++requestId.current;
     setValidationAttempted(true);
     setSaveState("saving"); setError("");
     try {
-      const payload = await saveTeacherAssessment({ classroomId, assessmentId: draft.id, graph: buildSaveGraph(draft) });
+      const payload = customMode
+        ? await saveCustomLessonAssessmentDraft({ classroomId, placementId, assessmentId: draft.id, graph: buildSaveGraph(draft) })
+        : await saveTeacherAssessment({ classroomId, assessmentId: draft.id, graph: buildSaveGraph(draft) });
+      if (scope !== scopeRef.current || request !== requestId.current) return;
       setDraft(hydrateAssessmentDraft(payload.assessment)); setDirty(false); setSaveState("saved");
+      setCustomTarget(payload.target ?? customTarget);
       await loadSlots({ preserveDraft: true });
-    } catch (source) { setSaveState("error"); setError(normalizeTeacherAssessmentError(source).message); }
+    } catch (source) {
+      if (scope === scopeRef.current && request === requestId.current) {
+        const normalized = normalizeTeacherAssessmentError(source);
+        setSaveState("error");
+        setError(normalized.message);
+        if (customMode && normalized.code === "CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED") {
+          setDraft((current) => ({
+            ...current,
+            currentLessonVersion: normalized.currentVersion ?? current.currentLessonVersion,
+            revisionReviewRequired: true,
+          }));
+        }
+      }
+    } finally {
+      saveRef.current = false;
+    }
   };
 
   const runAction = async () => {
     const actionName = confirmAction;
+    const scope = scopeRef.current;
+    const request = ++requestId.current;
     setConfirmAction(null); setError(""); setLoading(true);
     try {
       if (actionName === "publish") {
         const payload = await publishTeacherAssessment({ classroomId, assessmentId: draft.id, version: draft.version });
+        if (scope !== scopeRef.current || request !== requestId.current) return;
         setDraft((current) => ({ ...current, ...payload.assessment, isPublished: true }));
       } else if (actionName === "unpublish") {
         const payload = await unpublishTeacherAssessment({ classroomId, assessmentId: draft.id, version: draft.version });
+        if (scope !== scopeRef.current || request !== requestId.current) return;
         setDraft((current) => ({ ...current, ...payload.assessment, isPublished: false }));
       } else if (actionName === "delete") {
-        await deleteTeacherAssessment({ classroomId, assessmentId: draft.id });
+        if (customMode) await deleteCustomLessonAssessmentDraft({ classroomId, placementId, assessmentId: draft.id });
+        else await deleteTeacherAssessment({ classroomId, assessmentId: draft.id });
+        if (scope !== scopeRef.current || request !== requestId.current) return;
         setDraft(null);
       }
       setDirty(false); await loadSlots({ preserveDraft: actionName !== "delete" });
-    } catch (source) { setError(normalizeTeacherAssessmentError(source).message); }
-    finally { setLoading(false); }
+    } catch (source) {
+      if (scope === scopeRef.current && request === requestId.current) {
+        setError(normalizeTeacherAssessmentError(source).message);
+      }
+    } finally {
+      if (scope === scopeRef.current && request === requestId.current) setLoading(false);
+    }
+  };
+
+  const reviewRevision = async () => {
+    if (!customMode || !draft?.revisionReviewRequired || revisionRef.current) return;
+    revisionRef.current = true;
+    setRevisionPending(true); setError("");
+    const scope = `${scopeRef.current}:${draft.id}`;
+    const request = ++requestId.current;
+    try {
+      const payload = await reviewCustomLessonAssessmentRevision({
+        classroomId,
+        placementId,
+        assessmentId: draft.id,
+        version: draft.version,
+        targetLessonVersion: draft.currentLessonVersion,
+      });
+      if (scope !== `${scopeRef.current}:${draft.id}` || request !== requestId.current) return;
+      setCustomTarget(payload.target ?? customTarget);
+      if (dirty) {
+        setDraft((current) => ({
+          ...current,
+          version: payload.assessment.version,
+          targetLessonVersion: payload.assessment.targetLessonVersion,
+          currentLessonVersion: payload.assessment.currentLessonVersion,
+          revisionReviewRequired: false,
+        }));
+        setSaveState("unsaved");
+      } else {
+        setDraft(hydrateAssessmentDraft(payload.assessment));
+        setSaveState("saved");
+      }
+      setRevisionPending(false);
+      await loadSlots({ preserveDraft: true });
+    } catch (source) {
+      if (scope === `${scopeRef.current}:${draft.id}` && request === requestId.current) {
+        setError(normalizeTeacherAssessmentError(source).message);
+      }
+    } finally {
+      revisionRef.current = false;
+      if (scope === `${scopeRef.current}:${draft.id}` && request === requestId.current) {
+        setRevisionPending(false);
+      }
+    }
   };
 
   const issues = useMemo(() => draft ? publishIssues(draft) : [], [draft]);
@@ -416,9 +544,12 @@ export default function TeacherAssessmentBuilderPage() {
     setValidationAttempted(true);
     if (!issues.length) setConfirmAction("publish");
   };
-  const locked = Boolean(draft?.structureLocked || draft?.attemptsExist);
+  const attemptLocked = Boolean(draft?.structureLocked || draft?.attemptsExist);
+  const locked = Boolean(attemptLocked || draft?.revisionReviewRequired);
   const selectedClassroom = classrooms.find((item) => String(item.id) === String(classroomId));
-  const selectedLesson = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey);
+  const selectedLesson = customMode
+    ? { title: customTarget?.lessonTitle ?? "Classroom lesson" }
+    : ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey);
   const selectedTemplate = templates.find((item) => (
     item.lessonKey === lessonKey && item.type === templateTarget
   ));
@@ -428,21 +559,25 @@ export default function TeacherAssessmentBuilderPage() {
 
   return <div className={styles.root}><Sidebar /><main className={styles.main}>
     <header className={styles.pageHeader}><div><span>Classroom authoring</span><h1>Assessment builder</h1><p>Create and manage lesson Pre-Tests and Post-Tests.</p></div></header>
-    <section className={styles.selectorCard} aria-labelledby="assessment-scope-heading"><h2 id="assessment-scope-heading">Choose assessment scope</h2><div>
+    {customMode ? <section className={`${styles.selectorCard} ${styles.customScope}`} aria-labelledby="assessment-scope-heading">
+      <div><span>Custom classroom lesson</span><h2 id="assessment-scope-heading">{customTarget?.lessonTitle ?? "Loading lesson…"}</h2><p><strong>{customTarget?.classroom?.className ?? selectedClassroom?.className ?? "Classroom"}</strong>{customTarget?.classroom?.section ? ` — ${customTarget.classroom.section}` : ""} · Draft assessments</p></div>
+      <a href={`/teacher/lessons?classroomId=${encodeURIComponent(classroomId)}`}>Back to lesson library</a>
+    </section> : <section className={styles.selectorCard} aria-labelledby="assessment-scope-heading"><h2 id="assessment-scope-heading">Choose assessment scope</h2><div>
       <label>Classroom<select value={classroomId} onChange={(event) => updateRoute({ classroomId: event.target.value, lessonKey: "" })}><option value="">Select classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.className}{classroom.section ? ` — ${classroom.section}` : ""}</option>)}</select></label>
       <label>Academic lesson<select value={lessonKey} disabled={!classroomId} onChange={(event) => updateRoute({ classroomId, lessonKey: event.target.value })}><option value="">Select lesson</option>{ACADEMIC_LESSONS.map((lesson) => <option key={lesson.key} value={lesson.key}>{lesson.title}</option>)}</select></label>
-    </div>{selectedClassroom && lessonKey && <p>Managing <strong>{selectedClassroom.className}</strong> · {ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title}</p>}</section>
+    </div>{selectedClassroom && lessonKey && <p>Managing <strong>{selectedClassroom.className}</strong> · {ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title}</p>}</section>}
     {error && <div className={styles.errorBanner} role="alert">{error}</div>}
     {copyNotice && <div className={styles.successBanner} role="status">{copyNotice}</div>}
-    {classroomId && lessonKey && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => {
+    {classroomId && (lessonKey || placementId) && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => {
       const availableTemplate = templates.find((item) => item.lessonKey === lessonKey && item.type === type);
-      return <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "One-attempt diagnostic" : "Mastery check with highest grade"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading || templatePending} onClick={() => create(type)}><FiPlus /> Create new</button>{availableTemplate && <button type="button" disabled={loading || templatePending} onClick={() => openTemplateDialog(type)}><FiBookOpen /> Use built-in draft</button>}<button type="button" disabled={loading || templatePending} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button></div>}</article>;
+      return <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "Diagnostic draft" : "Post-reading assessment draft"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading || templatePending || customTarget?.archived} onClick={() => create(type)}><FiPlus /> Create new</button>{!customMode && availableTemplate && <button type="button" disabled={loading || templatePending} onClick={() => openTemplateDialog(type)}><FiBookOpen /> Use built-in draft</button>}{!customMode && <button type="button" disabled={loading || templatePending} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button>}</div>}</article>;
     })}</section>}
     {loading && <p role="status" className={styles.loading}>Loading assessment…</p>}
-    {!draft && classroomId && lessonKey && !loading && <section className={styles.emptyState}><h2>Select an assessment</h2><p>Open an existing assessment or explicitly create one type above.</p></section>}
+    {!draft && classroomId && (lessonKey || placementId) && !loading && <section className={styles.emptyState}><h2>Select an assessment</h2><p>Open an existing assessment or explicitly create one type above.</p></section>}
     {draft && <>
-      <EditorActionBar lessonTitle={selectedLesson?.title ?? "Lesson"} assessmentType={draft.type} status={assessmentStatus({ exists: true, published: draft.isPublished, attemptsExist: draft.attemptsExist })} saveState={saveState} dirty={dirty} locked={locked} saving={saveState === "saving"} published={draft.isPublished} publishDisabled={locked || dirty} onPreview={() => setPreview(true)} onSave={save} onPublish={requestPublish} onUnpublish={() => setConfirmAction("unpublish")} />
-      {locked && <div className={styles.lockBanner} role="status"><strong>Locked after first attempt</strong><span>Settings, questions, unpublishing, and deletion are unavailable because student attempt data now exists.</span></div>}
+      <EditorActionBar lessonTitle={selectedLesson?.title ?? "Lesson"} assessmentType={draft.type} status={assessmentStatus({ exists: true, published: draft.isPublished, attemptsExist: draft.attemptsExist })} saveState={saveState} dirty={dirty} locked={locked} saving={saveState === "saving"} published={draft.isPublished} publishDisabled={locked || dirty} publicationAvailable={!customMode} onPreview={() => setPreview(true)} onSave={save} onPublish={requestPublish} onUnpublish={() => setConfirmAction("unpublish")} />
+      {customMode && <CustomDraftNotice revisionReviewRequired={draft.revisionReviewRequired} boundVersion={draft.targetLessonVersion} currentVersion={draft.currentLessonVersion} pending={revisionPending} onReview={reviewRevision} />}
+      {attemptLocked && <div className={styles.lockBanner} role="status"><strong>Locked after first attempt</strong><span>Settings, questions, unpublishing, and deletion are unavailable because student attempt data now exists.</span></div>}
       <div className={styles.editorWorkspace}>
       <QuestionNavigator questions={draft.questions} activeQuestionId={activeQuestionId} disabled={locked || draft.questions.length >= 100} onNavigate={navigateToQuestion} onAdd={addQuestionFromEditor} />
       <div className={styles.editorColumn}>
@@ -460,7 +595,7 @@ export default function TeacherAssessmentBuilderPage() {
         {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice or true/false questions. Drafts may remain incomplete until publication.</p></div>}
         {!!draft.questions.length && <div className={styles.questionFooter}><button type="button" className={styles.secondaryButton} disabled={locked || draft.questions.length >= 100} onClick={addQuestionFromEditor}><FiPlus /> Add question</button></div>}
       </section>
-      <section className={styles.publishCard}><div><h2>Publication readiness</h2>{issues.length ? <><p>Resolve these issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div>{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={locked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete assessment</button>}</section>
+      <section className={styles.publishCard}><div><h2>{customMode ? "Draft review" : "Publication readiness"}</h2>{customMode ? <p>Review and save this draft. Publishing for custom lessons will be enabled only after the remaining student and reporting safeguards are complete.</p> : issues.length ? <><p>Resolve these issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div>{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={attemptLocked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete assessment</button>}</section>
       </div>
       </div>
     </>}

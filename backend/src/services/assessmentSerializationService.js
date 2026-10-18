@@ -290,6 +290,13 @@ const serializeTeacherSummary = (input = {}) => {
     questionCount: Number(input.questionCount ?? assessment.questionCount ?? assessment.questions?.length ?? 0),
     attemptsExist: Boolean(input.attemptsExist),
   };
+  if (assessment.targetKind === "CLASSROOM_LESSON_PLACEMENT") {
+    output.targetKind = assessment.targetKind;
+    output.classroomLessonPlacementId = assessment.classroomLessonPlacementId;
+    output.targetLessonVersion = Number(assessment.targetLessonVersion);
+    output.currentLessonVersion = Number(input.currentLessonVersion ?? assessment.targetLessonVersion);
+    output.revisionReviewRequired = output.targetLessonVersion !== output.currentLessonVersion;
+  }
   if (assessment.type === "POST") {
     output.passingPercentage = numberOrNull(assessment.passingPercentage);
     output.maxAttempts = Number(assessment.maxAttempts);
@@ -303,7 +310,14 @@ const serializeTeacherEditor = (assessmentInput, metadata = {}) => {
   return {
     id: assessment.id,
     classroomId: assessment.classroomId,
+    targetKind: assessment.targetKind ?? "BUILT_IN",
     lessonKey: assessment.lessonKey,
+    classroomLessonPlacementId: assessment.classroomLessonPlacementId ?? null,
+    targetLessonVersion: assessment.targetLessonVersion == null ? null : Number(assessment.targetLessonVersion),
+    currentLessonVersion: metadata.currentLessonVersion == null
+      ? null : Number(metadata.currentLessonVersion),
+    revisionReviewRequired: metadata.currentLessonVersion == null ? false
+      : Number(assessment.targetLessonVersion) !== Number(metadata.currentLessonVersion),
     type: assessment.type,
     title: assessment.title,
     instructions: assessment.instructions ?? null,

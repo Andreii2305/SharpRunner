@@ -4,6 +4,9 @@ import { buildApiUrl, getAuthHeaders } from "../utils/auth.js";
 const segment = (value) => encodeURIComponent(String(value));
 const config = (signal) => ({ headers: getAuthHeaders(), ...(signal ? { signal } : {}) });
 const base = (classroomId) => `/api/teacher/classrooms/${segment(classroomId)}/assessments`;
+const customBase = (classroomId, placementId) => (
+  `/api/teacher/classrooms/${segment(classroomId)}/lesson-placements/${segment(placementId)}/assessments`
+);
 
 const pick = (source = {}, keys = []) => Object.fromEntries(
   keys.filter((key) => Object.hasOwn(source, key)).map((key) => [key, source[key]]),
@@ -35,7 +38,9 @@ export const serializeTeacherAssessmentGraph = (graph = {}) => ({
 });
 
 const ASSESSMENT_EDITOR_FIELDS = [
-  "id", "classroomId", "lessonKey", "type", "title", "instructions", "isRequired",
+  "id", "classroomId", "targetKind", "lessonKey", "classroomLessonPlacementId",
+  "targetLessonVersion", "currentLessonVersion", "revisionReviewRequired",
+  "type", "title", "instructions", "isRequired",
   "isPublished", "publishedAt", "passingPercentage", "maxAttempts", "gradeCalculation",
   "requirePassingForCompletion", "showScoreAfterSubmission", "answerReviewPolicy",
   "shuffleQuestions", "shuffleChoices", "version", "attemptsExist", "structureLocked",
@@ -76,6 +81,59 @@ export const listTeacherAssessments = async ({ classroomId, lessonKey, signal })
 export const createTeacherAssessment = async ({ classroomId, signal, ...input }) => {
   const response = await axios.post(buildApiUrl(base(classroomId)), input, config(signal));
   return normalizeEditorPayload(response.data);
+};
+
+export const listCustomLessonAssessmentDrafts = async ({ classroomId, placementId, signal }) => {
+  const response = await axios.get(buildApiUrl(customBase(classroomId, placementId)), config(signal));
+  return response.data;
+};
+
+export const createCustomLessonAssessmentDraft = async ({ classroomId, placementId, signal, ...input }) => {
+  const response = await axios.post(
+    buildApiUrl(customBase(classroomId, placementId)), input, config(signal),
+  );
+  return normalizeEditorPayload(response.data);
+};
+
+export const loadCustomLessonAssessmentDraft = async ({
+  classroomId, placementId, assessmentId, signal,
+}) => {
+  const response = await axios.get(
+    buildApiUrl(`${customBase(classroomId, placementId)}/${segment(assessmentId)}`),
+    config(signal),
+  );
+  return normalizeEditorPayload(response.data);
+};
+
+export const saveCustomLessonAssessmentDraft = async ({
+  classroomId, placementId, assessmentId, graph, signal,
+}) => {
+  const response = await axios.put(
+    buildApiUrl(`${customBase(classroomId, placementId)}/${segment(assessmentId)}`),
+    serializeTeacherAssessmentGraph(graph),
+    config(signal),
+  );
+  return normalizeEditorPayload(response.data);
+};
+
+export const reviewCustomLessonAssessmentRevision = async ({
+  classroomId, placementId, assessmentId, version, targetLessonVersion, signal,
+}) => {
+  const response = await axios.post(
+    buildApiUrl(`${customBase(classroomId, placementId)}/${segment(assessmentId)}/review-revision`),
+    { version, targetLessonVersion },
+    config(signal),
+  );
+  return normalizeEditorPayload(response.data);
+};
+
+export const deleteCustomLessonAssessmentDraft = async ({
+  classroomId, placementId, assessmentId, signal,
+}) => {
+  await axios.delete(
+    buildApiUrl(`${customBase(classroomId, placementId)}/${segment(assessmentId)}`),
+    config(signal),
+  );
 };
 
 export const listBuiltInAssessmentTemplates = async ({ signal } = {}) => {
@@ -360,6 +418,9 @@ const SAFE_MESSAGES = Object.freeze({
   IDEMPOTENCY_KEY_REUSED: "This request key was already used for a different grant.",
   CLASSROOM_ARCHIVED: "Restore this classroom before granting an additional attempt.",
   GRANT_REQUEST_CONFLICT: "Another grant request was processed. Eligibility has been refreshed.",
+  CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED: "Review the current lesson revision before saving this draft.",
+  LESSON_VERSION_CONFLICT: "The lesson changed again. Reload before reviewing this revision.",
+  ASSESSMENT_TARGET_ARCHIVED: "Restore this lesson placement before editing its assessments.",
 });
 
 export const normalizeTeacherAssessmentError = (source) => {
@@ -371,5 +432,11 @@ export const normalizeTeacherAssessmentError = (source) => {
       : status === 404 ? "The requested assessment was not found."
         : status >= 500 ? "The assessment service is temporarily unavailable."
           : "Unable to complete the assessment request.";
-  return { code, message: SAFE_MESSAGES[code] ?? fallback, status };
+  return {
+    code,
+    message: SAFE_MESSAGES[code] ?? fallback,
+    status,
+    ...(Number.isSafeInteger(Number(payload.currentVersion))
+      ? { currentVersion: Number(payload.currentVersion) } : {}),
+  };
 };

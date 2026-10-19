@@ -3,22 +3,29 @@ import { FiDownload, FiX } from "react-icons/fi";
 import {
   createScoreSheetDownloadController,
   createAttemptGrantController,
+  getCustomAdditionalAttemptEligibility,
+  getCustomTeacherAssessmentResults,
+  getCustomTeacherAssessmentScoreSheet,
   getAdditionalAttemptEligibility,
+  grantCustomAdditionalAssessmentAttempt,
   grantAdditionalAssessmentAttempt,
   getTeacherAssessmentScoreSheet,
   getTeacherAssessmentResults,
   listTeacherAssessments,
   listTeacherClassrooms,
+  listCustomAssessmentReportingTargets,
   normalizeTeacherAssessmentError,
   saveTeacherAssessmentScoreSheet,
 } from "../../../services/teacherAssessmentService.js";
 import {
   ACADEMIC_LESSONS,
   assessmentClassroomLabel,
+  assessmentTargetValue,
   attemptPointsLabel,
   buildAssessmentAnalytics,
   filterAssessmentStudents,
   getAssessmentAnalyticsView,
+  parseAssessmentTargetValue,
   summarizeAssessmentAvailability,
 } from "./teacherAssessmentAnalyticsState.js";
 import styles from "./TeacherAssessmentAnalyticsPanel.module.css";
@@ -98,7 +105,10 @@ export function AssessmentEvidenceSummary({ metrics }) {
   </>;
 }
 
-function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, slots, scope, onGranted, onClose }) {
+function AttemptHistoryDialog({
+  row, classroomId, classroomLabel, lessonTitle, slots, scope, target, grantDisabled,
+  onGranted, onClose,
+}) {
   const closeRef = useRef(null);
   const dialogRef = useRef(null);
   const [eligibility, setEligibility] = useState({});
@@ -109,8 +119,10 @@ function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, s
   const [error, setError] = useState("");
   const controllerRef = useRef(null);
   if (!controllerRef.current) controllerRef.current = createAttemptGrantController({
-    request: grantAdditionalAssessmentAttempt,
-    reconcile: grantAdditionalAssessmentAttempt,
+    request: (input) => input.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+      ? grantCustomAdditionalAssessmentAttempt(input) : grantAdditionalAssessmentAttempt(input),
+    reconcile: (input) => input.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+      ? grantCustomAdditionalAssessmentAttempt(input) : grantAdditionalAssessmentAttempt(input),
     onPending: setPending,
     onSuccess: (result) => {
       setGrantType(null); setReason(""); setError("");
@@ -123,17 +135,35 @@ function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, s
   useEffect(() => {
     const abort = new AbortController();
     setLoadingEligibility(true); setError("");
+    if (grantDisabled) {
+      setEligibility(Object.fromEntries(["PRE", "POST"].map((type) => [type,
+        slots[type]?.published ? {
+          eligible: false,
+          ineligibleReason: "ASSESSMENT_TARGET_ARCHIVED",
+          assessment: { id: slots[type].id, type },
+          grants: [],
+          allowance: { attemptsRemaining: 0 },
+        } : null])));
+      setLoadingEligibility(false);
+      return () => abort.abort();
+    }
     Promise.all(["PRE", "POST"].map(async (type) => {
       if (!slots[type]?.published) return [type, null];
-      const value = await getAdditionalAttemptEligibility({
-        classroomId, assessmentId: slots[type].id, studentId: row.student.id, signal: abort.signal,
-      });
+      const identity = {
+        classroomId, assessmentId: slots[type].id, studentId: row.student.id,
+        ...(target?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+          ? { placementId: target.placementId } : {}),
+        signal: abort.signal,
+      };
+      const value = target?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+        ? await getCustomAdditionalAttemptEligibility(identity)
+        : await getAdditionalAttemptEligibility(identity);
       return [type, value];
     })).then((entries) => setEligibility(Object.fromEntries(entries)))
       .catch((source) => { if (source?.code !== "ERR_CANCELED") setError(normalizeTeacherAssessmentError(source).message); })
       .finally(() => { if (!abort.signal.aborted) setLoadingEligibility(false); });
     return () => abort.abort();
-  }, [classroomId, row.student.id, slots, scope]);
+  }, [classroomId, grantDisabled, row.student.id, slots, scope, target]);
   useEffect(() => {
     closeRef.current?.focus();
     const onKeyDown = (event) => {
@@ -155,6 +185,9 @@ function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, s
     setError("");
     controllerRef.current.grant({
       scope, classroomId, assessmentId: selected.assessment.id, studentId: row.student.id,
+      targetKind: target?.targetKind ?? "BUILT_IN",
+      ...(target?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+        ? { placementId: target.placementId } : {}),
       reason, idempotencyKey: crypto.randomUUID(),
     });
   };
@@ -167,6 +200,7 @@ function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, s
       </article>)}</div>
       <section className={styles.grantSection} aria-labelledby="grant-attempt-title">
         <div><h4 id="grant-attempt-title">Grant one additional attempt</h4><p>The student starts it from the assessment Start screen. Existing submissions, grades, progress, and game access are unchanged.</p></div>
+        {grantDisabled && <p>Archived placements remain available for history and score-sheet export, but new attempts cannot be granted.</p>}
         {loadingEligibility ? <p role="status">Checking current eligibility…</p> : <div className={styles.grantChoices}>{["PRE", "POST"].map((type) => {
           const state = eligibility[type];
           if (!state) return null;
@@ -202,31 +236,46 @@ function AttemptHistoryDialog({ row, classroomId, classroomLabel, lessonTitle, s
 export default function TeacherAssessmentAnalyticsPanel() {
   const [classrooms, setClassrooms] = useState([]);
   const [classroomId, setClassroomId] = useState("");
-  const [lessonKey, setLessonKey] = useState("");
+  const [targetValue, setTargetValue] = useState("");
+  const [customTargets, setCustomTargets] = useState([]);
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [query, setQuery] = useState("");
   const [slots, setSlots] = useState(emptySlots);
   const [payloads, setPayloads] = useState({ prePayload: null, postPayload: null });
   const [loading, setLoading] = useState(false);
   const [classroomError, setClassroomError] = useState("");
+  const [targetError, setTargetError] = useState("");
+  const [targetsLoading, setTargetsLoading] = useState(false);
   const [resultsError, setResultsError] = useState("");
   const [resultsErrorScope, setResultsErrorScope] = useState("");
   const [loadedResultsScope, setLoadedResultsScope] = useState("");
   const [classroomRetryVersion, setClassroomRetryVersion] = useState(0);
+  const [targetRetryVersion, setTargetRetryVersion] = useState(0);
   const [resultsRetryVersion, setResultsRetryVersion] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadError, setDownloadError] = useState("");
   const classroomRequestVersionRef = useRef(0);
+  const targetRequestVersionRef = useRef(0);
   const requestVersionRef = useRef(0);
   const launcherRef = useRef(null);
   const downloadControllerRef = useRef(null);
-  const selectedLesson = ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey) ?? null;
+  const selectedIdentity = useMemo(() => parseAssessmentTargetValue(targetValue), [targetValue]);
+  const lessonKey = selectedIdentity?.targetKind === "BUILT_IN" ? selectedIdentity.lessonKey : "";
+  const placementId = selectedIdentity?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    ? selectedIdentity.placementId : null;
+  const selectedTarget = selectedIdentity?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    ? customTargets.find((target) => Number(target.placementId) === placementId) ?? null
+    : null;
+  const selectedLesson = selectedTarget
+    ? { title: selectedTarget.lessonTitle, assessmentApplicable: true }
+    : ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey) ?? null;
   const selectedClassroom = classrooms.find((classroom) => String(classroom.id) === String(classroomId));
-  const resultsScope = classroomId && lessonKey ? `${classroomId}:${lessonKey}` : "";
+  const resultsScope = classroomId && targetValue ? `${classroomId}:${targetValue}` : "";
   if (!downloadControllerRef.current) {
     downloadControllerRef.current = createScoreSheetDownloadController({
-      request: getTeacherAssessmentScoreSheet,
+      request: (input) => input.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+        ? getCustomTeacherAssessmentScoreSheet(input) : getTeacherAssessmentScoreSheet(input),
       onReady: saveTeacherAssessmentScoreSheet,
       onPending: setDownloadPending,
       onError: (source) => setDownloadError(normalizeTeacherAssessmentError(source).message),
@@ -250,6 +299,30 @@ export default function TeacherAssessmentAnalyticsPanel() {
   }, [classroomRetryVersion]);
 
   useEffect(() => {
+    const requestVersion = ++targetRequestVersionRef.current;
+    const controller = new AbortController();
+    setCustomTargets([]);
+    setTargetError("");
+    if (!classroomId) { setTargetsLoading(false); return () => controller.abort(); }
+    setTargetsLoading(true);
+    listCustomAssessmentReportingTargets({ classroomId, signal: controller.signal })
+      .then((response) => {
+        if (requestVersion === targetRequestVersionRef.current) {
+          setCustomTargets(response.targets ?? []);
+        }
+      })
+      .catch((source) => {
+        if (source?.code !== "ERR_CANCELED" && requestVersion === targetRequestVersionRef.current) {
+          setTargetError(normalizeTeacherAssessmentError(source).message);
+        }
+      })
+      .finally(() => {
+        if (requestVersion === targetRequestVersionRef.current) setTargetsLoading(false);
+      });
+    return () => controller.abort();
+  }, [classroomId, targetRetryVersion]);
+
+  useEffect(() => {
     const requestVersion = ++requestVersionRef.current;
     const controller = new AbortController();
     setSlots(emptySlots());
@@ -258,18 +331,23 @@ export default function TeacherAssessmentAnalyticsPanel() {
     setResultsError("");
     setResultsErrorScope("");
     setLoadedResultsScope("");
-    if (!classroomId || !lessonKey || selectedLesson?.assessmentApplicable === false) { setLoading(false); return () => controller.abort(); }
+    if (!classroomId || !selectedIdentity || selectedLesson?.assessmentApplicable === false) { setLoading(false); return () => controller.abort(); }
     setLoading(true);
     (async () => {
       try {
-        const summary = await listTeacherAssessments({ classroomId, lessonKey, signal: controller.signal });
+        const summary = selectedIdentity.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+          ? { assessments: selectedTarget?.assessments ?? emptySlots() }
+          : await listTeacherAssessments({ classroomId, lessonKey, signal: controller.signal });
         if (requestVersion !== requestVersionRef.current) return;
         const nextSlots = summary.assessments ?? emptySlots();
         setSlots(nextSlots);
         const entries = await Promise.all(["PRE", "POST"].map(async (type) => {
           const slot = nextSlots[type];
           if (!slot?.exists || !slot.published) return [type, null];
-          return [type, await getTeacherAssessmentResults({ classroomId, assessmentId: slot.id, signal: controller.signal })];
+          const input = { classroomId, assessmentId: slot.id, signal: controller.signal };
+          return [type, selectedIdentity.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+            ? await getCustomTeacherAssessmentResults({ ...input, placementId })
+            : await getTeacherAssessmentResults(input)];
         }));
         if (requestVersion !== requestVersionRef.current) return;
         const resultMap = Object.fromEntries(entries);
@@ -285,7 +363,8 @@ export default function TeacherAssessmentAnalyticsPanel() {
       }
     })();
     return () => controller.abort();
-  }, [classroomId, lessonKey, selectedLesson?.assessmentApplicable, resultsRetryVersion, resultsScope]);
+  }, [classroomId, lessonKey, placementId, resultsRetryVersion, resultsScope,
+    selectedIdentity, selectedLesson?.assessmentApplicable, selectedTarget]);
 
   const model = useMemo(() => buildAssessmentAnalytics(payloads), [payloads]);
   const rows = useMemo(() => filterAssessmentStudents(model.students, { query, type: typeFilter }), [model.students, query, typeFilter]);
@@ -299,11 +378,13 @@ export default function TeacherAssessmentAnalyticsPanel() {
   const openHistory = (row, launcher) => { launcherRef.current = launcher; setSelectedStudent(row); };
   const { metrics } = model;
   const currentResultsError = resultsErrorScope === resultsScope ? resultsError : "";
-  const requestError = resultsScope ? currentResultsError : classroomError;
+  const customTargetError = selectedIdentity?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    ? targetError : "";
+  const requestError = classroomError || currentResultsError || customTargetError;
   const dataMatchesScope = loadedResultsScope === resultsScope && Boolean(resultsScope);
   const view = getAssessmentAnalyticsView({
     classroomId,
-    lessonKey,
+    lessonKey: targetValue,
     assessmentApplicable: selectedLesson?.assessmentApplicable,
     loading,
     error: requestError,
@@ -318,17 +399,24 @@ export default function TeacherAssessmentAnalyticsPanel() {
     downloadControllerRef.current.download({
       scope: resultsScope,
       classroomId,
-      lessonKey,
+      ...(selectedIdentity?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+        ? { placementId } : { lessonKey }),
+      targetKind: selectedIdentity?.targetKind,
     });
   };
 
   return <section className={styles.root} aria-label="Assessment evidence">
     <section className={styles.filters} aria-label="Assessment analytics filters">
-      <label>Classroom<select value={classroomId} onChange={(event) => { setClassroomId(event.target.value); setLessonKey(""); }}><option value="">Select a classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{assessmentClassroomLabel(classroom)}</option>)}</select></label>
-      <label>Lesson<select value={lessonKey} disabled={!classroomId} onChange={(event) => setLessonKey(event.target.value)}><option value="">Select a lesson</option>{ACADEMIC_LESSONS.map((lesson) => <option key={lesson.key} value={lesson.key}>{lesson.title}</option>)}</select></label>
+      <label>Classroom<select value={classroomId} onChange={(event) => { setClassroomId(event.target.value); setTargetValue(""); setSelectedStudent(null); }}><option value="">Select a classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{assessmentClassroomLabel(classroom)}</option>)}</select></label>
+      <label>Assessment target<select value={targetValue} disabled={!classroomId} onChange={(event) => { setTargetValue(event.target.value); setSelectedStudent(null); }}><option value="">Select a lesson</option><optgroup label="Built-in game lessons">{ACADEMIC_LESSONS.map((lesson) => {
+        const target = { targetKind: "BUILT_IN", lessonKey: lesson.key };
+        return <option key={lesson.key} value={assessmentTargetValue(target)}>{lesson.title}</option>;
+      })}</optgroup>{customTargets.length > 0 && <optgroup label="Classroom lesson placements">{customTargets.map((target) => <option key={target.targetId} value={assessmentTargetValue(target)}>{target.lessonTitle}{target.archived ? " — Archived" : ""}</option>)}</optgroup>}</select></label>
       <label>Assessment type<select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="ALL">All assessment types</option><option value="PRE">PRE diagnostic</option><option value="POST">POST assessment</option></select></label>
       <label>Student search<input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or username" /></label>
     </section>
+    {targetsLoading && classroomId && <p className={styles.targetContext} aria-live="polite">Loading classroom lesson placements...</p>}
+    {targetError && classroomId && selectedIdentity?.targetKind !== "CLASSROOM_LESSON_PLACEMENT" && <div className={styles.errorState} role="alert"><span>Classroom lesson placements could not be loaded: {targetError}. Built-in lesson reporting remains available.</span><button type="button" onClick={() => setTargetRetryVersion((current) => current + 1)}>Retry classroom lessons</button></div>}
 
     <AssessmentResultsBoundary view={view} error={requestError} onRetry={retryRequest}>
       <>
@@ -336,6 +424,7 @@ export default function TeacherAssessmentAnalyticsPanel() {
           <article><strong>PRE diagnostic</strong><span>{summarizeAssessmentAvailability(slots.PRE, payloads.prePayload)}</span></article>
           <article><strong>POST assessment</strong><span>{summarizeAssessmentAvailability(slots.POST, payloads.postPayload)}</span></article>
         </div>
+        {selectedTarget && <p className={styles.targetContext}>Classroom lesson placement {selectedTarget.placementId}{selectedTarget.archived ? " · Archived" : ""}. PRE revision: {selectedTarget.assessments.PRE?.targetLessonVersion ?? "not configured"}; POST revision: {selectedTarget.assessments.POST?.targetLessonVersion ?? "not configured"}.</p>}
         <div className={styles.downloadBar}>
           <p>All students with at least one submitted PRE or POST for this classroom and lesson. Student search and assessment-type filters do not affect this download.</p>
           <button type="button" onClick={downloadScoreSheet} disabled={downloadPending || !model.students.length}><FiDownload aria-hidden="true" /> {downloadPending ? "Downloading…" : "Download score sheet"}</button>
@@ -345,10 +434,10 @@ export default function TeacherAssessmentAnalyticsPanel() {
         <AssessmentEvidenceSummary metrics={metrics} />
         <CodingQuestionBreakdown questions={codingQuestions} />
         <div className={styles.tableWrap}><table><caption>Submitted assessment results, alphabetical by student</caption><thead><tr><th scope="col">Student</th><th scope="col">PRE diagnostic</th><th scope="col">First POST</th><th scope="col">Official POST</th><th scope="col">POST status</th><th scope="col">Submitted POST attempts</th><th scope="col">Learning gain</th><th scope="col">History</th></tr></thead><tbody>
-          {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td><AttemptScore attempt={row.preAttempt} />{row.preAttempt && <small>{row.preStatus}</small>}</td><td><AttemptScore attempt={row.firstPost} /></td><td><AttemptScore attempt={row.officialPost} /></td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}
+          {!rows.length ? <tr><td colSpan="8" className={styles.emptyCell}>No submitted results match these filters.</td></tr> : rows.map((row) => <tr key={row.student.id}><th scope="row"><strong>{row.name}</strong><small>@{row.student.username}</small></th><td><AttemptScore attempt={row.preAttempt} />{row.preAttempt && <small>{row.preStatus}</small>}</td><td><AttemptScore attempt={row.firstPost} /></td><td><AttemptScore attempt={row.officialPost} /></td><td>{row.postStatus}</td><td>{row.postAttempts.length}</td><td>{signedPoints(row.learningGain)}{row.learningGain == null && <small>{row.learningGainUnavailableReason}</small>}</td><td><button type="button" onClick={(event) => openHistory(row, event.currentTarget)}>View history</button></td></tr>)}
         </tbody></table></div>
       </>
     </AssessmentResultsBoundary>
-    {selectedStudent && <AttemptHistoryDialog row={selectedStudent} classroomId={classroomId} classroomLabel={assessmentClassroomLabel(selectedClassroom)} lessonTitle={selectedLesson?.title ?? lessonKey} slots={slots} scope={`${resultsScope}:${selectedStudent.student.id}`} onGranted={() => setResultsRetryVersion((current) => current + 1)} onClose={closeHistory} />}
+    {selectedStudent && <AttemptHistoryDialog row={selectedStudent} classroomId={classroomId} classroomLabel={assessmentClassroomLabel(selectedClassroom)} lessonTitle={selectedLesson?.title ?? lessonKey} slots={slots} scope={`${resultsScope}:${selectedStudent.student.id}`} target={selectedIdentity} grantDisabled={selectedTarget?.archived === true} onGranted={() => setResultsRetryVersion((current) => current + 1)} onClose={closeHistory} />}
   </section>;
 }

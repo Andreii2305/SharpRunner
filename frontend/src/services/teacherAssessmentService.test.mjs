@@ -48,6 +48,29 @@ test("custom lesson draft service preserves exact classroom and placement identi
   assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
 });
 
+test("custom reporting service preserves exact classroom placement assessment and student identity", async () => {
+  calls.length = 0;
+  await service.listCustomAssessmentReportingTargets({ classroomId: 7 });
+  await service.getCustomTeacherAssessmentResults({ classroomId: 7, placementId: 71, assessmentId: 91 });
+  await service.getCustomAdditionalAttemptEligibility({
+    classroomId: 7, placementId: 71, assessmentId: 91, studentId: 42,
+  });
+  await service.grantCustomAdditionalAssessmentAttempt({
+    classroomId: 7, placementId: 71, assessmentId: 91, studentId: 42,
+    reason: "Targeted support", idempotencyKey: "custom_grant_123",
+  });
+  await service.getCustomTeacherAssessmentScoreSheet({ classroomId: 7, placementId: 71 });
+
+  assert.deepEqual(calls.map(([method]) => method), ["get", "get", "get", "post", "get"]);
+  assert.match(calls[0][1], /classrooms\/7\/lesson-placements\/assessment-reporting$/);
+  assert.match(calls[1][1], /lesson-placements\/71\/assessments\/91\/results$/);
+  assert.match(calls[2][1], /lesson-placements\/71\/assessments\/91\/students\/42\/additional-attempt$/);
+  assert.match(calls[3][1], /lesson-placements\/71\/assessments\/91\/students\/42\/additional-attempt$/);
+  assert.equal(calls[3][3].headers["Idempotency-Key"], "custom_grant_123");
+  assert.match(calls[4][1], /lesson-placements\/71\/assessment-score-sheet\.csv$/);
+  assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
+});
+
 test("custom editor normalization retains safe target and revision-review metadata", () => {
   const normalized = service.normalizeTeacherAssessmentGraph({
     id: 91,

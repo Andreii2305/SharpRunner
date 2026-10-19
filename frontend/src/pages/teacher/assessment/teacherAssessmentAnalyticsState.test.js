@@ -8,6 +8,8 @@ import {
   summarizeAssessmentAvailability,
   attemptPointsLabel,
   assessmentClassroomLabel,
+  assessmentTargetValue,
+  parseAssessmentTargetValue,
 } from "./teacherAssessmentAnalyticsState.js";
 
 const student = (id, firstName, lastName) => ({ id, firstName, lastName, username: `student${id}` });
@@ -39,6 +41,70 @@ test("assessment classroom labels keep authoritative names and optional sections
 test("academic lesson filter uses the backend assessment allowlist", () => {
   assert.deepEqual(ACADEMIC_LESSONS.map(({ key }) => key), ["arrays", "functions", "functions-with-arrays", "final"]);
   assert.equal(ACADEMIC_LESSONS.find(({ key }) => key === "final").assessmentApplicable, false);
+});
+
+test("assessment target values use stable built-in keys or placement IDs, never display titles", () => {
+  assert.equal(assessmentTargetValue({ targetKind: "BUILT_IN", lessonKey: "arrays", title: "Arrays" }), "builtin:arrays");
+  assert.equal(assessmentTargetValue({ targetKind: "CLASSROOM_LESSON_PLACEMENT", placementId: 71, lessonTitle: "Renamed lesson" }), "placement:71");
+  assert.deepEqual(parseAssessmentTargetValue("builtin:functions-with-arrays"), {
+    targetKind: "BUILT_IN", lessonKey: "functions-with-arrays",
+  });
+  assert.deepEqual(parseAssessmentTargetValue("placement:71"), {
+    targetKind: "CLASSROOM_LESSON_PLACEMENT", placementId: 71,
+  });
+  assert.equal(parseAssessmentTargetValue("placement:Renamed lesson"), null);
+});
+
+test("custom learning gain requires the same exact placement content revision", () => {
+  const learner = student(1, "Ada", "Learner");
+  const pre = prePayload([result(learner, { percentage: 50 })]);
+  const post = postPayload([result(learner, {
+    percentage: 80, isOfficial: true, isFirstSubmittedPost: true,
+  })]);
+  pre.assessment = { ...pre.assessment, targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomLessonPlacementId: 71, targetLessonVersion: 3 };
+  post.assessment = { ...post.assessment, targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomLessonPlacementId: 71, targetLessonVersion: 4 };
+
+  const model = buildAssessmentAnalytics({ prePayload: pre, postPayload: post });
+  assert.equal(model.students[0].learningGain, null);
+  assert.equal(model.students[0].learningGainUnavailableReason,
+    "Assessment content revisions are not comparable");
+  assert.equal(model.metrics.pairedStudents, 0);
+});
+
+test("custom learning gain rejects missing revisions instead of coercing NULL to revision zero", () => {
+  const learner = student(1, "Ada", "Learner");
+  const pre = prePayload([result(learner, { percentage: 50 })]);
+  const post = postPayload([result(learner, {
+    percentage: 80, isOfficial: true, isFirstSubmittedPost: true,
+  })]);
+  pre.assessment = { ...pre.assessment, targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomLessonPlacementId: 71, targetLessonVersion: null };
+  post.assessment = { ...post.assessment, targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomLessonPlacementId: 71, targetLessonVersion: null };
+
+  const model = buildAssessmentAnalytics({ prePayload: pre, postPayload: post });
+  assert.equal(model.students[0].learningGain, null);
+  assert.equal(model.students[0].learningGainUnavailableReason,
+    "Assessment content revisions are not comparable");
+});
+
+test("custom PRE baseline labels describe lesson access without changing built-in wording", () => {
+  const learner = student(1, "Ada", "Learner");
+  const customPre = prePayload([result(learner, { preBaselineStatus: "RETROACTIVE" })]);
+  customPre.assessment = {
+    ...customPre.assessment,
+    targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomLessonPlacementId: 71,
+    targetLessonVersion: 3,
+  };
+
+  assert.equal(buildAssessmentAnalytics({ prePayload: customPre }).students[0].preStatus,
+    "Retroactive — lesson content was accessed before PRE");
+  assert.equal(buildAssessmentAnalytics({
+    prePayload: prePayload([result(learner, { preBaselineStatus: "RETROACTIVE" })]),
+  }).students[0].preStatus, "Retroactive — game activity preceded PRE");
 });
 
 test("assessment presentation keeps request failure distinct from configuration availability", () => {

@@ -406,6 +406,11 @@ const serializeTeacherResults = (input = {}) => {
     assessment: {
       id: assessment.id,
       lessonKey: assessment.lessonKey,
+      ...(assessment.targetKind === "CLASSROOM_LESSON_PLACEMENT" ? {
+        targetKind: assessment.targetKind,
+        classroomLessonPlacementId: assessment.classroomLessonPlacementId,
+        targetLessonVersion: Number(assessment.targetLessonVersion),
+      } : {}),
       type: assessment.type,
       title: assessment.title,
       passingPercentage: numberOrNull(assessment.passingPercentage),

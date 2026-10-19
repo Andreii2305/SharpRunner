@@ -8,6 +8,7 @@
 .availability article { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; color: #526174; }
 .availability article + article { border-left: 1px solid #e2e8f0; }
 .availability strong { color: #1e3a5f; }
+.targetContext { margin: -4px 0 0; color: #526174; font-size: 13px; line-height: 1.45; }
 .summaryGroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid #dbe4ed; border-radius: 10px; background: #fff; overflow: hidden; }
 .summaryGroups > section { min-width: 0; padding: 14px 16px; }
 .summaryGroups > section:nth-child(even) { border-left: 1px solid #e2e8f0; }

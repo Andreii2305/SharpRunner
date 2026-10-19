@@ -278,6 +278,9 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
     if (options.lock) store.events.push("placement-lock");
     return store.placements.find((row) => matches(row, options.where)) || null;
   });
+  stub(models.ClassroomLessonPlacement, "findAll", async (options = {}) => (
+    store.placements.filter((row) => matches(row, options.where))
+  ));
   stub(models.LessonAssessment, "findOne", async (options = {}) => {
     if (options.lock) store.events.push("assessment-lock");
     const found = store.assessments.find((row) => matches(row, options.where)) || null;
@@ -2836,4 +2839,143 @@ test("assessment score sheet enforces classroom ownership and exact lesson ident
     { actorId: 5 },
   );
   assert.equal(invalidLesson.response.status, 400);
+});
+
+test("custom reporting targets use stable placement identity and retain archived history", async () => {
+  const pre = customAssessment({ id: 21, type: "PRE", title: "Lesson diagnostic",
+    passingPercentage: null, maxAttempts: 1, gradeCalculation: "FIRST",
+    requirePassingForCompletion: false, isPublished: true, publishedAt: new Date() });
+  const post = customAssessment({ id: 22, title: "Lesson check", isPublished: true,
+    publishedAt: new Date(), targetLessonVersion: 4 });
+  harness({
+    assessments: [pre, post],
+    placements: [{ id: 71, lessonId: 61, classroomId: 7, archivedAt: new Date("2026-10-01T00:00:00.000Z") }],
+  });
+
+  const response = await request(
+    "/api/teacher/classrooms/7/lesson-placements/assessment-reporting",
+    { actorId: 5 },
+  );
+
+  assert.equal(response.response.status, 200);
+  assert.deepEqual(response.payload.targets, [{
+    targetId: "placement:71",
+    targetKind: "CLASSROOM_LESSON_PLACEMENT",
+    classroomId: 7,
+    placementId: 71,
+    lessonId: 61,
+    lessonTitle: "Teacher arrays lesson",
+    archived: true,
+    assessments: {
+      PRE: { exists: true, id: 21, type: "PRE", published: true, targetLessonVersion: 3 },
+      POST: { exists: true, id: 22, type: "POST", published: true, targetLessonVersion: 4 },
+    },
+  }]);
+});
+
+test("custom results require exact classroom placement while built-in route rejects custom targets", async () => {
+  const h = harness({
+    assessments: [customAssessment({ isPublished: true, publishedAt: new Date() })],
+    attempts: [submittedAttempt()],
+  });
+
+  const exact = await h.call("/classrooms/7/lesson-placements/71/assessments/12/results");
+  assert.equal(exact.response.status, 200);
+  assert.equal(exact.payload.assessment.classroomLessonPlacementId, 71);
+
+  const wrongPlacement = await h.call("/classrooms/7/lesson-placements/72/assessments/12/results");
+  assert.equal(wrongPlacement.response.status, 404);
+  const generic = await h.call("/classrooms/7/assessments/12/results");
+  assert.equal(generic.response.status, 404);
+});
+
+test("custom score sheet is placement-isolated and suppresses gain across different revisions", async () => {
+  const pre = customAssessment({ id: 21, type: "PRE", title: "Lesson diagnostic",
+    passingPercentage: null, maxAttempts: 1, gradeCalculation: "FIRST",
+    requirePassingForCompletion: false, isPublished: true, publishedAt: new Date() });
+  const post = customAssessment({ id: 22, title: "Lesson check", isPublished: true,
+    publishedAt: new Date(), targetLessonVersion: 4, requirePassingForCompletion: false });
+  const h = harness({
+    assessments: [pre, post, customAssessment({ id: 31, classroomId: 7,
+      classroomLessonPlacementId: 72, isPublished: true, publishedAt: new Date() })],
+    placements: [
+      { id: 71, lessonId: 61, classroomId: 7, archivedAt: new Date("2026-10-01T00:00:00.000Z") },
+      { id: 72, lessonId: 61, classroomId: 7, archivedAt: null },
+    ],
+    attempts: [
+      submittedAttempt({ id: 51, assessmentId: 21, pointsEarned: 5, percentage: 50,
+        passed: null, preBaselineStatus: "VALID" }),
+      submittedAttempt({ id: 52, assessmentId: 22, pointsEarned: 8, percentage: 80 }),
+      submittedAttempt({ id: 53, assessmentId: 31, classroomId: 7,
+        student: baseStudent({ username: "other-placement" }) }),
+    ],
+  });
+
+  const result = await requestText(
+    "/api/teacher/classrooms/7/lesson-placements/71/assessment-score-sheet.csv",
+    { actorId: 5 },
+  );
+
+  assert.equal(result.response.status, 200);
+  assert.match(result.text, /"Assessment Target","Placement ID","PRE Content Revision","POST Content Revision"/);
+  assert.match(result.text, /"Classroom lesson placement","71","3","4"/);
+  assert.match(result.text, /"Assessment content revisions are not comparable"/);
+  assert.doesNotMatch(result.text, /other-placement/);
+  assert.equal(h.store.resultQueries.every(({ where }) => where.classroomId === 7), true);
+
+  h.store.assessments.find((assessment) => assessment.id === 21).targetLessonVersion = null;
+  h.store.assessments.find((assessment) => assessment.id === 22).targetLessonVersion = null;
+  const unknownRevision = await requestText(
+    "/api/teacher/classrooms/7/lesson-placements/71/assessment-score-sheet.csv",
+    { actorId: 5 },
+  );
+  assert.equal(unknownRevision.response.status, 200);
+  assert.match(unknownRevision.text, /"Classroom lesson placement","71","Unavailable","Unavailable"/);
+  assert.match(unknownRevision.text, /"Assessment content revisions are not comparable"/);
+});
+
+test("custom grant creation rechecks exact active placement and generic grant route rejects custom targets", async () => {
+  const assessment = customAssessment({ isPublished: true, publishedAt: new Date(), maxAttempts: 1 });
+  const attempts = [submittedAttempt({ percentage: 50, passed: false })];
+  const h = harness({ assessments: [assessment], attempts });
+
+  const exact = await h.call(
+    "/classrooms/7/lesson-placements/71/assessments/12/students/42/additional-attempt",
+    { method: "POST", body: { reason: "More practice" }, headers: { "Idempotency-Key": "custom_grant_001" } },
+  );
+  assert.equal(exact.response.status, 201);
+  assert.equal(h.store.grants.length, 1);
+
+  h.store.memberships[0].status = "removed";
+  const membershipChangedReplay = await h.call(
+    "/classrooms/7/lesson-placements/71/assessments/12/students/42/additional-attempt",
+    { method: "POST", body: { reason: "More practice" }, headers: { "Idempotency-Key": "custom_grant_001" } },
+  );
+  assert.equal(membershipChangedReplay.response.status, 201);
+  assert.equal(membershipChangedReplay.payload.replayed, true);
+  assert.equal(h.store.grants.length, 1);
+  h.store.memberships[0].status = "active";
+
+  h.store.placements[0].archivedAt = new Date("2026-10-01T00:00:00.000Z");
+  const archivedReplay = await h.call(
+    "/classrooms/7/lesson-placements/71/assessments/12/students/42/additional-attempt",
+    { method: "POST", body: { reason: "More practice" }, headers: { "Idempotency-Key": "custom_grant_001" } },
+  );
+  assert.equal(archivedReplay.response.status, 201);
+  assert.equal(archivedReplay.payload.replayed, true);
+  assert.equal(h.store.grants.length, 1);
+
+  const generic = await h.call(
+    "/classrooms/7/assessments/12/students/42/additional-attempt",
+    { method: "GET" },
+  );
+  assert.equal(generic.response.status, 404);
+
+  const archived = await h.call(
+    "/classrooms/7/lesson-placements/71/assessments/12/students/42/additional-attempt",
+    { method: "POST", body: { reason: null }, headers: { "Idempotency-Key": "custom_grant_002" } },
+  );
+  assert.equal(archived.response.status, 409);
+  assert.equal(archived.payload.code, "ASSESSMENT_TARGET_ARCHIVED");
+  assert.equal(h.store.grants.length, 1);
 });

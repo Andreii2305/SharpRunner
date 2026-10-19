@@ -109,6 +109,19 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
     }
   });
 
+  router.get("/classrooms/:classroomId/lesson-placements/assessment-reporting", async (req, res) => {
+    try {
+      assertNoBody(req);
+      const payload = await service.listCustomAssessmentReportingTargets({
+        classroomId: parsePositiveId(req.params.classroomId),
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
   router.post("/classrooms/:classroomId/assessments", async (req, res) => {
     try {
       const input = readObjectBody(req);
@@ -288,6 +301,35 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
     }
   });
 
+  router.get("/classrooms/:classroomId/lesson-placements/:placementId/assessment-score-sheet.csv", async (req, res) => {
+    try {
+      assertQueryKeys(req.query, []);
+      const payload = await service.getCustomAssessmentScoreSheet({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        ...actor(req),
+      });
+      return sendCsv(res, payload.filename, payload.headers, payload.rows);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.get("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId/results", async (req, res) => {
+    try {
+      assertQueryKeys(req.query, []);
+      const payload = await service.getCustomAssessmentResults({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
   router.get("/classrooms/:classroomId/assessments/:assessmentId/results", async (req, res) => {
     try {
       assertQueryKeys(req.query, []);
@@ -389,6 +431,45 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
         const input = readGrantBody(req);
         const payload = await service.grantAdditionalAttempt({
           classroomId: parsePositiveId(req.params.classroomId),
+          assessmentId: parsePositiveId(req.params.assessmentId),
+          studentId: parsePositiveId(req.params.studentId),
+          ...input,
+          ...actor(req),
+        });
+        return res.status(201).json(payload);
+      } catch (error) {
+        return sendAssessmentError(res, error);
+      }
+    },
+  );
+
+  router.get(
+    "/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId/students/:studentId/additional-attempt",
+    async (req, res) => {
+      try {
+        assertNoBody(req);
+        const payload = await service.getCustomAdditionalAttemptEligibility({
+          classroomId: parsePositiveId(req.params.classroomId),
+          placementId: parsePositiveId(req.params.placementId),
+          assessmentId: parsePositiveId(req.params.assessmentId),
+          studentId: parsePositiveId(req.params.studentId),
+          ...actor(req),
+        });
+        return res.status(200).json(payload);
+      } catch (error) {
+        return sendAssessmentError(res, error);
+      }
+    },
+  );
+
+  router.post(
+    "/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId/students/:studentId/additional-attempt",
+    async (req, res) => {
+      try {
+        const input = readGrantBody(req);
+        const payload = await service.grantCustomAdditionalAttempt({
+          classroomId: parsePositiveId(req.params.classroomId),
+          placementId: parsePositiveId(req.params.placementId),
           assessmentId: parsePositiveId(req.params.assessmentId),
           studentId: parsePositiveId(req.params.studentId),
           ...input,

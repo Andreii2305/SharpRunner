@@ -5,6 +5,22 @@ export const ACADEMIC_LESSONS = Object.freeze([
   { key: "final", title: "Final Lesson", assessmentApplicable: false },
 ]);
 
+export const assessmentTargetValue = (target = {}) => (
+  target.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    ? Number.isSafeInteger(Number(target.placementId)) && Number(target.placementId) > 0
+      ? `placement:${Number(target.placementId)}` : ""
+    : typeof target.lessonKey === "string" && target.lessonKey
+      ? `builtin:${target.lessonKey}` : ""
+);
+
+export const parseAssessmentTargetValue = (value) => {
+  const builtIn = /^builtin:([a-z][a-z0-9-]*)$/.exec(String(value || ""));
+  if (builtIn) return { targetKind: "BUILT_IN", lessonKey: builtIn[1] };
+  const placement = /^placement:([1-9][0-9]*)$/.exec(String(value || ""));
+  if (!placement || !Number.isSafeInteger(Number(placement[1]))) return null;
+  return { targetKind: "CLASSROOM_LESSON_PLACEMENT", placementId: Number(placement[1]) };
+};
+
 export const assessmentClassroomLabel = (classroom = {}) => {
   const className = typeof classroom.className === "string" && classroom.className.trim()
     ? classroom.className.trim()
@@ -20,9 +36,11 @@ const average = (values) => values.length ? rounded(values.reduce((sum, value) =
 const baselineStatus = (value) => ["VALID", "RETROACTIVE", "UNKNOWN", "SUPPLEMENTAL"].includes(value)
   ? value
   : "UNKNOWN";
-export const baselineStatusLabel = (value) => ({
+export const baselineStatusLabel = (value, { customPlacement = false } = {}) => ({
   VALID: "Valid baseline",
-  RETROACTIVE: "Retroactive — game activity preceded PRE",
+  RETROACTIVE: customPlacement
+    ? "Retroactive — lesson content was accessed before PRE"
+    : "Retroactive — game activity preceded PRE",
   UNKNOWN: "Unknown — legacy baseline timing",
   SUPPLEMENTAL: "Supplemental diagnostic — not a baseline",
 }[baselineStatus(value)]);
@@ -38,7 +56,7 @@ export const attemptPointsLabel = (attempt) => {
   return "Points unavailable";
 };
 
-const safeAttempt = (row, type, passingRequirementApplicable = false) => ({
+const safeAttempt = (row, type, passingRequirementApplicable = false, customPlacement = false) => ({
   attemptId: row.attemptId,
   attemptNumber: Number(row.attemptNumber),
   submittedAt: row.submittedAt,
@@ -52,7 +70,7 @@ const safeAttempt = (row, type, passingRequirementApplicable = false) => ({
   isFirstSubmittedPost: type === "POST" && row.isFirstSubmittedPost === true,
   ...(type === "PRE" ? {
     preBaselineStatus: baselineStatus(row.preBaselineStatus),
-    baselineLabel: baselineStatusLabel(row.preBaselineStatus),
+    baselineLabel: baselineStatusLabel(row.preBaselineStatus, { customPlacement }),
   } : {}),
   type,
 });
@@ -87,6 +105,23 @@ const compareAttempts = (left, right) => (
 
 export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null } = {}) => {
   const postPassingApplies = postPayload?.assessment?.passingRequirementApplicable === true;
+  const preTarget = prePayload?.assessment;
+  const postTarget = postPayload?.assessment;
+  const customPair = preTarget?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    || postTarget?.targetKind === "CLASSROOM_LESSON_PLACEMENT";
+  const hasKnownRevision = (target) => target?.targetLessonVersion !== null
+    && target?.targetLessonVersion !== undefined
+    && target?.targetLessonVersion !== ""
+    && Number.isSafeInteger(Number(target.targetLessonVersion))
+    && Number(target.targetLessonVersion) > 0;
+  const comparableTargets = !customPair || (
+    preTarget?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    && postTarget?.targetKind === "CLASSROOM_LESSON_PLACEMENT"
+    && Number(preTarget.classroomLessonPlacementId) === Number(postTarget.classroomLessonPlacementId)
+    && hasKnownRevision(preTarget)
+    && hasKnownRevision(postTarget)
+    && Number(preTarget.targetLessonVersion) === Number(postTarget.targetLessonVersion)
+  );
   const students = new Map();
   const ingest = (payload, type) => {
     for (const source of payload?.results ?? []) {
@@ -97,6 +132,7 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
         source,
         type,
         payload?.assessment?.passingRequirementApplicable,
+      payload?.assessment?.targetKind === "CLASSROOM_LESSON_PLACEMENT",
       ));
     }
   };
@@ -109,10 +145,22 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
     const preAttempt = entry.preAttempts[0] ?? null;
     const firstPost = entry.postAttempts.find((attempt) => attempt.isFirstSubmittedPost) ?? null;
     const officialPost = entry.postAttempts.find((attempt) => attempt.isOfficial) ?? null;
-    const learningGain = preAttempt?.preBaselineStatus === "VALID"
+    const learningGain = comparableTargets && preAttempt?.preBaselineStatus === "VALID"
       && finite(preAttempt?.percentage) && finite(firstPost?.percentage)
       ? rounded(firstPost.percentage - preAttempt.percentage)
       : null;
+    let learningGainUnavailableReason = null;
+    if (learningGain === null) {
+      if (!preAttempt) learningGainUnavailableReason = "PRE not submitted";
+      else if (preAttempt.preBaselineStatus === "RETROACTIVE") {
+        learningGainUnavailableReason = "PRE baseline is retroactive";
+      } else if (preAttempt.preBaselineStatus !== "VALID") {
+        learningGainUnavailableReason = "PRE baseline timing is unknown";
+      } else if (!firstPost) learningGainUnavailableReason = "First POST not submitted";
+      else if (!comparableTargets) {
+        learningGainUnavailableReason = "Assessment content revisions are not comparable";
+      } else learningGainUnavailableReason = "Stored score unavailable";
+    }
     const name = `${entry.student.firstName} ${entry.student.lastName}`.trim() || entry.student.username;
     return {
       student: entry.student,
@@ -126,6 +174,7 @@ export const buildAssessmentAnalytics = ({ prePayload = null, postPayload = null
         ? postPassingApplies && typeof officialPost.passed === "boolean" ? (officialPost.passed ? "Passed" : "Not passed") : "Submitted"
         : entry.postAttempts.length ? "Submitted — official result unavailable" : "Not submitted",
       learningGain,
+      learningGainUnavailableReason,
       history: [...entry.preAttempts, ...entry.postAttempts].sort((left, right) => String(left.submittedAt).localeCompare(String(right.submittedAt)) || compareAttempts(left, right)),
     };
   }).sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: "base" }) || String(left.student.id).localeCompare(String(right.student.id)));

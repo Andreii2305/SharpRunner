@@ -231,6 +231,58 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     },
   });
 
+  const listCustomAssessmentReportingTargets = async ({
+    classroomId, actorId, actorRole,
+  }) => {
+    await authorization.requireManagedClassroom({ classroomId, actorId, actorRole });
+    const [placements, assessments] = await Promise.all([
+      ClassroomLessonPlacement.findAll({ where: { classroomId }, order: [["id", "ASC"]] }),
+      LessonAssessment.findAll({
+        where: {
+          classroomId,
+          targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        },
+        order: [["classroomLessonPlacementId", "ASC"], ["type", "ASC"]],
+      }),
+    ]);
+    const assessmentsByPlacement = new Map();
+    for (const assessmentInput of assessments) {
+      const assessment = plain(assessmentInput);
+      const key = String(assessment.classroomLessonPlacementId);
+      const slots = assessmentsByPlacement.get(key) || {};
+      slots[assessment.type] = {
+        exists: true,
+        id: assessment.id,
+        type: assessment.type,
+        published: assessment.isPublished === true,
+        targetLessonVersion: Number(assessment.targetLessonVersion),
+      };
+      assessmentsByPlacement.set(key, slots);
+    }
+    const targets = [];
+    for (const placementInput of placements) {
+      const placement = plain(placementInput);
+      const slots = assessmentsByPlacement.get(String(placement.id));
+      if (!slots) continue;
+      const lesson = plain(await ClassroomLesson.findByPk(placement.lessonId));
+      if (!lesson || lesson.contentType !== "lesson") continue;
+      targets.push({
+        targetId: `placement:${placement.id}`,
+        targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+        classroomId: placement.classroomId,
+        placementId: placement.id,
+        lessonId: lesson.id,
+        lessonTitle: lesson.title,
+        archived: Boolean(placement.archivedAt || lesson.archivedAt),
+        assessments: {
+          PRE: slots.PRE || { exists: false },
+          POST: slots.POST || { exists: false },
+        },
+      });
+    }
+    return { targets };
+  };
+
   const loadGraph = (assessmentId, transaction) => LessonAssessment.findOne({
     where: { id: assessmentId },
     include: [{
@@ -675,12 +727,23 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     assessmentId,
     actorId,
     actorRole,
+    targetKind = ASSESSMENT_TARGET_KINDS.BUILT_IN,
+    placementId = null,
   }) => {
     await authorization.requireManagedClassroom({ classroomId, actorId, actorRole });
-    const assessment = await authorization.requireAssessmentInClassroom({
-      classroomId,
-      assessmentId,
-    });
+    let assessment;
+    if (targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      await loadManagedCustomTarget({
+        classroomId, placementId, actorId, actorRole, allowArchived: true,
+      });
+      assessment = await requireCustomAssessment({ classroomId, placementId, assessmentId });
+    } else {
+      assessment = await authorization.requireAssessmentInClassroom({ classroomId, assessmentId });
+      if ((plain(assessment).targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+        !== ASSESSMENT_TARGET_KINDS.BUILT_IN) {
+        throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
+      }
+    }
     const [attempts, codingQuestionRows] = await Promise.all([
       AssessmentAttempt.findAll({
       where: {
@@ -812,14 +875,41 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     });
   };
 
-  const getAssessmentScoreSheet = async ({ classroomId, lessonKey, actorId, actorRole }) => {
+  const getCustomAssessmentResults = (input) => getAssessmentResults({
+    ...input,
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+  });
+
+  const getAssessmentScoreSheet = async ({
+    classroomId, lessonKey = null, placementId = null, actorId, actorRole,
+    targetKind = ASSESSMENT_TARGET_KINDS.BUILT_IN,
+  }) => {
     const classroom = plain(await authorization.requireManagedClassroom({
       classroomId, actorId, actorRole,
     }));
-    authorization.assertAcademicLessonKey(lessonKey);
-    const lesson = LESSON_DEFINITIONS.find((item) => item.lessonKey === lessonKey);
+    let lesson;
+    let assessmentWhere;
+    if (targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      const target = await loadManagedCustomTarget({
+        classroomId, placementId, actorId, actorRole, allowArchived: true,
+      });
+      lesson = {
+        lessonTitle: target.lesson.title,
+        targetKind,
+        placementId: target.placement.id,
+      };
+      assessmentWhere = {
+        classroomId,
+        targetKind,
+        classroomLessonPlacementId: placementId,
+      };
+    } else {
+      authorization.assertAcademicLessonKey(lessonKey);
+      lesson = LESSON_DEFINITIONS.find((item) => item.lessonKey === lessonKey);
+      assessmentWhere = { classroomId, lessonKey };
+    }
     const assessments = (await LessonAssessment.findAll({
-      where: { classroomId, lessonKey },
+      where: assessmentWhere,
       order: [["type", "ASC"]],
     })).map(plain);
     const assessmentByType = new Map(assessments.map((assessment) => [assessment.type, assessment]));
@@ -870,6 +960,21 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     // assessment-level flag is authoritative for historical applicability.
     // The numeric threshold still comes only from each submitted attempt.
     const postAssessment = assessmentByType.get(ASSESSMENT_TYPES.POST);
+    const preAssessment = assessmentByType.get(ASSESSMENT_TYPES.PRE);
+    const hasKnownRevision = (assessment) => assessment?.targetLessonVersion !== null
+      && assessment?.targetLessonVersion !== undefined
+      && assessment?.targetLessonVersion !== ""
+      && Number.isSafeInteger(Number(assessment.targetLessonVersion))
+      && Number(assessment.targetLessonVersion) > 0;
+    const revisionsComparable = targetKind !== ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT
+      || (hasKnownRevision(preAssessment) && hasKnownRevision(postAssessment)
+        && Number(preAssessment.targetLessonVersion) === Number(postAssessment.targetLessonVersion));
+    if (targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      lesson.preContentRevision = preAssessment?.targetLessonVersion == null
+        ? null : Number(preAssessment.targetLessonVersion);
+      lesson.postContentRevision = postAssessment?.targetLessonVersion == null
+        ? null : Number(postAssessment.targetLessonVersion);
+    }
     const rows = [...students.values()].map((entry) => {
       const preAttempt = entry.preAttempts
         .sort((left, right) => Number(left.attemptNumber) - Number(right.attemptNumber))[0] || null;
@@ -880,7 +985,8 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         && attempt.percentage !== undefined
         && attempt.percentage !== ""
         && Number.isFinite(Number(attempt.percentage));
-      const learningGain = hasStoredPercentage(preAttempt) && hasStoredPercentage(firstPost)
+      const learningGain = revisionsComparable
+        && hasStoredPercentage(preAttempt) && hasStoredPercentage(firstPost)
         ? policy.calculateLearningGain(preAttempt, entry.postAttempts)
         : null;
       let learningGainUnavailableReason = null;
@@ -891,6 +997,9 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         } else if (preAttempt.preBaselineStatus !== "VALID") {
           learningGainUnavailableReason = "PRE baseline timing is unknown";
         } else if (!firstPost) learningGainUnavailableReason = "First POST not submitted";
+        else if (!revisionsComparable) {
+          learningGainUnavailableReason = "Assessment content revisions are not comparable";
+        }
         else learningGainUnavailableReason = "Stored score unavailable";
       }
       let officialPostOutcome = "Not submitted";
@@ -919,9 +1028,16 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     const csv = buildAssessmentScoreSheetCsvData({ classroom, lesson, students: rows });
     return {
       ...csv,
-      filename: `sharprunner-${classroom.className || classroom.id}-${lessonKey}-assessment-score-sheet.csv`,
+      filename: targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT
+        ? `sharprunner-${classroom.className || classroom.id}-placement-${placementId}-assessment-score-sheet.csv`
+        : `sharprunner-${classroom.className || classroom.id}-${lessonKey}-assessment-score-sheet.csv`,
     };
   };
+
+  const getCustomAssessmentScoreSheet = (input) => getAssessmentScoreSheet({
+    ...input,
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+  });
 
   const validateSaveInput = (input) => {
     rejectUnknownFields(input, SAVE_FIELDS);
@@ -1330,6 +1446,10 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     actorRole,
     transaction,
     lock = false,
+    targetKind = ASSESSMENT_TARGET_KINDS.BUILT_IN,
+    placementId = null,
+    allowArchivedTarget = false,
+    allowEligibilityChangedReplay = false,
   }) => {
     const classroom = plain(await authorization.requireManagedClassroom({
       classroomId,
@@ -1337,24 +1457,44 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       actorRole,
       transaction,
     }));
-    if (classroom.isActive === false) {
+    const classroomArchived = classroom.isActive === false;
+    if (classroomArchived && !allowEligibilityChangedReplay) {
       throw new AssessmentApiError(409, "CLASSROOM_ARCHIVED", "Classroom is archived");
     }
-    const assessmentRow = await authorization.requireAssessmentInClassroom({
-      classroomId,
-      assessmentId,
-      transaction,
-      lock,
-    });
+    let assessmentRow;
+    let customTargetArchived = false;
+    if (targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
+      const target = await loadManagedCustomTarget({
+        classroomId, placementId, actorId, actorRole, transaction, lock,
+        allowArchived: allowArchivedTarget || allowEligibilityChangedReplay,
+      });
+      customTargetArchived = Boolean(target.placement.archivedAt || target.lesson.archivedAt);
+      assessmentRow = await requireCustomAssessment({
+        classroomId, placementId, assessmentId, transaction, lock,
+      });
+    } else {
+      assessmentRow = await authorization.requireAssessmentInClassroom({
+        classroomId,
+        assessmentId,
+        transaction,
+        lock,
+      });
+      if ((plain(assessmentRow).targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
+        !== ASSESSMENT_TARGET_KINDS.BUILT_IN) {
+        throw new AssessmentApiError(404, "ASSESSMENT_NOT_FOUND", "Assessment was not found");
+      }
+    }
     const assessment = plain(assessmentRow);
-    if (assessment.isPublished !== true) {
+    if (assessment.isPublished !== true && !allowEligibilityChangedReplay) {
       throw new AssessmentApiError(409, "ASSESSMENT_NOT_PUBLISHED", "Assessment is not published");
     }
     const membership = await ClassroomMembership.findOne({
       where: { classroomId, studentId, status: "active" }, transaction,
       ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
     });
-    if (!membership) throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    if (!membership && !allowEligibilityChangedReplay) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
     const attempts = await AssessmentAttempt.findAll({
       where: { assessmentId, classroomId, studentId }, transaction,
       ...(lock ? { lock: transaction.LOCK.UPDATE } : {}),
@@ -1365,12 +1505,15 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     });
     const allowance = allowanceService.summarizeAllowance({ assessment, attempts, grants });
     const submitted = attempts.filter((attempt) => plain(attempt).status === ATTEMPT_STATUSES.SUBMITTED);
-    let code = null;
-    if (allowance.activeAttempt) code = "ACTIVE_ATTEMPT_EXISTS";
-    else if (allowance.additionalAttemptsAvailable > 0) code = "UNUSED_GRANT_EXISTS";
-    else if (allowance.attemptsRemaining > 0) code = "ATTEMPTS_REMAINING";
-    else if (!submitted.length) code = "NO_SUBMITTED_ATTEMPT";
-    else if (assessment.type === ASSESSMENT_TYPES.POST
+    let code = classroomArchived ? "CLASSROOM_ARCHIVED" : null;
+    if (!code && customTargetArchived) code = "ASSESSMENT_TARGET_ARCHIVED";
+    else if (!code && assessment.isPublished !== true) code = "ASSESSMENT_NOT_PUBLISHED";
+    else if (!code && !membership) code = "STUDENT_NOT_ACTIVE";
+    if (!code && allowance.activeAttempt) code = "ACTIVE_ATTEMPT_EXISTS";
+    else if (!code && allowance.additionalAttemptsAvailable > 0) code = "UNUSED_GRANT_EXISTS";
+    else if (!code && allowance.attemptsRemaining > 0) code = "ATTEMPTS_REMAINING";
+    else if (!code && !submitted.length) code = "NO_SUBMITTED_ATTEMPT";
+    else if (!code && assessment.type === ASSESSMENT_TYPES.POST
       && assessment.requirePassingForCompletion === true) {
       const outcome = policy.selectOfficialPostAttempt(submitted)?.passed;
       if (outcome === true) code = "POST_ALREADY_PASSED";
@@ -1396,7 +1539,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     assessment: {
       id: state.assessment.id,
       classroomId: state.assessment.classroomId,
+      targetKind: state.assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN,
       lessonKey: state.assessment.lessonKey,
+      classroomLessonPlacementId: state.assessment.classroomLessonPlacementId ?? null,
+      targetLessonVersion: state.assessment.targetLessonVersion == null
+        ? null : Number(state.assessment.targetLessonVersion),
       type: state.assessment.type,
       title: state.assessment.title,
       requirePassingForCompletion: state.assessment.requirePassingForCompletion === true,
@@ -1431,6 +1578,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     await grantEligibility(input),
   );
 
+  const getCustomAdditionalAttemptEligibility = (input) => getAdditionalAttemptEligibility({
+    ...input,
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+  });
+
   const grantAdditionalAttempt = async ({ reason, idempotencyKey, ...input }) => sequelize.transaction(
     async (transaction) => {
       const normalizedReason = reason == null || String(reason).trim() === ""
@@ -1459,7 +1611,10 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         if (!matchesRequest(existing)) {
           throw new AssessmentApiError(409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was reused");
         }
-        const state = await grantEligibility({ ...input, transaction, lock: true });
+        const state = await grantEligibility({
+          ...input, transaction, lock: true, allowArchivedTarget: true,
+          allowEligibilityChangedReplay: true,
+        });
         return replay(state, existing);
       }
       const state = await grantEligibility({ ...input, transaction, lock: true });
@@ -1491,6 +1646,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     },
   );
 
+  const grantCustomAdditionalAttempt = (input) => grantAdditionalAttempt({
+    ...input,
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+  });
+
   return {
     acknowledgeCustomLessonAssessmentRevision,
     listAssessments,
@@ -1503,10 +1663,15 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     deleteAssessment,
     getAssessmentResults,
     getAssessmentScoreSheet,
+    getCustomAssessmentResults,
+    getCustomAssessmentScoreSheet,
     getEditorAssessment,
     getCustomLessonAssessmentDraft,
     getAdditionalAttemptEligibility,
+    getCustomAdditionalAttemptEligibility,
     grantAdditionalAttempt,
+    grantCustomAdditionalAttempt,
+    listCustomAssessmentReportingTargets,
     publishAssessment,
     saveAssessmentGraph,
     saveCustomLessonAssessmentDraft: saveAssessmentGraph,

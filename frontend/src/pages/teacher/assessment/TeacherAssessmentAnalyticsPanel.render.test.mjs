@@ -100,6 +100,47 @@ test("request handling cancels stale classroom/lesson result loads and normalize
   assert.match(source, /ERR_CANCELED/);
 });
 
+test("custom classroom lesson reporting reuses the existing table with stable placement scope", () => {
+  for (const marker of [
+    "Built-in game lessons",
+    "Classroom lesson placements",
+    "Archived",
+    "listCustomAssessmentReportingTargets",
+    "getCustomTeacherAssessmentResults",
+    "getCustomTeacherAssessmentScoreSheet",
+    "assessmentTargetValue",
+    "parseAssessmentTargetValue",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.match(source, /value=\{assessmentTargetValue\(target\)\}/);
+  assert.equal(source.includes("value={target.lessonTitle}"), false);
+});
+
+test("custom placement discovery has fenced loading and nonblocking retry feedback", () => {
+  for (const marker of [
+    "targetsLoading",
+    "targetRetryVersion",
+    "Loading classroom lesson placements",
+    "Retry classroom lessons",
+    "Built-in lesson reporting remains available",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.match(source, /\[classroomId, targetRetryVersion\]/);
+});
+
+test("custom history grants retain exact placement scope and disable archived targets", () => {
+  for (const marker of [
+    "getCustomAdditionalAttemptEligibility",
+    "grantCustomAdditionalAssessmentAttempt",
+    "placementId",
+    "Archived placements remain available for history and score-sheet export",
+  ]) assert.equal(source.includes(marker), true, marker);
+  assert.match(source, /grantDisabled=\{selectedTarget\?\.archived === true\}/);
+});
+
+test("classroom and target changes close obsolete history before another grant can be requested", () => {
+  assert.match(source, /setClassroomId\(event\.target\.value\); setTargetValue\(""\); setSelectedStudent\(null\)/);
+  assert.match(source, /setTargetValue\(event\.target\.value\); setSelectedStudent\(null\)/);
+});
+
 test("render source never asks for answers, responses, or grading keys", () => {
   for (const forbidden of ["correctChoiceId", "isCorrect", "answerReview"]) assert.equal(source.includes(forbidden), false);
   assert.doesNotMatch(source, /\bresponses\s*[:.[]/);

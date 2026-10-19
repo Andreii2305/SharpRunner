@@ -7,11 +7,13 @@ const numericAttemptValue = (attempt, key) => {
   return Number(value);
 };
 
-const baselineLabel = (attempt) => {
+const baselineLabel = (attempt, { customPlacement = false } = {}) => {
   if (!attempt) return "Not submitted";
   return ({
     VALID: "Valid baseline",
-    RETROACTIVE: "Retroactive — game activity preceded PRE",
+    RETROACTIVE: customPlacement
+      ? "Retroactive — lesson content was accessed before PRE"
+      : "Retroactive — game activity preceded PRE",
     UNKNOWN: "Unknown — legacy baseline timing",
   })[attempt.preBaselineStatus] || "Unknown — legacy baseline timing";
 };
@@ -20,9 +22,37 @@ const studentName = (student = {}) => (
   `${student.firstName || ""} ${student.lastName || ""}`.trim() || student.username || "Unavailable"
 );
 
-const buildAssessmentScoreSheetCsvData = ({ classroom = {}, lesson = {}, students = [] } = {}) => ({
+const buildAssessmentScoreSheetCsvData = ({ classroom = {}, lesson = {}, students = [] } = {}) => {
+  const customPlacement = lesson.targetKind === "CLASSROOM_LESSON_PLACEMENT";
+  const identityHeaders = customPlacement
+    ? ["Class name", "Section", "Classroom ID", "Lesson", "Assessment Target", "Placement ID",
+      "PRE Content Revision", "POST Content Revision", "Student Name", "Username"]
+    : ["Class name", "Section", "Classroom ID", "Lesson", "Lesson Key", "Student Name", "Username"];
+  const identityValues = (row) => customPlacement
+    ? [
+        classroom.className ?? "Unavailable",
+        classroom.section ?? "",
+        classroom.id ?? "Unavailable",
+        lesson.lessonTitle ?? "Unavailable",
+        "Classroom lesson placement",
+        lesson.placementId ?? "Unavailable",
+        lesson.preContentRevision ?? "Unavailable",
+        lesson.postContentRevision ?? "Unavailable",
+        studentName(row.student),
+        row.student?.username ?? "Unavailable",
+      ]
+    : [
+        classroom.className ?? "Unavailable",
+        classroom.section ?? "",
+        classroom.id ?? "Unavailable",
+        lesson.lessonTitle ?? "Unavailable",
+        lesson.lessonKey ?? "Unavailable",
+        studentName(row.student),
+        row.student?.username ?? "Unavailable",
+      ];
+  return {
   headers: [
-    "Class name", "Section", "Classroom ID", "Lesson", "Lesson Key", "Student Name", "Username",
+    ...identityHeaders,
     "PRE Points Earned", "PRE Points Possible", "PRE Percentage", "PRE Baseline Status",
     "First POST Points Earned", "First POST Points Possible", "First POST Percentage",
     "Official POST Points Earned", "Official POST Points Possible", "Official POST Percentage",
@@ -30,17 +60,11 @@ const buildAssessmentScoreSheetCsvData = ({ classroom = {}, lesson = {}, student
     "Learning Gain Unavailable Reason",
   ],
   rows: students.map((row) => [
-    classroom.className ?? "Unavailable",
-    classroom.section ?? "",
-    classroom.id ?? "Unavailable",
-    lesson.lessonTitle ?? "Unavailable",
-    lesson.lessonKey ?? "Unavailable",
-    studentName(row.student),
-    row.student?.username ?? "Unavailable",
+    ...identityValues(row),
     numericAttemptValue(row.preAttempt, "pointsEarned"),
     numericAttemptValue(row.preAttempt, "maxPoints"),
     numericAttemptValue(row.preAttempt, "percentage"),
-    baselineLabel(row.preAttempt),
+    baselineLabel(row.preAttempt, { customPlacement }),
     numericAttemptValue(row.firstPost, "pointsEarned"),
     numericAttemptValue(row.firstPost, "maxPoints"),
     numericAttemptValue(row.firstPost, "percentage"),
@@ -52,6 +76,7 @@ const buildAssessmentScoreSheetCsvData = ({ classroom = {}, lesson = {}, student
     row.learningGain?.value == null ? "" : Number(row.learningGain.value),
     row.learningGain?.value == null ? (row.learningGainUnavailableReason || "Unavailable") : "",
   ]),
-});
+  };
+};
 
 module.exports = { buildAssessmentScoreSheetCsvData };

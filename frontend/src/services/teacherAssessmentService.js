@@ -88,6 +88,13 @@ export const listCustomLessonAssessmentDrafts = async ({ classroomId, placementI
   return response.data;
 };
 
+export const listCustomAssessmentReportingTargets = async ({ classroomId, signal }) => {
+  const response = await axios.get(buildApiUrl(
+    `/api/teacher/classrooms/${segment(classroomId)}/lesson-placements/assessment-reporting`,
+  ), config(signal));
+  return response.data;
+};
+
 export const createCustomLessonAssessmentDraft = async ({ classroomId, placementId, signal, ...input }) => {
   const response = await axios.post(
     buildApiUrl(customBase(classroomId, placementId)), input, config(signal),
@@ -219,6 +226,15 @@ export const getTeacherAssessmentResults = async ({ classroomId, assessmentId, s
   return response.data;
 };
 
+export const getCustomTeacherAssessmentResults = async ({
+  classroomId, placementId, assessmentId, signal,
+}) => {
+  const response = await axios.get(buildApiUrl(
+    `${customBase(classroomId, placementId)}/${segment(assessmentId)}/results`,
+  ), config(signal));
+  return response.data;
+};
+
 const additionalAttemptPath = ({ classroomId, assessmentId, studentId }) => (
   `${base(classroomId)}/${segment(assessmentId)}/students/${segment(studentId)}/additional-attempt`
 );
@@ -233,6 +249,29 @@ export const grantAdditionalAssessmentAttempt = async ({ reason, idempotencyKey,
     ...config(signal),
     headers: { ...getAuthHeaders(), "Idempotency-Key": idempotencyKey },
   });
+  return response.data;
+};
+
+const customAdditionalAttemptPath = ({ classroomId, placementId, assessmentId, studentId }) => (
+  `${customBase(classroomId, placementId)}/${segment(assessmentId)}/students/${segment(studentId)}/additional-attempt`
+);
+
+export const getCustomAdditionalAttemptEligibility = async ({ signal, ...identity }) => {
+  const response = await axios.get(buildApiUrl(customAdditionalAttemptPath(identity)), config(signal));
+  return response.data;
+};
+
+export const grantCustomAdditionalAssessmentAttempt = async ({
+  reason, idempotencyKey, signal, ...identity
+}) => {
+  const response = await axios.post(
+    buildApiUrl(customAdditionalAttemptPath(identity)),
+    { reason: reason || null },
+    {
+      ...config(signal),
+      headers: { ...getAuthHeaders(), "Idempotency-Key": idempotencyKey },
+    },
+  );
   return response.data;
 };
 
@@ -305,6 +344,22 @@ export const getTeacherAssessmentScoreSheet = async ({ classroomId, lessonKey, s
   return {
     blob: response.data,
     filename: downloadFilename(response.headers, `sharprunner-${lessonKey}-assessment-score-sheet.csv`),
+  };
+};
+
+export const getCustomTeacherAssessmentScoreSheet = async ({ classroomId, placementId, signal }) => {
+  const response = await axios.get(buildApiUrl(
+    `/api/teacher/classrooms/${segment(classroomId)}/lesson-placements/${segment(placementId)}/assessment-score-sheet.csv`,
+  ), {
+    ...config(signal),
+    responseType: "blob",
+  });
+  return {
+    blob: response.data,
+    filename: downloadFilename(
+      response.headers,
+      `sharprunner-placement-${placementId}-assessment-score-sheet.csv`,
+    ),
   };
 };
 

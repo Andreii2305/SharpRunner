@@ -92,8 +92,8 @@ const LessonAssessment = sequelize.define("LessonAssessment", {
       if (!isPlacement || this.lessonKey != null || !positivePlacementId || !positiveLessonVersion) {
         throw new Error("Invalid assessment target");
       }
-      if (this.isPublished || this.publishedAt != null) {
-        throw new Error("Custom assessment target publication is not enabled");
+      if ((this.isPublished === true) !== (this.publishedAt != null)) {
+        throw new Error("Invalid custom assessment publication state");
       }
     },
   },

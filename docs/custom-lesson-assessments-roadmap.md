@@ -116,11 +116,58 @@ teacher explicitly reviews and acknowledges the current revision. That action
 is server-validated, is unavailable after attempt history exists, and does not
 publish the assessment or establish `accessGateEstablishedAt`.
 
-Publication remains unavailable in both the custom builder and server routes.
-The next release phase must deliver exact-placement student discovery, Start,
-resume, submission, results, and teacher history/score-sheet access together
-with the publication transaction and required-PRE activation checks described
-above. Actual execution of the existing custom-assessment migrations against a
-representative disposable PostgreSQL predecessor database is still a mandatory
-pre-deployment check; mocked fixtures and source assertions do not satisfy that
-rollout requirement.
+Through Phase 6, publication remained unavailable in both the custom builder
+and server routes. Phase 7 below adds the guarded publication transaction after
+the exact-placement student flow and teacher reporting prerequisites became
+operational; its server switch remains off by default. On 2026-10-20, the
+ordered custom-assessment migration chain was executed successfully against
+fresh and representative predecessor fixtures in isolated, local-only
+disposable PostgreSQL 18 databases. This is not a production-schema clone:
+target-environment backup, migration, constraint, and smoke verification remain
+mandatory before activation. Mocked HTTP fixtures and source assertions do not
+replace those deployment checks.
+
+## Phase 7 guarded publication and rollout
+
+Custom publication is controlled by
+`CUSTOM_LESSON_ASSESSMENT_PUBLICATION_ENABLED`. Missing values and every value
+other than `true` keep new custom publication disabled. The switch gates only
+the publication transaction: turning it off does not hide an already-published
+assessment, revoke a required-PRE gate, or prevent authorized active-attempt,
+grading, result, reporting, and unpublish paths.
+
+The publication transaction locks the lesson, exact classroom placement, and
+assessment in that order. It rechecks classroom ownership, active placement,
+lesson publication/schedule validity, current reviewed `contentVersion`, no
+attempt history, and the persisted assessment graph. Publishing a required PRE
+also establishes its immutable, requirement-specific
+`accessGateEstablishedAt` in the same transaction. Optional PRE and POST
+publication do not establish that boundary. Future-scheduled lessons may have
+assessments prepared and published, but student discovery remains unavailable
+until the existing authoritative lesson schedule permits access.
+
+Rollout order is strictly:
+
+1. Apply `20261017000000_custom_lesson_assessment_foundation.sql`,
+   `20261018000000_custom_lesson_lifecycle.sql`,
+   `20261019000000_custom_lesson_pre_access_policy.sql`, then
+   `20261020000000_enable_guarded_custom_assessment_publication.sql`.
+2. Deploy the backend with the switch absent/off and smoke-check built-in
+   authoring plus custom draft, reporting, reader, and historical attempt paths.
+3. Deploy the frontend and verify that it reports publication as disabled.
+4. In a controlled environment only, enable the backend switch and smoke-check
+   exact-placement draft review/publication, required PRE, reader acknowledgement,
+   POST, results, reporting/export, and retake grants before any wider activation.
+
+The PostgreSQL rehearsal test is opt-in through
+`CUSTOM_ASSESSMENT_REHEARSAL_DATABASE_URL`. It accepts only a local PostgreSQL
+URL with the dedicated rehearsal database name and aborts unless that database
+has an empty `public` schema. It never falls back to the application's ordinary
+configured database URL.
+
+Rollback is forward and data-preserving: turn the switch off first and retain
+all custom assessments, activation boundaries, attempts, reading evidence, and
+grant history. Do not restore the old dormant constraint after any custom row
+has been published; attempted published rows cannot be safely made compatible
+with it. A database rollback therefore requires a new forward migration and
+cannot delete or rewrite historical records.

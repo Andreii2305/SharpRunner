@@ -14,8 +14,9 @@ import {
   deleteCustomLessonAssessmentDraft, deleteTeacherAssessment, importBuiltInAssessmentTemplate, listBuiltInAssessmentTemplates,
   listCustomLessonAssessmentDrafts,
   listTeacherAssessments, listTeacherClassrooms, loadTeacherAssessment, normalizeTeacherAssessmentError,
-  loadCustomLessonAssessmentDraft, publishTeacherAssessment, reviewCustomLessonAssessmentRevision,
-  saveCustomLessonAssessmentDraft, saveTeacherAssessment, unpublishTeacherAssessment,
+  loadCustomLessonAssessmentDraft, publishCustomLessonAssessment, publishTeacherAssessment,
+  reviewCustomLessonAssessmentRevision, saveCustomLessonAssessmentDraft, saveTeacherAssessment,
+  unpublishCustomLessonAssessment, unpublishTeacherAssessment,
 } from "../../../services/teacherAssessmentService.js";
 import {
   ACADEMIC_LESSONS, addChoice, addQuestion, assessmentStatus, availableQuestionTypes, buildSaveGraph,
@@ -129,6 +130,7 @@ export default function TeacherAssessmentBuilderPage() {
   const [templatePending, setTemplatePending] = useState(false);
   const [templateError, setTemplateError] = useState("");
   const [customTarget, setCustomTarget] = useState(null);
+  const [customPublication, setCustomPublication] = useState({ enabled: false, canPublish: false, reason: "PUBLICATION_DISABLED" });
   const [revisionPending, setRevisionPending] = useState(false);
   const requestId = useRef(0);
   const copyRequestId = useRef(0);
@@ -136,6 +138,7 @@ export default function TeacherAssessmentBuilderPage() {
   const creationRef = useRef(false);
   const revisionRef = useRef(false);
   const saveRef = useRef(false);
+  const actionRef = useRef(false);
   const scopeRef = useRef("");
   scopeRef.current = `${classroomId}:${placementId || lessonKey}`;
 
@@ -162,6 +165,9 @@ export default function TeacherAssessmentBuilderPage() {
     if (!preserveDraft) setDraft(null);
     setSlots(emptySlots());
     setCustomTarget(null);
+    if (!preserveDraft) {
+      setCustomPublication({ enabled: false, canPublish: false, reason: "PUBLICATION_DISABLED" });
+    }
     if (!classroomId || (!lessonKey && !placementId)) return;
     setLoading(true); setError("");
     try {
@@ -181,6 +187,8 @@ export default function TeacherAssessmentBuilderPage() {
         });
         if (id !== requestId.current) return;
         setCustomTarget(editor.target ?? payload.target ?? null);
+        setCustomPublication(editor.publication ?? nextSlots[requestedType]?.publication
+          ?? { enabled: false, canPublish: false, reason: "PUBLICATION_DISABLED" });
         setDraft(hydrateAssessmentDraft(editor.assessment));
       }
     } catch (source) {
@@ -291,6 +299,7 @@ export default function TeacherAssessmentBuilderPage() {
         : await loadTeacherAssessment({ classroomId, assessmentId: summary.id });
       if (id === requestId.current) {
         setCustomTarget(payload.target ?? customTarget);
+        setCustomPublication(payload.publication ?? summary.publication ?? customPublication);
         setDraft(hydrateAssessmentDraft(payload.assessment));
       }
     } catch (source) { if (id === requestId.current) setError(normalizeTeacherAssessmentError(source).message); }
@@ -312,6 +321,7 @@ export default function TeacherAssessmentBuilderPage() {
       if (scope !== scopeRef.current || request !== requestId.current) return;
       setActiveType(type); setDraft(hydrateAssessmentDraft(payload.assessment)); setDirty(false); setValidationAttempted(false);
       setCustomTarget(payload.target ?? customTarget);
+      setCustomPublication(payload.publication ?? customPublication);
       await loadSlots({ preserveDraft: true });
     } catch (source) {
       if (scope === scopeRef.current && request === requestId.current) {
@@ -407,6 +417,7 @@ export default function TeacherAssessmentBuilderPage() {
       if (scope !== scopeRef.current || request !== requestId.current) return;
       setDraft(hydrateAssessmentDraft(payload.assessment)); setDirty(false); setSaveState("saved");
       setCustomTarget(payload.target ?? customTarget);
+      setCustomPublication(payload.publication ?? customPublication);
       await loadSlots({ preserveDraft: true });
     } catch (source) {
       if (scope === scopeRef.current && request === requestId.current) {
@@ -427,19 +438,27 @@ export default function TeacherAssessmentBuilderPage() {
   };
 
   const runAction = async () => {
+    if (actionRef.current) return;
+    actionRef.current = true;
     const actionName = confirmAction;
     const scope = scopeRef.current;
     const request = ++requestId.current;
     setConfirmAction(null); setError(""); setLoading(true);
     try {
       if (actionName === "publish") {
-        const payload = await publishTeacherAssessment({ classroomId, assessmentId: draft.id, version: draft.version });
+        const payload = customMode
+          ? await publishCustomLessonAssessment({ classroomId, placementId, assessmentId: draft.id, version: draft.version })
+          : await publishTeacherAssessment({ classroomId, assessmentId: draft.id, version: draft.version });
         if (scope !== scopeRef.current || request !== requestId.current) return;
         setDraft((current) => ({ ...current, ...payload.assessment, isPublished: true }));
+        if (customMode) setCustomPublication(payload.publication ?? customPublication);
       } else if (actionName === "unpublish") {
-        const payload = await unpublishTeacherAssessment({ classroomId, assessmentId: draft.id, version: draft.version });
+        const payload = customMode
+          ? await unpublishCustomLessonAssessment({ classroomId, placementId, assessmentId: draft.id, version: draft.version })
+          : await unpublishTeacherAssessment({ classroomId, assessmentId: draft.id, version: draft.version });
         if (scope !== scopeRef.current || request !== requestId.current) return;
         setDraft((current) => ({ ...current, ...payload.assessment, isPublished: false }));
+        if (customMode) setCustomPublication(payload.publication ?? customPublication);
       } else if (actionName === "delete") {
         if (customMode) await deleteCustomLessonAssessmentDraft({ classroomId, placementId, assessmentId: draft.id });
         else await deleteTeacherAssessment({ classroomId, assessmentId: draft.id });
@@ -452,6 +471,7 @@ export default function TeacherAssessmentBuilderPage() {
         setError(normalizeTeacherAssessmentError(source).message);
       }
     } finally {
+      actionRef.current = false;
       if (scope === scopeRef.current && request === requestId.current) setLoading(false);
     }
   };
@@ -472,6 +492,7 @@ export default function TeacherAssessmentBuilderPage() {
       });
       if (scope !== `${scopeRef.current}:${draft.id}` || request !== requestId.current) return;
       setCustomTarget(payload.target ?? customTarget);
+      setCustomPublication(payload.publication ?? customPublication);
       if (dirty) {
         setDraft((current) => ({
           ...current,
@@ -575,8 +596,8 @@ export default function TeacherAssessmentBuilderPage() {
     {loading && <p role="status" className={styles.loading}>Loading assessment…</p>}
     {!draft && classroomId && (lessonKey || placementId) && !loading && <section className={styles.emptyState}><h2>Select an assessment</h2><p>Open an existing assessment or explicitly create one type above.</p></section>}
     {draft && <>
-      <EditorActionBar lessonTitle={selectedLesson?.title ?? "Lesson"} assessmentType={draft.type} status={assessmentStatus({ exists: true, published: draft.isPublished, attemptsExist: draft.attemptsExist })} saveState={saveState} dirty={dirty} locked={locked} saving={saveState === "saving"} published={draft.isPublished} publishDisabled={locked || dirty} publicationAvailable={!customMode} onPreview={() => setPreview(true)} onSave={save} onPublish={requestPublish} onUnpublish={() => setConfirmAction("unpublish")} />
-      {customMode && <CustomDraftNotice revisionReviewRequired={draft.revisionReviewRequired} boundVersion={draft.targetLessonVersion} currentVersion={draft.currentLessonVersion} pending={revisionPending} onReview={reviewRevision} />}
+      <EditorActionBar lessonTitle={selectedLesson?.title ?? "Lesson"} assessmentType={draft.type} status={assessmentStatus({ exists: true, published: draft.isPublished, attemptsExist: draft.attemptsExist })} saveState={saveState} dirty={dirty} locked={locked} saving={saveState === "saving"} published={draft.isPublished} publishDisabled={locked || dirty || (customMode && !customPublication.canPublish)} publicationAvailable={!customMode || customPublication.enabled} onPreview={() => setPreview(true)} onSave={save} onPublish={requestPublish} onUnpublish={() => setConfirmAction("unpublish")} />
+      {customMode && <CustomDraftNotice revisionReviewRequired={draft.revisionReviewRequired} boundVersion={draft.targetLessonVersion} currentVersion={draft.currentLessonVersion} pending={revisionPending} onReview={reviewRevision} publication={customPublication} />}
       {attemptLocked && <div className={styles.lockBanner} role="status"><strong>Locked after first attempt</strong><span>Settings, questions, unpublishing, and deletion are unavailable because student attempt data now exists.</span></div>}
       <div className={styles.editorWorkspace}>
       <QuestionNavigator questions={draft.questions} activeQuestionId={activeQuestionId} disabled={locked || draft.questions.length >= 100} onNavigate={navigateToQuestion} onAdd={addQuestionFromEditor} />
@@ -595,7 +616,7 @@ export default function TeacherAssessmentBuilderPage() {
         {!draft.questions.length && <div className={styles.emptyState}><h3>No questions yet</h3><p>Add multiple-choice or true/false questions. Drafts may remain incomplete until publication.</p></div>}
         {!!draft.questions.length && <div className={styles.questionFooter}><button type="button" className={styles.secondaryButton} disabled={locked || draft.questions.length >= 100} onClick={addQuestionFromEditor}><FiPlus /> Add question</button></div>}
       </section>
-      <section className={styles.publishCard}><div><h2>{customMode ? "Draft review" : "Publication readiness"}</h2>{customMode ? <p>Review and save this draft. Publishing for custom lessons will be enabled only after the remaining student and reporting safeguards are complete.</p> : issues.length ? <><p>Resolve these issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div>{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={attemptLocked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete assessment</button>}</section>
+      <section className={styles.publishCard}><div><h2>Publication readiness</h2>{issues.length ? <><p>Resolve these issues before publishing:</p><ul>{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul></> : <p>Frontend checks are clear. The server will perform final authoritative validation.</p>}{draft.isPublished && !locked && <p>Unpublish this assessment before deleting it.</p>}</div>{!draft.isPublished && <button type="button" className={styles.dangerButton} disabled={attemptLocked} onClick={() => setConfirmAction("delete")}><FiTrash2 /> Delete assessment</button>}</section>
       </div>
       </div>
     </>}

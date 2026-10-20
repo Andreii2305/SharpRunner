@@ -133,7 +133,7 @@ test("sticky editor actions preserve lesson, assessment, status, and save contex
   assert.match(html, /Publish/);
 });
 
-test("custom draft chrome removes publication and explains revision review", async () => {
+test("custom draft chrome reflects guarded publication and explains revision review", async () => {
   const { EditorActionBar, CustomDraftNotice } = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentBuilderChrome.jsx");
   const bar = renderToStaticMarkup(React.createElement(EditorActionBar, {
     lessonTitle: "Teacher arrays lesson", assessmentType: "PRE", status: "Draft",
@@ -145,12 +145,35 @@ test("custom draft chrome removes publication and explains revision review", asy
   assert.match(bar, /Draft only/);
   const notice = renderToStaticMarkup(React.createElement(CustomDraftNotice, {
     revisionReviewRequired: true, boundVersion: 2, currentVersion: 3,
-    pending: false, onReview() {},
+    pending: false, onReview() {}, publication: { enabled: true, canPublish: false, reason: "REVISION_REVIEW_REQUIRED" },
   }));
-  assert.match(notice, /Publishing is not available yet/);
+  assert.match(notice, /Review the current lesson revision before publishing/);
   assert.match(notice, /Revision 2/);
   assert.match(notice, /revision 3/);
   assert.match(notice, /Review current revision/);
+
+  const disabledNotice = renderToStaticMarkup(React.createElement(CustomDraftNotice, {
+    revisionReviewRequired: true, boundVersion: 2, currentVersion: 3,
+    pending: false, onReview() {}, publication: { enabled: false, canPublish: false, reason: "REVISION_REVIEW_REQUIRED" },
+  }));
+  assert.match(disabledNotice, /Review the current lesson revision before publishing/);
+  assert.match(disabledNotice, /Publication is also disabled on this server/);
+
+  const enabled = renderToStaticMarkup(React.createElement(EditorActionBar, {
+    lessonTitle: "Teacher arrays lesson", assessmentType: "POST", status: "Draft",
+    saveState: "saved", dirty: false, locked: false, saving: false, published: false,
+    publishDisabled: false, publicationAvailable: true,
+    onPreview() {}, onSave() {}, onPublish() {}, onUnpublish() {},
+  }));
+  assert.match(enabled, />Publish</);
+
+  const publishedWhileDisabled = renderToStaticMarkup(React.createElement(EditorActionBar, {
+    lessonTitle: "Teacher arrays lesson", assessmentType: "POST", status: "Published",
+    saveState: "saved", dirty: false, locked: false, saving: false, published: true,
+    publishDisabled: true, publicationAvailable: false,
+    onPreview() {}, onSave() {}, onPublish() {}, onUnpublish() {},
+  }));
+  assert.match(publishedWhileDisabled, />Unpublish</);
 });
 
 test("lesson placements expose compact exact-scope PRE and POST draft entry points", () => {

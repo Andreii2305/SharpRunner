@@ -2318,6 +2318,7 @@ test("custom GRADING result and submit recovery validate exact target identity",
     [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
     [AssessmentAttempt, "findByPk", async () => attempt],
     [LessonAssessment, "findByPk", async () => assessment],
+    [ClassroomLesson, "findByPk", async (id) => Number(id) === lesson.id ? lesson : null],
     [ClassroomLessonPlacement, "findOne", async ({ where }) => (
       Number(where.id) === placement.id && Number(where.classroomId) === placement.classroomId
         ? placement

@@ -229,6 +229,36 @@ const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
     }
   });
 
+  router.post("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId/publish", async (req, res) => {
+    try {
+      const payload = await service.publishCustomLessonAssessment({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        version: readVersionActionBody(req),
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
+  router.post("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId/unpublish", async (req, res) => {
+    try {
+      const payload = await service.unpublishCustomLessonAssessment({
+        classroomId: parsePositiveId(req.params.classroomId),
+        placementId: parsePositiveId(req.params.placementId),
+        assessmentId: parsePositiveId(req.params.assessmentId),
+        version: readVersionActionBody(req),
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
+
   router.delete("/classrooms/:classroomId/lesson-placements/:placementId/assessments/:assessmentId", async (req, res) => {
     try {
       assertNoBody(req);

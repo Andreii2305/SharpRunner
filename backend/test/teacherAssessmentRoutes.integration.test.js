@@ -1201,8 +1201,49 @@ test("custom draft requires explicit current-revision review before saving and r
   assert.equal(reviewed.payload.assessment.accessGateEstablishedAt, undefined);
 
   const publish = await h.call(`${path}/publish`, { method: "POST", body: { version: 2 } });
-  assert.equal(publish.response.status, 404);
+  assert.equal(publish.response.status, 403);
+  assert.equal(publish.payload.code, "CUSTOM_ASSESSMENT_PUBLICATION_DISABLED");
   assert.equal(h.store.assessments[0].isPublished, false);
+});
+
+test("guarded custom publication uses exact placement and keeps built-in publication separate", async () => {
+  const h = harness({
+    assessments: [customAssessment({ type: "POST", isRequired: true })],
+    lessons: [{
+      id: 61, teacherId: 5, contentType: "lesson", title: "Teacher arrays lesson",
+      contentVersion: 3, archivedAt: null, isPublished: true, publishAt: null,
+    }],
+    questions: [baseQuestion()],
+    choices: baseChoices(),
+  });
+  process.env.CUSTOM_LESSON_ASSESSMENT_PUBLICATION_ENABLED = "true";
+  try {
+    const wrongPlacement = await h.call(
+      "/classrooms/7/lesson-placements/72/assessments/12/publish",
+      { method: "POST", body: { version: 1 } },
+    );
+    assert.equal(wrongPlacement.response.status, 404);
+    assert.equal(h.store.assessments[0].isPublished, false);
+
+    const published = await h.call(
+      "/classrooms/7/lesson-placements/71/assessments/12/publish",
+      { method: "POST", body: { version: 1 } },
+    );
+    assert.equal(published.response.status, 200);
+    assert.equal(published.payload.assessment.isPublished, true);
+    assert.equal(h.store.assessments[0].isPublished, true);
+    assert.deepEqual(h.store.events.slice(0, 3), ["lesson-lock", "placement-lock", "assessment-lock"]);
+
+    delete process.env.CUSTOM_LESSON_ASSESSMENT_PUBLICATION_ENABLED;
+    const unpublished = await h.call(
+      "/classrooms/7/lesson-placements/71/assessments/12/unpublish",
+      { method: "POST", body: { version: 2 } },
+    );
+    assert.equal(unpublished.response.status, 200);
+    assert.equal(h.store.assessments[0].isPublished, false);
+  } finally {
+    delete process.env.CUSTOM_LESSON_ASSESSMENT_PUBLICATION_ENABLED;
+  }
 });
 
 test("custom draft update creates fresh authoring IDs and delete rejects attempt history", async () => {

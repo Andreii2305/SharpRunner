@@ -134,6 +134,20 @@ export const reviewCustomLessonAssessmentRevision = async ({
   return normalizeEditorPayload(response.data);
 };
 
+const customAction = async ({
+  classroomId, placementId, assessmentId, version, name, signal,
+}) => {
+  const response = await axios.post(
+    buildApiUrl(`${customBase(classroomId, placementId)}/${segment(assessmentId)}/${name}`),
+    { version },
+    config(signal),
+  );
+  return response.data;
+};
+
+export const publishCustomLessonAssessment = (input) => customAction({ ...input, name: "publish" });
+export const unpublishCustomLessonAssessment = (input) => customAction({ ...input, name: "unpublish" });
+
 export const deleteCustomLessonAssessmentDraft = async ({
   classroomId, placementId, assessmentId, signal,
 }) => {
@@ -474,6 +488,11 @@ const SAFE_MESSAGES = Object.freeze({
   CLASSROOM_ARCHIVED: "Restore this classroom before granting an additional attempt.",
   GRANT_REQUEST_CONFLICT: "Another grant request was processed. Eligibility has been refreshed.",
   CUSTOM_ASSESSMENT_REVISION_REVIEW_REQUIRED: "Review the current lesson revision before saving this draft.",
+  CUSTOM_ASSESSMENT_PUBLICATION_DISABLED: "Custom lesson assessment publication is not enabled on this server.",
+  CUSTOM_PRE_ACCESS_HISTORY_UNCERTAIN: "This placement predates reliable access tracking. Make the PRE optional or use an independent lesson copy.",
+  CUSTOM_LESSON_UNPUBLISHED: "Publish or schedule the lesson before publishing its assessment.",
+  CUSTOM_LESSON_SCHEDULE_INVALID: "Fix the lesson schedule before publishing its assessment.",
+  CLASSROOM_INACTIVE: "Restore this classroom before publishing its assessment.",
   LESSON_VERSION_CONFLICT: "The lesson changed again. Reload before reviewing this revision.",
   ASSESSMENT_TARGET_ARCHIVED: "Restore this lesson placement before editing its assessments.",
 });

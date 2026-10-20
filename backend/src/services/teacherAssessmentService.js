@@ -16,6 +16,7 @@ const {
 const { LESSON_DEFINITIONS, PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 const defaultSecureCodingExecution = require("./secureCodingExecutionService");
 const defaultBuiltInAssessmentTemplates = require("./builtInAssessmentTemplateService");
+const { createCustomAssessmentPublicationService } = require("./customAssessmentPublicationService");
 const { validateExplicitCodingParameterNames } = require("./codingParameterNameService");
 const { buildAssessmentScoreSheetCsvData } = require("./teacherAssessmentScoreSheetExportService");
 
@@ -152,6 +153,12 @@ const createTeacherAssessmentService = (dependencies = {}) => {
   const builtInAssessmentTemplates = dependencies.builtInAssessmentTemplates
     || defaultBuiltInAssessmentTemplates;
   const environment = dependencies.environment || process.env;
+  const customPublication = dependencies.customAssessmentPublicationService
+    || createCustomAssessmentPublicationService({
+      environment,
+      accessPolicy: dependencies.customLessonAssessmentAccessService,
+      now: dependencies.now,
+    });
   const {
     LessonAssessment,
     AssessmentQuestion,
@@ -230,6 +237,10 @@ const createTeacherAssessmentService = (dependencies = {}) => {
       section: classroom.section ?? null,
     },
   });
+
+  const customPublicationPayload = ({ assessment, target }) => (
+    customPublication.availability({ assessment: plain(assessment), target })
+  );
 
   const listCustomAssessmentReportingTargets = async ({
     classroomId, actorId, actorRole,
@@ -474,6 +485,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         attemptsExist: readAggregate(row, "attemptCount") > 0,
         currentLessonVersion: target.lesson.contentVersion,
       });
+      assessments[assessment.type].publication = customPublicationPayload({ assessment, target });
     }
     return { target: customTargetPayload(target), assessments };
   };
@@ -523,6 +535,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     }, { transaction });
     return {
       target: customTargetPayload(target),
+      publication: customPublicationPayload({ assessment: created, target }),
       assessment: serialization.serializeTeacherEditor(
         { ...plain(created), questions: [] },
         { attemptsExist: false, structureLocked: false, currentLessonVersion: target.lesson.contentVersion },
@@ -714,6 +727,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     ]);
     return {
       target: customTargetPayload(target),
+      publication: customPublicationPayload({ assessment, target }),
       assessment: serialization.serializeTeacherEditor(assessment, {
         attemptsExist: Number(attemptCount) > 0,
         structureLocked: Number(attemptCount) > 0,
@@ -1299,6 +1313,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
         ...(target ? { currentLessonVersion: target.lesson.contentVersion } : {}),
       }),
       ...(target ? { target: customTargetPayload(target) } : {}),
+      ...(target ? { publication: customPublicationPayload({ assessment: reloaded, target }) } : {}),
     };
   });
 
@@ -1327,6 +1342,7 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     const graph = await loadGraph(assessmentId, transaction);
     return {
       target: customTargetPayload(target),
+      publication: customPublicationPayload({ assessment: graph, target }),
       assessment: serialization.serializeTeacherEditor(graph, {
         attemptsExist: false,
         structureLocked: false,
@@ -1375,6 +1391,42 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     return { assessment: serializePublicationState(assessment), warnings };
   });
 
+  const publishCustomLessonAssessment = async ({
+    classroomId, placementId, assessmentId, actorId, actorRole, version,
+  }) => sequelize.transaction(async (transaction) => {
+    const target = await loadManagedCustomTarget({
+      classroomId, placementId, actorId, actorRole, transaction, lock: true,
+    });
+    const assessment = await requireCustomAssessment({
+      classroomId, placementId, assessmentId, transaction, lock: true,
+    });
+    const currentVersion = assertVersion(assessment, version);
+    await assertNoAttempts(assessmentId, transaction);
+    if (assessment.isPublished) {
+      return {
+        assessment: serializePublicationState(assessment),
+        publication: customPublicationPayload({ assessment, target }),
+      };
+    }
+    customPublication.assertCanPublish({ assessment: plain(assessment), target });
+    const graph = await loadGraph(assessmentId, transaction);
+    const questions = plain(graph).questions || [];
+    try {
+      policy.validateAssessmentForPublish({ assessment: plain(graph), questions });
+    } catch (error) {
+      throw mapValidationError(error, "ASSESSMENT_INVALID");
+    }
+    await assertCodingExecutionAvailable(questions);
+    customPublication.publish({ assessment, target });
+    assessment.version = currentVersion + 1;
+    await assessment.save({ transaction });
+    return {
+      target: customTargetPayload(target),
+      assessment: serializePublicationState(assessment),
+      publication: customPublicationPayload({ assessment, target }),
+    };
+  });
+
   const unpublishAssessment = async ({
     classroomId,
     assessmentId,
@@ -1404,6 +1456,30 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     assessment.version = currentVersion + 1;
     await assessment.save({ transaction });
     return { assessment: serializePublicationState(assessment) };
+  });
+
+  const unpublishCustomLessonAssessment = async ({
+    classroomId, placementId, assessmentId, actorId, actorRole, version,
+  }) => sequelize.transaction(async (transaction) => {
+    const target = await loadManagedCustomTarget({
+      classroomId, placementId, actorId, actorRole, transaction, lock: true, allowArchived: true,
+    });
+    const assessment = await requireCustomAssessment({
+      classroomId, placementId, assessmentId, transaction, lock: true,
+    });
+    const currentVersion = assertVersion(assessment, version);
+    await assertNoAttempts(assessmentId, transaction);
+    if (assessment.isPublished) {
+      assessment.isPublished = false;
+      assessment.publishedAt = null;
+      assessment.version = currentVersion + 1;
+      await assessment.save({ transaction });
+    }
+    return {
+      target: customTargetPayload(target),
+      assessment: serializePublicationState(assessment),
+      publication: customPublicationPayload({ assessment, target }),
+    };
   });
 
   const deleteAssessment = async ({
@@ -1673,9 +1749,11 @@ const createTeacherAssessmentService = (dependencies = {}) => {
     grantCustomAdditionalAttempt,
     listCustomAssessmentReportingTargets,
     publishAssessment,
+    publishCustomLessonAssessment,
     saveAssessmentGraph,
     saveCustomLessonAssessmentDraft: saveAssessmentGraph,
     unpublishAssessment,
+    unpublishCustomLessonAssessment,
   };
 };
 

@@ -27,8 +27,9 @@ export function EditorActionBar({
       <span className={styles.saveState} role="status" aria-live="polite" aria-atomic="true">{saveStateLabel(saveState)}</span>
       <button type="button" onClick={onPreview}><FiEye /> Preview</button>
       <button type="button" className={styles.saveButton} disabled={locked || !dirty || saving} onClick={onSave}><FiSave /> Save Draft</button>
-      {!publicationAvailable ? <span className={styles.draftOnly}>Draft only</span> : published
+      {published
         ? <button type="button" disabled={locked || dirty} onClick={onUnpublish}>Unpublish</button>
+        : !publicationAvailable ? <span className={styles.draftOnly}>Draft only</span>
         : <button type="button" className={styles.primaryButton} disabled={publishDisabled} onClick={onPublish}>Publish</button>}
     </div>
   </section>;
@@ -36,11 +37,25 @@ export function EditorActionBar({
 
 export function CustomDraftNotice({
   revisionReviewRequired, boundVersion, currentVersion, pending, onReview,
+  publication,
 }) {
+  const blocker = {
+    PUBLICATION_DISABLED: "Publishing is disabled on this server. Draft editing remains available.",
+    ACCESS_HISTORY_UNCERTAIN: "Required PRE publication is unavailable because reliable prior-access history is missing. Make it optional or use an independent lesson copy.",
+    PLACEMENT_ARCHIVED: "Restore this lesson placement before publishing.",
+    CLASSROOM_INACTIVE: "Restore this classroom before publishing.",
+    LESSON_UNPUBLISHED: "Publish or schedule the lesson before publishing its assessment.",
+    LESSON_SCHEDULE_INVALID: "Fix the lesson schedule before publishing its assessment.",
+    REVISION_REVIEW_REQUIRED: "Review the current lesson revision before publishing.",
+    ALREADY_PUBLISHED: "Published for this lesson revision.",
+  }[publication?.reason] || "This draft can be published after it is saved and passes server validation.";
+  const explanation = publication?.enabled === false && publication?.reason !== "PUBLICATION_DISABLED"
+    ? `${blocker} Publication is also disabled on this server.`
+    : blocker;
   return <section className={styles.customDraftNotice} aria-label="Custom lesson assessment status">
     <div>
-      <strong>Custom lesson draft</strong>
-      <span>Publishing is not available yet. You can build and review questions now.</span>
+      <strong>{publication?.canPublish ? "Custom lesson assessment" : "Custom lesson draft"}</strong>
+      <span>{explanation}</span>
       {revisionReviewRequired && <span role="alert">Revision {boundVersion} is bound to this draft. The lesson is now revision {currentVersion}.</span>}
     </div>
     {revisionReviewRequired && <button type="button" disabled={pending} onClick={onReview}>{pending ? "Reviewing…" : "Review current revision"}</button>}

@@ -11,10 +11,55 @@ const createCustomAssessmentStudentPolicyService = ({
 } = {}) => {
   const {
     Classroom,
+    ClassroomLesson,
     ClassroomLessonPlacement,
     ClassroomLessonReadingCompletion,
     ClassroomMembership,
   } = models;
+
+  const lockExactTarget = async ({ expectedTarget, studentId, transaction }) => {
+    const initialPlacement = plain(await ClassroomLessonPlacement.findOne({
+      where: {
+        id: expectedTarget.classroomLessonPlacementId,
+        classroomId: expectedTarget.classroomId,
+      },
+      transaction,
+    }));
+    if (!initialPlacement) {
+      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
+    }
+    const lesson = plain(await ClassroomLesson.findByPk(initialPlacement.lessonId, {
+      transaction,
+      ...(transaction?.LOCK?.UPDATE ? { lock: transaction.LOCK.UPDATE } : {}),
+    }));
+    const placement = plain(await ClassroomLessonPlacement.findOne({
+      where: {
+        id: expectedTarget.classroomLessonPlacementId,
+        classroomId: expectedTarget.classroomId,
+        lessonId: lesson?.id,
+      },
+      transaction,
+      ...(transaction?.LOCK?.UPDATE ? { lock: transaction.LOCK.UPDATE } : {}),
+    }));
+    if (!lesson || !placement || lesson.contentType !== "lesson") {
+      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
+    }
+    if (!placement
+      || Number(placement.classroomId) !== Number(expectedTarget.classroomId)) {
+      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
+    }
+    const [membership, classroom] = await Promise.all([
+      ClassroomMembership.findOne({
+        where: { classroomId: expectedTarget.classroomId, studentId, status: "active" },
+        transaction,
+      }),
+      Classroom.findOne({ where: { id: expectedTarget.classroomId, isActive: true }, transaction }),
+    ]);
+    if (!membership || !classroom) {
+      throw new AssessmentApiError(403, "FORBIDDEN", "Forbidden");
+    }
+    return { ...placement, lesson };
+  };
 
   const loadExactPlacement = async ({ assessment, studentId, transaction }) => {
     const placement = plain(await ClassroomLessonPlacement.findOne({
@@ -28,11 +73,6 @@ const createCustomAssessmentStudentPolicyService = ({
         ? { lock: { level: transaction.LOCK.UPDATE, of: ClassroomLessonPlacement } }
         : {}),
     }));
-    if (!placement
-      || Number(placement.lesson?.contentVersion) !== Number(assessment.targetLessonVersion)
-      || placement.lesson?.contentType !== "lesson") {
-      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
-    }
     const [membership, classroom] = await Promise.all([
       ClassroomMembership.findOne({
         where: { classroomId: assessment.classroomId, studentId, status: "active" },
@@ -46,9 +86,20 @@ const createCustomAssessmentStudentPolicyService = ({
     return placement;
   };
 
-  const evaluate = async ({ assessment: input, studentId, transaction, operation = "START" }) => {
+  const assertPlacementMatchesAssessment = (placement, assessment) => {
+    if (!placement
+      || Number(placement.classroomId) !== Number(assessment.classroomId)
+      || Number(placement.id) !== Number(assessment.classroomLessonPlacementId)
+      || Number(placement.lesson?.contentVersion) !== Number(assessment.targetLessonVersion)
+      || placement.lesson?.contentType !== "lesson") {
+      throw new AssessmentApiError(404, "ASSESSMENT_TARGET_NOT_FOUND", "Assessment target was not found");
+    }
+  };
+
+  const evaluate = async ({ assessment: input, studentId, transaction, operation = "START", placement: lockedPlacement }) => {
     const assessment = plain(input);
-    const placement = await loadExactPlacement({ assessment, studentId, transaction });
+    const placement = lockedPlacement || await loadExactPlacement({ assessment, studentId, transaction });
+    assertPlacementMatchesAssessment(placement, assessment);
     const historicalOperation = ["ACTIVE_ATTEMPT", "RESULT"].includes(operation);
     if (historicalOperation) return { allowed: true, placement };
     if (placement.archivedAt || placement.lesson.archivedAt) {
@@ -90,7 +141,7 @@ const createCustomAssessmentStudentPolicyService = ({
     );
   };
 
-  return { evaluate, assertAllowed };
+  return { evaluate, assertAllowed, lockExactTarget };
 };
 
 const defaultService = createCustomAssessmentStudentPolicyService();

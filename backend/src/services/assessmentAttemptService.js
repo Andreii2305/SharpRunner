@@ -242,11 +242,11 @@ const createAssessmentAttemptService = ({
   };
 
   const assertInteractionAllowed = async ({
-    assessment, studentId, membership, transaction, operation,
+    assessment, studentId, membership, transaction, operation, placement,
   }) => {
     if ((assessment.targetKind ?? ASSESSMENT_TARGET_KINDS.BUILT_IN)
       === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT) {
-      return customStudentPolicy.assertAllowed({ assessment, studentId, transaction, operation });
+      return customStudentPolicy.assertAllowed({ assessment, studentId, transaction, operation, placement });
     }
     return progressionService.assertAssessmentInteractionAllowed({
       assessment, studentId, authorizedMembership: membership, transaction,
@@ -294,6 +294,10 @@ const createAssessmentAttemptService = ({
   });
 
   const startOrResumeAttempt = ({ assessmentId, studentId, expectedTarget }) => sequelize.transaction(async (transaction) => {
+    const lockedPlacement = expectedTarget?.targetKind === ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT
+      && typeof customStudentPolicy.lockExactTarget === "function"
+      ? await customStudentPolicy.lockExactTarget({ expectedTarget, studentId, transaction })
+      : null;
     const assessmentRow = await requireAssessment(assessmentId, transaction, true);
     const assessment = requirePublishedGraph(assessmentRow);
     assertExpectedTarget(assessment, expectedTarget);
@@ -330,6 +334,7 @@ const createAssessmentAttemptService = ({
         membership,
         transaction,
         operation: active ? "ACTIVE_ATTEMPT" : "START",
+        placement: lockedPlacement,
       });
     }
     if (active) {

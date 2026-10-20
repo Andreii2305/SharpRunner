@@ -15,6 +15,7 @@ const assessment = (overrides = {}) => ({
 });
 
 const harness = ({ archived = false, completion = { id: 5 }, membership = { id: 2 } } = {}) => {
+  const events = [];
   const placement = {
     id: 31, classroomId: 7, lessonId: 9, archivedAt: archived ? new Date() : null,
     lesson: { id: 9, contentVersion: 4, contentType: "lesson", archivedAt: null,
@@ -23,17 +24,34 @@ const harness = ({ archived = false, completion = { id: 5 }, membership = { id: 
   const service = createCustomAssessmentStudentPolicyService({
     models: {
       ClassroomLessonPlacement: {
-        findOne: async ({ where }) => Number(where.id) === placement.id
-          && Number(where.classroomId) === placement.classroomId ? placement : null,
+        findOne: async ({ where, lock }) => {
+          events.push(lock ? "placement-lock" : "placement-read");
+          return Number(where.id) === placement.id
+            && Number(where.classroomId) === placement.classroomId ? placement : null;
+        },
       },
+      ClassroomLesson: { findByPk: async (id, { lock } = {}) => {
+        events.push(lock ? "lesson-lock" : "lesson-read");
+        return Number(id) === placement.lessonId ? placement.lesson : null;
+      } },
       ClassroomMembership: { findOne: async () => membership },
       Classroom: { findOne: async () => ({ id: 7, isActive: true }) },
       ClassroomLessonReadingCompletion: { findOne: async () => completion },
     },
     now: () => new Date("2026-10-18T00:00:00Z"),
   });
-  return { service, placement };
+  return { service, placement, events };
 };
+
+test("custom target locking follows lesson then placement before assessment Start can continue", async () => {
+  const { service, events } = harness();
+  await service.lockExactTarget({
+    expectedTarget: { classroomId: 7, classroomLessonPlacementId: 31 },
+    studentId: 22,
+    transaction: { LOCK: { UPDATE: "UPDATE" } },
+  });
+  assert.deepEqual(events, ["placement-read", "lesson-lock", "placement-lock"]);
+});
 
 test("custom POST readiness requires exact revision reading acknowledgement", async () => {
   const ready = await harness().service.evaluate({ assessment: assessment(), studentId: 22, operation: "START" });

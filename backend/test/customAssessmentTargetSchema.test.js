@@ -28,6 +28,10 @@ const preAccessPolicyMigrationPath = path.resolve(
   __dirname,
   "../../supabase/migrations/20261019000000_custom_lesson_pre_access_policy.sql",
 );
+const publicationMigrationPath = path.resolve(
+  __dirname,
+  "../../supabase/migrations/20261020000000_enable_guarded_custom_assessment_publication.sql",
+);
 
 const validAssessment = (overrides = {}) => models.LessonAssessment.build({
   classroomId: 7,
@@ -71,6 +75,25 @@ test("assessment targets accept only an exclusive built-in or placement identity
   ]) {
     await assert.rejects(validAssessment(overrides).validate(), /assessment target/i);
   }
+});
+
+test("custom assessment model permits only internally consistent publication state", async () => {
+  await validAssessment({
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+    lessonKey: null,
+    classroomLessonPlacementId: 41,
+    targetLessonVersion: 3,
+    isPublished: true,
+    publishedAt: new Date("2026-10-19T00:00:00Z"),
+  }).validate();
+  await assert.rejects(validAssessment({
+    targetKind: ASSESSMENT_TARGET_KINDS.CLASSROOM_LESSON_PLACEMENT,
+    lessonKey: null,
+    classroomLessonPlacementId: 41,
+    targetLessonVersion: 3,
+    isPublished: true,
+    publishedAt: null,
+  }).validate(), /publication state/i);
 });
 
 test("revision-specific reading acknowledgements are modeled separately from legacy progress", () => {
@@ -279,6 +302,19 @@ test("foundation migration backfills built-ins and enforces target and history c
   assert.equal(names[foundationIndex + 1], "20261018000000_custom_lesson_lifecycle");
 });
 
+test("guarded-publication migration follows the full custom chain without rewriting dormant history", () => {
+  assert.equal(fs.existsSync(publicationMigrationPath), true);
+  const sql = fs.readFileSync(publicationMigrationPath, "utf8");
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS "lesson_assessment_custom_publication_dormant"/);
+  assert.match(sql, /lesson_assessment_custom_publication_state/);
+  assert.match(sql, /"targetKind" <> 'CLASSROOM_LESSON_PLACEMENT'/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE|DROP TABLE/i);
+
+  const names = migrations.map(([name]) => name);
+  const publicationIndex = names.indexOf("20261020000000_enable_guarded_custom_assessment_publication");
+  assert.equal(names[publicationIndex - 1], "20261019000000_custom_lesson_pre_access_policy");
+});
+
 test("lifecycle migration adds current content revisions and immutable exact access evidence", () => {
   assert.equal(fs.existsSync(lifecycleMigrationPath), true);
   const sql = fs.readFileSync(lifecycleMigrationPath, "utf8");
@@ -318,6 +354,6 @@ test("PRE access policy migration preserves uncertainty and makes policy timesta
   assert.match(sql, /OLD\."accessGateEstablishedAt" IS NOT NULL[\s\S]*IS DISTINCT FROM NEW\."accessGateEstablishedAt"/);
 
   const names = migrations.map(([name]) => name);
-  assert.equal(names.at(-1), "20261019000000_custom_lesson_pre_access_policy");
-  assert.equal(names.at(-2), "20261018000000_custom_lesson_lifecycle");
+  assert.equal(names.at(-1), "20261020000000_enable_guarded_custom_assessment_publication");
+  assert.equal(names.at(-2), "20261019000000_custom_lesson_pre_access_policy");
 });

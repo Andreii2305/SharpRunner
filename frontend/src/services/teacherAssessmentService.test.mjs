@@ -39,12 +39,22 @@ test("custom lesson draft service preserves exact classroom and placement identi
   await service.reviewCustomLessonAssessmentRevision({
     classroomId: 7, placementId: 71, assessmentId: 91, version: 3, targetLessonVersion: 4,
   });
+  await service.publishCustomLessonAssessment({
+    classroomId: 7, placementId: 71, assessmentId: 91, version: 4,
+  });
+  await service.unpublishCustomLessonAssessment({
+    classroomId: 7, placementId: 71, assessmentId: 91, version: 5,
+  });
   await service.deleteCustomLessonAssessmentDraft({ classroomId: 7, placementId: 71, assessmentId: 91 });
 
-  assert.deepEqual(calls.map(([method]) => method), ["get", "post", "get", "put", "post", "delete"]);
+  assert.deepEqual(calls.map(([method]) => method), ["get", "post", "get", "put", "post", "post", "post", "delete"]);
   assert.equal(calls.every((call) => call[1].includes("classrooms/7/lesson-placements/71/assessments")), true);
   assert.deepEqual(calls[1][2], { type: "PRE", title: "Lesson diagnostic" });
   assert.deepEqual(calls[4][2], { version: 3, targetLessonVersion: 4 });
+  assert.match(calls[5][1], /lesson-placements\/71\/assessments\/91\/publish$/);
+  assert.deepEqual(calls[5][2], { version: 4 });
+  assert.match(calls[6][1], /lesson-placements\/71\/assessments\/91\/unpublish$/);
+  assert.deepEqual(calls[6][2], { version: 5 });
   assert.equal(calls.every((call) => call.at(-1)?.headers?.Authorization === "Bearer teacher-token"), true);
 });
 
@@ -360,6 +370,8 @@ test("safe teacher errors never expose transport internals", () => {
     currentVersion: 8,
   });
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_PUBLISHED" } } }).message, "Unpublish this assessment before deleting it.");
+  assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 403, data: { code: "CUSTOM_ASSESSMENT_PUBLICATION_DISABLED" } } }).message, "Custom lesson assessment publication is not enabled on this server.");
+  assert.match(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "CUSTOM_PRE_ACCESS_HISTORY_UNCERTAIN" } } }).message, /predates reliable access tracking/);
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 409, data: { code: "ASSESSMENT_TYPE_MISMATCH" } } }).message, "Only assessments of the same type can be copied.");
   assert.equal(service.normalizeTeacherAssessmentError({ response: { status: 422, data: { code: "SOURCE_ASSESSMENT_INVALID" } } }).message, "The source assessment cannot be copied in its current state.");
   assert.deepEqual(

@@ -900,9 +900,11 @@ test("completed Arrays work remains immutable while required PRE blocks same-les
       rows.find((row) => row.levelKey === where.levelKey) ?? null
     )],
     [LevelContentOverride, "findAll", async () => []],
-    [LessonAssessment, "findAll", async () => [requiredPre]],
+    [LessonAssessment, "findAll", async () => [{ ...requiredPre, attemptGrants: [] }]],
     [AssessmentAttempt, "findAll", async () => []],
-    [AssessmentAttemptGrant, "findAll", async () => []],
+    [AssessmentAttemptGrant, "findAll", async () => {
+      assert.fail("progression loading must not issue a standalone grant query");
+    }],
     [AssessmentAttempt, "create", async () => {
       assessmentAttemptCreates += 1;
       return null;
@@ -1044,9 +1046,11 @@ test("grant-authorized POST practice rechecks every gameplay path without academ
       rows.find((row) => row.levelKey === where.levelKey) ?? null
     )],
     [LevelContentOverride, "findAll", async () => []],
-    [LessonAssessment, "findAll", async () => [requiredPost]],
+    [LessonAssessment, "findAll", async () => [{ ...requiredPost, attemptGrants: [grant] }]],
     [AssessmentAttempt, "findAll", async () => attempts],
-    [AssessmentAttemptGrant, "findAll", async () => [grant]],
+    [AssessmentAttemptGrant, "findAll", async () => {
+      assert.fail("progression loading must not issue a standalone grant query");
+    }],
     [LearningAnalyticsEvent, "findOne", async () => null],
     [LearningAnalyticsEvent, "create", async () => (
       assert.fail("practice must not create an academic event")

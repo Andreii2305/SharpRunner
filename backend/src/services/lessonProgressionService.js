@@ -37,6 +37,13 @@ const ATTEMPT_ATTRIBUTES = Object.freeze([
   "percentage",
   "passed",
 ]);
+const GRANT_ATTRIBUTES = Object.freeze([
+  "id",
+  "assessmentId",
+  "classroomId",
+  "studentId",
+  "consumedByAttemptId",
+]);
 const PROGRESS_ATTRIBUTES = Object.freeze([
   "levelKey",
   "isCompleted",
@@ -528,6 +535,15 @@ const createLessonProgressionService = ({
           type: { [Op.in]: [ASSESSMENT_TYPES.PRE, ASSESSMENT_TYPES.POST] },
         },
         attributes: [...ASSESSMENT_ATTRIBUTES],
+        ...(AssessmentAttemptGrant ? {
+          include: [{
+            model: AssessmentAttemptGrant,
+            as: "attemptGrants",
+            required: false,
+            where: { classroomId, studentId },
+            attributes: [...GRANT_ATTRIBUTES],
+          }],
+        } : {}),
         ...transactionOption,
       }),
       progressRows === null
@@ -569,11 +585,9 @@ const createLessonProgressionService = ({
         && assessmentIdSet.has(String(attempt.assessmentId))
       ));
       if (AssessmentAttemptGrant) {
-        exactGrants = list(await AssessmentAttemptGrant.findAll({
-          where: { classroomId, studentId, assessmentId: { [Op.in]: assessmentIds } },
-          attributes: ["id", "assessmentId", "classroomId", "studentId", "consumedByAttemptId"],
-          ...transactionOption,
-        })).filter((grant) => sameId(grant.classroomId, classroomId)
+        exactGrants = exactHistoricalAssessments.flatMap(
+          (assessment) => list(assessment.attemptGrants),
+        ).filter((grant) => sameId(grant.classroomId, classroomId)
           && sameId(grant.studentId, studentId)
           && assessmentIdSet.has(String(grant.assessmentId)));
       }

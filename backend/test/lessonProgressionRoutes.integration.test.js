@@ -420,7 +420,14 @@ const withProgressRoute = async (callback, {
         id: 91, classroomId: 9, lessonKey: "arrays", type: "PRE",
         isPublished: true, isRequired: true, maxAttempts: 1,
         questions: [{ choices: [{ correctChoiceId: 42, isCorrect: true }], explanation: "secret" }],
-      }, { ...pendingPost, id: 999, classroomId: 10 }];
+      }, { ...pendingPost, id: 999, classroomId: 10 }].map((assessment) => ({
+        ...assessment,
+        attemptGrants: suppliedGrants.filter((grant) => (
+          grant.assessmentId === assessment.id
+          && grant.classroomId === options.include[0].where.classroomId
+          && grant.studentId === options.include[0].where.studentId
+        )),
+      }));
     }],
     [AssessmentAttempt, "findAll", async (options) => {
       queries.attempts.push(options);
@@ -434,7 +441,9 @@ const withProgressRoute = async (callback, {
         status: "SUBMITTED", percentage: 100, passed: true,
       }];
     }],
-    [AssessmentAttemptGrant, "findAll", async () => suppliedGrants],
+    [AssessmentAttemptGrant, "findAll", async () => {
+      assert.fail("progression loading must not issue a standalone grant query");
+    }],
   ];
   const originals = stubs.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, replacement] of stubs) target[key] = replacement;
@@ -716,7 +725,10 @@ const withMultipleClassroomProgressRoutes = async (callback) => {
     }],
     [LessonAssessment, "findAll", async (options) => {
       queries.assessments.push(options);
-      return assessmentsByClassroom.get(options.where.classroomId) ?? [];
+      return (assessmentsByClassroom.get(options.where.classroomId) ?? []).map((assessment) => ({
+        ...assessment,
+        attemptGrants: [],
+      }));
     }],
     [AssessmentAttempt, "findAll", async (options) => {
       queries.attempts.push(options);
@@ -730,7 +742,9 @@ const withMultipleClassroomProgressRoutes = async (callback) => {
         attemptNumber: 1,
       }] : [];
     }],
-    [AssessmentAttemptGrant, "findAll", async () => []],
+    [AssessmentAttemptGrant, "findAll", async () => {
+      assert.fail("progression loading must not issue a standalone grant query");
+    }],
   ];
   const originals = stubs.map(([target, key]) => [target, key, target[key]]);
   for (const [target, key, replacement] of stubs) target[key] = replacement;
@@ -818,7 +832,11 @@ test("progress me batches one state map instead of querying assessments per leve
     assert.equal(queries.memberships.length, 2, "middleware and selected membership only");
     assert.equal(queries.assessments[0].where.classroomId, 9);
     assert.equal(queries.assessments[0].where.isPublished, undefined);
-    assert.equal(queries.assessments[0].include, undefined);
+    assert.equal(queries.assessments[0].include.length, 1);
+    assert.equal(queries.assessments[0].include[0].model, AssessmentAttemptGrant);
+    assert.equal(queries.assessments[0].include[0].as, "attemptGrants");
+    assert.equal(queries.assessments[0].include[0].required, false);
+    assert.deepEqual(queries.assessments[0].include[0].where, { classroomId: 9, studentId: 7 });
     assert.equal(queries.attempts[0].where.classroomId, 9);
     assert.equal(queries.attempts[0].where.studentId, 7);
     assert.deepEqual(queries.attempts[0].where.assessmentId[Op.in], [92, 91]);

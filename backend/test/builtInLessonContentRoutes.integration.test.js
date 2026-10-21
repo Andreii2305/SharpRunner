@@ -13,6 +13,7 @@ const User = require('../src/models/User');
 const UserProgress = require('../src/models/UserProgress');
 const LessonAssessment = require('../src/models/LessonAssessment');
 const AssessmentAttempt = require('../src/models/AssessmentAttempt');
+const AssessmentAttemptGrant = require('../src/models/AssessmentAttemptGrant');
 const LevelContentOverride = require('../src/models/LevelContentOverride');
 const builtInContentService = require('../src/services/builtInLessonContentService');
 const lessonProgressionService = require('../src/services/lessonProgressionService');
@@ -386,10 +387,21 @@ test('real route authorization uses four bounded queries or five with a relevant
     counts.membership += 1;
     return activeMembership();
   });
-  t.mock.method(LessonAssessment, 'findAll', async () => { counts.assessment += 1; return assessments; });
+  t.mock.method(LessonAssessment, 'findAll', async (options) => {
+    counts.assessment += 1;
+    assert.equal(options.include.length, 1);
+    assert.equal(options.include[0].model, AssessmentAttemptGrant);
+    assert.equal(options.include[0].as, 'attemptGrants');
+    assert.equal(options.include[0].required, false);
+    assert.deepEqual(options.include[0].where, { classroomId: 7, studentId: 42 });
+    return assessments.map((assessment) => ({ ...assessment, attemptGrants: [] }));
+  });
   t.mock.method(UserProgress, 'findAll', async () => { counts.progress += 1; return progressRows; });
   t.mock.method(LevelContentOverride, 'findAll', async () => { counts.settings += 1; return []; });
   t.mock.method(AssessmentAttempt, 'findAll', async () => { counts.attempt += 1; return attempts; });
+  t.mock.method(AssessmentAttemptGrant, 'findAll', async () => {
+    assert.fail('route authorization must not issue a standalone grant query');
+  });
 
   const app = express();
   app.use('/api/classrooms', createBuiltInLessonContentRouter({

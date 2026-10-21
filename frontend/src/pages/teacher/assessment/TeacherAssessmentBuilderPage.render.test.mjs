@@ -351,6 +351,17 @@ test("coding preview separates student-visible examples from teacher-only gradin
   assert.match(codingPreview, /visibility === "HIDDEN"/);
 });
 
+test("teacher preview preserves multiline question text without inferring code boundaries", () => {
+  assert.match(
+    source,
+    /<h3 className=\{styles\.previewQuestionText\}>\{index \+ 1\}\. \{question\.questionText \|\| "Untitled question"\}/,
+  );
+  assert.match(styles, /\.previewQuestionText\s*\{[^}]*min-width:\s*0[^}]*max-width:\s*100%/s);
+  assert.match(styles, /\.previewQuestionText\s*\{[^}]*white-space:\s*pre-wrap/s);
+  assert.match(styles, /\.previewQuestionText\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.doesNotMatch(source, /question\.questionText\.(?:split|replace|trim)\(/);
+});
+
 test("coding controls stack responsively and preserve usable editor height", () => {
   assert.match(styles, /\.codingGrid/);
   assert.match(styles, /\.testCaseGrid/);

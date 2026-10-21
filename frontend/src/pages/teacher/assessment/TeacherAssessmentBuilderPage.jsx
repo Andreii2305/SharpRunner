@@ -62,7 +62,7 @@ function PreviewDialog({ draft, onClose }) {
       {draft.instructions && <p>{draft.instructions}</p>}
       <h3 className={styles.previewSectionLabel}>STUDENT PREVIEW</h3>
       {draft.questions.length ? draft.questions.map((question, index) => <article key={question.clientId}>
-        <h3>{index + 1}. {question.questionText || "Untitled question"} <small>{question.points} point{Number(question.points) === 1 ? "" : "s"}</small></h3>
+        <h3 className={styles.previewQuestionText}>{index + 1}. {question.questionText || "Untitled question"} <small>{question.points} point{Number(question.points) === 1 ? "" : "s"}</small></h3>
         {question.questionType === "CODING" ? <StudentCodingPreview question={question} /> : <ul>{question.choices.map((choice) => <li key={choice.clientId}>{choice.choiceText || "Empty choice"}</li>)}</ul>}
       </article>) : <p>No questions in this draft.</p>}
       {draft.questions.some((question) => question.questionType === "CODING") && <section className={styles.teacherOnlyPreview}><h3>TEACHER-ONLY GRADING CONFIGURATION</h3>{draft.questions.filter((question) => question.questionType === "CODING").map((question, index) => <TeacherCodingConfigurationPreview key={question.clientId} question={question} index={index} />)}</section>}

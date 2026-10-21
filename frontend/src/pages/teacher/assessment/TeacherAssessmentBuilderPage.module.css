@@ -36,7 +36,9 @@
 .slotHeading { grid-area: heading; }
 .slotGrid article > p { grid-area: summary; margin: 0; }
 .slotGrid article > button { grid-area: action; white-space: nowrap; }
-.slotActions { grid-area: action; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }.slotActions button { white-space: nowrap; }
+.slotGrid article:has(.slotActions) { grid-template-columns: minmax(0, 1fr); grid-template-areas: "heading" "summary" "action"; }
+.slotActions { grid-area: action; display: flex; min-width: 0; width: 100%; flex-wrap: wrap; justify-content: flex-start; gap: 7px; }
+.slotActions button { box-sizing: border-box; flex: 1 1 9rem; min-width: 0; white-space: normal; line-height: 1.25; text-align: center; }
 .slotGrid article.activeSlot { border-color: #2788b2; box-shadow: 0 0 0 2px #d7f1fc; }
 .slotGrid article p { color: #64778a; }
 .status { display: inline-flex; border-radius: 999px; padding: 4px 9px; background: #edf2f7; color: #53677a; font-size: 13px; font-weight: 600; }

@@ -328,6 +328,17 @@ test("desktop builder keeps scope compact and constrains the question workspace"
   assert.match(styles, /@media\s*\(max-width:\s*900px\)[\s\S]*\.slotGrid\s+article\s*\{[^}]*grid-template-areas:\s*"heading"\s*"summary"\s*"action"/);
 });
 
+test("empty assessment actions use a scoped wrapping row with readable button labels", () => {
+  assert.match(
+    styles,
+    /\.slotGrid\s+article:has\(\.slotActions\)\s*\{[^}]*grid-template-areas:\s*"heading"\s*"summary"\s*"action"/s,
+  );
+  assert.match(styles, /\.slotActions\s*\{[^}]*min-width:\s*0[^}]*width:\s*100%[^}]*flex-wrap:\s*wrap/s);
+  assert.match(styles, /\.slotActions\s+button\s*\{[^}]*flex:\s*1 1 9rem[^}]*white-space:\s*normal[^}]*line-height:\s*1\.25/s);
+  assert.match(styles, /\.main\s+:where\(button\)\s*\{[^}]*min-height:\s*44px/s);
+  assert.match(styles, /button:focus-visible/);
+});
+
 test("page shell keeps the builder beside the full-height sidebar instead of below it", () => {
   assert.match(styles, /\.root\s*\{[^}]*display:\s*flex[^}]*align-items:\s*flex-start/s);
   assert.match(styles, /\.main\s*\{[^}]*flex:\s*1[^}]*margin-left:\s*0/s);

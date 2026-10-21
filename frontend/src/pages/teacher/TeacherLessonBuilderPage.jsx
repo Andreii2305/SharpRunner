@@ -8,6 +8,7 @@ import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { createBlock, prepareTopicsForEditing, removeBlock } from "../../utils/lessonBlocks.js";
 import OrderedTopicEditor from "./OrderedTopicEditor.jsx";
+import { saveLessonAndNotify } from "./teacherLessonSaveNotification.js";
 import styles from "./TeacherLessonBuilderPage.module.css";
 
 const api = (path) => buildApiUrl(`/api/teacher/lesson-library${path}`);
@@ -213,7 +214,7 @@ export default function TeacherLessonBuilderPage() {
       previewWindow?.close();
     }
   };
-  const saveAndNotify = async () => { try { await saveNow(); toast.success("Draft saved."); } catch { /* handled */ } };
+  const saveAndNotify = async () => { try { await saveLessonAndNotify({ save: saveNow, onSuccess: toast.success }); } catch { /* handled */ } };
   const leaveBuilder = async () => { try { await flush(); navigate("/teacher/lessons"); } catch { if (window.confirm("Your latest changes could not be saved. Leave anyway?")) navigate("/teacher/lessons"); } };
 
   if (loading) return <div className={styles.shell}><Sidebar /><main className={styles.status}>Loading Lesson Builder…</main></div>;

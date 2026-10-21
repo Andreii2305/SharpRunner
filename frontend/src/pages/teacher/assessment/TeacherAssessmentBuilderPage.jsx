@@ -7,7 +7,7 @@ import CodingQuestionEditor from "./CodingQuestionEditor.jsx";
 import { StudentCodingPreview, TeacherCodingConfigurationPreview } from "./CodingQuestionPreview.jsx";
 import TeacherAssessmentCopyDialog from "./TeacherAssessmentCopyDialog.jsx";
 import TeacherAssessmentTemplateDialog from "./TeacherAssessmentTemplateDialog.jsx";
-import { CustomDraftNotice, EditorActionBar, QuestionNavigator } from "./TeacherAssessmentBuilderChrome.jsx";
+import { CustomAssessmentScope, CustomDraftNotice, EditorActionBar, QuestionNavigator } from "./TeacherAssessmentBuilderChrome.jsx";
 import {
   createCustomLessonAssessmentDraft,
   copyTeacherAssessment, createTeacherAssessment, createTemplateImportController,
@@ -29,7 +29,7 @@ import styles from "./TeacherAssessmentBuilderPage.module.css";
 const emptySlots = () => ({ PRE: { exists: false }, POST: { exists: false } });
 const QUESTION_TYPE_LABELS = { MULTIPLE_CHOICE: "Multiple choice", TRUE_FALSE: "True / False", CODING: "Coding" };
 
-function Status({ summary }) {
+export function AssessmentStatus({ summary }) {
   const label = assessmentStatus(summary);
   return <span className={`${styles.status} ${styles[`status${label.replaceAll(" ", "")}`]}`}>{label}</span>;
 }
@@ -580,10 +580,7 @@ export default function TeacherAssessmentBuilderPage() {
 
   return <div className={styles.root}><Sidebar /><main className={styles.main}>
     <header className={styles.pageHeader}><div><span>Classroom authoring</span><h1>Assessment builder</h1><p>Create and manage lesson Pre-Tests and Post-Tests.</p></div></header>
-    {customMode ? <section className={`${styles.selectorCard} ${styles.customScope}`} aria-labelledby="assessment-scope-heading">
-      <div><span>Custom classroom lesson</span><h2 id="assessment-scope-heading">{customTarget?.lessonTitle ?? "Loading lesson…"}</h2><p><strong>{customTarget?.classroom?.className ?? selectedClassroom?.className ?? "Classroom"}</strong>{customTarget?.classroom?.section ? ` — ${customTarget.classroom.section}` : ""} · Draft assessments</p></div>
-      <a href={`/teacher/lessons?classroomId=${encodeURIComponent(classroomId)}`}>Back to lesson library</a>
-    </section> : <section className={styles.selectorCard} aria-labelledby="assessment-scope-heading"><h2 id="assessment-scope-heading">Choose assessment scope</h2><div>
+    {customMode ? <CustomAssessmentScope target={customTarget} selectedClassroom={selectedClassroom} classroomId={classroomId} /> : <section className={styles.selectorCard} aria-labelledby="assessment-scope-heading"><h2 id="assessment-scope-heading">Choose assessment scope</h2><div>
       <label>Classroom<select value={classroomId} onChange={(event) => updateRoute({ classroomId: event.target.value, lessonKey: "" })}><option value="">Select classroom</option>{classrooms.map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.className}{classroom.section ? ` — ${classroom.section}` : ""}</option>)}</select></label>
       <label>Academic lesson<select value={lessonKey} disabled={!classroomId} onChange={(event) => updateRoute({ classroomId, lessonKey: event.target.value })}><option value="">Select lesson</option>{ACADEMIC_LESSONS.map((lesson) => <option key={lesson.key} value={lesson.key}>{lesson.title}</option>)}</select></label>
     </div>{selectedClassroom && lessonKey && <p>Managing <strong>{selectedClassroom.className}</strong> · {ACADEMIC_LESSONS.find((lesson) => lesson.key === lessonKey)?.title}</p>}</section>}
@@ -591,7 +588,7 @@ export default function TeacherAssessmentBuilderPage() {
     {copyNotice && <div className={styles.successBanner} role="status">{copyNotice}</div>}
     {classroomId && (lessonKey || placementId) && <section className={styles.slotGrid} aria-label="Assessment types">{["PRE", "POST"].map((type) => {
       const availableTemplate = templates.find((item) => item.lessonKey === lessonKey && item.type === type);
-      return <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><Status summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "Diagnostic draft" : "Post-reading assessment draft"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading || templatePending || customTarget?.archived} onClick={() => create(type)}><FiPlus /> Create new</button>{!customMode && availableTemplate && <button type="button" disabled={loading || templatePending} onClick={() => openTemplateDialog(type)}><FiBookOpen /> Use built-in draft</button>}{!customMode && <button type="button" disabled={loading || templatePending} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button>}</div>}</article>;
+      return <article key={type} className={activeType === type ? styles.activeSlot : ""}><div className={styles.slotHeading}><span>{type === "PRE" ? "Pre-Test" : "Post-Test"}</span><AssessmentStatus summary={slots[type]} /></div><p>{slots[type].exists ? `${slots[type].questionCount ?? 0} questions${slots[type].attemptsExist ? " · Student attempts exist" : ""}` : type === "PRE" ? "Diagnostic draft" : "Post-reading assessment draft"}</p>{slots[type].exists ? <button type="button" onClick={() => openType(type)}>Open {type === "PRE" ? "Pre-Test" : "Post-Test"}</button> : <div className={styles.slotActions}><button type="button" disabled={loading || templatePending || customTarget?.archived} onClick={() => create(type)}><FiPlus /> Create new</button>{!customMode && availableTemplate && <button type="button" disabled={loading || templatePending} onClick={() => openTemplateDialog(type)}><FiBookOpen /> Use built-in draft</button>}{!customMode && <button type="button" disabled={loading || templatePending} onClick={() => openCopyDialog(type)}><FiCopy /> Copy existing</button>}</div>}</article>;
     })}</section>}
     {loading && <p role="status" className={styles.loading}>Loading assessment…</p>}
     {!draft && classroomId && (lessonKey || placementId) && !loading && <section className={styles.emptyState}><h2>Select an assessment</h2><p>Open an existing assessment or explicitly create one type above.</p></section>}
@@ -602,7 +599,7 @@ export default function TeacherAssessmentBuilderPage() {
       <div className={styles.editorWorkspace}>
       <QuestionNavigator questions={draft.questions} activeQuestionId={activeQuestionId} disabled={locked || draft.questions.length >= 100} onNavigate={navigateToQuestion} onAdd={addQuestionFromEditor} />
       <div className={styles.editorColumn}>
-      <section className={styles.editorCard}><div className={styles.sectionHeading}><div><span>{draft.type === "PRE" ? "Pre-Test" : "Post-Test"}</span><h2>Assessment settings</h2></div><Status summary={{ exists: true, published: draft.isPublished, attemptsExist: draft.attemptsExist }} /></div>
+      <section className={styles.editorCard}><div className={styles.sectionHeading}><div><span>{draft.type === "PRE" ? "Pre-Test" : "Post-Test"}</span><h2>Assessment settings</h2></div><AssessmentStatus summary={{ exists: true, published: draft.isPublished, attemptsExist: draft.attemptsExist }} /></div>
         <div className={styles.settingsGrid}>
           <label className={styles.wide}>Title<input disabled={locked} value={draft.title} onChange={(event) => changeDraft({ title: event.target.value })} /></label>
           <label className={styles.wide}>Instructions<textarea disabled={locked} value={draft.instructions} onChange={(event) => changeDraft({ instructions: event.target.value })} /></label>

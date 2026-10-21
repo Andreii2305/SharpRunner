@@ -13,6 +13,13 @@ const questionLabel = (question, index) => {
   return prompt.length > 52 ? `${prompt.slice(0, 49).trimEnd()}…` : prompt;
 };
 
+export function CustomAssessmentScope({ target, selectedClassroom, classroomId }) {
+  return <section className={`${styles.selectorCard} ${styles.customScope}`} aria-labelledby="assessment-scope-heading">
+    <div><span>Custom classroom lesson</span><h2 id="assessment-scope-heading">{target?.lessonTitle ?? "Loading lesson…"}</h2><p><strong>{target?.classroom?.className ?? selectedClassroom?.className ?? "Classroom"}</strong>{target?.classroom?.section ? ` — ${target.classroom.section}` : ""} · Assessments</p></div>
+    <a href={`/teacher/lessons?classroomId=${encodeURIComponent(classroomId)}`}>Back to lesson library</a>
+  </section>;
+}
+
 export function EditorActionBar({
   lessonTitle, assessmentType, status, saveState, dirty, locked, saving,
   published, publishDisabled, publicationAvailable = true, onPreview, onSave, onPublish, onUnpublish,
@@ -54,7 +61,7 @@ export function CustomDraftNotice({
     : blocker;
   return <section className={styles.customDraftNotice} aria-label="Custom lesson assessment status">
     <div>
-      <strong>{publication?.canPublish ? "Custom lesson assessment" : "Custom lesson draft"}</strong>
+      <strong>Publication status</strong>
       <span>{explanation}</span>
       {revisionReviewRequired && <span role="alert">Revision {boundVersion} is bound to this draft. The lesson is now revision {currentVersion}.</span>}
     </div>

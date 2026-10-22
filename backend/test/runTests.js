@@ -28,3 +28,8 @@ require("./assessmentAttemptService.test");
 require("./assessmentSerialization.test");
 require("./assessmentRoutes.integration.test");
 require("./teacherAssessmentRoutes.integration.test");
+require("./classroomEnrollmentService.test");
+require("./classroomMembershipDecisionService.test");
+require("./classroomMembershipDecisionService.postgres.test");
+require("./classroomJoinRequestService.test");
+require("./classroomJoinRequestMigration.test");

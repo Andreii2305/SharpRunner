@@ -12,6 +12,7 @@ const {
   findPrimaryActiveMembership,
   buildClassroomLeaderboard,
 } = require("../services/studentClassService");
+const classroomJoinRequestService = require("../services/classroomJoinRequestService");
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -66,11 +67,44 @@ router.get("/me", async (req, res) => {
       sanitizeClassroomSummary(membership.classroom, membership.joinedAt)
     );
 
+    const pendingMemberships = await ClassroomMembership.findAll({
+      where: {
+        studentId: req.userId,
+        status: "pending",
+      },
+      attributes: ["id", "classroomId", "status", "requestedAt"],
+      include: [
+        {
+          model: Classroom,
+          as: "classroom",
+          required: true,
+          where: { isActive: true },
+          attributes: ["id", "className", "section", "schoolYear"],
+        },
+      ],
+      order: [
+        ["requestedAt", "DESC NULLS LAST"],
+        ["id", "DESC"],
+      ],
+    });
+
+    const pendingRequests = pendingMemberships.map((membership) => ({
+      classroom: {
+        id: membership.classroom.id,
+        className: membership.classroom.className,
+        section: membership.classroom.section,
+        schoolYear: membership.classroom.schoolYear,
+      },
+      status: membership.status,
+      requestedAt: membership.requestedAt ?? null,
+    }));
+
     return res.json({
       hasActiveMembership: classrooms.length > 0,
       totalClassrooms: classrooms.length,
       classrooms,
       primaryClassroom: classrooms[0] ?? null,
+      pendingRequests,
     });
   } catch (error) {
     console.error(error);
@@ -239,74 +273,47 @@ router.post("/join", async (req, res) => {
       return res.status(400).json({ message: "classCode is required" });
     }
 
-    const classroom = await Classroom.findOne({
-      where: {
-        classCode: { [Op.iLike]: classCode },
-        isActive: true,
-      },
-      attributes: [
-        "id",
-        "className",
-        "section",
-        "schoolYear",
-        "classCode",
-        "maxStudents",
-        "description",
-        "teacherId",
-      ],
+    const result = await classroomJoinRequestService.submitJoinRequest({
+      classCode,
+      studentId: req.userId,
     });
+    const classroom = {
+      id: result.classroom.id,
+      className: result.classroom.className,
+      section: result.classroom.section,
+      schoolYear: result.classroom.schoolYear,
+    };
 
-    if (!classroom) {
-      return res.status(404).json({ message: "Classroom not found for this code" });
-    }
-
-    let membership = await ClassroomMembership.findOne({
-      where: {
-        classroomId: classroom.id,
-        studentId: req.userId,
-      },
-    });
-
-    if (membership?.status === "active") {
+    if (result.membership.status === "active") {
       return res.json({
-        message: "You are already a member of this classroom",
-        classroom: sanitizeClassroomSummary(classroom, membership.joinedAt),
+        changed: false,
+        membership: {
+          status: "active",
+          joinedAt: result.membership.joinedAt ?? null,
+        },
+        classroom,
+        message: "You are already an active member of this classroom",
       });
     }
 
-    const activeStudentsInClass = await ClassroomMembership.count({
-      where: {
-        classroomId: classroom.id,
-        status: "active",
+    return res.status(result.changed ? 201 : 200).json({
+      changed: result.changed,
+      membership: {
+        status: "pending",
+        requestedAt: result.membership.requestedAt ?? null,
       },
-    });
-
-    if (
-      Number.isInteger(classroom.maxStudents) &&
-      classroom.maxStudents > 0 &&
-      activeStudentsInClass >= classroom.maxStudents
-    ) {
-      return res.status(409).json({ message: "This classroom is already full" });
-    }
-
-    if (!membership) {
-      membership = await ClassroomMembership.create({
-        classroomId: classroom.id,
-        studentId: req.userId,
-        status: "active",
-        joinedAt: new Date(),
-      });
-    } else {
-      membership.status = "active";
-      membership.joinedAt = new Date();
-      await membership.save();
-    }
-
-    return res.status(201).json({
-      message: "Joined classroom successfully",
-      classroom: sanitizeClassroomSummary(classroom, membership.joinedAt),
+      classroom,
+      message: result.changed
+        ? "Join request submitted"
+        : "Join request is already awaiting teacher approval",
     });
   } catch (error) {
+    if (error instanceof classroomJoinRequestService.ClassroomJoinRequestError) {
+      return res.status(error.status).json({
+        message: error.message,
+        code: error.code,
+      });
+    }
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }

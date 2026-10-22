@@ -38,6 +38,8 @@ const AssessmentAttempt = require("../src/models/AssessmentAttempt");
 const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
 const sequelize = require("../src/config/database");
 const lessonStorage = require("../src/services/lessonFileStorageService");
+const classroomMembershipDecisionService = require("../src/services/classroomMembershipDecisionService");
+const classroomJoinRequestService = require("../src/services/classroomJoinRequestService");
 const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
 const {
   TERMS_VERSION,
@@ -479,38 +481,422 @@ test("teacher dashboard uses unique active students from active classrooms witho
   });
 });
 
-test("POST /api/classrooms/join creates an active membership", async () => {
+test("GET /api/classrooms/me preserves active fields and adds isolated pending requests", async () => {
+  const studentId = 51;
+  const activeJoinedAt = new Date("2026-09-01T08:00:00.000Z");
+  const pendingRequestedAt = new Date("2026-10-22T08:00:00.000Z");
+  const activeMembership = {
+    id: 70,
+    classroomId: 7,
+    studentId,
+    joinedAt: activeJoinedAt,
+    updatedAt: new Date("2026-10-01T08:00:00.000Z"),
+    classroom: {
+      id: 7,
+      className: "Active classroom",
+      section: "A",
+      schoolYear: "2026-2027",
+      classCode: "ACTIVE7",
+      maxStudents: 30,
+      description: "Existing response field",
+      teacherId: 41,
+    },
+  };
+  const pendingMembership = {
+    id: 80,
+    classroomId: 8,
+    studentId,
+    status: "pending",
+    requestedAt: pendingRequestedAt,
+    classroom: {
+      id: 8,
+      className: "Pending classroom",
+      section: "B",
+      schoolYear: "2026-2027",
+      classCode: "SECRET8",
+      teacherId: 42,
+      description: "Must not be exposed",
+    },
+  };
+  let scenario = "pending-only";
+
+  await withStubs([
+    [User, "findByPk", async () => activeUser({ id: studentId })],
+    [ClassroomMembership, "findAll", async (options) => {
+      assert.equal(options.where.studentId, studentId);
+      assert.equal(options.include[0].where.isActive, true);
+      if (options.where.status === "active") {
+        return scenario === "pending-only" ? [] : [activeMembership];
+      }
+      assert.equal(options.where.status, "pending");
+      assert.deepEqual(options.attributes, ["id", "classroomId", "status", "requestedAt"]);
+      assert.deepEqual(options.include[0].attributes, ["id", "className", "section", "schoolYear"]);
+      assert.deepEqual(options.order, [["requestedAt", "DESC NULLS LAST"], ["id", "DESC"]]);
+      return scenario === "active-only" ? [] : [
+        scenario === "pending-only"
+          ? { ...pendingMembership, requestedAt: null }
+          : pendingMembership,
+      ];
+    }],
+  ], async () => {
+    const requestMe = () => apiRequest("/api/classrooms/me", {
+      token: authToken(studentId, "student"),
+    });
+
+    const pendingOnly = await requestMe();
+    assert.equal(pendingOnly.response.status, 200);
+    assert.equal(pendingOnly.payload.hasActiveMembership, false);
+    assert.equal(pendingOnly.payload.totalClassrooms, 0);
+    assert.deepEqual(pendingOnly.payload.classrooms, []);
+    assert.equal(pendingOnly.payload.primaryClassroom, null);
+    assert.deepEqual(pendingOnly.payload.pendingRequests, [{
+      classroom: {
+        id: 8,
+        className: "Pending classroom",
+        section: "B",
+        schoolYear: "2026-2027",
+      },
+      status: "pending",
+      requestedAt: null,
+    }]);
+
+    scenario = "active-only";
+    const activeOnly = await requestMe();
+    assert.equal(activeOnly.response.status, 200);
+    assert.equal(activeOnly.payload.hasActiveMembership, true);
+    assert.equal(activeOnly.payload.totalClassrooms, 1);
+    assert.equal(activeOnly.payload.classrooms[0].classCode, "ACTIVE7");
+    assert.equal(activeOnly.payload.classrooms[0].description, "Existing response field");
+    assert.equal(activeOnly.payload.classrooms[0].joinedAt, activeJoinedAt.toISOString());
+    assert.deepEqual(activeOnly.payload.primaryClassroom, activeOnly.payload.classrooms[0]);
+    assert.deepEqual(activeOnly.payload.pendingRequests, []);
+
+    scenario = "active-plus-pending";
+    const combined = await requestMe();
+    assert.equal(combined.response.status, 200);
+    assert.equal(combined.payload.hasActiveMembership, true);
+    assert.equal(combined.payload.totalClassrooms, 1);
+    assert.equal(combined.payload.pendingRequests.length, 1);
+    assert.deepEqual(combined.payload.pendingRequests[0], {
+      classroom: {
+        id: 8,
+        className: "Pending classroom",
+        section: "B",
+        schoolYear: "2026-2027",
+      },
+      status: "pending",
+      requestedAt: pendingRequestedAt.toISOString(),
+    });
+    assert.equal("classCode" in combined.payload.pendingRequests[0].classroom, false);
+    assert.equal("teacherId" in combined.payload.pendingRequests[0].classroom, false);
+    assert.equal("description" in combined.payload.pendingRequests[0].classroom, false);
+  });
+});
+
+test("POST /api/classrooms/join submits a pending request using the authenticated student", async () => {
   const classroom = {
     id: 9,
     className: "C# Fundamentals",
     section: "BSIT 1A",
     schoolYear: "2026-2027",
-    classCode: "ABC234",
-    maxStudents: 30,
-    description: null,
-    teacherId: 4,
   };
-  let createdMembership;
+  const requestedAt = new Date("2026-10-22T08:00:00.000Z");
+  let serviceInput;
 
   await withStubs([
     [User, "findByPk", async () => activeUser()],
-    [Classroom, "findOne", async () => classroom],
-    [ClassroomMembership, "findOne", async () => null],
-    [ClassroomMembership, "count", async () => 3],
-    [ClassroomMembership, "create", async (values) => {
-      createdMembership = { ...values, joinedAt: values.joinedAt };
-      return createdMembership;
+    [classroomJoinRequestService, "submitJoinRequest", async (input) => {
+      serviceInput = input;
+      return {
+        changed: true,
+        created: true,
+        classroom: { ...classroom, classCode: "ABC234", teacherId: 4 },
+        membership: {
+          id: 71,
+          classroomId: 9,
+          studentId: 1,
+          status: "pending",
+          requestedAt,
+          joinedAt: null,
+          secret: "must-not-leak",
+        },
+      };
     }],
   ], async () => {
     const { response, payload } = await apiRequest("/api/classrooms/join", {
       method: "POST",
       token: authToken(1, "student"),
-      body: { classCode: "abc234" },
+      body: { classCode: "abc234", studentId: 999 },
     });
     assert.equal(response.status, 201);
-    assert.equal(payload.classroom.id, 9);
-    assert.equal(createdMembership.status, "active");
-    assert.equal(createdMembership.studentId, 1);
+    assert.deepEqual(serviceInput, { classCode: "ABC234", studentId: 1 });
+    assert.deepEqual(payload, {
+      changed: true,
+      membership: { status: "pending", requestedAt: requestedAt.toISOString() },
+      classroom,
+      message: "Join request submitted",
+    });
+  });
+});
+
+test("POST /api/classrooms/join distinguishes repeated pending and preserves its timestamp", async () => {
+  const requestedAt = new Date("2026-09-01T08:00:00.000Z");
+  const result = {
+    changed: false,
+    created: false,
+    classroom: { id: 9, className: "C# Fundamentals", section: "BSIT 1A", schoolYear: "2026-2027" },
+    membership: { status: "pending", requestedAt },
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => activeUser()],
+    [classroomJoinRequestService, "submitJoinRequest", async () => result],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/classrooms/join", {
+      method: "POST", token: authToken(1, "student"), body: { classCode: "ABC234" },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload, {
+      changed: false,
+      membership: {
+        status: "pending",
+        requestedAt: requestedAt.toISOString(),
+      },
+      classroom: {
+        id: 9,
+        className: "C# Fundamentals",
+        section: "BSIT 1A",
+        schoolYear: "2026-2027",
+      },
+      message: "Join request is already awaiting teacher approval",
+    });
+  });
+});
+
+test("POST /api/classrooms/join distinguishes an already-active membership", async () => {
+  const joinedAt = new Date("2026-09-01T08:00:00.000Z");
+
+  await withStubs([
+    [User, "findByPk", async () => activeUser()],
+    [classroomJoinRequestService, "submitJoinRequest", async () => ({
+      changed: false,
+      created: false,
+      classroom: { id: 9, className: "C# Fundamentals", section: "BSIT 1A", schoolYear: "2026-2027" },
+      membership: { status: "active", joinedAt, requestedAt: new Date("2026-08-01T00:00:00.000Z") },
+    })],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/classrooms/join", {
+      method: "POST", token: authToken(1, "student"), body: { classCode: "ABC234" },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload.membership, { status: "active", joinedAt: joinedAt.toISOString() });
+    assert.equal(payload.message, "You are already an active member of this classroom");
+  });
+});
+
+test("POST /api/classrooms/join maps join-request service errors", async () => {
+  await withStubs([
+    [User, "findByPk", async () => activeUser()],
+    [classroomJoinRequestService, "submitJoinRequest", async () => {
+      throw new classroomJoinRequestService.ClassroomJoinRequestError(
+        404,
+        "CLASSROOM_NOT_FOUND",
+        "Classroom not found for this code",
+      );
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/classrooms/join", {
+      method: "POST", token: authToken(1, "student"), body: { classCode: "ABC234" },
+    });
+    assert.equal(response.status, 404);
+    assert.deepEqual(payload, {
+      message: "Classroom not found for this code",
+      code: "CLASSROOM_NOT_FOUND",
+    });
+  });
+});
+
+test("teacher direct-add activates matched students under the classroom transaction", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, maxStudents: 2, isActive: true };
+  const student = { id: 7, username: "student-seven" };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let created;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [User, "findAll", async () => [student]],
+    [Classroom, "findByPk", async () => classroom],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [ClassroomMembership, "findOne", async (options) => {
+      assert.equal(options.transaction, transaction);
+      return null;
+    }],
+    [ClassroomMembership, "count", async () => 0],
+    [ClassroomMembership, "create", async (values, options) => {
+      assert.equal(options.transaction, transaction);
+      created = values;
+      return values;
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students", {
+      method: "POST", token: authToken(4, "teacher"), body: { studentIds: [7] },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(payload.activatedCount, 1);
+    assert.equal(payload.totalMatchedStudents, 1);
+    assert.equal(created.studentId, 7);
+    assert.equal(created.status, "active");
+  });
+});
+
+test("teacher direct-add enforces capacity without changing an existing non-active row", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, maxStudents: 1, isActive: true };
+  const membership = {
+    id: 2, classroomId: 25, studentId: 7, status: "removed", joinedAt: new Date("2026-09-01T00:00:00Z"),
+    save: async () => assert.fail("full classroom must not reactivate the membership"),
+  };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [User, "findAll", async () => [{ id: 7, username: "student-seven" }]],
+    [Classroom, "findByPk", async () => classroom],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [ClassroomMembership, "findOne", async () => membership],
+    [ClassroomMembership, "count", async () => 1],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students", {
+      method: "POST", token: authToken(4, "teacher"), body: { studentIds: [7] },
+    });
+    assert.equal(response.status, 409);
+    assert.equal(payload.message, "This classroom is already full");
+    assert.equal(membership.status, "removed");
+  });
+});
+
+test("teacher direct-add rejects an inactive classroom without creating a membership", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, maxStudents: 30, isActive: false };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let membershipReads = 0;
+  let membershipWrites = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [User, "findAll", async () => [{ id: 7, username: "student-seven" }]],
+    [Classroom, "findByPk", async () => classroom],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [ClassroomMembership, "findOne", async () => { membershipReads += 1; return null; }],
+    [ClassroomMembership, "count", async () => 0],
+    [ClassroomMembership, "create", async (values) => { membershipWrites += 1; return values; }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students", {
+      method: "POST", token: authToken(4, "teacher"), body: { studentIds: [7] },
+    });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(payload, { message: "Classroom is inactive" });
+    assert.equal(membershipReads, 0);
+    assert.equal(membershipWrites, 0);
+  });
+});
+
+test("teacher direct-add cannot reactivate a non-active membership in an inactive classroom", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, maxStudents: 30, isActive: false };
+  const joinedAt = new Date("2026-09-01T08:00:00.000Z");
+  const updatedAt = new Date("2026-10-01T08:00:00.000Z");
+  const membership = {
+    id: 2,
+    classroomId: 25,
+    studentId: 7,
+    status: "removed",
+    joinedAt,
+    updatedAt,
+    save: async () => assert.fail("inactive classroom must not reactivate the membership"),
+  };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let membershipReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [User, "findAll", async () => [{ id: 7, username: "student-seven" }]],
+    [Classroom, "findByPk", async () => classroom],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [ClassroomMembership, "findOne", async () => { membershipReads += 1; return membership; }],
+    [ClassroomMembership, "count", async () => 0],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students", {
+      method: "POST", token: authToken(4, "teacher"), body: { studentIds: [7] },
+    });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(payload, { message: "Classroom is inactive" });
+    assert.equal(membershipReads, 0);
+    assert.equal(membership.status, "removed");
+    assert.equal(membership.joinedAt, joinedAt);
+    assert.equal(membership.updatedAt, updatedAt);
+  });
+});
+
+test("teacher direct-add rejects an inactive batch before any partial membership writes", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, maxStudents: 30, isActive: false };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  const createdStudentIds = [];
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [User, "findAll", async () => [
+      { id: 7, username: "student-seven" },
+      { id: 8, username: "student-eight" },
+    ]],
+    [Classroom, "findByPk", async () => classroom],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [ClassroomMembership, "findOne", async () => null],
+    [ClassroomMembership, "count", async () => 0],
+    [ClassroomMembership, "create", async (values) => {
+      createdStudentIds.push(values.studentId);
+      return values;
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students", {
+      method: "POST", token: authToken(4, "teacher"), body: { studentIds: [7, 8] },
+    });
+
+    assert.equal(response.status, 409);
+    assert.deepEqual(payload, { message: "Classroom is inactive" });
+    assert.deepEqual(createdStudentIds, []);
+  });
+});
+
+test("teacher direct-add rechecks locked ownership before inactive state or membership data", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const initiallyOwned = { id: 25, teacherId: 4, maxStudents: 30, isActive: true };
+  const lockedForeign = { id: 25, teacherId: 99, maxStudents: 30, isActive: false };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let classroomReads = 0;
+  let membershipReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [User, "findAll", async () => [{ id: 7, username: "student-seven" }]],
+    [Classroom, "findByPk", async () => {
+      classroomReads += 1;
+      return classroomReads === 1 ? initiallyOwned : lockedForeign;
+    }],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [ClassroomMembership, "findOne", async () => { membershipReads += 1; return null; }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students", {
+      method: "POST", token: authToken(4, "teacher"), body: { studentIds: [7] },
+    });
+
+    assert.equal(response.status, 403);
+    assert.deepEqual(payload, { message: "You are not allowed to update this classroom" });
+    assert.equal(membershipReads, 0);
   });
 });
 
@@ -2870,6 +3256,454 @@ test("teacher classroom controls enforce ownership and preserve removed membersh
   });
 });
 
+test("teacher membership PATCH reactivates pending rejected and removed rows under the shared lock", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true, maxStudents: 5 };
+
+  for (const sourceStatus of ["pending", "rejected", "removed"]) {
+    const joinedAt = sourceStatus === "pending" ? null : new Date("2026-09-01T08:00:00.000Z");
+    const membership = {
+      classroomId: 25,
+      studentId: 7,
+      status: sourceStatus,
+      joinedAt,
+      updatedAt: new Date("2026-10-01T08:00:00.000Z"),
+      save: async function save(options) {
+        assert.equal(options.transaction.id, "membership-reactivation");
+      },
+    };
+    const transaction = { id: "membership-reactivation", LOCK: { UPDATE: "UPDATE" } };
+    let classroomReads = 0;
+
+    await withStubs([
+      [User, "findByPk", async () => teacher],
+      [sequelize, "transaction", async (callback) => callback(transaction)],
+      [Classroom, "findByPk", async (id, options) => {
+        classroomReads += 1;
+        assert.equal(Number(id), 25);
+        if (options) {
+          assert.equal(options.transaction, transaction);
+          assert.equal(options.lock, "UPDATE");
+        }
+        return classroom;
+      }],
+      [ClassroomMembership, "findOne", async (options) => {
+        assert.deepEqual(options.where, { classroomId: 25, studentId: 7 });
+        assert.equal(options.transaction, transaction);
+        assert.equal(options.lock, "UPDATE");
+        return membership;
+      }],
+      [ClassroomMembership, "count", async (options) => {
+        assert.deepEqual(options.where, { classroomId: 25, status: "active" });
+        assert.equal(options.transaction, transaction);
+        return 1;
+      }],
+    ], async () => {
+      const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students/7", {
+        method: "PATCH", token: authToken(4, "teacher"), body: { status: "active" },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(payload.message, "Student membership reactivated");
+      assert.deepEqual(payload.membership, { classroomId: 25, studentId: 7, status: "active" });
+      assert.equal(classroomReads, 2);
+      assert.equal(membership.status, "active");
+      if (joinedAt) assert.equal(membership.joinedAt, joinedAt);
+      else assert.ok(membership.joinedAt instanceof Date);
+    });
+  }
+});
+
+test("teacher membership PATCH rejects reactivation at capacity without changing membership state", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true, maxStudents: 1 };
+  const joinedAt = new Date("2026-09-01T08:00:00.000Z");
+  const membership = {
+    classroomId: 25, studentId: 7, status: "removed", joinedAt,
+    save: async () => assert.fail("capacity rejection must not save"),
+  };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [Classroom, "findByPk", async () => classroom],
+    [ClassroomMembership, "findOne", async () => membership],
+    [ClassroomMembership, "count", async () => 1],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students/7", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { status: "active" },
+    });
+    assert.equal(response.status, 409);
+    assert.equal(payload.message, "This classroom is already full");
+    assert.equal(membership.status, "removed");
+    assert.equal(membership.joinedAt, joinedAt);
+  });
+});
+
+test("teacher membership PATCH keeps an active membership unchanged at capacity", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true, maxStudents: 1 };
+  const joinedAt = new Date("2026-09-01T08:00:00.000Z");
+  const updatedAt = new Date("2026-10-01T08:00:00.000Z");
+  const membership = {
+    classroomId: 25, studentId: 7, status: "active", joinedAt, updatedAt,
+    save: async () => assert.fail("active no-op must not save"),
+  };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let countCalls = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [Classroom, "findByPk", async () => classroom],
+    [ClassroomMembership, "findOne", async () => membership],
+    [ClassroomMembership, "count", async () => { countCalls += 1; return 1; }],
+  ], async () => {
+    const { response } = await apiRequest("/api/teacher/classrooms/25/students/7", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { status: "active" },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(countCalls, 0);
+    assert.equal(membership.joinedAt, joinedAt);
+    assert.equal(membership.updatedAt, updatedAt);
+  });
+});
+
+test("teacher membership PATCH rejects inactive classrooms before reading membership state", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: false, maxStudents: 5 };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let membershipReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [Classroom, "findByPk", async () => classroom],
+    [ClassroomMembership, "findOne", async () => { membershipReads += 1; return null; }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students/7", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { status: "active" },
+    });
+    assert.equal(response.status, 409);
+    assert.equal(payload.message, "Classroom is inactive");
+    assert.equal(membershipReads, 0);
+  });
+});
+
+test("teacher membership PATCH preserves exact identity and missing-membership errors", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true, maxStudents: 5 };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [Classroom, "findByPk", async () => classroom],
+    [ClassroomMembership, "findOne", async (options) => {
+      assert.deepEqual(options.where, { classroomId: 25, studentId: 999 });
+      return null;
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students/999", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { status: "active" },
+    });
+    assert.equal(response.status, 404);
+    assert.equal(payload.message, "Classroom membership not found");
+  });
+});
+
+test("teacher membership PATCH rechecks ownership under the classroom lock", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const initiallyOwned = { id: 25, teacherId: 4, isActive: true, maxStudents: 5 };
+  const lockedForeign = { ...initiallyOwned, teacherId: 99 };
+  const transaction = { LOCK: { UPDATE: "UPDATE" } };
+  let classroomReads = 0;
+  let membershipReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [sequelize, "transaction", async (callback) => callback(transaction)],
+    [Classroom, "findByPk", async () => {
+      classroomReads += 1;
+      return classroomReads === 1 ? initiallyOwned : lockedForeign;
+    }],
+    [ClassroomMembership, "findOne", async () => { membershipReads += 1; return null; }],
+  ], async () => {
+    const { response, payload } = await apiRequest("/api/teacher/classrooms/25/students/7", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { status: "active" },
+    });
+    assert.equal(response.status, 403);
+    assert.equal(payload.message, "You are not allowed to update this classroom");
+    assert.equal(membershipReads, 0);
+  });
+});
+
+test("owner lists only pending classroom join requests with bounded deterministic pagination", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true };
+  const rows = [{
+    id: 81,
+    classroomId: 25,
+    studentId: 7,
+    status: "pending",
+    createdAt: new Date("2026-10-01T00:00:00Z"),
+    joinedAt: new Date("2026-10-01T00:00:00Z"),
+    student: {
+      id: 7,
+      firstName: "Ada",
+      lastName: "Lovelace",
+      username: "ada",
+      email: "private@example.com",
+      password: "private",
+    },
+  }];
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findByPk", async () => classroom],
+    [ClassroomMembership, "findAndCountAll", async (options) => {
+      assert.deepEqual(options.where, { classroomId: 25, status: "pending" });
+      assert.deepEqual(options.attributes, ["id", "classroomId", "studentId", "status"]);
+      assert.deepEqual(options.order, [["id", "ASC"]]);
+      assert.equal(options.limit, 2);
+      assert.equal(options.offset, 2);
+      assert.equal(options.include[0].as, "student");
+      assert.deepEqual(options.include[0].attributes, ["id", "firstName", "lastName", "username"]);
+      return { count: 5, rows };
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest(
+      "/api/teacher/classrooms/25/join-requests?page=2&limit=2",
+      { token: authToken(4, "teacher") },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload, {
+      total: 5,
+      page: 2,
+      limit: 2,
+      totalPages: 3,
+      requests: [{
+        id: 81,
+        classroomId: 25,
+        studentId: 7,
+        status: "pending",
+        student: { id: 7, firstName: "Ada", lastName: "Lovelace", username: "ada" },
+      }],
+    });
+  });
+});
+
+test("join-request listing denies unauthenticated students foreign teachers and foreign admins", async () => {
+  const users = new Map([
+    [1, activeUser({ id: 1, role: "student" })],
+    [5, activeUser({ id: 5, role: "teacher" })],
+    [7, activeUser({ id: 7, role: "admin" })],
+  ]);
+  let requestReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async (id) => users.get(Number(id))],
+    [Classroom, "findByPk", async () => ({ id: 25, teacherId: 4, isActive: true })],
+    [ClassroomMembership, "findAndCountAll", async () => { requestReads += 1; return { count: 0, rows: [] }; }],
+  ], async () => {
+    const unauthenticated = await apiRequest("/api/teacher/classrooms/25/join-requests");
+    assert.equal(unauthenticated.response.status, 401);
+
+    const student = await apiRequest("/api/teacher/classrooms/25/join-requests", {
+      token: authToken(1, "student"),
+    });
+    assert.equal(student.response.status, 403);
+
+    for (const [id, role] of [[5, "teacher"], [7, "admin"]]) {
+      const foreign = await apiRequest("/api/teacher/classrooms/25/join-requests", {
+        token: authToken(id, role),
+      });
+      assert.equal(foreign.response.status, 403);
+    }
+    assert.equal(requestReads, 0);
+  });
+});
+
+test("join-request listing strictly validates IDs page and limit", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  let classroomReads = 0;
+  let requestReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findByPk", async () => { classroomReads += 1; return { id: 25, teacherId: 4 }; }],
+    [ClassroomMembership, "findAndCountAll", async () => { requestReads += 1; return { count: 0, rows: [] }; }],
+  ], async () => {
+    for (const path of [
+      "/api/teacher/classrooms/0/join-requests",
+      "/api/teacher/classrooms/-1/join-requests",
+      "/api/teacher/classrooms/1.5/join-requests",
+      "/api/teacher/classrooms/9007199254740992/join-requests",
+      "/api/teacher/classrooms/25/join-requests?page=0",
+      "/api/teacher/classrooms/25/join-requests?page=1.5",
+      "/api/teacher/classrooms/25/join-requests?page=abc",
+      "/api/teacher/classrooms/25/join-requests?page=9007199254740991&limit=100",
+      "/api/teacher/classrooms/25/join-requests?limit=0",
+      "/api/teacher/classrooms/25/join-requests?limit=101",
+      "/api/teacher/classrooms/25/join-requests?limit=1.5",
+    ]) {
+      const { response } = await apiRequest(path, { token: authToken(4, "teacher") });
+      assert.equal(response.status, 400, path);
+    }
+    assert.equal(classroomReads, 0);
+    assert.equal(requestReads, 0);
+  });
+});
+
+test("owner approves and rejects exact join requests through the decision service", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true };
+  const calls = [];
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findByPk", async () => classroom],
+    [classroomMembershipDecisionService, "decidePendingMembership", async (input) => {
+      calls.push(input);
+      return {
+        changed: true,
+        decision: input.decision,
+        membership: {
+          id: 81,
+          classroomId: input.classroomId,
+          studentId: input.studentId,
+          status: input.decision === "approve" ? "active" : "rejected",
+          joinedAt: input.decision === "approve" ? new Date("2026-10-22T08:00:00Z") : null,
+          updatedAt: new Date("2026-10-22T08:00:00Z"),
+          student: { email: "must-not-leak@example.com" },
+          dataValues: { secret: true },
+        },
+      };
+    }],
+  ], async () => {
+    for (const decision of ["approve", "reject"]) {
+      const { response, payload } = await apiRequest(
+        "/api/teacher/classrooms/25/join-requests/7",
+        { method: "PATCH", token: authToken(4, "teacher"), body: { decision } },
+      );
+      assert.equal(response.status, 200);
+      assert.equal(payload.changed, true);
+      assert.equal(payload.decision, decision);
+      assert.equal(payload.membership.status, decision === "approve" ? "active" : "rejected");
+      assert.deepEqual(Object.keys(payload.membership).sort(), [
+        "classroomId", "id", "joinedAt", "status", "studentId", "updatedAt",
+      ]);
+    }
+  });
+  assert.deepEqual(calls, [
+    { classroomId: 25, studentId: 7, teacherId: 4, decision: "approve" },
+    { classroomId: 25, studentId: 7, teacherId: 4, decision: "reject" },
+  ]);
+});
+
+test("join-request decisions deny foreign owners before calling the decision service", async () => {
+  const users = new Map([
+    [5, activeUser({ id: 5, role: "teacher" })],
+    [7, activeUser({ id: 7, role: "admin" })],
+  ]);
+  let decisionCalls = 0;
+
+  await withStubs([
+    [User, "findByPk", async (id) => users.get(Number(id))],
+    [Classroom, "findByPk", async () => ({ id: 25, teacherId: 4, isActive: true })],
+    [classroomMembershipDecisionService, "decidePendingMembership", async () => { decisionCalls += 1; }],
+  ], async () => {
+    for (const [id, role] of [[5, "teacher"], [7, "admin"]]) {
+      const { response } = await apiRequest("/api/teacher/classrooms/25/join-requests/7", {
+        method: "PATCH", token: authToken(id, role), body: { decision: "approve" },
+      });
+      assert.equal(response.status, 403);
+    }
+    assert.equal(decisionCalls, 0);
+  });
+});
+
+test("join-request decisions strictly validate IDs and preserve the service validation error", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  let classroomReads = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findByPk", async () => { classroomReads += 1; return { id: 25, teacherId: 4 }; }],
+  ], async () => {
+    for (const path of [
+      "/api/teacher/classrooms/0/join-requests/7",
+      "/api/teacher/classrooms/25/join-requests/0",
+      "/api/teacher/classrooms/25/join-requests/1.5",
+      "/api/teacher/classrooms/25/join-requests/9007199254740992",
+    ]) {
+      const { response, payload } = await apiRequest(path, {
+        method: "PATCH", token: authToken(4, "teacher"), body: { decision: "approve" },
+      });
+      assert.equal(response.status, 400);
+      assert.equal(payload.code, "INVALID_CLASSROOM_MEMBERSHIP_DECISION");
+    }
+    assert.equal(classroomReads, 0);
+
+    const invalidDecision = await apiRequest("/api/teacher/classrooms/25/join-requests/7", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { decision: "activate" },
+    });
+    assert.equal(invalidDecision.response.status, 400);
+    assert.equal(invalidDecision.payload.code, "INVALID_CLASSROOM_MEMBERSHIP_DECISION");
+    assert.equal(invalidDecision.payload.message, "Invalid classroom membership decision");
+  });
+});
+
+test("join-request decision responses preserve idempotency and map established service errors", async () => {
+  const teacher = activeUser({ id: 4, role: "teacher" });
+  const classroom = { id: 25, teacherId: 4, isActive: true };
+  const approvedAt = new Date("2026-10-20T08:00:00Z");
+  const errors = [
+    ["approve", 409, "CLASSROOM_MEMBERSHIP_DECISION_CONFLICT", "Classroom membership request has already been decided"],
+    ["approve", 409, "CLASSROOM_CAPACITY_REACHED", "This classroom is already full"],
+    ["approve", 409, "CLASSROOM_INACTIVE", "Classroom is inactive"],
+    ["reject", 404, "CLASSROOM_MEMBERSHIP_REQUEST_NOT_FOUND", "Classroom membership request not found"],
+  ];
+  let behavior = "repeat";
+
+  await withStubs([
+    [User, "findByPk", async () => teacher],
+    [Classroom, "findByPk", async () => classroom],
+    [classroomMembershipDecisionService, "decidePendingMembership", async ({ decision }) => {
+      if (behavior === "repeat") {
+        return {
+          changed: false,
+          decision,
+          membership: {
+            id: 81, classroomId: 25, studentId: 7, status: "active",
+            joinedAt: approvedAt, updatedAt: approvedAt,
+          },
+        };
+      }
+      const [, status, code, message] = errors[Number(behavior)];
+      throw new classroomMembershipDecisionService.ClassroomMembershipDecisionError(status, code, message);
+    }],
+  ], async () => {
+    const repeated = await apiRequest("/api/teacher/classrooms/25/join-requests/7", {
+      method: "PATCH", token: authToken(4, "teacher"), body: { decision: "approve" },
+    });
+    assert.equal(repeated.response.status, 200);
+    assert.equal(repeated.payload.changed, false);
+    assert.equal(repeated.payload.membership.joinedAt, approvedAt.toISOString());
+    assert.equal(repeated.payload.membership.updatedAt, approvedAt.toISOString());
+
+    for (let index = 0; index < errors.length; index += 1) {
+      behavior = String(index);
+      const [decision, status, code, message] = errors[index];
+      const result = await apiRequest("/api/teacher/classrooms/25/join-requests/7", {
+        method: "PATCH", token: authToken(4, "teacher"), body: { decision },
+      });
+      assert.equal(result.response.status, status);
+      assert.deepEqual(result.payload, { message, code });
+    }
+  });
+});
+
 test("teacher classwork API no longer creates modules or assignments", async () => {
   const teacher = activeUser({ id: 84, role: "teacher" });
   let createCalls = 0;
@@ -3238,6 +4072,45 @@ test("forgot-password rate limiting does not disclose account existence", async 
   });
   assert.equal(limited.response.status, 429);
   assert.equal(limited.payload.message, expected);
+});
+
+test("pending membership and active membership elsewhere do not authorize exact-classroom content", async () => {
+  const studentId = 42;
+  const memberships = [{ studentId, classroomId: 7, status: "pending" }];
+  let exactChecks = 0;
+
+  await withStubs([
+    [User, "findByPk", async () => activeUser({ id: studentId, role: "student" })],
+    [ClassroomMembership, "findOne", async (options) => {
+      exactChecks += 1;
+      assert.deepEqual(options.where, {
+        studentId,
+        classroomId: 7,
+        status: "active",
+      });
+      return memberships.find((membership) => (
+        membership.studentId === options.where.studentId
+        && membership.classroomId === options.where.classroomId
+        && membership.status === options.where.status
+      )) ?? null;
+    }],
+  ], async () => {
+    const pendingOnly = await apiRequest(
+      "/api/classrooms/7/built-in-lessons/tutorial/content",
+      { token: authToken(studentId, "student") },
+    );
+    assert.equal(pendingOnly.response.status, 403);
+    assert.equal(pendingOnly.payload.code, "FORBIDDEN");
+
+    memberships.push({ studentId, classroomId: 8, status: "active" });
+    const activeElsewhere = await apiRequest(
+      "/api/classrooms/7/built-in-lessons/tutorial/content",
+      { token: authToken(studentId, "student") },
+    );
+    assert.equal(activeElsewhere.response.status, 403);
+    assert.equal(activeElsewhere.payload.code, "FORBIDDEN");
+    assert.equal(exactChecks, 2);
+  });
 });
 
 test("protected built-in lesson content route is registered without colliding with classroom routes", async () => {

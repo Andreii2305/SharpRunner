@@ -1,5 +1,12 @@
 const TOKEN_KEY = "token";
 const USER_KEY = "user";
+const AUTH_CHANGE_EVENT = "sharprunner:auth-change";
+
+const notifyAuthChange = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_CHANGE_EVENT));
+  }
+};
 
 const normalizeRole = (role) =>
   typeof role === "string" ? role.trim().toLowerCase() : "";
@@ -34,10 +41,25 @@ export const getUser = () => {
 export const setUser = (user) => {
   if (!user) {
     localStorage.removeItem(USER_KEY);
+    notifyAuthChange();
     return;
   }
 
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  notifyAuthChange();
+};
+
+export const subscribeToAuthChanges = (listener) => {
+  if (typeof window === "undefined") return () => {};
+  const onStorage = (event) => {
+    if (event.key === USER_KEY || event.key === null) listener();
+  };
+  window.addEventListener(AUTH_CHANGE_EVENT, listener);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener(AUTH_CHANGE_EVENT, listener);
+    window.removeEventListener("storage", onStorage);
+  };
 };
 
 export const getUserRole = () => normalizeRole(getUser()?.role);
@@ -61,6 +83,7 @@ export const getHomeRouteForCurrentUser = () => getHomeRouteByRole(getUserRole()
 export const clearToken = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  notifyAuthChange();
 };
 
 export const getAuthHeaders = () => {

@@ -20,6 +20,36 @@
 .tableScroll { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
 .tableScroll:focus-visible { border-radius: 6px; outline: 3px solid rgba(38,84,124,.35); outline-offset: 2px; }
 .studentRosterTable { min-width: 760px; }
+.joinRequests { display: grid; gap: 12px; margin-bottom: 22px; padding-bottom: 20px; border-bottom: 1px solid #e2e8f0; }
+.joinRequestsHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.joinRequestsHeader h2 { margin: 0 0 3px; color: #1e3a5f; font-size: var(--teacher-text-lg); }
+.joinRequestsHeader h2:focus-visible { border-radius: 4px; outline: 3px solid rgba(38,84,124,.35); outline-offset: 3px; }
+.joinRequestsHeader p, .joinRequestsHeader > span { margin: 0; color: #64748b; font-size: var(--teacher-text-sm); }
+.joinRequestLoading { padding: 18px 0; color: #64748b; font-size: var(--teacher-text-md); }
+.joinRequestEmpty { min-height: 110px; display: grid; place-items: center; align-content: center; gap: 5px; color: #64748b; text-align: center; }
+.joinRequestEmpty svg { color: #94a3b8; font-size: 24px; }
+.joinRequestEmpty strong { color: #1e3a5f; font-size: var(--teacher-text-md); }
+.joinRequestEmpty span { font-size: var(--teacher-text-sm); }
+.joinRequestList { display: grid; overflow: hidden; border: 1px solid #dbe4ed; border-radius: 9px; }
+.joinRequestRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; background: #fff; }
+.joinRequestRow + .joinRequestRow { border-top: 1px solid #e7edf4; }
+.joinRequestRow > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.joinRequestRow strong { overflow: hidden; color: #1e3a5f; font-size: var(--teacher-text-md); text-overflow: ellipsis; white-space: nowrap; }
+.joinRequestRow span { overflow: hidden; color: #64748b; font-size: var(--teacher-text-sm); text-overflow: ellipsis; white-space: nowrap; }
+.joinRequestActions { flex: 0 0 auto; display: flex; gap: 7px; }
+.joinRequestActions button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 10px; border-radius: 7px; cursor: pointer; font: inherit; font-size: var(--teacher-text-sm); font-weight: 700; }
+.joinRequestActions button:focus-visible, .joinRequestPagination button:focus-visible { outline: 3px solid rgba(38,84,124,.35); outline-offset: 2px; }
+.joinRequestActions button:disabled { opacity: .58; cursor: wait; }
+.joinRequestApprove { border: 1px solid #9ac8ac; background: #f4fbf6; color: #176638; }
+.joinRequestApprove:hover:not(:disabled) { border-color: #5d9e76; background: #eaf7ee; }
+.joinRequestReject { border: 1px solid #e6aaa4; background: #fff; color: #a3261d; }
+.joinRequestReject:hover:not(:disabled) { border-color: #cc746c; background: #fff7f6; }
+.joinRequestNotice { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #b8d7c3; border-radius: 8px; background: #f4fbf6; color: #176638; font-size: var(--teacher-text-sm); }
+.joinRequestNotice[role="alert"] { border-color: #e9b5af; background: #fff8f7; color: #8f2118; }
+.joinRequestPagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.joinRequestPagination span { color: #64748b; font-size: var(--teacher-text-sm); }
+.joinRequestPagination button { min-height: 38px; display: inline-flex; align-items: center; gap: 4px; padding: 6px 9px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #405b74; cursor: pointer; font: inherit; font-size: var(--teacher-text-sm); font-weight: 700; }
+.joinRequestPagination button:disabled { opacity: .45; cursor: default; }
 .analyticsGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .analyticsGrid > div { padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background: #f8fafc; display: flex; flex-direction: column; gap: 7px; color: #2563eb; }
 .analyticsGrid strong { color: #1e3a5f; font-size: 26px; }
@@ -168,4 +198,4 @@
   .headerActions > button { flex: 1 1 140px; min-height: 44px; justify-content: center; white-space: normal; }
   .rosterScrollHint { display: block; }
 }
-@media (max-width: 600px) { .tabs { width: 100%; } .tab, .tabActive { flex: 1; justify-content: center; padding-inline: 8px; } .analyticsGrid, .managementGrid, .settingsGrid, .audienceList { grid-template-columns: 1fr; } .classSummary { padding: 13px 14px; } .summaryStats div { flex: 1 1 110px; min-width: 0; } }
+@media (max-width: 600px) { .tabs { width: 100%; } .tab, .tabActive { flex: 1; justify-content: center; padding-inline: 8px; } .analyticsGrid, .managementGrid, .settingsGrid, .audienceList { grid-template-columns: 1fr; } .classSummary { padding: 13px 14px; } .summaryStats div { flex: 1 1 110px; min-width: 0; } .joinRequestRow { align-items: stretch; flex-direction: column; } .joinRequestActions { width: 100%; } .joinRequestActions button { flex: 1; } .joinRequestPagination { justify-content: space-between; } }

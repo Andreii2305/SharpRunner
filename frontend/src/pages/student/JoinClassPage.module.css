@@ -8,7 +8,7 @@
 }
 
 .card {
-  width: min(460px, 100%);
+  width: min(680px, 100%);
   background: #ffffff;
   border: 1px solid #d9e1ea;
   border-radius: 14px;
@@ -124,8 +124,135 @@
 
 .success {
   margin: 12px 0 0;
-  color: #06d6a0;
+  color: #087b5b;
   font-size: 0.88rem;
+}
+
+.info,
+.warning {
+  margin: 12px 0 0;
+  color: #36576f;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.warning {
+  color: #8a5a00;
+}
+
+.activeNotice,
+.errorPanel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0;
+  border: 1px solid #b9dacd;
+  border-radius: 10px;
+  background: #f3faf7;
+  padding: 12px;
+}
+
+.activeNotice p,
+.errorPanel p {
+  margin: 0;
+}
+
+.errorPanel {
+  border-color: #efc2cd;
+  background: #fff8fa;
+  color: #b42d50;
+}
+
+.statusSection {
+  margin: 20px 0;
+  border-top: 1px solid #d9e1ea;
+  border-bottom: 1px solid #d9e1ea;
+  padding: 18px 0;
+}
+
+.statusHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.statusHeader h2 {
+  margin: 0;
+  color: #1e3d5b;
+  font-size: 1.08rem;
+}
+
+.statusHeader p {
+  margin: 4px 0 0;
+  color: #6b7580;
+  font-size: 0.82rem;
+}
+
+.requestList {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.requestItem {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+  border: 1px solid #d9e1ea;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.requestItem h3,
+.requestItem p {
+  margin: 0;
+}
+
+.requestItem h3 {
+  color: #253f57;
+  font-size: 0.96rem;
+}
+
+.requestItem p {
+  margin-top: 4px;
+  color: #687480;
+  font-size: 0.8rem;
+}
+
+.requestStatus {
+  display: grid;
+  gap: 3px;
+  color: #405568;
+  font-size: 0.82rem;
+}
+
+.requestStatus strong {
+  color: #26547c;
+}
+
+.secondaryButton {
+  flex: 0 0 auto;
+  border: 1px solid #9bb1c5;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #26547c;
+  font-weight: 600;
+  padding: 8px 11px;
+  cursor: pointer;
+}
+
+.secondaryButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.secondaryButton:focus-visible {
+  outline: 3px solid rgba(38, 84, 124, 0.2);
+  outline-offset: 2px;
 }
 
 @media (max-width: 600px) {
@@ -139,5 +266,21 @@
 
   .card h1 {
     font-size: 1.45rem;
+  }
+
+  .statusHeader,
+  .activeNotice,
+  .errorPanel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .requestItem {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .secondaryButton {
+    width: 100%;
   }
 }

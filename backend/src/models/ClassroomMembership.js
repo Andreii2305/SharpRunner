@@ -17,13 +17,18 @@ const ClassroomMembership = sequelize.define(
       allowNull: false,
       defaultValue: "active",
       validate: {
-        isIn: [["active", "pending", "removed"]],
+        isIn: [["active", "pending", "removed", "rejected"]],
       },
     },
     joinedAt: {
       type: DataTypes.DATE,
       allowNull: true,
       defaultValue: DataTypes.NOW,
+    },
+    requestedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
     },
   },
   {

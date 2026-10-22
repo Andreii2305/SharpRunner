@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE "ClassroomMemberships"
+  ADD COLUMN IF NOT EXISTS "requestedAt" TIMESTAMPTZ NULL;
+
+COMMIT;

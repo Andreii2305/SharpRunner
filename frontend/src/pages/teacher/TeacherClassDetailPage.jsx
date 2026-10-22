@@ -13,6 +13,7 @@ import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
 import detailStyles from "./TeacherClassDetailPage.module.css";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
+import TeacherJoinRequests from "./TeacherJoinRequests.jsx";
 import { DEFAULT_UPLOAD_POLICY, normalizeUploadPolicy, validateUploadFiles } from "../../utils/uploadPolicy.js";
 import {
   createClassroomIdentityTracker,
@@ -215,24 +216,32 @@ function TeacherClassDetailPage() {
     [],
   );
 
-  const loadRoster = useCallback(async () => {
+  const loadRoster = useCallback(async (expectedClassroomId = null) => {
     const classroomScope = classroomIdentityTrackerRef.current.capture();
     const requestClassroomId = classroomScope.identity;
-    if (!isActiveClassroom(classroomScope)) return;
+    const expectedIdentity = ["string", "number"].includes(typeof expectedClassroomId)
+      ? `${expectedClassroomId}`
+      : null;
+    if (
+      !isActiveClassroom(classroomScope)
+      || (expectedIdentity != null && expectedIdentity !== requestClassroomId)
+    ) return false;
     const token = rosterFenceRef.current.begin(requestClassroomId);
     setRosterState((current) => ({ ...current, status: "loading", error: "" }));
     try {
       const response = await axios.get(buildApiUrl(`/api/teacher/classrooms/${requestClassroomId}/students`), { headers: getAuthHeaders() });
-      if (!rosterFenceRef.current.isCurrent(token)) return;
+      if (!rosterFenceRef.current.isCurrent(token)) return false;
       if (!isExactClassroomPayload(response.data, requestClassroomId)) throw new Error("Classroom identity could not be verified.");
       const students = getRequiredCollection(response.data, "students");
       if (!students) throw new Error("The classroom roster response was incomplete.");
       setClassroom(response.data.classroom);
       setStudents(students);
       setRosterState({ status: "success", error: "", hasData: true });
+      return true;
     } catch (error) {
-      if (!rosterFenceRef.current.isCurrent(token)) return;
+      if (!rosterFenceRef.current.isCurrent(token)) return false;
       setRosterState((current) => ({ ...current, status: "error", error: error.response?.data?.message ?? error.message ?? "Failed to load students." }));
+      return false;
     }
   }, [isActiveClassroom]);
 
@@ -808,6 +817,9 @@ function TeacherClassDetailPage() {
           />
 
           <ClassroomSectionPanel idBase={sectionTabsId} activeTab={activeTab} className={detailStyles.contentCard}>
+            {activeTab === "students" && hasClassroomIdentity && (
+              <TeacherJoinRequests classroomId={classroomId} onRosterRefresh={loadRoster} />
+            )}
             {activeSectionState.status === "loading" && !activeSectionState.hasData && (activeTab === "lessons" ? <div className={detailStyles.skeletonGrid}>{[1, 2, 3].map((item) => <span key={item} />)}</div> : <div className={styles.loadingText}>Loading {activeSectionLabel}…</div>)}
             {activeSectionState.status === "error" && (
               <div className={detailStyles.sectionState} role="alert">

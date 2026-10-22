@@ -43,6 +43,8 @@ const {
   lessonPerformanceCsvData,
   studentPerformanceCsvData,
 } = require("../services/teacherAnalyticsExportService");
+const classroomEnrollmentService = require("../services/classroomEnrollmentService");
+const classroomMembershipDecisionService = require("../services/classroomMembershipDecisionService");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -93,6 +95,39 @@ const parsePositiveInteger = (value) => {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : null;
 };
+
+const parseStrictPagination = (query, defaultLimit = 20) => {
+  const parseValue = (value, fallback, maximum = Number.MAX_SAFE_INTEGER) => {
+    if (value === undefined) return fallback;
+    if (typeof value !== "string" || !/^[1-9]\d*$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed <= maximum ? parsed : null;
+  };
+  const page = parseValue(query.page, 1);
+  const limit = parseValue(query.limit, defaultLimit, 100);
+  if (!page || !limit) return null;
+  const offset = (page - 1) * limit;
+  if (!Number.isSafeInteger(offset)) return null;
+  return { page, limit, offset };
+};
+
+const invalidMembershipDecisionResponse = (res) => res.status(400).json({
+  message: "Invalid classroom membership decision",
+  code: "INVALID_CLASSROOM_MEMBERSHIP_DECISION",
+});
+
+const serializeMembershipDecision = (result) => ({
+  changed: result.changed,
+  decision: result.decision,
+  membership: {
+    id: result.membership.id,
+    classroomId: result.membership.classroomId,
+    studentId: result.membership.studentId,
+    status: result.membership.status,
+    joinedAt: result.membership.joinedAt ?? null,
+    updatedAt: result.membership.updatedAt ?? null,
+  },
+});
 
 const getLessonKeyFromLevelKey = (levelKey) => {
   const normalized = normalizeString(levelKey).toLowerCase();
@@ -988,31 +1023,46 @@ router.post("/classrooms/:classroomId/students", async (req, res) => {
       return res.status(404).json({ message: "No matching active students found" });
     }
 
-    let activatedCount = 0;
-    for (const student of students) {
-      const existingMembership = await ClassroomMembership.findOne({
-        where: {
-          classroomId,
-          studentId: student.id,
-        },
-      });
+    const activatedCount = await classroomEnrollmentService.withLockedClassroom(
+      classroomId,
+      async ({ classroom: lockedClassroom, transaction }) => {
+        if (!lockedClassroom) {
+          throw new classroomEnrollmentService.ClassroomEnrollmentError(
+            404,
+            "CLASSROOM_NOT_FOUND",
+            "Classroom not found",
+          );
+        }
+        if (req.userRole !== "admin" && lockedClassroom.teacherId !== req.userId) {
+          throw new classroomEnrollmentService.ClassroomEnrollmentError(
+            403,
+            "CLASSROOM_UPDATE_FORBIDDEN",
+            "You are not allowed to update this classroom",
+          );
+        }
+        if (lockedClassroom.isActive !== true) {
+          throw new classroomEnrollmentService.ClassroomEnrollmentError(
+            409,
+            "CLASSROOM_INACTIVE",
+            "Classroom is inactive",
+          );
+        }
 
-      if (!existingMembership) {
-        await ClassroomMembership.create({
-          classroomId,
-          studentId: student.id,
-          status: "active",
-        });
-        activatedCount += 1;
-        continue;
-      }
-
-      if (existingMembership.status !== "active") {
-        existingMembership.status = "active";
-        await existingMembership.save();
-        activatedCount += 1;
-      }
-    }
+        let count = 0;
+        const uniqueStudentIds = [...new Set(students.map((student) => student.id))]
+          .sort((left, right) => left - right);
+        for (const studentId of uniqueStudentIds) {
+          const result = await classroomEnrollmentService.activateMembershipInTransaction({
+            classroom: lockedClassroom,
+            studentId,
+            transaction,
+            setJoinedAtOnReactivation: false,
+          });
+          if (result.changed) count += 1;
+        }
+        return count;
+      },
+    );
 
     return res.json({
       message: "Students added to classroom",
@@ -1020,6 +1070,96 @@ router.post("/classrooms/:classroomId/students", async (req, res) => {
       totalMatchedStudents: students.length,
     });
   } catch (error) {
+    if (error instanceof classroomEnrollmentService.ClassroomEnrollmentError) {
+      return res.status(error.status).json({ message: error.message });
+    }
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/classrooms/:classroomId/join-requests", async (req, res) => {
+  try {
+    const classroomId = parsePositiveInteger(req.params.classroomId);
+    const pagination = parseStrictPagination(req.query);
+    if (!classroomId) {
+      return res.status(400).json({ message: "Invalid classroom id" });
+    }
+    if (!pagination) {
+      return res.status(400).json({ message: "Invalid pagination" });
+    }
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (Number(classroom.teacherId) !== Number(req.userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const result = await ClassroomMembership.findAndCountAll({
+      where: { classroomId, status: "pending" },
+      attributes: ["id", "classroomId", "studentId", "status"],
+      include: [{
+        model: User,
+        as: "student",
+        required: true,
+        attributes: ["id", "firstName", "lastName", "username"],
+      }],
+      distinct: true,
+      order: [["id", "ASC"]],
+      limit: pagination.limit,
+      offset: pagination.offset,
+    });
+
+    return res.json({
+      total: result.count,
+      page: pagination.page,
+      limit: pagination.limit,
+      totalPages: Math.max(1, Math.ceil(result.count / pagination.limit)),
+      requests: result.rows.map((membership) => ({
+        id: membership.id,
+        classroomId: membership.classroomId,
+        studentId: membership.studentId,
+        status: membership.status,
+        student: {
+          id: membership.student.id,
+          firstName: membership.student.firstName,
+          lastName: membership.student.lastName,
+          username: membership.student.username,
+        },
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.patch("/classrooms/:classroomId/join-requests/:studentId", async (req, res) => {
+  try {
+    const classroomId = parsePositiveInteger(req.params.classroomId);
+    const studentId = parsePositiveInteger(req.params.studentId);
+    const decision = normalizeString(req.body?.decision).toLowerCase();
+    if (!classroomId || !studentId || !["approve", "reject"].includes(decision)) {
+      return invalidMembershipDecisionResponse(res);
+    }
+
+    const classroom = await Classroom.findByPk(classroomId);
+    if (!classroom) return res.status(404).json({ message: "Classroom not found" });
+    if (Number(classroom.teacherId) !== Number(req.userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const result = await classroomMembershipDecisionService.decidePendingMembership({
+      classroomId,
+      studentId,
+      teacherId: req.userId,
+      decision,
+    });
+    return res.json(serializeMembershipDecision(result));
+  } catch (error) {
+    if (Number.isInteger(error?.status) && error?.code) {
+      return res.status(error.status).json({ message: error.message, code: error.code });
+    }
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
@@ -1044,19 +1184,74 @@ router.patch("/classrooms/:classroomId/students/:studentId", async (req, res) =>
       return res.status(400).json({ message: "status must be active or removed" });
     }
 
-    const membership = await ClassroomMembership.findOne({
-      where: { classroomId, studentId },
-    });
-    if (!membership) return res.status(404).json({ message: "Classroom membership not found" });
+    let membership;
+    if (status === "active") {
+      const activation = await classroomEnrollmentService.withLockedClassroom(
+        classroomId,
+        async ({ classroom: lockedClassroom, transaction }) => {
+          if (!lockedClassroom) {
+            throw new classroomEnrollmentService.ClassroomEnrollmentError(
+              404,
+              "CLASSROOM_NOT_FOUND",
+              "Classroom not found",
+            );
+          }
+          if (req.userRole !== "admin" && lockedClassroom.teacherId !== req.userId) {
+            throw new classroomEnrollmentService.ClassroomEnrollmentError(
+              403,
+              "CLASSROOM_UPDATE_FORBIDDEN",
+              "You are not allowed to update this classroom",
+            );
+          }
+          if (lockedClassroom.isActive !== true) {
+            throw new classroomEnrollmentService.ClassroomEnrollmentError(
+              409,
+              "CLASSROOM_INACTIVE",
+              "Classroom is inactive",
+            );
+          }
 
-    membership.status = status;
-    if (status === "active") membership.joinedAt = membership.joinedAt ?? new Date();
-    await membership.save();
+          const lockedMembership = await classroomEnrollmentService.findMembershipInTransaction({
+            classroomId,
+            studentId,
+            transaction,
+          });
+          if (!lockedMembership) {
+            throw new classroomEnrollmentService.ClassroomEnrollmentError(
+              404,
+              "CLASSROOM_MEMBERSHIP_NOT_FOUND",
+              "Classroom membership not found",
+            );
+          }
+
+          return classroomEnrollmentService.activateMembershipInTransaction({
+            classroom: lockedClassroom,
+            studentId,
+            transaction,
+            membership: lockedMembership,
+            setJoinedAtOnReactivation: false,
+            setJoinedAtIfMissingOnReactivation: true,
+          });
+        },
+      );
+      membership = activation.membership;
+    } else {
+      membership = await ClassroomMembership.findOne({
+        where: { classroomId, studentId },
+      });
+      if (!membership) return res.status(404).json({ message: "Classroom membership not found" });
+
+      membership.status = "removed";
+      await membership.save();
+    }
     return res.json({
       message: status === "active" ? "Student membership reactivated" : "Student removed from classroom",
       membership: { classroomId, studentId, status: membership.status },
     });
   } catch (error) {
+    if (error instanceof classroomEnrollmentService.ClassroomEnrollmentError) {
+      return res.status(error.status).json({ message: error.message });
+    }
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }

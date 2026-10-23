@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const crypto = require("node:crypto");
 const dns = require("node:dns").promises;
+const { Op } = require("sequelize");
 
 process.env.JWT_SECRET = "integration-test-secret-with-sufficient-length";
 process.env.DEVELOPER_SETUP_KEY = "developer-integration-key";
@@ -3828,6 +3829,11 @@ test("admin user and log endpoints return bounded pagination metadata", async ()
     [User, "findAndCountAll", async (options) => {
       assert.equal(options.limit, 2);
       assert.equal(options.offset, 2);
+      assert.equal(options.include, undefined);
+      assert.equal(options.distinct, undefined);
+      assert.deepEqual(options.order, [["createdAt", "DESC"], ["id", "DESC"]]);
+      assert.equal(options.where.role, undefined);
+      assert.equal(options.where.status[Op.ne], "archived");
       return { count: 7, rows: userRows };
     }],
   ], async () => {
@@ -3850,6 +3856,148 @@ test("admin user and log endpoints return bounded pagination metadata", async ()
     assert.equal(response.status, 200);
     assert.equal(payload.totalPages, 3);
   });
+});
+
+test("admin classroom student filtering requires admin access, a valid classroom id, and the student role", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  const student = activeUser({ id: 9, username: "student-nine", role: "student" });
+  let userQueryCalls = 0;
+  let classroomLookupCalls = 0;
+
+  await withStubs([
+    [User, "findByPk", async (id) => id === admin.id ? admin : student],
+    [User, "findAndCountAll", async () => {
+      userQueryCalls += 1;
+      return { count: 0, rows: [] };
+    }],
+    [Classroom, "findByPk", async () => {
+      classroomLookupCalls += 1;
+      return { id: 25, isActive: false };
+    }],
+  ], async () => {
+    const unauthenticated = await apiRequest("/api/admin/users?role=student&classroomId=25");
+    assert.equal(unauthenticated.response.status, 401);
+
+    const unauthorized = await apiRequest("/api/admin/users?role=student&classroomId=25", {
+      token: authToken(student.id, "student"),
+    });
+    assert.equal(unauthorized.response.status, 403);
+
+    for (const classroomId of ["0", "-1", "1.5", "abc", "9007199254740992"]) {
+      const result = await apiRequest(`/api/admin/users?role=student&classroomId=${classroomId}`, {
+        token: authToken(admin.id, "admin"),
+      });
+      assert.equal(result.response.status, 400);
+      assert.equal(result.payload.message, "Invalid classroom id");
+    }
+
+    for (const query of ["classroomId=25", "role=teacher&classroomId=25", "role=admin&classroomId=25"]) {
+      const result = await apiRequest(`/api/admin/users?${query}`, {
+        token: authToken(admin.id, "admin"),
+      });
+      assert.equal(result.response.status, 400);
+      assert.equal(result.payload.message, "Invalid role filter");
+    }
+  });
+
+  assert.equal(userQueryCalls, 0);
+  assert.equal(classroomLookupCalls, 0);
+});
+
+test("admin classroom student filtering applies active membership scope before pagination", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  const matchingUsers = [
+    activeUser({ id: 31, firstName: "Ada", username: "ada-one", status: "inactive" }),
+    activeUser({ id: 30, firstName: "Ada", username: "ada-two", status: "inactive" }),
+  ];
+  let capturedOptions;
+
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [Classroom, "findByPk", async (id, options) => {
+      assert.equal(id, 25);
+      assert.deepEqual(options.attributes, ["id"]);
+      return { id: 25, isActive: false };
+    }],
+    [User, "findAndCountAll", async (options) => {
+      capturedOptions = options;
+      return { count: 3, rows: matchingUsers };
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest(
+      "/api/admin/users?role=student&classroomId=25&search=ada&status=inactive&page=2&limit=2",
+      { token: authToken(admin.id, "admin") },
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.total, 3);
+    assert.equal(payload.page, 2);
+    assert.equal(payload.totalPages, 2);
+    assert.deepEqual(payload.users.map((user) => user.id), [31, 30]);
+  });
+
+  assert.equal(capturedOptions.where.role, "student");
+  assert.equal(capturedOptions.where.status, "inactive");
+  assert.equal(capturedOptions.where[Op.or].length, 4);
+  assert.equal(capturedOptions.limit, 2);
+  assert.equal(capturedOptions.offset, 2);
+  assert.equal(capturedOptions.distinct, true);
+  assert.equal(capturedOptions.col, "id");
+  assert.deepEqual(capturedOptions.order, [["createdAt", "DESC"], ["id", "DESC"]]);
+  assert.equal(capturedOptions.include.length, 1);
+  assert.equal(capturedOptions.include[0].model, ClassroomMembership);
+  assert.equal(capturedOptions.include[0].as, "classroomMemberships");
+  assert.equal(capturedOptions.include[0].required, true);
+  assert.deepEqual(capturedOptions.include[0].attributes, []);
+  assert.deepEqual(capturedOptions.include[0].where, { classroomId: 25, status: "active" });
+});
+
+test("admin classroom student filtering returns not found and shares its scope with CSV export", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  let listOptions;
+  let exportOptions;
+
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [Classroom, "findByPk", async (id) => id === 25 ? { id: 25, isActive: false } : null],
+    [User, "findAndCountAll", async (options) => {
+      listOptions = options;
+      return { count: 1, rows: [activeUser({ id: 44, firstName: "CSV", lastName: "Student" })] };
+    }],
+    [User, "findAll", async (options) => {
+      exportOptions = options;
+      return [activeUser({ id: 44, firstName: "CSV", lastName: "Student" })];
+    }],
+  ], async () => {
+    const missing = await apiRequest("/api/admin/users?role=student&classroomId=999", {
+      token: authToken(admin.id, "admin"),
+    });
+    assert.equal(missing.response.status, 404);
+    assert.equal(missing.payload.message, "Classroom not found");
+
+    const list = await apiRequest("/api/admin/users?role=student&classroomId=25&search=csv&status=active", {
+      token: authToken(admin.id, "admin"),
+    });
+    assert.equal(list.response.status, 200);
+
+    const exportResponse = await fetch(
+      `${baseUrl}/api/admin/users/export.csv?role=student&classroomId=25&search=csv&status=active`,
+      { headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` } },
+    );
+    const csv = await exportResponse.text();
+    assert.equal(exportResponse.status, 200);
+    assert.match(exportResponse.headers.get("content-type"), /^text\/csv/);
+    assert.match(csv, /CSV Student/);
+  });
+
+  for (const options of [listOptions, exportOptions]) {
+    assert.equal(options.where.role, "student");
+    assert.equal(options.where.status, "active");
+    assert.equal(options.where[Op.or].length, 4);
+    assert.deepEqual(options.order, [["createdAt", "DESC"], ["id", "DESC"]]);
+    assert.deepEqual(options.include[0].where, { classroomId: 25, status: "active" });
+    assert.equal(options.include[0].required, true);
+  }
 });
 
 test("admin summary reports active users and classrooms", async () => {

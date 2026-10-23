@@ -7,6 +7,16 @@ import { buildApiUrl, clearToken, getAuthHeaders, getUser } from "../../utils/au
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInviteModal.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
+import { AdminStudentClassroomFilterView } from "./AdminStudentClassroomFilter.jsx";
+import {
+  buildAdminUserFilterSnapshot,
+  buildClassroomLookupPath,
+  buildQueryString,
+  buildUserExportPath,
+  buildUserListPath,
+  createAdminFilterTransitions,
+  createLatestRequestController,
+} from "./adminStudentClassroomFilterState.js";
 import styles from "./AdminDashboardPage.module.css";
 
 const NAV_ITEMS = [["dashboard", "Dashboard", FiGrid], ["users", "Users", FiUsers], ["teachers", "Teachers", FiUserCheck], ["students", "Students", FiUsers], ["classrooms", "Classrooms", FiBookOpen], ["content", "Content", FiShield], ["audit", "Audit Logs", FiActivity], ["status", "System Status", FiActivity], ["legal", "Legal & Privacy", FiShield]];
@@ -18,8 +28,9 @@ function StatusBadge({ value }) {
   const label = value === true ? "Active" : value === false ? "Archived" : String(value || "unknown").replaceAll("_", " ");
   return <span className={`${styles.badge} ${styles[`badge_${String(value).toLowerCase()}`] || ""}`}>{label}</span>;
 }
-function Pager({ page, totalPages, total, label, onChange }) {
-  return <div className={styles.pagination}><span>{total} {label}</span><div><button type="button" disabled={page <= 1} onClick={() => onChange(page - 1)}>Previous</button><span>Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => onChange(page + 1)}>Next</button></div></div>;
+export function Pager({ page, totalPages, total, label, onChange, paginationLabel = label }) {
+  const paginationAvailable = Number.isInteger(total) && Number.isInteger(totalPages);
+  return <div className={styles.pagination}><span>{paginationAvailable ? `${total} ${label}` : "Results unavailable"}</span><div><button type="button" aria-label={`Previous ${paginationLabel} page`} disabled={!paginationAvailable || page <= 1} onClick={() => onChange(page - 1)}>Previous</button><span>{paginationAvailable ? `Page ${page} of ${totalPages}` : "Pagination unavailable"}</span><button type="button" aria-label={`Next ${paginationLabel} page`} disabled={!paginationAvailable || page >= totalPages} onClick={() => onChange(page + 1)}>Next</button></div></div>;
 }
 
 function AdminDashboardPage() {
@@ -32,8 +43,10 @@ function AdminDashboardPage() {
   const [error, setError] = useState("");
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [health, setHealth] = useState({ status: "checking", database: "checking" });
-  const [users, setUsers] = useState([]); const [userPage, setUserPage] = useState(1); const [userMeta, setUserMeta] = useState({ total: 0, totalPages: 1 });
+  const [users, setUsers] = useState([]); const [userPage, setUserPage] = useState(1); const [userMeta, setUserMeta] = useState({ total: null, totalPages: null });
   const [userFilters, setUserFilters] = useState({ search: "", status: "", role: "" });
+  const [selectedClassroom, setSelectedClassroom] = useState(null);
+  const [classroomLookup, setClassroomLookup] = useState({ options: [], search: "", page: 1, total: null, totalPages: null, status: "idle", error: "", retry: 0 });
   const [classrooms, setClassrooms] = useState([]); const [classPage, setClassPage] = useState(1); const [classMeta, setClassMeta] = useState({ total: 0, totalPages: 1 });
   const [classFilters, setClassFilters] = useState({ search: "", status: "", from: "", to: "" });
   const [content, setContent] = useState([]); const [contentPage, setContentPage] = useState(1); const [contentMeta, setContentMeta] = useState({ total: 0, totalPages: 1 });
@@ -42,26 +55,158 @@ function AdminDashboardPage() {
   const [logFilters, setLogFilters] = useState({ actor: "", target: "", action: "", from: "", to: "" });
   const [confirmAction, setConfirmAction] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deleteText, setDeleteText] = useState("");
   const [detail, setDetail] = useState(null); const [showInvite, setShowInvite] = useState(false); const [inviteBusy, setInviteBusy] = useState(false); const [inviteError, setInviteError] = useState(""); const [actionBusy, setActionBusy] = useState(false);
+  const userRequests = useMemo(() => createLatestRequestController({
+    onStart() {
+      setUsers([]);
+      setUserMeta({ total: null, totalPages: null });
+      setError("");
+      setLoading(true);
+    },
+    onSuccess(applyResponse) { applyResponse(); },
+    onError(failure) {
+      setError(failure.message);
+      if (failure.statusView) setHealth({ status: "error", database: "unavailable" });
+    },
+    onFinish() { setLoading(false); },
+  }), []);
+  const classroomRequests = useMemo(() => createLatestRequestController({
+    onStart() {
+      setClassroomLookup((current) => ({
+        ...current,
+        options: [],
+        total: null,
+        totalPages: null,
+        status: "loading",
+        error: "",
+      }));
+    },
+    onSuccess(response) {
+      setClassroomLookup((current) => ({
+        ...current,
+        options: response.classrooms || [],
+        page: response.page || current.page,
+        total: response.total,
+        totalPages: response.totalPages,
+        status: "success",
+        error: "",
+      }));
+    },
+    onError(message) {
+      setClassroomLookup((current) => ({
+        ...current,
+        options: [],
+        total: null,
+        totalPages: null,
+        status: "error",
+        error: message,
+      }));
+    },
+  }), []);
+  const filterTransitions = useMemo(() => createAdminFilterTransitions({
+    userRequests,
+    classroomRequests,
+    setActiveView,
+    setUserFilters,
+    setUserPage,
+    setSelectedClassroom,
+    setClassroomLookup,
+  }), [classroomRequests, userRequests]);
 
-  const effectiveUserFilters = useMemo(() => ({ ...userFilters, role: activeView === "teachers" ? "teacher" : activeView === "students" ? "student" : userFilters.role }), [activeView, userFilters]);
-  const queryString = (values, page) => { const params = new URLSearchParams({ page: String(page), limit: "20" }); Object.entries(values).forEach(([key, value]) => value && params.set(key, value)); return params.toString(); };
+  const effectiveUserFilters = useMemo(() => buildAdminUserFilterSnapshot({
+    activeView,
+    userFilters,
+    selectedClassroom,
+  }), [activeView, selectedClassroom, userFilters]);
   const loadDashboard = useCallback(async () => {
     const [summaryResponse, logsResponse, healthResponse] = await Promise.all([axios.get(buildApiUrl("/api/admin/summary"), api()), axios.get(buildApiUrl("/api/admin/logs?page=1&limit=8"), api()), axios.get(buildApiUrl("/api/health"))]);
-    setSummary(summaryResponse.data); setLogs(logsResponse.data.logs || []); setHealth(healthResponse.data);
+    return { summaryResponse, logsResponse, healthResponse };
   }, []);
   const refresh = useCallback(async () => {
-    setLoading(true); setError("");
-    try {
-      if (activeView === "dashboard" || activeView === "status") await loadDashboard();
-      else if (["users", "teachers", "students"].includes(activeView)) { const r = await axios.get(buildApiUrl(`/api/admin/users?${queryString(effectiveUserFilters, userPage)}`), api()); setUsers(r.data.users || []); setUserMeta(r.data); }
-      else if (activeView === "classrooms") { const r = await axios.get(buildApiUrl(`/api/admin/classrooms?${queryString(classFilters, classPage)}`), api()); setClassrooms(r.data.classrooms || []); setClassMeta(r.data); }
-      else if (activeView === "content") { const r = await axios.get(buildApiUrl(`/api/admin/content?${queryString(contentFilters, contentPage)}`), api()); setContent(r.data.content || []); setContentMeta(r.data); }
-      else if (activeView === "audit") { const r = await axios.get(buildApiUrl(`/api/admin/logs?${queryString(logFilters, logPage)}`), api()); setLogs(r.data.logs || []); setLogMeta(r.data); }
-    } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load this admin view."); if (activeView === "status") setHealth({ status: "error", database: "unavailable" }); }
-    finally { setLoading(false); }
-  }, [activeView, classFilters, classPage, contentFilters, contentPage, effectiveUserFilters, loadDashboard, logFilters, logPage, userPage]);
+    return userRequests.run(async () => {
+      if (activeView === "dashboard" || activeView === "status") {
+        const { summaryResponse, logsResponse, healthResponse } = await loadDashboard();
+        return () => {
+          setSummary(summaryResponse.data);
+          setLogs(logsResponse.data.logs || []);
+          setHealth(healthResponse.data);
+        };
+      }
+      if (["users", "teachers", "students"].includes(activeView)) {
+        const r = await axios.get(buildApiUrl(buildUserListPath(effectiveUserFilters, userPage)), api());
+        return () => {
+          setUsers(r.data.users || []);
+          setUserMeta({ total: r.data.total, totalPages: r.data.totalPages });
+        };
+      }
+      if (activeView === "classrooms") {
+        const r = await axios.get(buildApiUrl(`/api/admin/classrooms?${buildQueryString(classFilters, classPage)}`), api());
+        return () => { setClassrooms(r.data.classrooms || []); setClassMeta(r.data); };
+      }
+      if (activeView === "content") {
+        const r = await axios.get(buildApiUrl(`/api/admin/content?${buildQueryString(contentFilters, contentPage)}`), api());
+        return () => { setContent(r.data.content || []); setContentMeta(r.data); };
+      }
+      if (activeView === "audit") {
+        const r = await axios.get(buildApiUrl(`/api/admin/logs?${buildQueryString(logFilters, logPage)}`), api());
+        return () => { setLogs(r.data.logs || []); setLogMeta(r.data); };
+      }
+      return () => {};
+    }, {
+      mapError: (requestError) => ({
+        message: requestError.response?.data?.message || "Unable to load this admin view.",
+        statusView: activeView === "status",
+      }),
+    });
+  }, [activeView, classFilters, classPage, contentFilters, contentPage, effectiveUserFilters, loadDashboard, logFilters, logPage, userPage, userRequests]);
   useEffect(() => { refresh(); }, [refresh]);
-  useEffect(() => { setUserPage(1); }, [effectiveUserFilters]);
+  useEffect(() => {
+    if (activeView !== "students") {
+      classroomRequests.invalidate();
+      return undefined;
+    }
+
+    const requestGeneration = classroomRequests.begin();
+    const abortController = new AbortController();
+    axios.get(buildApiUrl(buildClassroomLookupPath({
+      search: classroomLookup.search,
+      page: classroomLookup.page,
+    })), { ...api(), signal: abortController.signal })
+      .then((response) => {
+        classroomRequests.succeed(requestGeneration, response.data);
+      })
+      .catch((requestError) => {
+        if (requestError.code === "ERR_CANCELED") return;
+        classroomRequests.fail(requestGeneration, requestError.response?.data?.message || "Unable to load classrooms.");
+      });
+
+    return () => {
+      classroomRequests.invalidate();
+      abortController.abort();
+    };
+  }, [activeView, classroomLookup.page, classroomLookup.retry, classroomLookup.search, classroomRequests]);
+  useEffect(() => () => {
+    userRequests.invalidate();
+    classroomRequests.invalidate();
+  }, [classroomRequests, userRequests]);
+
+  const changeClassroomSearch = (search) => {
+    filterTransitions.changeClassroomSearch(search);
+  };
+  const changeClassroomLookupPage = (page) => {
+    filterTransitions.changeClassroomLookupPage(page);
+  };
+  const retryClassroomLookup = () => {
+    filterTransitions.retryClassroomLookup();
+  };
+  const changeAppliedClassroom = (classroomId) => {
+    const selectedId = String(classroomId || "");
+    const nextClassroom = selectedId
+      ? [selectedClassroom, ...classroomLookup.options]
+        .find((classroom) => classroom && String(classroom.id) === selectedId)
+      : null;
+    if (selectedId && !nextClassroom) return;
+    filterTransitions.changeAppliedClassroom(nextClassroom);
+  };
 
   const runAction = async () => {
     if (!confirmAction || actionBusy) return; setActionBusy(true);
@@ -78,7 +223,16 @@ function AdminDashboardPage() {
   const openContent = async (item) => { try { const r = await axios.get(buildApiUrl(`/api/admin/content/${item.id}`), api()); setDetail({ type: "content", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load content details."); } };
   const exportCsv = async (path, filename) => { try { const r = await axios.get(buildApiUrl(path), { headers: getAuthHeaders(), responseType: "blob" }); const url = URL.createObjectURL(r.data); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); } catch { setError("CSV export failed."); } };
   const createTeacher = async (form) => { setInviteBusy(true); setInviteError(""); try { const r = await axios.post(buildApiUrl("/api/admin/users/teacher"), form, api()); toast.success(r.data.message); setShowInvite(false); await refresh(); } catch (requestError) { setInviteError(requestError.response?.data?.message || "Unable to invite teacher."); } finally { setInviteBusy(false); } };
-  const selectView = (view) => { if (view === "legal") { navigate("/legal"); return; } setActiveView(view); setDrawerOpen(false); setError(""); setDetail(null); };
+  const selectView = (view) => {
+    if (view === "legal") {
+      userRequests.invalidate();
+      classroomRequests.invalidate();
+      navigate("/legal");
+      return;
+    }
+    filterTransitions.changeView(view, activeView);
+    setDrawerOpen(false); setDetail(null);
+  };
   const signOut = () => { clearToken(); navigate("/login", { replace: true }); };
 
   const renderDashboard = () => <>
@@ -88,13 +242,14 @@ function AdminDashboardPage() {
   </>;
 
   const renderUsers = () => <>
-    <PageHeading eyebrow="Account governance" title={activeView === "teachers" ? "Teachers" : activeView === "students" ? "Students" : "Users"}><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/users/export.csv?${queryString(effectiveUserFilters, 1)}`, "sharprunner-users.csv")}><FiDownload /> Export CSV</button><button type="button" className={styles.primaryButton} onClick={() => setShowInvite(true)}><FiPlus /> Add teacher</button></PageHeading>
-    <section className={styles.card}><div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search users</span><input value={userFilters.search} onChange={(e) => setUserFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Search name, username, or email" /></label><label>Status<select value={userFilters.status} onChange={(e) => setUserFilters((v) => ({ ...v, status: e.target.value }))}><option value="">Active views</option><option value="active">Active</option><option value="pending">Pending verification</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label>{activeView === "users" && <label>Role<select value={userFilters.role} onChange={(e) => setUserFilters((v) => ({ ...v, role: e.target.value }))}><option value="">All roles</option><option value="admin">Admin</option><option value="teacher">Teacher</option><option value="student">Student</option></select></label>}</div>
-      <TableState loading={loading} error={error} empty={!users.length} emptyText="No accounts match these filters."><div className={styles.tableWrap}><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Policy</th><th>Created</th><th><span className={styles.srOnly}>Actions</span></th></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{user.firstName} {user.lastName}</strong><small>{user.email} · @{user.username}</small></td><td>{user.role === "teacher" ? "Teacher" : user.role[0].toUpperCase() + user.role.slice(1)}</td><td><StatusBadge value={user.status} /></td><td><StatusBadge value={user.policyStatus?.requiresAcceptance ? "needs_acceptance" : "current"} /></td><td>{formatDate(user.createdAt)}</td><td><UserActions user={user} openUser={openUser} setConfirmAction={setConfirmAction} setDeleteTarget={setDeleteTarget} setDeleteText={setDeleteText} /></td></tr>)}</tbody></table></div></TableState><Pager page={userPage} totalPages={userMeta.totalPages || 1} total={userMeta.total || 0} label="matching users" onChange={setUserPage} /></section>
+    <PageHeading eyebrow="Account governance" title={activeView === "teachers" ? "Teachers" : activeView === "students" ? "Students" : "Users"}><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(buildUserExportPath(effectiveUserFilters), "sharprunner-users.csv")}><FiDownload /> Export CSV</button><button type="button" className={styles.primaryButton} onClick={() => setShowInvite(true)}><FiPlus /> Add teacher</button></PageHeading>
+    <section className={styles.card}><div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search users</span><input value={userFilters.search} onChange={(e) => filterTransitions.changeUserFilter("search", e.target.value)} placeholder="Search name, username, or email" /></label><label>Status<select value={userFilters.status} onChange={(e) => filterTransitions.changeUserFilter("status", e.target.value)}><option value="">Active views</option><option value="active">Active</option><option value="pending">Pending verification</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></label>{activeView === "users" && <label>Role<select value={userFilters.role} onChange={(e) => filterTransitions.changeUserFilter("role", e.target.value)}><option value="">All roles</option><option value="admin">Admin</option><option value="teacher">Teacher</option><option value="student">Student</option></select></label>}</div>
+      {activeView === "students" && <AdminStudentClassroomFilterView selectedClassroom={selectedClassroom} options={classroomLookup.options} search={classroomLookup.search} page={classroomLookup.page} totalPages={classroomLookup.totalPages} total={classroomLookup.total} status={classroomLookup.status} error={classroomLookup.error} onSearchChange={changeClassroomSearch} onSelect={changeAppliedClassroom} onPageChange={changeClassroomLookupPage} onRetry={retryClassroomLookup} />}
+      <TableState loading={loading} error={error} empty={!users.length} emptyText="No accounts match these filters." onRetry={refresh}><div className={styles.tableWrap}><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Policy</th><th>Created</th><th><span className={styles.srOnly}>Actions</span></th></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{user.firstName} {user.lastName}</strong><small>{user.email} · @{user.username}</small></td><td>{user.role === "teacher" ? "Teacher" : user.role[0].toUpperCase() + user.role.slice(1)}</td><td><StatusBadge value={user.status} /></td><td><StatusBadge value={user.policyStatus?.requiresAcceptance ? "needs_acceptance" : "current"} /></td><td>{formatDate(user.createdAt)}</td><td><UserActions user={user} openUser={openUser} setConfirmAction={setConfirmAction} setDeleteTarget={setDeleteTarget} setDeleteText={setDeleteText} /></td></tr>)}</tbody></table></div></TableState><Pager page={userPage} totalPages={userMeta.totalPages} total={userMeta.total} label="matching users" paginationLabel={activeView === "students" ? "student results" : "user results"} onChange={filterTransitions.changeUserPage} /></section>
   </>;
 
   const renderClassrooms = () => <>
-    <PageHeading eyebrow="Read-only governance" title="Classrooms"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/classrooms/export.csv?${queryString(classFilters, 1)}`, "sharprunner-classrooms.csv")}><FiDownload /> Export CSV</button></PageHeading>
+    <PageHeading eyebrow="Read-only governance" title="Classrooms"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/classrooms/export.csv?${buildQueryString(classFilters, 1)}`, "sharprunner-classrooms.csv")}><FiDownload /> Export CSV</button></PageHeading>
     <section className={styles.card}>
       <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search classrooms</span><input value={classFilters.search} onChange={(e) => setClassFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Classroom, teacher, or email" /></label><label>Status<select value={classFilters.status} onChange={(e) => setClassFilters((v) => ({ ...v, status: e.target.value }))}><option value="">All states</option><option value="active">Active</option><option value="archived">Archived</option></select></label><label>Created from<input type="date" value={classFilters.from} onChange={(e) => setClassFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>Created to<input type="date" value={classFilters.to} onChange={(e) => setClassFilters((v) => ({ ...v, to: e.target.value }))} /></label></div>
       <TableState loading={loading} error={error} empty={!classrooms.length} emptyText="No classrooms match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Classroom</th><th>Teacher</th><th>Students</th><th>Modules</th><th>Status</th><th>Latest activity</th><th /></tr></thead><tbody>{classrooms.map((room) => <tr key={room.id}><td><strong>{room.className}</strong><small>{room.section} · {room.schoolYear}</small></td><td>{room.teacher ? <>{room.teacher.firstName} {room.teacher.lastName}<small>{room.teacher.email}</small></> : "—"}</td><td>{room.studentCount ?? 0}</td><td>{room.moduleCount ?? 0}</td><td><StatusBadge value={room.isActive} /></td><td>{formatDate(room.latestActivityAt || room.updatedAt)}</td><td><ClassroomActions room={room} openClassroom={openClassroom} setConfirmAction={setConfirmAction} /></td></tr>)}</tbody></table></div></TableState>
@@ -111,7 +266,7 @@ function AdminDashboardPage() {
     </section>
   </>;
 
-  const renderAudit = () => <><PageHeading eyebrow="Accountable administration" title="Audit logs"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/logs/export.csv?${queryString(logFilters, 1)}`, "sharprunner-audit-logs.csv")}><FiDownload /> Export CSV</button></PageHeading><section className={styles.card}><div className={styles.filters}><label>Admin actor<input value={logFilters.actor} onChange={(e) => setLogFilters((v) => ({ ...v, actor: e.target.value }))} placeholder="Username" /></label><label>Action<input value={logFilters.action} onChange={(e) => setLogFilters((v) => ({ ...v, action: e.target.value }))} placeholder="e.g. ARCHIVED" /></label><label>Affected user<input value={logFilters.target} onChange={(e) => setLogFilters((v) => ({ ...v, target: e.target.value }))} placeholder="Username" /></label><label>From<input type="date" value={logFilters.from} onChange={(e) => setLogFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>To<input type="date" value={logFilters.to} onChange={(e) => setLogFilters((v) => ({ ...v, to: e.target.value }))} /></label></div><TableState loading={loading} error={error} empty={!logs.length} emptyText="No audit records match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>Safe metadata</th><th>Status</th></tr></thead><tbody>{logs.map((log) => <tr key={log.id}><td>{formatDate(log.createdAt)}</td><td>{log.actorUsername || "System"}</td><td><strong>{log.activity}</strong></td><td>{log.targetUsername || "—"}</td><td>{log.details || "—"}</td><td><StatusBadge value={log.status} /></td></tr>)}</tbody></table></div></TableState><Pager page={logPage} totalPages={logMeta.totalPages || 1} total={logMeta.total || 0} label="audit records" onChange={setLogPage} /></section></>;
+  const renderAudit = () => <><PageHeading eyebrow="Accountable administration" title="Audit logs"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/logs/export.csv?${buildQueryString(logFilters, 1)}`, "sharprunner-audit-logs.csv")}><FiDownload /> Export CSV</button></PageHeading><section className={styles.card}><div className={styles.filters}><label>Admin actor<input value={logFilters.actor} onChange={(e) => setLogFilters((v) => ({ ...v, actor: e.target.value }))} placeholder="Username" /></label><label>Action<input value={logFilters.action} onChange={(e) => setLogFilters((v) => ({ ...v, action: e.target.value }))} placeholder="e.g. ARCHIVED" /></label><label>Affected user<input value={logFilters.target} onChange={(e) => setLogFilters((v) => ({ ...v, target: e.target.value }))} placeholder="Username" /></label><label>From<input type="date" value={logFilters.from} onChange={(e) => setLogFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>To<input type="date" value={logFilters.to} onChange={(e) => setLogFilters((v) => ({ ...v, to: e.target.value }))} /></label></div><TableState loading={loading} error={error} empty={!logs.length} emptyText="No audit records match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>Safe metadata</th><th>Status</th></tr></thead><tbody>{logs.map((log) => <tr key={log.id}><td>{formatDate(log.createdAt)}</td><td>{log.actorUsername || "System"}</td><td><strong>{log.activity}</strong></td><td>{log.targetUsername || "—"}</td><td>{log.details || "—"}</td><td><StatusBadge value={log.status} /></td></tr>)}</tbody></table></div></TableState><Pager page={logPage} totalPages={logMeta.totalPages || 1} total={logMeta.total || 0} label="audit records" onChange={setLogPage} /></section></>;
 
   const renderStatus = () => <><PageHeading eyebrow="Operational visibility" title="System status"><button className={styles.secondaryButton} type="button" onClick={refresh}><FiRefreshCw /> Run checks</button></PageHeading><div className={styles.gridTwo}><section className={styles.card}><h3>Service checks</h3><div className={styles.healthRows}><div><span>Backend API</span><StatusBadge value={health.status === "ok" ? "online" : health.status} /></div><div><span>Database</span><StatusBadge value={health.database} /></div></div><p className={styles.privacyNote}>Only non-sensitive operational status is exposed. Credentials, environment variables, and server details are never returned.</p></section><section className={styles.card}><h3>Platform totals</h3><div className={styles.healthRows}><div><span>Total users</span><strong>{summary.totalUsers}</strong></div><div><span>Active users</span><strong>{summary.activeUsers}</strong></div><div><span>Active classrooms</span><strong>{summary.activeClassrooms}</strong></div><div><span>Archived accounts</span><strong>{summary.archivedAccounts}</strong></div></div></section></div></>;
 
@@ -197,7 +352,7 @@ function UserActions({ user, openUser, setConfirmAction, setDeleteTarget, setDel
     </>}
   </RowActionMenu>;
 }
-function TableState({ loading, error, empty, emptyText, children }) { if (loading) return <div className={styles.state}><FiRefreshCw className={styles.spin} /> Loading…</div>; if (error) return <div className={`${styles.state} ${styles.stateError}`}><FiActivity />{error}</div>; if (empty) return <Empty text={emptyText} />; return children; }
+function TableState({ loading, error, empty, emptyText, children, onRetry }) { if (loading) return <div className={styles.state}><FiRefreshCw className={styles.spin} /> Loading…</div>; if (error) return <div className={`${styles.state} ${styles.stateError}`} role="alert"><FiActivity />{error}{onRetry && <button type="button" className={styles.secondaryButton} onClick={onRetry}>Retry</button>}</div>; if (empty) return <Empty text={emptyText} />; return children; }
 function Empty({ text }) { return <div className={styles.state}><FiSearch /><strong>{text}</strong><span>Try changing the current filters.</span></div>; }
 function TypedDelete({ target, text, setText, busy, onCancel, onDelete }) { return <div className={styles.modalBackdrop}><section className={styles.typedModal} role="dialog" aria-modal="true" aria-labelledby="delete-title"><h3 id="delete-title">Permanently delete user</h3><p>This cannot be undone. The archived account and related records may be removed by database cascades.</p><label>Type <strong>DELETE</strong> to continue<input autoFocus value={text} onChange={(e) => setText(e.target.value)} aria-label={`Type DELETE to permanently delete ${target.username}`} /></label><div><button type="button" className={styles.secondaryButton} onClick={onCancel} disabled={busy}>Cancel</button><button type="button" className={styles.dangerButton} onClick={onDelete} disabled={text !== "DELETE" || busy}>Delete permanently</button></div></section></div>; }
 function DetailPanel({ detail, onClose }) {

@@ -121,16 +121,55 @@ const buildUserWhere = (query) => {
   return whereClause;
 };
 
+const USER_LIST_ORDER = [["createdAt", "DESC"], ["id", "DESC"]];
+
+const buildUserQueryScope = async (query) => {
+  const whereClause = buildUserWhere(query);
+  const hasClassroomFilter = Object.prototype.hasOwnProperty.call(query, "classroomId");
+  if (!hasClassroomFilter) {
+    return { where: whereClause, order: USER_LIST_ORDER };
+  }
+
+  const rawClassroomId = query.classroomId;
+  const classroomId = typeof rawClassroomId === "string" && /^[1-9]\d*$/.test(rawClassroomId)
+    ? Number(rawClassroomId)
+    : NaN;
+  if (!Number.isSafeInteger(classroomId)) {
+    throw Object.assign(new Error("Invalid classroom id"), { statusCode: 400 });
+  }
+  if (whereClause.role !== "student") {
+    throw Object.assign(new Error("Invalid role filter"), { statusCode: 400 });
+  }
+
+  const classroom = await Classroom.findByPk(classroomId, { attributes: ["id"] });
+  if (!classroom) {
+    throw Object.assign(new Error("Classroom not found"), { statusCode: 404 });
+  }
+
+  return {
+    where: whereClause,
+    order: USER_LIST_ORDER,
+    include: [{
+      model: ClassroomMembership,
+      as: "classroomMemberships",
+      attributes: [],
+      required: true,
+      where: { classroomId, status: "active" },
+    }],
+    distinct: true,
+    col: "id",
+  };
+};
+
 router.use(authMiddleware, requireRole("admin"));
 
 router.get("/users", async (req, res) => {
   try {
-    const whereClause = buildUserWhere(req.query);
+    const queryScope = await buildUserQueryScope(req.query);
 
     const { page, limit, offset } = parsePagination(req.query, 20);
     const result = await User.findAndCountAll({
-      where: whereClause,
-      order: [["createdAt", "DESC"]],
+      ...queryScope,
       limit,
       offset,
     });
@@ -205,7 +244,7 @@ router.get("/summary", async (_req, res) => {
 
 router.get("/users/export.csv", async (req, res) => {
   try {
-    const users = await User.findAll({ where: buildUserWhere(req.query), order: [["createdAt", "DESC"]] });
+    const users = await User.findAll(await buildUserQueryScope(req.query));
     return sendCsv(res, "sharprunner-users.csv",
       ["Name", "Email", "Username", "Role", "Status", "Created At", "Last Login"],
       users.map((user) => [

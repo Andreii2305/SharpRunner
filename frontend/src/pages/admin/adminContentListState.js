@@ -9,24 +9,43 @@ export const createAdminContentRequestController = ({
   setMeta,
   setError,
   setLoading,
-}) => createLatestRequestController({
-  onStart() {
-    setContent([]);
-    setMeta({ total: null, totalPages: null });
-    setError("");
-    setLoading(true);
-  },
-  onSuccess(response) {
-    setContent(response.content || []);
-    setMeta({ total: response.total, totalPages: response.totalPages });
-  },
-  onError(message) {
-    setError(message);
-  },
-  onFinish() {
-    setLoading(false);
-  },
-});
+}) => {
+  let lifecycle = "idle";
+  const controller = createLatestRequestController({
+    onStart() {
+      lifecycle = "loading";
+      setContent([]);
+      setMeta({ total: null, totalPages: null });
+      setError("");
+      setLoading(true);
+    },
+    onSuccess(response) {
+      lifecycle = "success";
+      setContent(response.content || []);
+      setMeta({ total: response.total, totalPages: response.totalPages });
+    },
+    onError(message) {
+      lifecycle = "error";
+      setError(message);
+    },
+    onFinish() {
+      setLoading(false);
+    },
+  });
+
+  return {
+    ...controller,
+    deactivate() {
+      const interrupted = lifecycle === "loading";
+      controller.invalidate();
+      setLoading(false);
+      if (interrupted) lifecycle = "idle";
+    },
+    needsLoad() {
+      return lifecycle === "idle";
+    },
+  };
+};
 
 export const createAdminContentTransitions = ({ requests, setFilters, setPage }) => ({
   changeFilter(name, value) {

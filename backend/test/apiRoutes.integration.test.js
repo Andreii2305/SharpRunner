@@ -45,6 +45,9 @@ const officePreviewService = require("../src/services/officePreviewService");
 const customLessonLifecycle = require("../src/services/customLessonLifecycleService");
 const classroomMembershipDecisionService = require("../src/services/classroomMembershipDecisionService");
 const classroomJoinRequestService = require("../src/services/classroomJoinRequestService");
+const builtInLessonContentService = require("../src/services/builtInLessonContentService");
+const lessonProgressionService = require("../src/services/lessonProgressionService");
+const studentClassService = require("../src/services/studentClassService");
 const { derivePublicationStatus } = require("../src/services/lessonBuilderService");
 const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
 const {
@@ -4923,6 +4926,87 @@ test("admin content status validation conflicts cleanly and legacy published fil
   assert.equal(queries[0].where.isPublished, true);
   assert.equal(queries[1].where.isPublished, false);
   assert.equal(Object.hasOwn(queries[0].where, "archivedAt"), false, "legacy filter keeps archived compatibility");
+});
+
+test("admin built-in lesson catalogue and detail expose canonical read-only contracts without student access services", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  let membershipCalls = 0;
+  let progressionCalls = 0;
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [studentClassService, "requireExactActiveMembership", async () => { membershipCalls += 1; throw new Error("student membership must not run"); }],
+    [lessonProgressionService, "assertModuleAccessAllowed", async () => { progressionCalls += 1; throw new Error("student progression must not run"); }],
+  ], async () => {
+    const catalogueResult = await apiRequest("/api/admin/built-in-lessons", { token: authToken(admin.id, "admin") });
+    assert.equal(catalogueResult.response.status, 200);
+    assert.deepEqual(Object.keys(catalogueResult.payload), ["schemaVersion", "contentRevision", "lessons", "mode"]);
+    assert.equal(catalogueResult.payload.mode, "read-only");
+    assert.deepEqual(catalogueResult.payload.lessons.map((lesson) => lesson.lessonKey), [
+      "tutorial", "arrays", "functions", "functions-with-arrays", "final",
+    ]);
+    assert.deepEqual(catalogueResult.payload.lessons.map((lesson) => lesson.displayOrder), [1, 2, 3, 4, 5]);
+    assert.deepEqual(catalogueResult.payload.lessons.map((lesson) => lesson.sectionCount), [9, 11, 11, 10, 10]);
+    for (const lesson of catalogueResult.payload.lessons) {
+      assert.deepEqual(Object.keys(lesson), [
+        "lessonKey", "title", "eyebrow", "description", "displayOrder", "sectionCount",
+      ]);
+    }
+
+    const detailResult = await apiRequest("/api/admin/built-in-lessons/arrays", { token: authToken(admin.id, "admin") });
+    assert.equal(detailResult.response.status, 200);
+    assert.deepEqual(Object.keys(detailResult.payload), ["schemaVersion", "contentRevision", "lesson", "mode"]);
+    assert.equal(detailResult.payload.mode, "read-only");
+    assert.equal(detailResult.payload.lesson.title, "Arrays");
+    assert.equal(
+      catalogueResult.payload.lessons.find((lesson) => lesson.lessonKey === "arrays").title,
+      detailResult.payload.lesson.title,
+    );
+    assert.deepEqual(
+      { ...detailResult.payload, mode: undefined },
+      { ...builtInLessonContentService.serializeBuiltInLesson(builtInLessonContentService.getBuiltInLessonContent("arrays")), mode: undefined },
+    );
+    const blocks = detailResult.payload.lesson.sections.flatMap((section) => section.blocks);
+    const practice = blocks.find((block) => block.type === "practice");
+    const check = blocks.find((block) => block.type === "check");
+    assert.equal(typeof practice.solution, "string");
+    assert.equal(typeof practice.expectedOutput, "string");
+    assert.equal(Number.isSafeInteger(check.answer), true);
+    assert.equal(typeof check.feedback, "string");
+  });
+
+  assert.equal(membershipCalls, 0);
+  assert.equal(progressionCalls, 0);
+});
+
+test("admin built-in lesson routes enforce admin authorization and distinguish malformed from unsupported keys", async () => {
+  await withStubs([
+    [User, "findByPk", async (id) => activeUser({
+      id: Number(id),
+      role: Number(id) === 7 ? "admin" : Number(id) === 8 ? "student" : "teacher",
+    })],
+  ], async () => {
+    const unauthenticated = await apiRequest("/api/admin/built-in-lessons");
+    assert.equal(unauthenticated.response.status, 401);
+
+    for (const [id, role] of [[8, "student"], [9, "teacher"]]) {
+      const denied = await apiRequest("/api/admin/built-in-lessons", { token: authToken(id, role) });
+      assert.equal(denied.response.status, 403);
+      assert.deepEqual(denied.payload, { message: "You are not allowed to access this resource" });
+    }
+
+    for (const lessonKey of ["Arrays", "arrays_1", "-arrays", "arrays-"]) {
+      const malformed = await apiRequest(`/api/admin/built-in-lessons/${lessonKey}`, { token: authToken(7, "admin") });
+      assert.equal(malformed.response.status, 400, lessonKey);
+      assert.deepEqual(malformed.payload, { code: "INVALID_LESSON_KEY", message: "Invalid lesson key" });
+    }
+
+    const unsupported = await apiRequest("/api/admin/built-in-lessons/unknown-lesson", { token: authToken(7, "admin") });
+    assert.equal(unsupported.response.status, 404);
+    assert.deepEqual(unsupported.payload, {
+      code: "BUILT_IN_LESSON_NOT_FOUND",
+      message: "Built-in lesson was not found",
+    });
+  });
 });
 
 test("admin summary reports active users and classrooms", async () => {

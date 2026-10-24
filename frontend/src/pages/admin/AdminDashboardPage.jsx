@@ -9,12 +9,19 @@ import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInvit
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { AdminStudentClassroomFilterView } from "./AdminStudentClassroomFilter.jsx";
 import AdminLessonViewer from "./AdminLessonViewer.jsx";
+import AdminBuiltInLessonViewer from "./AdminBuiltInLessonViewer.jsx";
 import { createAdminLessonDownloadController, createAdminLessonViewerController } from "./adminLessonViewerState.js";
+import { createAdminBuiltInLessonDetailController } from "./adminBuiltInLessonDetailState.js";
 import {
   buildAdminContentListPath,
   createAdminContentRequestController,
   createAdminContentTransitions,
 } from "./adminContentListState.js";
+import {
+  INITIAL_BUILT_IN_CATALOGUE_STATE,
+  createAdminBuiltInCatalogueController,
+  createAdminContentSourceTransitions,
+} from "./adminBuiltInLessonCatalogueState.js";
 import {
   buildAdminUserFilterSnapshot,
   buildClassroomLookupPath,
@@ -59,6 +66,10 @@ function AdminDashboardPage() {
   const [content, setContent] = useState([]); const [contentPage, setContentPage] = useState(1); const [contentMeta, setContentMeta] = useState({ total: null, totalPages: null });
   const [contentFilters, setContentFilters] = useState({ search: "", type: "", status: "" });
   const [contentLoading, setContentLoading] = useState(false); const [contentError, setContentError] = useState("");
+  const [contentSource, setContentSource] = useState("teacher");
+  const contentSourceRef = useRef("teacher");
+  const [builtInCatalogue, setBuiltInCatalogue] = useState(INITIAL_BUILT_IN_CATALOGUE_STATE);
+  const [builtInDetail, setBuiltInDetail] = useState(null);
   const [logs, setLogs] = useState([]); const [logPage, setLogPage] = useState(1); const [logMeta, setLogMeta] = useState({ total: 0, totalPages: 1 });
   const [logFilters, setLogFilters] = useState({ actor: "", target: "", action: "", from: "", to: "" });
   const [confirmAction, setConfirmAction] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deleteText, setDeleteText] = useState("");
@@ -130,6 +141,14 @@ function AdminDashboardPage() {
     setFilters: setContentFilters,
     setPage: setContentPage,
   }), [contentRequests]);
+  const builtInCatalogueRequests = useMemo(() => createAdminBuiltInCatalogueController({
+    request: async (path, options) => (await axios.get(buildApiUrl(path), { ...api(), ...options })).data,
+    setState: setBuiltInCatalogue,
+  }), []);
+  const builtInLessonDetail = useMemo(() => createAdminBuiltInLessonDetailController({
+    request: async (path, options) => (await axios.get(buildApiUrl(path), { ...api(), ...options })).data,
+    setDetail: setBuiltInDetail,
+  }), []);
   const filterTransitions = useMemo(() => createAdminFilterTransitions({
     userRequests,
     classroomRequests,
@@ -149,14 +168,17 @@ function AdminDashboardPage() {
     const [summaryResponse, logsResponse, healthResponse] = await Promise.all([axios.get(buildApiUrl("/api/admin/summary"), api()), axios.get(buildApiUrl("/api/admin/logs?page=1&limit=8"), api()), axios.get(buildApiUrl("/api/health"))]);
     return { summaryResponse, logsResponse, healthResponse };
   }, []);
+  const loadTeacherContent = useCallback(() => contentRequests.run(async () => {
+    const response = await axios.get(buildApiUrl(buildAdminContentListPath(contentFilters, contentPage)), api());
+    return response.data;
+  }, {
+    mapError: (requestError) => requestError.response?.data?.message || "Unable to load content.",
+  }), [contentFilters, contentPage, contentRequests]);
   const refresh = useCallback(async () => {
     if (activeView === "content") {
-      return contentRequests.run(async () => {
-        const response = await axios.get(buildApiUrl(buildAdminContentListPath(contentFilters, contentPage)), api());
-        return response.data;
-      }, {
-        mapError: (requestError) => requestError.response?.data?.message || "Unable to load content.",
-      });
+      return contentSourceRef.current === "built-in"
+        ? builtInCatalogueRequests.loadIfNeeded()
+        : loadTeacherContent();
     }
     return userRequests.run(async () => {
       if (activeView === "dashboard" || activeView === "status") {
@@ -189,7 +211,7 @@ function AdminDashboardPage() {
         statusView: activeView === "status",
       }),
     });
-  }, [activeView, classFilters, classPage, contentFilters, contentPage, contentRequests, effectiveUserFilters, loadDashboard, logFilters, logPage, userPage, userRequests]);
+  }, [activeView, builtInCatalogueRequests, classFilters, classPage, effectiveUserFilters, loadDashboard, loadTeacherContent, logFilters, logPage, userPage, userRequests]);
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
     if (activeView !== "students") {
@@ -220,9 +242,11 @@ function AdminDashboardPage() {
     userRequests.invalidate();
     classroomRequests.invalidate();
     contentRequests.invalidate();
+    builtInCatalogueRequests.dispose();
+    builtInLessonDetail.dispose();
     lessonViewer.dispose();
     lessonDownloads.dispose();
-  }, [classroomRequests, contentRequests, lessonDownloads, lessonViewer, userRequests]);
+  }, [builtInCatalogueRequests, builtInLessonDetail, classroomRequests, contentRequests, lessonDownloads, lessonViewer, userRequests]);
 
   const changeClassroomSearch = (search) => {
     filterTransitions.changeClassroomSearch(search);
@@ -238,6 +262,28 @@ function AdminDashboardPage() {
   };
   const changeContentPage = (page) => {
     contentTransitions.changePage(page);
+  };
+  const contentSourceTransitions = useMemo(() => createAdminContentSourceTransitions({
+    deactivateTeacher: () => contentRequests.deactivate(),
+    activateTeacher: () => {
+      if (contentRequests.needsLoad()) void loadTeacherContent();
+    },
+    deactivateBuiltIn: () => builtInCatalogueRequests.deactivate(),
+    activateBuiltIn: () => { void builtInCatalogueRequests.loadIfNeeded(); },
+    closeTeacherDetail: () => {
+      lessonDownloads.invalidate();
+      setDetailFileError("");
+      if (detail?.type === "lesson") lessonViewer.close({ restoreFocus: false });
+      else setDetail(null);
+    },
+    closeBuiltInDetail: () => builtInLessonDetail.cancel(),
+    setSource: (source) => {
+      contentSourceRef.current = source;
+      setContentSource(source);
+    },
+  }), [builtInCatalogueRequests, builtInLessonDetail, contentRequests, detail?.type, lessonDownloads, lessonViewer, loadTeacherContent]);
+  const changeContentSource = (source) => {
+    contentSourceTransitions.changeSource(source, contentSourceRef.current);
   };
   const changeAppliedClassroom = (classroomId) => {
     const selectedId = String(classroomId || "");
@@ -270,12 +316,18 @@ function AdminDashboardPage() {
   };
   const closeDetail = () => { lessonDownloads.invalidate(); setDetailFileError(""); if (detail?.type === "lesson") lessonViewer.close(); else setDetail(null); };
   const openLessonAttachment = (file) => lessonDownloads.download(file);
+  const openBuiltInLesson = (item, opener) => builtInLessonDetail.open(item, opener);
+  const closeBuiltInLesson = () => builtInLessonDetail.close();
   const exportCsv = async (path, filename) => { try { const r = await axios.get(buildApiUrl(path), { headers: getAuthHeaders(), responseType: "blob" }); const url = URL.createObjectURL(r.data); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); } catch { setError("CSV export failed."); } };
   const createTeacher = async (form) => { setInviteBusy(true); setInviteError(""); try { const r = await axios.post(buildApiUrl("/api/admin/users/teacher"), form, api()); toast.success(r.data.message); setShowInvite(false); await refresh(); } catch (requestError) { setInviteError(requestError.response?.data?.message || "Unable to invite teacher."); } finally { setInviteBusy(false); } };
   const selectView = (view) => {
     lessonDownloads.invalidate();
     setDetailFileError("");
-    contentTransitions.changeView(view, activeView);
+    if (contentSourceRef.current === "built-in") {
+      contentSourceTransitions.changeView(view, activeView, contentSourceRef.current);
+    } else {
+      contentTransitions.changeView(view, activeView);
+    }
     if (view === "legal") {
       userRequests.invalidate();
       classroomRequests.invalidate();
@@ -310,18 +362,29 @@ function AdminDashboardPage() {
   </>;
 
   const renderContent = () => <>
-    <PageHeading eyebrow="Teacher-created materials" title="Content oversight"><span className={styles.readOnly}><FiEye /> Read-only</span></PageHeading>
-    <section className={styles.card}>
-      <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search content</span><input value={contentFilters.search} onChange={(e) => changeContentFilter("search", e.target.value)} placeholder="Title, classroom, or teacher" /></label><label>Type<select value={contentFilters.type} onChange={(e) => changeContentFilter("type", e.target.value)}><option value="">All content</option><option value="module">Modules</option><option value="lesson">Lessons</option><option value="assignment">Assignments</option></select></label><AdminContentStatusFilter value={contentFilters.status} onChange={(status) => changeContentFilter("status", status)} /></div>
-      <AdminContentTable content={content} loading={contentLoading} error={contentError} onOpenContent={openContent} page={contentPage} total={contentMeta.total} totalPages={contentMeta.totalPages} onPageChange={changeContentPage} />
-    </section>
+    <AdminContentView
+      source={contentSource}
+      onSourceChange={changeContentSource}
+      content={content}
+      contentFilters={contentFilters}
+      contentLoading={contentLoading}
+      contentError={contentError}
+      contentPage={contentPage}
+      contentMeta={contentMeta}
+      onContentFilterChange={changeContentFilter}
+      onContentPageChange={changeContentPage}
+      onOpenContent={openContent}
+      builtInState={builtInCatalogue}
+      onRetryBuiltIn={() => { void builtInCatalogueRequests.load(); }}
+      onInspectBuiltIn={openBuiltInLesson}
+    />
   </>;
 
   const renderAudit = () => <><PageHeading eyebrow="Accountable administration" title="Audit logs"><button type="button" className={styles.secondaryButton} onClick={() => exportCsv(`/api/admin/logs/export.csv?${buildQueryString(logFilters, 1)}`, "sharprunner-audit-logs.csv")}><FiDownload /> Export CSV</button></PageHeading><section className={styles.card}><div className={styles.filters}><label>Admin actor<input value={logFilters.actor} onChange={(e) => setLogFilters((v) => ({ ...v, actor: e.target.value }))} placeholder="Username" /></label><label>Action<input value={logFilters.action} onChange={(e) => setLogFilters((v) => ({ ...v, action: e.target.value }))} placeholder="e.g. ARCHIVED" /></label><label>Affected user<input value={logFilters.target} onChange={(e) => setLogFilters((v) => ({ ...v, target: e.target.value }))} placeholder="Username" /></label><label>From<input type="date" value={logFilters.from} onChange={(e) => setLogFilters((v) => ({ ...v, from: e.target.value }))} /></label><label>To<input type="date" value={logFilters.to} onChange={(e) => setLogFilters((v) => ({ ...v, to: e.target.value }))} /></label></div><TableState loading={loading} error={error} empty={!logs.length} emptyText="No audit records match these filters."><div className={styles.tableWrap}><table><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Target</th><th>Safe metadata</th><th>Status</th></tr></thead><tbody>{logs.map((log) => <tr key={log.id}><td>{formatDate(log.createdAt)}</td><td>{log.actorUsername || "System"}</td><td><strong>{log.activity}</strong></td><td>{log.targetUsername || "—"}</td><td>{log.details || "—"}</td><td><StatusBadge value={log.status} /></td></tr>)}</tbody></table></div></TableState><Pager page={logPage} totalPages={logMeta.totalPages || 1} total={logMeta.total || 0} label="audit records" onChange={setLogPage} /></section></>;
 
   const renderStatus = () => <><PageHeading eyebrow="Operational visibility" title="System status"><button className={styles.secondaryButton} type="button" onClick={refresh}><FiRefreshCw /> Run checks</button></PageHeading><div className={styles.gridTwo}><section className={styles.card}><h3>Service checks</h3><div className={styles.healthRows}><div><span>Backend API</span><StatusBadge value={health.status === "ok" ? "online" : health.status} /></div><div><span>Database</span><StatusBadge value={health.database} /></div></div><p className={styles.privacyNote}>Only non-sensitive operational status is exposed. Credentials, environment variables, and server details are never returned.</p></section><section className={styles.card}><h3>Platform totals</h3><div className={styles.healthRows}><div><span>Total users</span><strong>{summary.totalUsers}</strong></div><div><span>Active users</span><strong>{summary.activeUsers}</strong></div><div><span>Active classrooms</span><strong>{summary.activeClassrooms}</strong></div><div><span>Archived accounts</span><strong>{summary.archivedAccounts}</strong></div></div></section></div></>;
 
-  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && (detail.type === "lesson" ? <AdminLessonViewer detail={detail} onClose={closeDetail} onRetry={() => lessonViewer.retry()} onOpenAttachment={openLessonAttachment} fileError={detailFileError} fileLoading={detailFileLoading} /> : <DetailPanel detail={detail} onClose={closeDetail} />)}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
+  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && (detail.type === "lesson" ? <AdminLessonViewer detail={detail} onClose={closeDetail} onRetry={() => lessonViewer.retry()} onOpenAttachment={openLessonAttachment} fileError={detailFileError} fileLoading={detailFileLoading} /> : <DetailPanel detail={detail} onClose={closeDetail} />)}{builtInDetail && <AdminBuiltInLessonViewer detail={builtInDetail} onClose={closeBuiltInLesson} onRetry={() => builtInLessonDetail.retry()} />}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
 }
 
 function PageHeading({ eyebrow, title, children }) { return <div className={styles.pageHeading}><div><p>{eyebrow}</p><h2>{title}</h2></div><div className={styles.headingActions}>{children}</div></div>; }
@@ -405,6 +468,53 @@ function UserActions({ user, openUser, setConfirmAction, setDeleteTarget, setDel
 }
 function TableState({ loading, error, empty, emptyText, children, onRetry }) { if (loading) return <div className={styles.state}><FiRefreshCw className={styles.spin} /> Loading…</div>; if (error) return <div className={`${styles.state} ${styles.stateError}`} role="alert"><FiActivity />{error}{onRetry && <button type="button" className={styles.secondaryButton} onClick={onRetry}>Retry</button>}</div>; if (empty) return <Empty text={emptyText} />; return children; }
 function Empty({ text }) { return <div className={styles.state}><FiSearch /><strong>{text}</strong><span>Try changing the current filters.</span></div>; }
+export function AdminContentSourceControls({ source = "teacher", onChange }) {
+  return <div className={styles.contentSourceControls} role="group" aria-label="Content source">
+    <button type="button" aria-pressed={source === "teacher"} onClick={() => onChange("teacher")}>Teacher-created</button>
+    <button type="button" aria-pressed={source === "built-in"} onClick={() => onChange("built-in")}>Built-in lessons</button>
+  </div>;
+}
+
+export function AdminBuiltInLessonCatalogue({ state, onRetry, onInspect }) {
+  if (state.status === "loading" || state.status === "idle") {
+    return <div className={styles.state} role="status"><FiRefreshCw className={styles.spin} /> Loading built-in lessons…</div>;
+  }
+  if (state.status === "error") {
+    return <div className={`${styles.state} ${styles.stateError}`} role="alert"><FiActivity />{state.error}<button type="button" className={styles.secondaryButton} onClick={onRetry}>Retry</button></div>;
+  }
+  if (!state.lessons.length) {
+    return <div className={styles.state}><FiBookOpen /><strong>No built-in lessons are available.</strong><span>The canonical catalogue returned no lessons.</span></div>;
+  }
+  return <div className={styles.tableWrap}><table className={styles.builtInCatalogue}><thead><tr><th>Lesson</th><th>Description</th><th>Sections</th><th><span className={styles.srOnly}>Actions</span></th></tr></thead><tbody>{state.lessons.map((lesson) => <tr key={lesson.lessonKey}><td><strong>{lesson.title}</strong><small>{lesson.eyebrow}</small></td><td>{lesson.description}</td><td>{lesson.sectionCount} {lesson.sectionCount === 1 ? "section" : "sections"}</td><td><button type="button" className={styles.secondaryButton} aria-label={`Inspect ${lesson.title}`} onClick={(event) => onInspect(lesson, event.currentTarget)}>Inspect</button></td></tr>)}</tbody></table></div>;
+}
+
+export function AdminContentView({
+  source = "teacher",
+  onSourceChange,
+  content,
+  contentFilters,
+  contentLoading,
+  contentError,
+  contentPage,
+  contentMeta,
+  onContentFilterChange,
+  onContentPageChange,
+  onOpenContent,
+  builtInState,
+  onRetryBuiltIn,
+  onInspectBuiltIn,
+}) {
+  return <>
+    <PageHeading eyebrow="Learning materials" title="Content oversight"><span className={styles.readOnly}><FiEye /> Read-only</span></PageHeading>
+    <section className={styles.card}>
+      <AdminContentSourceControls source={source} onChange={onSourceChange} />
+      {source === "teacher" ? <>
+        <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search content</span><input value={contentFilters.search} onChange={(event) => onContentFilterChange("search", event.target.value)} placeholder="Title, classroom, or teacher" /></label><label>Type<select value={contentFilters.type} onChange={(event) => onContentFilterChange("type", event.target.value)}><option value="">All content</option><option value="module">Modules</option><option value="lesson">Lessons</option><option value="assignment">Assignments</option></select></label><AdminContentStatusFilter value={contentFilters.status} onChange={(status) => onContentFilterChange("status", status)} /></div>
+        <AdminContentTable content={content} loading={contentLoading} error={contentError} onOpenContent={onOpenContent} page={contentPage} total={contentMeta.total} totalPages={contentMeta.totalPages} onPageChange={onContentPageChange} />
+      </> : <AdminBuiltInLessonCatalogue state={builtInState} onRetry={onRetryBuiltIn} onInspect={onInspectBuiltIn} />}
+    </section>
+  </>;
+}
 const contentOwnerLabel = (owner) => {
   if (!owner) return "—";
   return [owner.firstName, owner.lastName].filter(Boolean).join(" ") || (owner.username ? `@${owner.username}` : "—");

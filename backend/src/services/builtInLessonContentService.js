@@ -284,9 +284,20 @@ const serializeBuiltInLesson = (lesson) => deepFreeze({
   lesson: cloneJson(projectLesson(lesson)),
 });
 
+const serializeBuiltInLessonCatalogue = () => deepFreeze({
+  schemaVersion: validatedPackage.schemaVersion,
+  contentRevision: validatedPackage.contentRevision,
+  lessons: validatedPackage.lessons.map((lesson, index) => ({
+    ...pickFields(lesson, ['lessonKey', 'title', 'eyebrow', 'description']),
+    displayOrder: index + 1,
+    sectionCount: lesson.sections.length,
+  })),
+});
+
 module.exports = {
   CANONICAL_BUILT_IN_LESSON_KEYS,
   getBuiltInLessonContent,
   serializeBuiltInLesson,
+  serializeBuiltInLessonCatalogue,
   validateBuiltInLessonPackage,
 };

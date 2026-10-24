@@ -139,3 +139,25 @@ test("current content success restores rows and metadata while current failure l
   assert.equal(failed.state.error, "Unable to load content.");
   assert.equal(failed.state.loading, false);
 });
+
+test("source deactivation preserves settled teacher content and makes interrupted loads resumable", async () => {
+  const settled = createHarness();
+  const response = { content: [{ id: 7, title: "Preserved" }], total: 1, totalPages: 1 };
+  assert.equal(await settled.requests.run(async () => response), true);
+  settled.requests.deactivate();
+  assert.deepEqual(settled.state.content, response.content);
+  assert.deepEqual(settled.state.meta, { total: 1, totalPages: 1 });
+  assert.equal(settled.state.loading, false);
+  assert.equal(settled.requests.needsLoad(), false);
+
+  const interrupted = createHarness();
+  const pending = deferred();
+  const completion = interrupted.requests.run(() => pending.promise);
+  interrupted.requests.deactivate();
+  assert.equal(interrupted.state.loading, false);
+  assert.equal(interrupted.requests.needsLoad(), true);
+  pending.resolve({ content: [{ id: 99 }], total: 1, totalPages: 1 });
+  assert.equal(await completion, false);
+  assert.deepEqual(interrupted.state.content, []);
+  assert.deepEqual(interrupted.state.meta, { total: null, totalPages: null });
+});

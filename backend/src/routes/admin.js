@@ -18,10 +18,12 @@ const { createRateLimit } = require("../middleware/rateLimit");
 const { getPolicyStatus } = require("../constants/policyVersions");
 const { sendCsv } = require("../services/csvService");
 const { derivePublicationStatus } = require("../services/lessonBuilderService");
+const builtInLessonContentService = require("../services/builtInLessonContentService");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
 const ALLOWED_STATUSES = new Set(["active", "inactive", "pending", "archived"]);
 const ALLOWED_LOG_STATUSES = new Set(["success", "failed"]);
+const BUILT_IN_LESSON_KEY_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const teacherCreationRateLimit = createRateLimit({
   windowMs: 60 * 60 * 1000,
   max: 20,
@@ -603,6 +605,31 @@ router.post("/classrooms/:id/restore", adminMutationRateLimit, async (req, res) 
   } catch (error) {
     return res.status(500).json({ message: "Failed to restore classroom" });
   }
+});
+
+router.get("/built-in-lessons", (_req, res) => {
+  return res.json({
+    ...builtInLessonContentService.serializeBuiltInLessonCatalogue(),
+    mode: "read-only",
+  });
+});
+
+router.get("/built-in-lessons/:lessonKey", (req, res) => {
+  const lessonKey = req.params.lessonKey;
+  if (typeof lessonKey !== "string" || !BUILT_IN_LESSON_KEY_PATTERN.test(lessonKey)) {
+    return res.status(400).json({ code: "INVALID_LESSON_KEY", message: "Invalid lesson key" });
+  }
+  const lesson = builtInLessonContentService.getBuiltInLessonContent(lessonKey);
+  if (!lesson) {
+    return res.status(404).json({
+      code: "BUILT_IN_LESSON_NOT_FOUND",
+      message: "Built-in lesson was not found",
+    });
+  }
+  return res.json({
+    ...builtInLessonContentService.serializeBuiltInLesson(lesson),
+    mode: "read-only",
+  });
 });
 
 router.get("/content", async (req, res) => {

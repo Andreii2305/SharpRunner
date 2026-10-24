@@ -9,6 +9,7 @@ const {
   CANONICAL_BUILT_IN_LESSON_KEYS,
   getBuiltInLessonContent,
   serializeBuiltInLesson,
+  serializeBuiltInLessonCatalogue,
   validateBuiltInLessonPackage,
 } = require('../src/services/builtInLessonContentService');
 
@@ -154,6 +155,31 @@ test('prevents nested mutation from changing current or future reads', () => {
   assert.throws(() => { first.sections[0].blocks[0].text = 'mutated'; }, TypeError);
   assert.throws(() => { first.sections.push({ id: 'new', title: 'new', blocks: [] }); }, TypeError);
   assert.equal(getBuiltInLessonContent('tutorial').sections[0].blocks[0].text, originalTitle);
+});
+
+test('serializes the canonical admin catalogue in order without mutating lesson records', () => {
+  const firstLesson = getBuiltInLessonContent('tutorial');
+  const originalTitle = firstLesson.title;
+  const result = serializeBuiltInLessonCatalogue();
+
+  assert.deepEqual(Object.keys(result), ['schemaVersion', 'contentRevision', 'lessons']);
+  assert.equal(result.schemaVersion, 1);
+  assert.match(result.contentRevision, /^\d{4}-\d{2}-\d{2}\.\d+$/);
+  assert.deepEqual(result.lessons.map((lesson) => lesson.lessonKey), EXPECTED_KEYS);
+  assert.deepEqual(result.lessons.map((lesson) => lesson.displayOrder), [1, 2, 3, 4, 5]);
+  assert.deepEqual(result.lessons.map((lesson) => lesson.sectionCount), [9, 11, 11, 10, 10]);
+  assert.equal(result.lessons[0].title, 'C# Foundations');
+  assert.equal(result.lessons[4].title, 'Final Review');
+  for (const lesson of result.lessons) {
+    assert.deepEqual(Object.keys(lesson), [
+      'lessonKey', 'title', 'eyebrow', 'description', 'displayOrder', 'sectionCount',
+    ]);
+  }
+
+  assert.ok(Object.isFrozen(result));
+  assert.ok(Object.isFrozen(result.lessons[0]));
+  assert.throws(() => { result.lessons[0].title = 'Changed catalogue copy'; }, TypeError);
+  assert.equal(getBuiltInLessonContent('tutorial').title, originalTitle);
 });
 
 test('serializes only the approved envelope and nested allowlists', () => {

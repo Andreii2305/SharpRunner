@@ -2031,10 +2031,15 @@ router.put("/classrooms/:classroomId/lessons/:lessonId/attachments/:attachmentId
       attachment.originalName = file.originalname.slice(0, 255); attachment.storedName = file.filename;
       attachment.mimeType = file.mimetype || "application/octet-stream"; attachment.sizeBytes = file.size;
       attachment.data = uploadedStored.data; attachment.storageProvider = uploadedStored.storageProvider; attachment.storageKey = uploadedStored.storageKey;
+      attachment.sha256 = uploadedStored.sha256; attachment.scanStatus = uploadedStored.scanStatus;
       await attachment.save({ transaction });
     });
-    await Promise.all([lessonStorage.deleteFile(previous), removeStoredFiles([previous.storedName]), removeUploadedFiles(req.files)]);
     uploadedStored = null;
+    await Promise.all([
+      lessonStorage.deleteFile(previous).catch(() => console.error("Failed to clean up replaced attachment storage")),
+      removeStoredFiles([previous.storedName]),
+      removeUploadedFiles(req.files),
+    ]);
     return res.json({ message: "Attachment replaced", attachment: sanitizeAttachment(attachment) });
   } catch (error) {
     await removeUploadedFiles(req.files);

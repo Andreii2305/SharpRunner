@@ -17,7 +17,8 @@ const fs = require("fs");
 const path = require("path");
 const { uploadDirectory, uploadLessonFiles, removeUploadedFiles, lessonUploadPolicy } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
-const { isOfficeDocument, convertOfficeToPdf } = require("../services/officePreviewService");
+const officePreviewService = require("../services/officePreviewService");
+const { isAttachmentDeliverable } = require("../services/attachmentDeliveryPolicyService");
 const { extensionAllowed } = require("../services/fileSecurityService");
 const { isStudentAssigned, submissionPolicyError } = require("../services/classroomLessonPolicyService");
 const { findPrimaryActiveMembership } = require("../services/studentClassService");
@@ -31,6 +32,43 @@ const visibleLessonWhere = (classroomId) => ({
   isPublished: true,
   [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: new Date() } }],
 });
+
+const sendFileUnavailable = (res) => res.status(404).json({
+  message: "File unavailable",
+  code: "FILE_UNAVAILABLE",
+});
+
+const lessonAttachmentDeliveryAttributes = [
+  "id", "classroomId", "originalName", "storedName", "mimeType", "sizeBytes",
+  "storageProvider", "storageKey", "sha256", "scanStatus", "updatedAt",
+];
+const submissionAttachmentDeliveryAttributes = [
+  "id", "classroomId", "lessonId", "submissionId", "studentId", "originalName",
+  "mimeType", "sizeBytes", "storageProvider", "storageKey", "sha256", "scanStatus", "updatedAt",
+];
+const attachmentStorageSnapshotWhere = (attachment) => Object.fromEntries(
+  ["id", "storageProvider", "storageKey", "sha256", "scanStatus", "updatedAt", "storedName"]
+    .filter((field) => attachment[field] !== undefined)
+    .map((field) => [field, attachment[field]]),
+);
+const findCurrentAttachmentStorage = async (model, attachment) => {
+  const databaseBacked = (attachment.storageProvider || "database") === "database";
+  return model.findOne({
+    where: attachmentStorageSnapshotWhere(attachment),
+    attributes: databaseBacked ? ["id", "data"] : ["id"],
+  });
+};
+const readCheckedAttachmentStorage = async (model, attachment) => {
+  const currentStorage = await findCurrentAttachmentStorage(model, attachment);
+  if (!currentStorage) return { matches: false, data: null };
+  if ((attachment.storageProvider || "database") === "database") {
+    return {
+      matches: true,
+      data: currentStorage.data == null ? null : Buffer.from(currentStorage.data),
+    };
+  }
+  return { matches: true, data: await lessonStorage.readFile(attachment) };
+};
 
 const sanitizeSubmission = (submission, { releaseFeedback = true } = {}) => submission ? {
   id: submission.id, comment: submission.comment, status: submission.status,
@@ -413,7 +451,7 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
     }
 
     const attachment = await ClassroomLessonAttachment.findByPk(fileId, {
-      attributes: ["id", "classroomId", "originalName", "storedName", "mimeType", "sizeBytes", "data", "storageProvider", "storageKey"],
+      attributes: lessonAttachmentDeliveryAttributes,
       include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "teacherId", "contentType", "contentVersion", "isPublished", "publishAt", "archivedAt", "assignedStudentIds"] }],
     });
     if (!attachment) {
@@ -442,8 +480,11 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
     if (req.userRole === "student" && (!attachment.lesson?.isPublished || !isAssignedToStudent(attachment.lesson, req.userId) || (attachment.lesson.publishAt && new Date(attachment.lesson.publishAt) > new Date()))) {
       return res.status(404).json({ message: "Attachment not found" });
     }
+    if (!isAttachmentDeliverable(attachment.scanStatus)) return sendFileUnavailable(res);
     const filePath = path.join(uploadDirectory, path.basename(attachment.storedName));
-    let storedData = await lessonStorage.readFile(attachment);
+    const checkedStorage = await readCheckedAttachmentStorage(ClassroomLessonAttachment, attachment);
+    if (!checkedStorage.matches) return res.status(404).json({ message: "File not found" });
+    let storedData = checkedStorage.data;
     if (!storedData) {
       try {
         storedData = await fs.promises.readFile(filePath);
@@ -477,9 +518,10 @@ router.get("/classroom-files/:fileId", authMiddleware, async (req, res) => {
 router.get("/classroom-files/:fileId/preview", authMiddleware, async (req, res) => {
   try {
     const attachment = await ClassroomLessonAttachment.findByPk(Number.parseInt(req.params.fileId, 10), {
+      attributes: lessonAttachmentDeliveryAttributes,
       include: [{ model: ClassroomLesson, as: "lesson", required: true, attributes: ["id", "classroomId", "teacherId", "contentType", "contentVersion", "isPublished", "publishAt", "archivedAt", "assignedStudentIds"] }],
     });
-    if (!attachment || !isOfficeDocument(attachment.originalName)) return res.status(404).json({ message: "Preview not found" });
+    if (!attachment || !officePreviewService.isOfficeDocument(attachment.originalName)) return res.status(404).json({ message: "Preview not found" });
     let allowed = req.userRole === "admin";
     let authorizedContentVersion = null;
     if (req.userRole === "teacher") allowed = attachment.lesson.teacherId === req.userId || Boolean(attachment.classroomId && await Classroom.findOne({ where: { id: attachment.classroomId, teacherId: req.userId } }));
@@ -495,7 +537,10 @@ router.get("/classroom-files/:fileId/preview", authMiddleware, async (req, res) 
       authorizedContentVersion = placement?.lesson?.contentVersion ?? null;
     }
     if (!allowed) return res.status(403).json({ message: "Access denied" });
-    let data = await lessonStorage.readFile(attachment);
+    if (!isAttachmentDeliverable(attachment.scanStatus)) return sendFileUnavailable(res);
+    const checkedStorage = await readCheckedAttachmentStorage(ClassroomLessonAttachment, attachment);
+    if (!checkedStorage.matches) return res.status(404).json({ message: "Preview not found" });
+    let data = checkedStorage.data;
     if (!data) {
       const filePath = path.join(uploadDirectory, path.basename(attachment.storedName));
       try {
@@ -505,7 +550,7 @@ router.get("/classroom-files/:fileId/preview", authMiddleware, async (req, res) 
         throw error;
       }
     }
-    const pdf = data && await convertOfficeToPdf(data, attachment.originalName);
+    const pdf = data && await officePreviewService.convertOfficeToPdf(data, attachment.originalName);
     if (!pdf) return res.status(415).json({ message: "Office preview requires LibreOffice on the server" });
     if (req.userRole === "student") {
       await authorizeStudentContentDelivery({
@@ -607,12 +652,18 @@ router.post("/classroom-lessons/:lessonId/submission", authMiddleware, uploadLes
 
 router.get("/submission-files/:fileId", authMiddleware, async (req, res) => {
   try {
-    const file = await ClassroomLessonSubmissionAttachment.findByPk(Number.parseInt(req.params.fileId, 10), { include: [{ model: ClassroomLessonSubmission, as: "submission", required: true }] });
+    const file = await ClassroomLessonSubmissionAttachment.findByPk(Number.parseInt(req.params.fileId, 10), {
+      attributes: submissionAttachmentDeliveryAttributes,
+      include: [{ model: ClassroomLessonSubmission, as: "submission", required: true, attributes: ["id"] }],
+    });
     if (!file) return res.status(404).json({ message: "File not found" });
     let allowed = req.userRole === "admin" || (req.userRole === "student" && file.studentId === req.userId);
     if (req.userRole === "teacher") allowed = Boolean(await Classroom.findOne({ where: { id: file.classroomId, teacherId: req.userId } }));
     if (!allowed) return res.status(403).json({ message: "Access denied" });
-    const data = await lessonStorage.readFile(file);
+    if (!isAttachmentDeliverable(file.scanStatus)) return sendFileUnavailable(res);
+    const checkedStorage = await readCheckedAttachmentStorage(ClassroomLessonSubmissionAttachment, file);
+    if (!checkedStorage.matches) return res.status(404).json({ message: "File not found" });
+    const data = checkedStorage.data;
     if (!data) return res.status(404).json({ message: "File not found" });
     res.setHeader("Content-Type", file.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);

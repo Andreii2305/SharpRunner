@@ -33,3 +33,6 @@ require("./classroomMembershipDecisionService.test");
 require("./classroomMembershipDecisionService.postgres.test");
 require("./classroomJoinRequestService.test");
 require("./classroomJoinRequestMigration.test");
+require("./attachmentScanStatusMigration.test");
+require("./teacherAttachmentReplacement.integration.test");
+require("./attachmentDeliveryPolicy.test");

@@ -4,6 +4,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const nodemailer = require("nodemailer");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const dns = require("node:dns").promises;
 const { Op } = require("sequelize");
 
@@ -22,6 +23,7 @@ const ClassroomLessonContentAccess = require("../src/models/ClassroomLessonConte
 const ClassroomLessonReadingCompletion = require("../src/models/ClassroomLessonReadingCompletion");
 const ClassroomLessonProgress = require("../src/models/ClassroomLessonProgress");
 const ClassroomLessonSubmission = require("../src/models/ClassroomLessonSubmission");
+const ClassroomLessonSubmissionAttachment = require("../src/models/ClassroomLessonSubmissionAttachment");
 const ClassroomLessonVersion = require("../src/models/ClassroomLessonVersion");
 const LessonTopic = require("../src/models/LessonTopic");
 const ClassroomMembership = require("../src/models/ClassroomMembership");
@@ -39,6 +41,8 @@ const AssessmentAttempt = require("../src/models/AssessmentAttempt");
 const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
 const sequelize = require("../src/config/database");
 const lessonStorage = require("../src/services/lessonFileStorageService");
+const officePreviewService = require("../src/services/officePreviewService");
+const customLessonLifecycle = require("../src/services/customLessonLifecycleService");
 const classroomMembershipDecisionService = require("../src/services/classroomMembershipDecisionService");
 const classroomJoinRequestService = require("../src/services/classroomJoinRequestService");
 const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
@@ -2450,9 +2454,14 @@ test("student file delivery records access for the requested exact placement rev
       originalName: "arrays.txt",
       storedName: "arrays.txt",
       mimeType: "text/plain",
-      data: Buffer.from("arrays"),
+      storageProvider: "database",
+      storageKey: null,
+      sha256: "arrays-hash",
+      scanStatus: "clean",
+      updatedAt: new Date("2026-10-23T00:00:00Z"),
       lesson,
     })],
+    [ClassroomLessonAttachment, "findOne", async () => ({ id: 913, data: Buffer.from("arrays") })],
     [ClassroomMembership, "findAll", async () => [{ classroomId: 92 }, { classroomId: 93 }]],
     [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
     [ClassroomLesson, "findByPk", async () => lesson],
@@ -2512,8 +2521,12 @@ test("failed file materialization does not record content-access evidence", asyn
       data: null,
       storageProvider: "database",
       storageKey: null,
+      sha256: "missing-hash",
+      scanStatus: "clean",
+      updatedAt: new Date("2026-10-23T00:00:00Z"),
       lesson,
     })],
+    [ClassroomLessonAttachment, "findOne", async () => ({ id: 9132, data: null })],
     [ClassroomMembership, "findAll", async () => [{ classroomId: 92 }]],
     [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
     [ClassroomLesson, "findByPk", async () => lesson],
@@ -2559,9 +2572,14 @@ test("file delivery rejects a revision change after materialization without reco
       originalName: "arrays.txt",
       storedName: "arrays.txt",
       mimeType: "text/plain",
-      data: Buffer.from("revision six"),
+      storageProvider: "database",
+      storageKey: null,
+      sha256: "revision-six-hash",
+      scanStatus: "clean",
+      updatedAt: new Date("2026-10-23T00:00:00Z"),
       lesson: loadedLesson,
     })],
+    [ClassroomLessonAttachment, "findOne", async () => ({ id: 9133, data: Buffer.from("revision six") })],
     [ClassroomMembership, "findAll", async () => [{ classroomId: 92 }]],
     [ClassroomMembership, "findOne", async () => ({ classroomId: 92, studentId: student.id, status: "active" })],
     [ClassroomLesson, "findByPk", async () => (++lessonLoads === 1 ? loadedLesson : changedLesson)],
@@ -2642,6 +2660,400 @@ test("required custom PRE blocks direct attachment, topic-image, and preview del
       assert.equal(payload.gate.assessmentId, 79, route);
     }
     assert.equal(fileReads, 0);
+  });
+});
+
+test("authorized unavailable lesson attachments and topic images return a neutral response without reading bytes", async () => {
+  const admin = activeUser({ id: 70401, role: "admin" });
+  const foreignTeacher = activeUser({ id: 70406, role: "teacher" });
+  let fileReads = 0;
+  let byteLookups = 0;
+  await withStubs([
+    [User, "findByPk", async (id) => Number(id) === admin.id ? admin : foreignTeacher],
+    [ClassroomLessonAttachment, "findByPk", async (id, options) => {
+      assert.equal(options.attributes.includes("data"), false);
+      assert.equal(options.include[0].attributes.includes("data"), false);
+      return {
+        id: Number(id),
+        classroomId: 92,
+        originalName: Number(id) === 9201 ? "lesson-notes.txt" : "topic-image.png",
+        storedName: Number(id) === 9201 ? "lesson-notes.txt" : "topic-image.png",
+        mimeType: Number(id) === 9201 ? "text/plain" : "image/png",
+        storageProvider: "database",
+        storageKey: null,
+        sha256: "blocked-hash",
+        scanStatus: Number(id) === 9201 ? "not_configured" : null,
+        updatedAt: new Date("2026-10-23T00:00:00Z"),
+        lesson: { id: 9200, teacherId: 704, isPublished: false, archivedAt: null },
+      };
+    }],
+    [ClassroomLessonAttachment, "findOne", async () => { byteLookups += 1; return { id: 9201, data: Buffer.from("hidden") }; }],
+    [Classroom, "findOne", async () => null],
+    [lessonStorage, "readFile", async () => { fileReads += 1; return Buffer.from("hidden"); }],
+  ], async () => {
+    for (const fileId of [9201, 9202]) {
+      const { response, payload } = await apiRequest(
+        `/api/lesson-content/classroom-files/${fileId}`,
+        { token: authToken(admin.id, "admin") },
+      );
+      assert.equal(response.status, 404);
+      assert.deepEqual(payload, { message: "File unavailable", code: "FILE_UNAVAILABLE" });
+    }
+
+    const deniedTeacher = await apiRequest(
+      "/api/lesson-content/classroom-files/9201",
+      { token: authToken(foreignTeacher.id, "teacher") },
+    );
+    assert.equal(deniedTeacher.response.status, 403);
+    assert.deepEqual(deniedTeacher.payload, { message: "Access denied" });
+    assert.equal(byteLookups, 0);
+    assert.equal(fileReads, 0);
+  });
+});
+
+test("signature_checked lesson delivery is allowed only when full scanning is not required", async () => {
+  const admin = activeUser({ id: 70402, role: "admin" });
+  const previousRequirement = process.env.REQUIRE_FILE_SCANNING;
+  let fileReads = 0;
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLessonAttachment, "findByPk", async () => ({
+      id: 9211,
+      classroomId: 92,
+      originalName: "lesson-notes.txt",
+      storedName: "lesson-notes.txt",
+      mimeType: "text/plain",
+      storageProvider: "supabase",
+      storageKey: "lessons/lesson-notes.txt",
+      sha256: "signature-hash",
+      scanStatus: "signature_checked",
+      updatedAt: new Date("2026-10-23T00:00:00Z"),
+      lesson: { id: 9210, teacherId: 704, isPublished: false, archivedAt: null },
+    })],
+    [ClassroomLessonAttachment, "findOne", async () => ({ id: 9211 })],
+    [lessonStorage, "readFile", async () => { fileReads += 1; return Buffer.from("available"); }],
+  ], async () => {
+    try {
+      process.env.REQUIRE_FILE_SCANNING = "false";
+      const allowed = await fetch(`${baseUrl}/api/lesson-content/classroom-files/9211`, {
+        headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` },
+      });
+      assert.equal(allowed.status, 200);
+      assert.equal(await allowed.text(), "available");
+
+      process.env.REQUIRE_FILE_SCANNING = "true";
+      const blocked = await apiRequest(
+        "/api/lesson-content/classroom-files/9211",
+        { token: authToken(admin.id, "admin") },
+      );
+      assert.equal(blocked.response.status, 404);
+      assert.deepEqual(blocked.payload, { message: "File unavailable", code: "FILE_UNAVAILABLE" });
+      assert.equal(fileReads, 1);
+    } finally {
+      if (previousRequirement === undefined) delete process.env.REQUIRE_FILE_SCANNING;
+      else process.env.REQUIRE_FILE_SCANNING = previousRequirement;
+    }
+  });
+});
+
+test("Office preview enforces attachment availability before storage reads or conversion", async () => {
+  const admin = activeUser({ id: 70403, role: "admin" });
+  let scanStatus = "future_status";
+  let fileReads = 0;
+  let conversions = 0;
+  let byteLookups = 0;
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLessonAttachment, "findByPk", async (_id, options) => {
+      assert.equal(options.attributes.includes("data"), false);
+      assert.equal(options.include[0].attributes.includes("data"), false);
+      return {
+        id: 9221,
+        classroomId: 92,
+        originalName: "lesson-notes.docx",
+        storedName: "lesson-notes.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        storageProvider: "supabase",
+        storageKey: "lessons/lesson-notes.docx",
+        sha256: "office-hash",
+        scanStatus,
+        updatedAt: new Date("2026-10-23T00:00:00Z"),
+        lesson: { id: 9220, teacherId: 704, isPublished: false, archivedAt: null },
+      };
+    }],
+    [ClassroomLessonAttachment, "findOne", async () => { byteLookups += 1; return { id: 9221 }; }],
+    [lessonStorage, "readFile", async () => { fileReads += 1; return Buffer.from("office bytes"); }],
+    [officePreviewService, "convertOfficeToPdf", async () => { conversions += 1; return Buffer.from("pdf bytes"); }],
+  ], async () => {
+    const blocked = await apiRequest(
+      "/api/lesson-content/classroom-files/9221/preview",
+      { token: authToken(admin.id, "admin") },
+    );
+    assert.equal(blocked.response.status, 404);
+    assert.deepEqual(blocked.payload, { message: "File unavailable", code: "FILE_UNAVAILABLE" });
+    assert.equal(byteLookups, 0);
+    assert.equal(fileReads, 0);
+    assert.equal(conversions, 0);
+
+    scanStatus = "clean";
+    const allowed = await fetch(`${baseUrl}/api/lesson-content/classroom-files/9221/preview`, {
+      headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` },
+    });
+    assert.equal(allowed.status, 200);
+    assert.equal(await allowed.text(), "pdf bytes");
+    assert.equal(byteLookups, 1);
+    assert.equal(fileReads, 1);
+    assert.equal(conversions, 1);
+  });
+});
+
+test("submission attachment authorization precedes availability and allowed files retain delivery behavior", async () => {
+  let scanStatus = "not_configured";
+  let fileReads = 0;
+  let byteLookups = 0;
+  await withStubs([
+    [User, "findByPk", async (id) => activeUser({ id: Number(id), role: "student" })],
+    [ClassroomLessonSubmissionAttachment, "findByPk", async (_id, options) => {
+      assert.equal(options.attributes.includes("data"), false);
+      assert.equal(options.include[0].attributes.includes("data"), false);
+      return {
+        id: 9231,
+        classroomId: 92,
+        lessonId: 9230,
+        submissionId: 9232,
+        studentId: 70404,
+        originalName: "submission.txt",
+        mimeType: "text/plain",
+        storageProvider: "supabase",
+        storageKey: "submissions/submission.txt",
+        sha256: "submission-hash",
+        scanStatus,
+        updatedAt: new Date("2026-10-23T00:00:00Z"),
+        submission: { id: 9232 },
+      };
+    }],
+    [ClassroomLessonSubmissionAttachment, "findOne", async () => { byteLookups += 1; return { id: 9231 }; }],
+    [lessonStorage, "readFile", async () => { fileReads += 1; return Buffer.from("submitted work"); }],
+  ], async () => {
+    const blockedOwner = await apiRequest(
+      "/api/lesson-content/submission-files/9231",
+      { token: authToken(70404, "student") },
+    );
+    assert.equal(blockedOwner.response.status, 404);
+    assert.deepEqual(blockedOwner.payload, { message: "File unavailable", code: "FILE_UNAVAILABLE" });
+
+    const deniedForeignStudent = await apiRequest(
+      "/api/lesson-content/submission-files/9231",
+      { token: authToken(70405, "student") },
+    );
+    assert.equal(deniedForeignStudent.response.status, 403);
+    assert.deepEqual(deniedForeignStudent.payload, { message: "Access denied" });
+    assert.equal(byteLookups, 0);
+    assert.equal(fileReads, 0);
+
+    scanStatus = "clean";
+    const allowedOwner = await fetch(`${baseUrl}/api/lesson-content/submission-files/9231`, {
+      headers: { Authorization: `Bearer ${authToken(70404, "student")}` },
+    });
+    assert.equal(allowedOwner.status, 200);
+    assert.equal(await allowedOwner.text(), "submitted work");
+    assert.equal(byteLookups, 1);
+    assert.equal(fileReads, 1);
+  });
+});
+
+test("authorized database attachment reads are identity-constrained across normal, preview, and submission delivery", async () => {
+  const admin = activeUser({ id: 70407, role: "admin" });
+  const checkedIds = [];
+  let conversions = 0;
+  let storageReads = 0;
+  const lesson = { id: 9240, teacherId: 704, isPublished: false, archivedAt: null };
+  const lessonMetadata = (id, originalName, mimeType) => ({
+    id,
+    classroomId: 92,
+    originalName,
+    storedName: `stored-${id}`,
+    mimeType,
+    sizeBytes: 12,
+    storageProvider: "database",
+    storageKey: null,
+    sha256: `hash-${id}`,
+    scanStatus: "clean",
+    updatedAt: new Date("2026-10-23T01:00:00Z"),
+    lesson,
+  });
+  const submissionMetadata = {
+    id: 9243,
+    classroomId: 92,
+    lessonId: 9240,
+    submissionId: 9244,
+    studentId: 70408,
+    originalName: "submission.txt",
+    mimeType: "text/plain",
+    sizeBytes: 15,
+    storageProvider: "database",
+    storageKey: null,
+    sha256: "hash-9243",
+    scanStatus: "clean",
+    updatedAt: new Date("2026-10-23T01:00:00Z"),
+    submission: { id: 9244 },
+  };
+
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLessonAttachment, "findByPk", async (id, options) => {
+      assert.equal(options.attributes.includes("data"), false);
+      assert.equal(options.include[0].attributes.includes("data"), false);
+      return Number(id) === 9241
+        ? lessonMetadata(9241, "lesson.txt", "text/plain")
+        : lessonMetadata(9242, "lesson.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    }],
+    [ClassroomLessonAttachment, "findOne", async (options) => {
+      assert.deepEqual(options.attributes, ["id", "data"]);
+      assert.equal(options.where.storageProvider, "database");
+      assert.equal(options.where.storageKey, null);
+      assert.equal(options.where.scanStatus, "clean");
+      assert.equal(options.where.sha256, `hash-${options.where.id}`);
+      assert.deepEqual(options.where.updatedAt, new Date("2026-10-23T01:00:00Z"));
+      checkedIds.push(options.where.id);
+      return { id: options.where.id, data: Buffer.from(options.where.id === 9242 ? "office bytes" : "lesson bytes") };
+    }],
+    [ClassroomLessonSubmissionAttachment, "findByPk", async (_id, options) => {
+      assert.equal(options.attributes.includes("data"), false);
+      assert.equal(options.include[0].attributes.includes("data"), false);
+      return submissionMetadata;
+    }],
+    [ClassroomLessonSubmissionAttachment, "findOne", async (options) => {
+      assert.deepEqual(options.attributes, ["id", "data"]);
+      assert.equal(options.where.id, 9243);
+      assert.equal(options.where.sha256, "hash-9243");
+      checkedIds.push(options.where.id);
+      return { id: 9243, data: Buffer.from("submission bytes") };
+    }],
+    [lessonStorage, "readFile", async () => { storageReads += 1; return Buffer.from("wrong source"); }],
+    [officePreviewService, "convertOfficeToPdf", async (data) => {
+      conversions += 1;
+      assert.equal(data.toString(), "office bytes");
+      return Buffer.from("preview bytes");
+    }],
+  ], async () => {
+    const normal = await fetch(`${baseUrl}/api/lesson-content/classroom-files/9241`, {
+      headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` },
+    });
+    assert.equal(normal.status, 200);
+    assert.equal(await normal.text(), "lesson bytes");
+
+    const preview = await fetch(`${baseUrl}/api/lesson-content/classroom-files/9242/preview`, {
+      headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` },
+    });
+    assert.equal(preview.status, 200);
+    assert.equal(await preview.text(), "preview bytes");
+
+    const submission = await fetch(`${baseUrl}/api/lesson-content/submission-files/9243`, {
+      headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` },
+    });
+    assert.equal(submission.status, 200);
+    assert.equal(await submission.text(), "submission bytes");
+
+    assert.deepEqual(checkedIds, [9241, 9242, 9243]);
+    assert.equal(storageReads, 0);
+    assert.equal(conversions, 1);
+  });
+});
+
+test("attachment replacement between metadata and byte lookup is rejected on every delivery path", async () => {
+  const admin = activeUser({ id: 70409, role: "admin" });
+  let conversions = 0;
+  let storageReads = 0;
+  const lesson = { id: 9250, teacherId: 704, isPublished: false, archivedAt: null };
+  const metadata = (id, originalName, mimeType) => ({
+    id,
+    classroomId: 92,
+    originalName,
+    storedName: `old-${id}`,
+    mimeType,
+    sizeBytes: 12,
+    storageProvider: "database",
+    storageKey: null,
+    sha256: `old-hash-${id}`,
+    scanStatus: "clean",
+    updatedAt: new Date("2026-10-23T02:00:00Z"),
+    lesson,
+  });
+
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLessonAttachment, "findByPk", async (id) => metadata(
+      Number(id),
+      Number(id) === 9252 ? "old.docx" : "old.txt",
+      Number(id) === 9252 ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document" : "text/plain",
+    )],
+    [ClassroomLessonAttachment, "findOne", async (options) => {
+      assert.match(options.where.sha256, /^old-hash-/);
+      return null;
+    }],
+    [ClassroomLessonSubmissionAttachment, "findByPk", async () => ({
+      ...metadata(9253, "old-submission.txt", "text/plain"),
+      lessonId: 9250,
+      submissionId: 9254,
+      studentId: 70410,
+      submission: { id: 9254 },
+    })],
+    [ClassroomLessonSubmissionAttachment, "findOne", async () => null],
+    [lessonStorage, "readFile", async () => { storageReads += 1; return Buffer.from("new bytes"); }],
+    [officePreviewService, "convertOfficeToPdf", async () => { conversions += 1; return Buffer.from("new preview"); }],
+  ], async () => {
+    const normal = await apiRequest("/api/lesson-content/classroom-files/9251", { token: authToken(admin.id, "admin") });
+    assert.equal(normal.response.status, 404);
+    assert.deepEqual(normal.payload, { message: "File not found" });
+
+    const preview = await apiRequest("/api/lesson-content/classroom-files/9252/preview", { token: authToken(admin.id, "admin") });
+    assert.equal(preview.response.status, 404);
+    assert.deepEqual(preview.payload, { message: "Preview not found" });
+
+    const submission = await apiRequest("/api/lesson-content/submission-files/9253", { token: authToken(admin.id, "admin") });
+    assert.equal(submission.response.status, 404);
+    assert.deepEqual(submission.payload, { message: "File not found" });
+    assert.equal(storageReads, 0);
+    assert.equal(conversions, 0);
+  });
+});
+
+test("authorized legacy lesson files still use the filesystem fallback after a checked database lookup", async () => {
+  const admin = activeUser({ id: 70411, role: "admin" });
+  let storageReads = 0;
+  let legacyReads = 0;
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLessonAttachment, "findByPk", async () => ({
+      id: 9261,
+      classroomId: 92,
+      originalName: "legacy.txt",
+      storedName: "legacy-stored.txt",
+      mimeType: "text/plain",
+      sizeBytes: 12,
+      storageProvider: "database",
+      storageKey: null,
+      sha256: "legacy-hash",
+      scanStatus: "clean",
+      updatedAt: new Date("2026-10-23T03:00:00Z"),
+      lesson: { id: 9260, teacherId: 704, isPublished: false, archivedAt: null },
+    })],
+    [ClassroomLessonAttachment, "findOne", async () => ({ id: 9261, data: null })],
+    [lessonStorage, "readFile", async () => { storageReads += 1; return null; }],
+    [fs.promises, "readFile", async (filePath) => {
+      legacyReads += 1;
+      assert.equal(filePath.endsWith("legacy-stored.txt"), true);
+      return Buffer.from("legacy bytes");
+    }],
+  ], async () => {
+    const response = await fetch(`${baseUrl}/api/lesson-content/classroom-files/9261`, {
+      headers: { Authorization: `Bearer ${authToken(admin.id, "admin")}` },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "legacy bytes");
+    assert.equal(storageReads, 0);
+    assert.equal(legacyReads, 1);
   });
 });
 

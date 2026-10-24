@@ -63,6 +63,7 @@ const migrations = [
   ["20261019000000_custom_lesson_pre_access_policy", sqlMigration("20261019000000_custom_lesson_pre_access_policy.sql")],
   ["20261020000000_enable_guarded_custom_assessment_publication", sqlMigration("20261020000000_enable_guarded_custom_assessment_publication.sql")],
   ["20261022000000_classroom_membership_requested_at", sqlMigration("20261022000000_classroom_membership_requested_at.sql")],
+  ["20261023000000_attachment_scan_status_compatibility", sqlMigration("20261023000000_attachment_scan_status_compatibility.sql")],
 ];
 
 const runMigrations = async () => {

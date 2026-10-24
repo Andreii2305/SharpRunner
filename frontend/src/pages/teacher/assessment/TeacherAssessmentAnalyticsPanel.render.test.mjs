@@ -1,8 +1,22 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
 
 const source = fs.readFileSync(new URL("./TeacherAssessmentAnalyticsPanel.jsx", import.meta.url), "utf8");
+const vite = await createServer({
+  server: { middlewareMode: true },
+  appType: "custom",
+  optimizeDeps: { noDiscovery: true },
+});
+test.after(async () => vite.close());
+
+const {
+  AssessmentAttemptHistory,
+  AssessmentEvidenceSummary,
+} = await vite.ssrLoadModule("/src/pages/teacher/assessment/TeacherAssessmentAnalyticsPanel.jsx");
 
 test("assessment analytics is classroom and lesson scoped with explicit PRE/POST filtering", () => {
   for (const marker of ["Assessment analytics", "Select a classroom", "Lesson", "Assessment type", "All assessment types", "PRE diagnostic", "POST assessment"]) {
@@ -22,9 +36,56 @@ test("canonical assessment-exempt lessons render an explicit not-applicable stat
 });
 
 test("comparison presentation retains definitions, denominator limitation, and paired gain sample size", () => {
-  for (const marker of ["Participation", "All submitted PRE average", "Valid baseline PRE average", "Valid baseline students", "Excluded baseline students", "Average official POST", "POST pass rate", "Average submitted POST attempts", "Submitted POST attempts", "Paired learning gain", "valid-baseline paired students", "Enrollment denominator unavailable", "Comparison details"]) {
-    assert.equal(source.includes(marker), true, marker);
+  const html = renderToStaticMarkup(React.createElement(AssessmentEvidenceSummary, { metrics: {
+    preSubmittedStudents: 2,
+    postSubmittedStudents: 1,
+    averageAllPrePercentage: 40,
+    averageValidBaselinePrePercentage: 40,
+    averageOfficialPostPercentage: 90,
+    postPassRate: 100,
+    postPassedStudents: 1,
+    averageLearningGain: 50,
+    pairedStudents: 1,
+    validBaselineStudents: 1,
+    excludedBaselineStudents: 1,
+    averagePostAttempts: 2,
+  } }));
+  for (const marker of ["Participation", "Original PRE average", "first submitted PRE", "excludes supplemental PRE attempts", "Valid baseline PRE average", "Valid baseline students", "Excluded baseline students", "Average official POST", "POST pass rate", "Average submitted POST attempts", "Paired learning gain", "valid-baseline paired students", "Enrollment denominator unavailable", "Comparison details"]) {
+    assert.equal(html.includes(marker), true, marker);
   }
+  assert.equal(html.includes("All submitted PRE average"), false);
+});
+
+test("production history labels POST attempts by authoritative number while preserving score markers and PRE provenance", () => {
+  const history = [
+    { type: "PRE", attemptId: "pre-1", attemptNumber: 1, submittedAt: "2026-09-20T00:00:00.000Z", pointsEarned: 4, maxPoints: 10, percentage: 40, baselineLabel: "Valid baseline" },
+    { type: "PRE", attemptId: "pre-2", attemptNumber: 2, submittedAt: "2026-09-21T00:00:00.000Z", pointsEarned: 9, maxPoints: 10, percentage: 90, baselineLabel: "Supplemental diagnostic — not a baseline" },
+    { type: "POST", attemptId: "post-1", attemptNumber: 1, submittedAt: "2026-09-22T00:00:00.000Z", pointsEarned: 6, maxPoints: 10, percentage: 60, isFirstSubmittedPost: true, isOfficial: false },
+    { type: "POST", attemptId: "post-2", attemptNumber: 2, submittedAt: "2026-09-23T00:00:00.000Z", pointsEarned: 9, maxPoints: 10, percentage: 90, isFirstSubmittedPost: false, isOfficial: true },
+  ];
+  const html = renderToStaticMarkup(React.createElement(AssessmentAttemptHistory, { history }));
+
+  assert.ok(html.indexOf("PRE attempt 1") < html.indexOf("PRE attempt 2"));
+  assert.ok(html.indexOf("PRE attempt 2") < html.indexOf("POST attempt 1"));
+  assert.ok(html.indexOf("POST attempt 1") < html.indexOf("POST attempt 2"));
+  for (const marker of ["Valid baseline", "Supplemental diagnostic", "Initial attempt", "Retake", "First POST", "Official grade"]) {
+    assert.match(html, new RegExp(marker));
+  }
+});
+
+test("a submitted POST attempt 2 remains a retake and invalid attempt numbers receive no invented kind", () => {
+  const base = { type: "POST", submittedAt: "2026-09-23T00:00:00.000Z", pointsEarned: 9, maxPoints: 10, percentage: 90 };
+  const retakeOnly = renderToStaticMarkup(React.createElement(AssessmentAttemptHistory, {
+    history: [{ ...base, attemptId: "post-2", attemptNumber: 2 }],
+  }));
+  assert.match(retakeOnly, /POST attempt 2/);
+  assert.match(retakeOnly, /Retake/);
+  assert.doesNotMatch(retakeOnly, /Initial attempt/);
+
+  const invalid = renderToStaticMarkup(React.createElement(AssessmentAttemptHistory, {
+    history: [{ ...base, attemptId: "post-missing", attemptNumber: null }],
+  }));
+  assert.doesNotMatch(invalid, /Initial attempt|Retake/);
 });
 
 test("PRE rows and history expose accessible provenance labels without ranking", () => {

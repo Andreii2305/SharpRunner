@@ -196,6 +196,7 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
     progressQueries: [],
     resultQueries: [],
     codingAnalyticsQueries: [],
+    membershipQueries: 0,
     events: [],
     failChoiceCreate: false,
     failGraphReload: false,
@@ -353,12 +354,14 @@ const harness = ({ assessments, questions, choices, codingTests, attempts, respo
     store.grants.push(row);
     return row;
   });
-  stub(models.ClassroomMembership, "findOne", async ({ where }) => (
-    store.memberships.find((row) => matches(row, where)) || null
-  ));
-  stub(models.ClassroomMembership, "findAll", async ({ where }) => (
-    store.memberships.filter((row) => matches(row, where))
-  ));
+  stub(models.ClassroomMembership, "findOne", async ({ where }) => {
+    store.membershipQueries += 1;
+    return store.memberships.find((row) => matches(row, where)) || null;
+  });
+  stub(models.ClassroomMembership, "findAll", async ({ where }) => {
+    store.membershipQueries += 1;
+    return store.memberships.filter((row) => matches(row, where));
+  });
   const progressWithEvidence = (row) => row.startedAt != null
     || Number(row.progressPercent) > 0
     || Number(row.attemptCount) > 0
@@ -2647,13 +2650,16 @@ test("results query requests only submitted attempts and allowed student columns
   assert.deepEqual(options.include[0].attributes, ["id", "firstName", "lastName", "username"]);
 });
 
-test("POST rows mark official highest and first submitted independently", async () => {
-  const h = harness({ attempts: [
+test("removed students retain every submitted POST with independent first and official markers", async () => {
+  const h = harness({
+    memberships: [{ classroomId: 7, studentId: 42, status: "removed" }],
+    attempts: [
     submittedAttempt({ id: 41, attemptNumber: 1, percentage: 60, pointsEarned: 6,
       submittedAt: new Date("2026-09-25T12:10:00.000Z") }),
     submittedAttempt({ id: 42, attemptNumber: 2, percentage: 90, pointsEarned: 9,
       submittedAt: new Date("2026-09-25T12:20:00.000Z") }),
-  ] });
+    ],
+  });
   const result = await h.call("/classrooms/7/assessments/12/results");
   assert.equal(result.response.status, 200);
   assert.deepEqual(result.payload.results.map((row) => ({
@@ -2664,6 +2670,9 @@ test("POST rows mark official highest and first submitted independently", async 
     { attemptId: 41, isOfficial: false, isFirstSubmittedPost: true },
     { attemptId: 42, isOfficial: true, isFirstSubmittedPost: false },
   ]);
+  assert.equal(h.store.membershipQueries, 0);
+  assert.equal(h.store.resultQueries[0].include.length, 1);
+  assert.equal(h.store.resultQueries[0].include[0].as, "student");
 });
 
 test("PRE rows never receive an official highest marker", async () => {
@@ -2803,6 +2812,7 @@ test("assessment score sheet exports the complete submitted PRE and POST union w
   const grace = baseStudent({ id: 43, firstName: "Grace", lastName: "Hopper", username: "grace" });
   const h = harness({
     assessments: [pre, post],
+    memberships: [{ classroomId: 7, studentId: 43, status: "removed" }],
     attempts: [
       submittedAttempt({
         id: 31, assessmentId: 11, studentId: 42, student: ada, pointsEarned: 0,
@@ -2865,6 +2875,10 @@ test("assessment score sheet exports the complete submitted PRE and POST union w
   assert.doesNotMatch(result.text, /unfinished/);
   assert.equal(h.store.resultQueries.length, 2);
   assert.equal(h.store.resultQueries.every(({ where }) => where.status === "SUBMITTED"), true);
+  assert.equal(h.store.resultQueries.every(({ include }) => (
+    include.length === 1 && include[0].as === "student"
+  )), true);
+  assert.equal(h.store.membershipQueries, 0);
 });
 
 test("assessment score sheet enforces classroom ownership and exact lesson identity", async () => {
@@ -2917,12 +2931,15 @@ test("custom reporting targets use stable placement identity and retain archived
 test("custom results require exact classroom placement while built-in route rejects custom targets", async () => {
   const h = harness({
     assessments: [customAssessment({ isPublished: true, publishedAt: new Date() })],
+    memberships: [{ classroomId: 7, studentId: 42, status: "removed" }],
     attempts: [submittedAttempt()],
   });
 
   const exact = await h.call("/classrooms/7/lesson-placements/71/assessments/12/results");
   assert.equal(exact.response.status, 200);
   assert.equal(exact.payload.assessment.classroomLessonPlacementId, 71);
+  assert.equal(exact.payload.results.length, 1);
+  assert.equal(h.store.membershipQueries, 0);
 
   const wrongPlacement = await h.call("/classrooms/7/lesson-placements/72/assessments/12/results");
   assert.equal(wrongPlacement.response.status, 404);
@@ -2939,6 +2956,7 @@ test("custom score sheet is placement-isolated and suppresses gain across differ
   const h = harness({
     assessments: [pre, post, customAssessment({ id: 31, classroomId: 7,
       classroomLessonPlacementId: 72, isPublished: true, publishedAt: new Date() })],
+    memberships: [{ classroomId: 7, studentId: 42, status: "removed" }],
     placements: [
       { id: 71, lessonId: 61, classroomId: 7, archivedAt: new Date("2026-10-01T00:00:00.000Z") },
       { id: 72, lessonId: 61, classroomId: 7, archivedAt: null },
@@ -2961,8 +2979,10 @@ test("custom score sheet is placement-isolated and suppresses gain across differ
   assert.match(result.text, /"Assessment Target","Placement ID","PRE Content Revision","POST Content Revision"/);
   assert.match(result.text, /"Classroom lesson placement","71","3","4"/);
   assert.match(result.text, /"Assessment content revisions are not comparable"/);
+  assert.match(result.text, /"Ada Learner","ada"/);
   assert.doesNotMatch(result.text, /other-placement/);
   assert.equal(h.store.resultQueries.every(({ where }) => where.classroomId === 7), true);
+  assert.equal(h.store.membershipQueries, 0);
 
   h.store.assessments.find((assessment) => assessment.id === 21).targetLessonVersion = null;
   h.store.assessments.find((assessment) => assessment.id === 22).targetLessonVersion = null;

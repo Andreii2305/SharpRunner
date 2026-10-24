@@ -26,6 +26,7 @@ import {
   filterAssessmentStudents,
   getAssessmentAnalyticsView,
   parseAssessmentTargetValue,
+  postAttemptKindLabel,
   summarizeAssessmentAvailability,
 } from "./teacherAssessmentAnalyticsState.js";
 import styles from "./TeacherAssessmentAnalyticsPanel.module.css";
@@ -82,10 +83,10 @@ export function AssessmentEvidenceSummary({ metrics }) {
         <div><dt>POST submitted</dt><dd>{metrics.postSubmittedStudents}</dd></div>
       </dl><p>Distinct students with submitted attempts.</p></section>
       <section><h3>PRE and POST scores</h3><dl>
-        <div><dt>All submitted PRE average</dt><dd>{percentage(metrics.averageAllPrePercentage)}<small>{metrics.preSubmittedStudents} submitted diagnostics</small></dd></div>
+        <div><dt>Original PRE average</dt><dd>{percentage(metrics.averageAllPrePercentage)}<small>{metrics.preSubmittedStudents} submitted diagnostics</small></dd></div>
         <div><dt>Valid baseline PRE average</dt><dd>{percentage(metrics.averageValidBaselinePrePercentage)}<small>{metrics.validBaselineStudents} valid baselines</small></dd></div>
         <div><dt>Average official POST</dt><dd>{percentage(metrics.averageOfficialPostPercentage)}<small>Official results only</small></dd></div>
-      </dl></section>
+      </dl><p>Uses each student&apos;s first submitted PRE and excludes supplemental PRE attempts.</p></section>
       <section><h3>POST outcomes</h3><dl>
         <div><dt>POST pass rate</dt><dd>{percentage(metrics.postPassRate)}</dd></div>
       </dl><p>{metrics.postPassedStudents == null ? "No passing threshold applies." : `${metrics.postPassedStudents} passed; submitted official results only.`}</p></section>
@@ -103,6 +104,21 @@ export function AssessmentEvidenceSummary({ metrics }) {
       <p><strong>Submission rate:</strong> Enrollment denominator unavailable from the assessment-results contract. No enrollment-based rate is inferred.</p></div>
     </details>
   </>;
+}
+
+export function AssessmentAttemptHistory({ history = [] }) {
+  return <div className={styles.historyList}>{history.map((attempt) => {
+    const attemptNumber = Number.isSafeInteger(attempt.attemptNumber) && attempt.attemptNumber > 0
+      ? attempt.attemptNumber
+      : "—";
+    const postAttemptLabel = attempt.type === "POST"
+      ? postAttemptKindLabel(attempt.attemptNumber)
+      : null;
+    return <article key={`${attempt.type}-${attempt.attemptId}`}>
+      <div><strong>{attempt.type === "PRE" ? `PRE attempt ${attemptNumber}` : `POST attempt ${attemptNumber}`}</strong><span>{submittedDate(attempt.submittedAt)}</span></div>
+      <div className={styles.historyScore}><AttemptScore attempt={attempt} /><div className={styles.historyLabels}>{attempt.type === "PRE" && <b>{attempt.baselineLabel}</b>}{postAttemptLabel && <b>{postAttemptLabel}</b>}{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && <b>{attempt.passingPercentageApplied == null ? "Required threshold unavailable" : `Required: ${attempt.passingPercentageApplied}%`}</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div></div>
+    </article>;
+  })}</div>;
 }
 
 function AttemptHistoryDialog({
@@ -194,10 +210,7 @@ function AttemptHistoryDialog({
   return <div className={styles.backdrop} onMouseDown={() => { if (!pending) onClose(); }}>
     <section ref={dialogRef} className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="assessment-history-title" onMouseDown={(event) => event.stopPropagation()}>
       <header><div><span>Submitted assessment history</span><h3 id="assessment-history-title">{row.name}</h3></div><button ref={closeRef} type="button" onClick={onClose} disabled={pending} aria-label="Close assessment history"><FiX /></button></header>
-      <div className={styles.historyList}>{row.history.map((attempt) => <article key={`${attempt.type}-${attempt.attemptId}`}>
-        <div><strong>{attempt.type === "PRE" ? `PRE attempt ${attempt.attemptNumber}` : `POST attempt ${attempt.attemptNumber}`}</strong><span>{submittedDate(attempt.submittedAt)}</span></div>
-        <div className={styles.historyScore}><AttemptScore attempt={attempt} /><div className={styles.historyLabels}>{attempt.type === "PRE" && <b>{attempt.baselineLabel}</b>}{attempt.type === "POST" && attempt.isFirstSubmittedPost && <b>First POST</b>}{attempt.type === "POST" && attempt.isOfficial && <b>Official grade</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && <b>{attempt.passingPercentageApplied == null ? "Required threshold unavailable" : `Required: ${attempt.passingPercentageApplied}%`}</b>}{attempt.type === "POST" && attempt.passingRequirementApplicable && typeof attempt.passed === "boolean" && <b>{attempt.passed ? "Passed" : "Not passed"}</b>}</div></div>
-      </article>)}</div>
+      <AssessmentAttemptHistory history={row.history} />
       <section className={styles.grantSection} aria-labelledby="grant-attempt-title">
         <div><h4 id="grant-attempt-title">Grant one additional attempt</h4><p>The student starts it from the assessment Start screen. Existing submissions, grades, progress, and game access are unchanged.</p></div>
         {grantDisabled && <p>Archived placements remain available for history and score-sheet export, but new attempts cannot be granted.</p>}

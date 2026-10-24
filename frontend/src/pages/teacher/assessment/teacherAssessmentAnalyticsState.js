@@ -56,9 +56,16 @@ export const attemptPointsLabel = (attempt) => {
   return "Points unavailable";
 };
 
+export const postAttemptKindLabel = (attemptNumber) => {
+  if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) return null;
+  return attemptNumber === 1 ? "Initial attempt" : "Retake";
+};
+
 const safeAttempt = (row, type, passingRequirementApplicable = false, customPlacement = false) => ({
   attemptId: row.attemptId,
-  attemptNumber: Number(row.attemptNumber),
+  attemptNumber: Number.isSafeInteger(row.attemptNumber) && row.attemptNumber > 0
+    ? row.attemptNumber
+    : null,
   submittedAt: row.submittedAt,
   pointsEarned: numericOrNull(row.pointsEarned),
   maxPoints: numericOrNull(row.maxPoints),

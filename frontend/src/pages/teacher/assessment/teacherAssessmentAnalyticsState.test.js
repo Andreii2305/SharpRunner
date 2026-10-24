@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as analyticsState from "./teacherAssessmentAnalyticsState.js";
 import {
   ACADEMIC_LESSONS,
   buildAssessmentAnalytics,
@@ -158,8 +159,20 @@ test("supplemental PRE remains in history without replacing the original baselin
     result(alan, { attemptId: "pre-2", attemptNumber: 2, percentage: 90, preBaselineStatus: "SUPPLEMENTAL" }),
   ]) });
   assert.equal(model.students[0].preAttempt.attemptId, "pre-1");
+  assert.deepEqual(model.students[0].history.map(({ attemptId }) => attemptId), ["pre-1", "pre-2"]);
   assert.equal(model.students[0].history[1].baselineLabel, "Supplemental diagnostic — not a baseline");
   assert.equal(model.metrics.averageAllPrePercentage, 40);
+});
+
+test("POST attempt labels use authoritative attempt numbers without inventing missing labels", () => {
+  assert.equal(typeof analyticsState.postAttemptKindLabel, "function");
+  const { postAttemptKindLabel } = analyticsState;
+  assert.equal(postAttemptKindLabel(1), "Initial attempt");
+  assert.equal(postAttemptKindLabel(2), "Retake");
+  assert.equal(postAttemptKindLabel(9), "Retake");
+  for (const invalid of [undefined, null, 0, -1, 1.5, Number.NaN, "2"]) {
+    assert.equal(postAttemptKindLabel(invalid), null, String(invalid));
+  }
 });
 
 test("mixed baseline provenance separates diagnostic averages, counts, and paired gain", () => {

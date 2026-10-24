@@ -11,6 +11,11 @@ import { AdminStudentClassroomFilterView } from "./AdminStudentClassroomFilter.j
 import AdminLessonViewer from "./AdminLessonViewer.jsx";
 import { createAdminLessonDownloadController, createAdminLessonViewerController } from "./adminLessonViewerState.js";
 import {
+  buildAdminContentListPath,
+  createAdminContentRequestController,
+  createAdminContentTransitions,
+} from "./adminContentListState.js";
+import {
   buildAdminUserFilterSnapshot,
   buildClassroomLookupPath,
   buildQueryString,
@@ -51,8 +56,9 @@ function AdminDashboardPage() {
   const [classroomLookup, setClassroomLookup] = useState({ options: [], search: "", page: 1, total: null, totalPages: null, status: "idle", error: "", retry: 0 });
   const [classrooms, setClassrooms] = useState([]); const [classPage, setClassPage] = useState(1); const [classMeta, setClassMeta] = useState({ total: 0, totalPages: 1 });
   const [classFilters, setClassFilters] = useState({ search: "", status: "", from: "", to: "" });
-  const [content, setContent] = useState([]); const [contentPage, setContentPage] = useState(1); const [contentMeta, setContentMeta] = useState({ total: 0, totalPages: 1 });
-  const [contentFilters, setContentFilters] = useState({ search: "", type: "", published: "" });
+  const [content, setContent] = useState([]); const [contentPage, setContentPage] = useState(1); const [contentMeta, setContentMeta] = useState({ total: null, totalPages: null });
+  const [contentFilters, setContentFilters] = useState({ search: "", type: "", status: "" });
+  const [contentLoading, setContentLoading] = useState(false); const [contentError, setContentError] = useState("");
   const [logs, setLogs] = useState([]); const [logPage, setLogPage] = useState(1); const [logMeta, setLogMeta] = useState({ total: 0, totalPages: 1 });
   const [logFilters, setLogFilters] = useState({ actor: "", target: "", action: "", from: "", to: "" });
   const [confirmAction, setConfirmAction] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deleteText, setDeleteText] = useState("");
@@ -113,6 +119,17 @@ function AdminDashboardPage() {
       }));
     },
   }), []);
+  const contentRequests = useMemo(() => createAdminContentRequestController({
+    setContent,
+    setMeta: setContentMeta,
+    setError: setContentError,
+    setLoading: setContentLoading,
+  }), []);
+  const contentTransitions = useMemo(() => createAdminContentTransitions({
+    requests: contentRequests,
+    setFilters: setContentFilters,
+    setPage: setContentPage,
+  }), [contentRequests]);
   const filterTransitions = useMemo(() => createAdminFilterTransitions({
     userRequests,
     classroomRequests,
@@ -133,6 +150,14 @@ function AdminDashboardPage() {
     return { summaryResponse, logsResponse, healthResponse };
   }, []);
   const refresh = useCallback(async () => {
+    if (activeView === "content") {
+      return contentRequests.run(async () => {
+        const response = await axios.get(buildApiUrl(buildAdminContentListPath(contentFilters, contentPage)), api());
+        return response.data;
+      }, {
+        mapError: (requestError) => requestError.response?.data?.message || "Unable to load content.",
+      });
+    }
     return userRequests.run(async () => {
       if (activeView === "dashboard" || activeView === "status") {
         const { summaryResponse, logsResponse, healthResponse } = await loadDashboard();
@@ -153,10 +178,6 @@ function AdminDashboardPage() {
         const r = await axios.get(buildApiUrl(`/api/admin/classrooms?${buildQueryString(classFilters, classPage)}`), api());
         return () => { setClassrooms(r.data.classrooms || []); setClassMeta(r.data); };
       }
-      if (activeView === "content") {
-        const r = await axios.get(buildApiUrl(`/api/admin/content?${buildQueryString(contentFilters, contentPage)}`), api());
-        return () => { setContent(r.data.content || []); setContentMeta(r.data); };
-      }
       if (activeView === "audit") {
         const r = await axios.get(buildApiUrl(`/api/admin/logs?${buildQueryString(logFilters, logPage)}`), api());
         return () => { setLogs(r.data.logs || []); setLogMeta(r.data); };
@@ -168,7 +189,7 @@ function AdminDashboardPage() {
         statusView: activeView === "status",
       }),
     });
-  }, [activeView, classFilters, classPage, contentFilters, contentPage, effectiveUserFilters, loadDashboard, logFilters, logPage, userPage, userRequests]);
+  }, [activeView, classFilters, classPage, contentFilters, contentPage, contentRequests, effectiveUserFilters, loadDashboard, logFilters, logPage, userPage, userRequests]);
   useEffect(() => { refresh(); }, [refresh]);
   useEffect(() => {
     if (activeView !== "students") {
@@ -198,9 +219,10 @@ function AdminDashboardPage() {
   useEffect(() => () => {
     userRequests.invalidate();
     classroomRequests.invalidate();
+    contentRequests.invalidate();
     lessonViewer.dispose();
     lessonDownloads.dispose();
-  }, [classroomRequests, lessonDownloads, lessonViewer, userRequests]);
+  }, [classroomRequests, contentRequests, lessonDownloads, lessonViewer, userRequests]);
 
   const changeClassroomSearch = (search) => {
     filterTransitions.changeClassroomSearch(search);
@@ -210,6 +232,12 @@ function AdminDashboardPage() {
   };
   const retryClassroomLookup = () => {
     filterTransitions.retryClassroomLookup();
+  };
+  const changeContentFilter = (name, value) => {
+    contentTransitions.changeFilter(name, value);
+  };
+  const changeContentPage = (page) => {
+    contentTransitions.changePage(page);
   };
   const changeAppliedClassroom = (classroomId) => {
     const selectedId = String(classroomId || "");
@@ -247,6 +275,7 @@ function AdminDashboardPage() {
   const selectView = (view) => {
     lessonDownloads.invalidate();
     setDetailFileError("");
+    contentTransitions.changeView(view, activeView);
     if (view === "legal") {
       userRequests.invalidate();
       classroomRequests.invalidate();
@@ -283,9 +312,8 @@ function AdminDashboardPage() {
   const renderContent = () => <>
     <PageHeading eyebrow="Teacher-created materials" title="Content oversight"><span className={styles.readOnly}><FiEye /> Read-only</span></PageHeading>
     <section className={styles.card}>
-      <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search content</span><input value={contentFilters.search} onChange={(e) => setContentFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Title, classroom, or teacher" /></label><label>Type<select value={contentFilters.type} onChange={(e) => setContentFilters((v) => ({ ...v, type: e.target.value }))}><option value="">All content</option><option value="module">Modules</option><option value="lesson">Lessons</option><option value="assignment">Assignments</option></select></label><label>Publish state<select value={contentFilters.published} onChange={(e) => setContentFilters((v) => ({ ...v, published: e.target.value }))}><option value="">All states</option><option value="true">Published</option><option value="false">Draft</option></select></label></div>
-      <TableState loading={loading} error={error} empty={!content.length} emptyText="No learning content matches these filters."><div className={styles.tableWrap}><table><thead><tr><th>Content</th><th>Type</th><th>Classroom</th><th>Teacher</th><th>Publish state</th><th>Created</th><th /></tr></thead><tbody>{content.map((item) => <tr key={item.id}><td><strong>{item.title}</strong>{item.externalUrl && <small className={styles.ellipsis}>{item.externalUrl}</small>}</td><td>{item.contentType}</td><td>{item.classroom?.className || "—"}</td><td>{item.classroom?.teacher ? `${item.classroom.teacher.firstName} ${item.classroom.teacher.lastName}` : "—"}</td><td><StatusBadge value={item.isPublished ? "published" : "draft"} /></td><td>{formatDate(item.createdAt)}</td><td><button type="button" className={styles.inspectButton} onClick={(event) => openContent(item, event.currentTarget)}><FiEye /> Inspect</button></td></tr>)}</tbody></table></div></TableState>
-      <Pager page={contentPage} totalPages={contentMeta.totalPages || 1} total={contentMeta.total || 0} label="items" onChange={setContentPage} />
+      <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search content</span><input value={contentFilters.search} onChange={(e) => changeContentFilter("search", e.target.value)} placeholder="Title, classroom, or teacher" /></label><label>Type<select value={contentFilters.type} onChange={(e) => changeContentFilter("type", e.target.value)}><option value="">All content</option><option value="module">Modules</option><option value="lesson">Lessons</option><option value="assignment">Assignments</option></select></label><AdminContentStatusFilter value={contentFilters.status} onChange={(status) => changeContentFilter("status", status)} /></div>
+      <AdminContentTable content={content} loading={contentLoading} error={contentError} onOpenContent={openContent} page={contentPage} total={contentMeta.total} totalPages={contentMeta.totalPages} onPageChange={changeContentPage} />
     </section>
   </>;
 
@@ -377,6 +405,22 @@ function UserActions({ user, openUser, setConfirmAction, setDeleteTarget, setDel
 }
 function TableState({ loading, error, empty, emptyText, children, onRetry }) { if (loading) return <div className={styles.state}><FiRefreshCw className={styles.spin} /> Loading…</div>; if (error) return <div className={`${styles.state} ${styles.stateError}`} role="alert"><FiActivity />{error}{onRetry && <button type="button" className={styles.secondaryButton} onClick={onRetry}>Retry</button>}</div>; if (empty) return <Empty text={emptyText} />; return children; }
 function Empty({ text }) { return <div className={styles.state}><FiSearch /><strong>{text}</strong><span>Try changing the current filters.</span></div>; }
+const contentOwnerLabel = (owner) => {
+  if (!owner) return "—";
+  return [owner.firstName, owner.lastName].filter(Boolean).join(" ") || (owner.username ? `@${owner.username}` : "—");
+};
+const contentPublicationLabel = (status) => ({
+  archived: "Archived",
+  scheduled: "Scheduled",
+  published: "Published",
+  draft: "Draft",
+}[status] || "Unknown");
+export function AdminContentStatusFilter({ value, onChange }) {
+  return <label>Publish state<select value={value} onChange={(event) => onChange(event.target.value)}><option value="">All statuses</option><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="published">Published</option><option value="archived">Archived</option></select></label>;
+}
+export function AdminContentTable({ content = [], loading, error, onOpenContent, page, total, totalPages, onPageChange }) {
+  return <><TableState loading={loading} error={error} empty={!content.length} emptyText="No learning content matches these filters."><div className={styles.tableWrap}><table><thead><tr><th>Content</th><th>Type</th><th>Classroom</th><th>Teacher</th><th>Publish state</th><th>Created</th><th /></tr></thead><tbody>{content.map((item) => <tr key={item.id}><td><strong>{item.title}</strong>{item.externalUrl && <small className={styles.ellipsis}>{item.externalUrl}</small>}</td><td>{item.contentType}</td><td>{item.classroom?.className || "—"}</td><td>{contentOwnerLabel(item.owner)}</td><td><StatusBadge value={contentPublicationLabel(item.status)} /></td><td>{formatDate(item.createdAt)}</td><td><button type="button" className={styles.inspectButton} onClick={(event) => onOpenContent?.(item, event.currentTarget)}><FiEye /> Inspect</button></td></tr>)}</tbody></table></div></TableState><Pager page={page} totalPages={totalPages} total={total} label="items" onChange={onPageChange} /></>;
+}
 function TypedDelete({ target, text, setText, busy, onCancel, onDelete }) { return <div className={styles.modalBackdrop}><section className={styles.typedModal} role="dialog" aria-modal="true" aria-labelledby="delete-title"><h3 id="delete-title">Permanently delete user</h3><p>This cannot be undone. The archived account and related records may be removed by database cascades.</p><label>Type <strong>DELETE</strong> to continue<input autoFocus value={text} onChange={(e) => setText(e.target.value)} aria-label={`Type DELETE to permanently delete ${target.username}`} /></label><div><button type="button" className={styles.secondaryButton} onClick={onCancel} disabled={busy}>Cancel</button><button type="button" className={styles.dangerButton} onClick={onDelete} disabled={text !== "DELETE" || busy}>Delete permanently</button></div></section></div>; }
 const membershipStatusLabel = (status) => ({
   active: "Enrolled",

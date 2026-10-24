@@ -17,6 +17,7 @@ const { sendTeacherInviteEmail, sendTemporaryPasswordEmail } = require("../servi
 const { createRateLimit } = require("../middleware/rateLimit");
 const { getPolicyStatus } = require("../constants/policyVersions");
 const { sendCsv } = require("../services/csvService");
+const { derivePublicationStatus } = require("../services/lessonBuilderService");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
 const ALLOWED_STATUSES = new Set(["active", "inactive", "pending", "archived"]);
@@ -49,6 +50,21 @@ const normalizeString = (value) =>
 
 const normalizeEmail = (value) =>
   normalizeString(value).toLowerCase();
+
+const serializeAdminContent = (record, now) => {
+  const content = record?.toJSON ? record.toJSON() : record;
+  const owner = content?.owner;
+  return {
+    ...content,
+    status: content?.archivedAt ? "archived" : derivePublicationStatus(content, now),
+    owner: owner ? {
+      id: owner.id,
+      firstName: owner.firstName,
+      lastName: owner.lastName,
+      username: owner.username,
+    } : null,
+  };
+};
 
 const sanitizeUser = (user) => ({
   id: user.id,
@@ -595,23 +611,40 @@ router.get("/content", async (req, res) => {
     const search = normalizeString(req.query.search).toLowerCase();
     const type = normalizeString(req.query.type).toLowerCase();
     const published = normalizeString(req.query.published).toLowerCase();
+    const status = normalizeString(req.query.status).toLowerCase();
+    const now = new Date();
     if (type && !["module", "lesson", "assignment"].includes(type)) return res.status(400).json({ message: "Invalid content type" });
+    if (status && !["archived", "scheduled", "published", "draft"].includes(status)) return res.status(400).json({ message: "Invalid content status" });
+    if (status && published) return res.status(400).json({ message: "Choose either status or published, not both" });
     if (published && !["true", "false"].includes(published)) return res.status(400).json({ message: "Invalid publish filter" });
     const whereClause = {};
     if (type) whereClause.contentType = type;
-    if (published) whereClause.isPublished = published === "true";
+    if (status === "archived") whereClause.archivedAt = { [Op.ne]: null };
+    if (status === "draft") Object.assign(whereClause, { archivedAt: null, isPublished: false });
+    if (status === "scheduled") Object.assign(whereClause, { archivedAt: null, isPublished: true, publishAt: { [Op.gt]: now } });
+    if (status === "published") {
+      Object.assign(whereClause, { archivedAt: null, isPublished: true });
+      whereClause[Op.and] = [{ [Op.or]: [{ publishAt: null }, { publishAt: { [Op.lte]: now } }] }];
+    }
+    if (!status && published) whereClause.isPublished = published === "true";
     if (search) whereClause[Op.or] = [
       where(fn("lower", col("ClassroomLessons.title")), { [Op.like]: `%${search}%` }),
       where(fn("lower", col("classroom.className")), { [Op.like]: `%${search}%` }),
-      where(fn("lower", col("classroom->teacher.email")), { [Op.like]: `%${search}%` }),
+      where(fn("lower", col("owner.firstName")), { [Op.like]: `%${search}%` }),
+      where(fn("lower", col("owner.lastName")), { [Op.like]: `%${search}%` }),
+      where(fn("lower", col("owner.username")), { [Op.like]: `%${search}%` }),
+      where(fn("lower", col("owner.email")), { [Op.like]: `%${search}%` }),
     ];
     const result = await ClassroomLesson.findAndCountAll({
       where: whereClause,
-      attributes: ["id", "title", "contentType", "moduleId", "externalUrl", "isPublished", "publishAt", "createdAt", "updatedAt"],
-      include: [{ model: Classroom, as: "classroom", attributes: ["id", "className", "isActive"], include: [{ model: User, as: "teacher", attributes: ["id", "firstName", "lastName", "email"] }] }],
-      distinct: true, order: [["createdAt", "DESC"]], limit, offset,
+      attributes: ["id", "title", "contentType", "moduleId", "externalUrl", "isPublished", "publishAt", "archivedAt", "createdAt", "updatedAt"],
+      include: [
+        { model: User, as: "owner", attributes: ["id", "firstName", "lastName", "username"], required: false },
+        { model: Classroom, as: "classroom", attributes: ["id", "className", "isActive"], include: [{ model: User, as: "teacher", attributes: ["id", "firstName", "lastName", "email"] }] },
+      ],
+      distinct: true, order: [["createdAt", "DESC"], ["id", "DESC"]], limit, offset,
     });
-    return res.json({ total: result.count, page, limit, totalPages: Math.max(1, Math.ceil(result.count / limit)), content: result.rows, mode: "read-only" });
+    return res.json({ total: result.count, page, limit, totalPages: Math.max(1, Math.ceil(result.count / limit)), content: result.rows.map((record) => serializeAdminContent(record, now)), mode: "read-only" });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Failed to load content oversight" });

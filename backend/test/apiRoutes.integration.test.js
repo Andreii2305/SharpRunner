@@ -45,6 +45,7 @@ const officePreviewService = require("../src/services/officePreviewService");
 const customLessonLifecycle = require("../src/services/customLessonLifecycleService");
 const classroomMembershipDecisionService = require("../src/services/classroomMembershipDecisionService");
 const classroomJoinRequestService = require("../src/services/classroomJoinRequestService");
+const { derivePublicationStatus } = require("../src/services/lessonBuilderService");
 const { DEFAULT_LEVEL_PROGRESS } = require("../src/constants/progressDefaults");
 const {
   TERMS_VERSION,
@@ -4659,6 +4660,269 @@ test("admin classroom student filtering returns not found and shares its scope w
     assert.deepEqual(options.include[0].where, { classroomId: 25, status: "active" });
     assert.equal(options.include[0].required, true);
   }
+});
+
+test("admin content list derives publication states and serializes authoritative owners minimally", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  const owner = {
+    id: 81,
+    firstName: "Ada",
+    lastName: "Owner",
+    username: "ada.owner",
+    email: "private@example.test",
+    password: "not-for-serialization",
+  };
+  const rows = [
+    {
+      id: 104, title: "Archived", contentType: "lesson", classroomId: 25,
+      isPublished: true, publishAt: null, archivedAt: new Date("2026-10-01T00:00:00Z"),
+      createdAt: new Date("2026-10-04T00:00:00Z"), owner,
+      classroom: { id: 25, className: "Foundations", isActive: false, teacher: { id: 99, firstName: "Wrong", lastName: "Teacher", email: "wrong@example.test" } },
+    },
+    {
+      id: 103, title: "Published", contentType: "module", classroomId: 25,
+      isPublished: true, publishAt: null, archivedAt: null,
+      createdAt: new Date("2026-10-03T00:00:00Z"), owner,
+      classroom: { id: 25, className: "Foundations", isActive: true, teacher: { id: 99, firstName: "Wrong", lastName: "Teacher", email: "wrong@example.test" } },
+    },
+    {
+      id: 102, title: "Scheduled reusable", contentType: "lesson", classroomId: null,
+      isPublished: true, publishAt: new Date("2099-12-01T09:30:00Z"), archivedAt: null,
+      createdAt: new Date("2026-10-02T00:00:00Z"), owner, classroom: null,
+    },
+    {
+      id: 101, title: "Draft without owner", contentType: "assignment", classroomId: 25,
+      isPublished: false, publishAt: null, archivedAt: null,
+      createdAt: new Date("2026-10-01T00:00:00Z"), owner: null,
+      classroom: { id: 25, className: "Foundations", isActive: true, teacher: null },
+    },
+  ].map((row) => ({ ...row, toJSON() { const { toJSON, ...value } = this; return value; } }));
+  let capturedOptions;
+
+  await withStubs([
+    [User, "findByPk", async (id) => Number(id) === admin.id ? admin : activeUser({ id: Number(id), role: "student" })],
+    [ClassroomLesson, "findAndCountAll", async (options) => {
+      capturedOptions = options;
+      return { count: rows.length, rows };
+    }],
+  ], async () => {
+    const denied = await apiRequest("/api/admin/content", { token: authToken(8, "student") });
+    assert.equal(denied.response.status, 403);
+
+    const { response, payload } = await apiRequest(
+      "/api/admin/content?type=lesson&published=true&search=owner&page=2&limit=2",
+      { token: authToken(admin.id, "admin") },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(payload.content.map((item) => item.status), ["archived", "published", "scheduled", "draft"]);
+    assert.deepEqual(payload.content[2].owner, {
+      id: owner.id,
+      firstName: owner.firstName,
+      lastName: owner.lastName,
+      username: owner.username,
+    });
+    assert.equal(payload.content[2].classroom, null);
+    assert.equal(payload.content[3].owner, null);
+    assert.equal(Object.hasOwn(payload.content[0].owner, "email"), false);
+    assert.equal(Object.hasOwn(payload.content[0].owner, "password"), false);
+    assert.equal(payload.content[0].archivedAt, "2026-10-01T00:00:00.000Z");
+    assert.deepEqual({ total: payload.total, page: payload.page, limit: payload.limit, totalPages: payload.totalPages }, {
+      total: 4, page: 2, limit: 2, totalPages: 2,
+    });
+  });
+
+  assert.equal(capturedOptions.where.contentType, "lesson");
+  assert.equal(capturedOptions.where.isPublished, true);
+  assert.equal(capturedOptions.where[Op.or].length, 6);
+  assert.equal(capturedOptions.limit, 2);
+  assert.equal(capturedOptions.offset, 2);
+  assert.equal(capturedOptions.distinct, true);
+  assert.deepEqual(capturedOptions.order, [["createdAt", "DESC"], ["id", "DESC"]]);
+  assert.ok(capturedOptions.attributes.includes("archivedAt"));
+  const ownerInclude = capturedOptions.include.find((item) => item.as === "owner");
+  assert.deepEqual(ownerInclude.attributes, ["id", "firstName", "lastName", "username"]);
+});
+
+test("admin content search uses the optional authoritative owner and composes before pagination", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  const owner = {
+    id: 81,
+    firstName: "Ada",
+    lastName: "Owner",
+    username: "ada.owner",
+    email: "ada@example.test",
+  };
+  const rows = [
+    {
+      id: 201,
+      title: "Reusable lesson",
+      contentType: "lesson",
+      isPublished: true,
+      publishAt: null,
+      archivedAt: null,
+      owner,
+      classroom: null,
+    },
+    {
+      id: 202,
+      title: "Direct lesson",
+      contentType: "lesson",
+      isPublished: true,
+      publishAt: null,
+      archivedAt: null,
+      owner,
+      classroom: {
+        id: 25,
+        className: "Foundations",
+        isActive: true,
+        teacher: { id: 99, firstName: "Different", lastName: "Teacher", email: "different@example.test" },
+      },
+    },
+    {
+      id: 203,
+      title: "Ownerless title match",
+      contentType: "lesson",
+      isPublished: true,
+      publishAt: null,
+      archivedAt: null,
+      owner: null,
+      classroom: { id: 26, className: "Searchable classroom", isActive: true, teacher: null },
+    },
+  ].map((row) => ({ ...row, toJSON() { const { toJSON, ...value } = this; return value; } }));
+  let capturedOptions;
+
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLesson, "findAndCountAll", async (options) => {
+      capturedOptions = options;
+      return { count: 8, rows };
+    }],
+  ], async () => {
+    const { response, payload } = await apiRequest(
+      "/api/admin/content?search=AdA%40Example.Test&type=lesson&status=published&page=2&limit=3",
+      { token: authToken(admin.id, "admin") },
+    );
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      { total: payload.total, page: payload.page, limit: payload.limit, totalPages: payload.totalPages },
+      { total: 8, page: 2, limit: 3, totalPages: 3 },
+    );
+    assert.deepEqual(payload.content[0].owner, {
+      id: owner.id,
+      firstName: owner.firstName,
+      lastName: owner.lastName,
+      username: owner.username,
+    });
+    assert.equal(Object.hasOwn(payload.content[0].owner, "email"), false);
+    assert.equal(payload.content[2].owner, null);
+  });
+
+  assert.equal(capturedOptions.where.contentType, "lesson");
+  assert.equal(capturedOptions.where.archivedAt, null);
+  assert.equal(capturedOptions.where.isPublished, true);
+  assert.equal(capturedOptions.limit, 3);
+  assert.equal(capturedOptions.offset, 3);
+  assert.equal(capturedOptions.distinct, true);
+  assert.deepEqual(capturedOptions.order, [["createdAt", "DESC"], ["id", "DESC"]]);
+
+  const searchConditions = capturedOptions.where[Op.or];
+  assert.deepEqual(searchConditions.map((condition) => condition.attribute.args[0].col), [
+    "ClassroomLessons.title",
+    "classroom.className",
+    "owner.firstName",
+    "owner.lastName",
+    "owner.username",
+    "owner.email",
+  ]);
+  for (const condition of searchConditions) {
+    assert.equal(condition.attribute.fn, "lower");
+    assert.equal(condition.logic[Op.like], "%ada@example.test%");
+  }
+  assert.equal(searchConditions.some((condition) => condition.attribute.args[0].col === "classroom->teacher.email"), false);
+
+  const ownerInclude = capturedOptions.include.find((item) => item.as === "owner");
+  assert.equal(ownerInclude.required, false, "owner-less records remain eligible for title and classroom matches");
+  assert.deepEqual(ownerInclude.attributes, ["id", "firstName", "lastName", "username"]);
+});
+
+test("admin content status filters match displayed publication states before pagination", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  const queries = [];
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLesson, "findAndCountAll", async (options) => {
+      queries.push(options);
+      return { count: 41, rows: [] };
+    }],
+  ], async () => {
+    for (const status of ["archived", "draft", "scheduled", "published"]) {
+      const { response, payload } = await apiRequest(
+        `/api/admin/content?status=${status}&search=scope&page=3&limit=10`,
+        { token: authToken(admin.id, "admin") },
+      );
+      assert.equal(response.status, 200, status);
+      assert.deepEqual({ total: payload.total, page: payload.page, limit: payload.limit, totalPages: payload.totalPages }, {
+        total: 41, page: 3, limit: 10, totalPages: 5,
+      });
+    }
+  });
+
+  assert.equal(queries.length, 4);
+  for (const options of queries) {
+    assert.equal(options.limit, 10);
+    assert.equal(options.offset, 20);
+    assert.equal(options.where[Op.or].length, 6, "search remains composed with status filtering");
+  }
+
+  assert.equal(queries[0].where.archivedAt[Op.ne], null);
+  assert.deepEqual({ archivedAt: queries[1].where.archivedAt, isPublished: queries[1].where.isPublished }, {
+    archivedAt: null, isPublished: false,
+  });
+  assert.equal(queries[2].where.archivedAt, null);
+  assert.equal(queries[2].where.isPublished, true);
+  const scheduledBoundary = queries[2].where.publishAt[Op.gt];
+  assert.ok(scheduledBoundary instanceof Date);
+  assert.equal(derivePublicationStatus({ isPublished: true, publishAt: scheduledBoundary }, scheduledBoundary), "published");
+  assert.equal(derivePublicationStatus({ isPublished: true, publishAt: new Date(scheduledBoundary.getTime() + 1) }, scheduledBoundary), "scheduled");
+
+  assert.equal(queries[3].where.archivedAt, null);
+  assert.equal(queries[3].where.isPublished, true);
+  const publishedAlternatives = queries[3].where[Op.and][0][Op.or];
+  assert.deepEqual(publishedAlternatives[0], { publishAt: null });
+  const publishedBoundary = publishedAlternatives[1].publishAt[Op.lte];
+  assert.ok(publishedBoundary instanceof Date);
+  assert.equal(derivePublicationStatus({ isPublished: true, publishAt: publishedBoundary }, publishedBoundary), "published");
+});
+
+test("admin content status validation conflicts cleanly and legacy published filters remain compatible", async () => {
+  const admin = activeUser({ id: 7, username: "admin", role: "admin" });
+  const queries = [];
+  await withStubs([
+    [User, "findByPk", async () => admin],
+    [ClassroomLesson, "findAndCountAll", async (options) => {
+      queries.push(options);
+      return { count: 0, rows: [] };
+    }],
+  ], async () => {
+    const invalid = await apiRequest("/api/admin/content?status=unknown", { token: authToken(admin.id, "admin") });
+    assert.equal(invalid.response.status, 400);
+    assert.equal(invalid.payload.message, "Invalid content status");
+
+    const conflict = await apiRequest("/api/admin/content?status=draft&published=false", { token: authToken(admin.id, "admin") });
+    assert.equal(conflict.response.status, 400);
+    assert.equal(conflict.payload.message, "Choose either status or published, not both");
+
+    for (const published of ["true", "false"]) {
+      const legacy = await apiRequest(`/api/admin/content?published=${published}`, { token: authToken(admin.id, "admin") });
+      assert.equal(legacy.response.status, 200);
+    }
+  });
+
+  assert.equal(queries.length, 2, "invalid and conflicting filters do not query content");
+  assert.equal(queries[0].where.isPublished, true);
+  assert.equal(queries[1].where.isPublished, false);
+  assert.equal(Object.hasOwn(queries[0].where, "archivedAt"), false, "legacy filter keeps archived compatibility");
 });
 
 test("admin summary reports active users and classrooms", async () => {

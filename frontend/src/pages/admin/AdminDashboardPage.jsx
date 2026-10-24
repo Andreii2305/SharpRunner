@@ -8,6 +8,8 @@ import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInviteModal.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { AdminStudentClassroomFilterView } from "./AdminStudentClassroomFilter.jsx";
+import AdminLessonViewer from "./AdminLessonViewer.jsx";
+import { createAdminLessonDownloadController, createAdminLessonViewerController } from "./adminLessonViewerState.js";
 import {
   buildAdminUserFilterSnapshot,
   buildClassroomLookupPath,
@@ -54,7 +56,16 @@ function AdminDashboardPage() {
   const [logs, setLogs] = useState([]); const [logPage, setLogPage] = useState(1); const [logMeta, setLogMeta] = useState({ total: 0, totalPages: 1 });
   const [logFilters, setLogFilters] = useState({ actor: "", target: "", action: "", from: "", to: "" });
   const [confirmAction, setConfirmAction] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deleteText, setDeleteText] = useState("");
-  const [detail, setDetail] = useState(null); const [showInvite, setShowInvite] = useState(false); const [inviteBusy, setInviteBusy] = useState(false); const [inviteError, setInviteError] = useState(""); const [actionBusy, setActionBusy] = useState(false);
+  const [detail, setDetail] = useState(null); const [detailFileError, setDetailFileError] = useState(""); const [detailFileLoading, setDetailFileLoading] = useState(false); const [showInvite, setShowInvite] = useState(false); const [inviteBusy, setInviteBusy] = useState(false); const [inviteError, setInviteError] = useState(""); const [actionBusy, setActionBusy] = useState(false);
+  const lessonViewer = useMemo(() => createAdminLessonViewerController({
+    request: async (path, options) => (await axios.get(buildApiUrl(path), { ...api(), ...options })).data,
+    setDetail,
+  }), []);
+  const lessonDownloads = useMemo(() => createAdminLessonDownloadController({
+    request: async (path, options) => (await axios.get(buildApiUrl(path), { headers: getAuthHeaders(), responseType: "blob", ...options })).data,
+    setError: setDetailFileError,
+    setLoading: setDetailFileLoading,
+  }), []);
   const userRequests = useMemo(() => createLatestRequestController({
     onStart() {
       setUsers([]);
@@ -187,7 +198,9 @@ function AdminDashboardPage() {
   useEffect(() => () => {
     userRequests.invalidate();
     classroomRequests.invalidate();
-  }, [classroomRequests, userRequests]);
+    lessonViewer.dispose();
+    lessonDownloads.dispose();
+  }, [classroomRequests, lessonDownloads, lessonViewer, userRequests]);
 
   const changeClassroomSearch = (search) => {
     filterTransitions.changeClassroomSearch(search);
@@ -218,12 +231,22 @@ function AdminDashboardPage() {
     try { const r = await axios.delete(buildApiUrl(`/api/admin/users/${deleteTarget.id}`), { headers: getAuthHeaders(), data: { confirmation: deleteText } }); toast.success(r.data.message); setDeleteTarget(null); setDeleteText(""); await refresh(); }
     catch (requestError) { setError(requestError.response?.data?.message || "Permanent deletion failed."); } finally { setActionBusy(false); }
   };
-  const openUser = async (user) => { try { const r = await axios.get(buildApiUrl(`/api/admin/users/${user.id}`), api()); setDetail({ type: "user", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load user details."); } };
-  const openClassroom = async (room) => { try { const r = await axios.get(buildApiUrl(`/api/admin/classrooms/${room.id}`), api()); setDetail({ type: "classroom", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load classroom details."); } };
-  const openContent = async (item) => { try { const r = await axios.get(buildApiUrl(`/api/admin/content/${item.id}`), api()); setDetail({ type: "content", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load content details."); } };
+  const openUser = async (user) => { lessonDownloads.invalidate(); setDetailFileError(""); if (detail?.type === "lesson") lessonViewer.close({ restoreFocus: false }); try { const r = await axios.get(buildApiUrl(`/api/admin/users/${user.id}`), api()); setDetail({ type: "user", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load user details."); } };
+  const openClassroom = async (room) => { lessonDownloads.invalidate(); setDetailFileError(""); if (detail?.type === "lesson") lessonViewer.close({ restoreFocus: false }); try { const r = await axios.get(buildApiUrl(`/api/admin/classrooms/${room.id}`), api()); setDetail({ type: "classroom", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load classroom details."); } };
+  const openContent = async (item, opener) => {
+    lessonDownloads.invalidate();
+    setDetailFileError("");
+    if (item.contentType === "lesson") { await lessonViewer.open(item, opener); return; }
+    if (detail?.type === "lesson") lessonViewer.close({ restoreFocus: false });
+    try { const r = await axios.get(buildApiUrl(`/api/admin/content/${item.id}`), api()); setDetail({ type: "content", ...r.data }); } catch (requestError) { setError(requestError.response?.data?.message || "Unable to load content details."); }
+  };
+  const closeDetail = () => { lessonDownloads.invalidate(); setDetailFileError(""); if (detail?.type === "lesson") lessonViewer.close(); else setDetail(null); };
+  const openLessonAttachment = (file) => lessonDownloads.download(file);
   const exportCsv = async (path, filename) => { try { const r = await axios.get(buildApiUrl(path), { headers: getAuthHeaders(), responseType: "blob" }); const url = URL.createObjectURL(r.data); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); } catch { setError("CSV export failed."); } };
   const createTeacher = async (form) => { setInviteBusy(true); setInviteError(""); try { const r = await axios.post(buildApiUrl("/api/admin/users/teacher"), form, api()); toast.success(r.data.message); setShowInvite(false); await refresh(); } catch (requestError) { setInviteError(requestError.response?.data?.message || "Unable to invite teacher."); } finally { setInviteBusy(false); } };
   const selectView = (view) => {
+    lessonDownloads.invalidate();
+    setDetailFileError("");
     if (view === "legal") {
       userRequests.invalidate();
       classroomRequests.invalidate();
@@ -231,7 +254,7 @@ function AdminDashboardPage() {
       return;
     }
     filterTransitions.changeView(view, activeView);
-    setDrawerOpen(false); setDetail(null);
+    setDrawerOpen(false); if (detail?.type === "lesson") lessonViewer.close({ restoreFocus: false }); else setDetail(null);
   };
   const signOut = () => { clearToken(); navigate("/login", { replace: true }); };
 
@@ -261,7 +284,7 @@ function AdminDashboardPage() {
     <PageHeading eyebrow="Teacher-created materials" title="Content oversight"><span className={styles.readOnly}><FiEye /> Read-only</span></PageHeading>
     <section className={styles.card}>
       <div className={styles.filters}><label className={styles.search}><FiSearch /><span className={styles.srOnly}>Search content</span><input value={contentFilters.search} onChange={(e) => setContentFilters((v) => ({ ...v, search: e.target.value }))} placeholder="Title, classroom, or teacher" /></label><label>Type<select value={contentFilters.type} onChange={(e) => setContentFilters((v) => ({ ...v, type: e.target.value }))}><option value="">All content</option><option value="module">Modules</option><option value="lesson">Lessons</option><option value="assignment">Assignments</option></select></label><label>Publish state<select value={contentFilters.published} onChange={(e) => setContentFilters((v) => ({ ...v, published: e.target.value }))}><option value="">All states</option><option value="true">Published</option><option value="false">Draft</option></select></label></div>
-      <TableState loading={loading} error={error} empty={!content.length} emptyText="No learning content matches these filters."><div className={styles.tableWrap}><table><thead><tr><th>Content</th><th>Type</th><th>Classroom</th><th>Teacher</th><th>Publish state</th><th>Created</th><th /></tr></thead><tbody>{content.map((item) => <tr key={item.id}><td><strong>{item.title}</strong>{item.externalUrl && <small className={styles.ellipsis}>{item.externalUrl}</small>}</td><td>{item.contentType}</td><td>{item.classroom?.className || "—"}</td><td>{item.classroom?.teacher ? `${item.classroom.teacher.firstName} ${item.classroom.teacher.lastName}` : "—"}</td><td><StatusBadge value={item.isPublished ? "published" : "draft"} /></td><td>{formatDate(item.createdAt)}</td><td><button type="button" className={styles.inspectButton} onClick={() => openContent(item)}><FiEye /> Inspect</button></td></tr>)}</tbody></table></div></TableState>
+      <TableState loading={loading} error={error} empty={!content.length} emptyText="No learning content matches these filters."><div className={styles.tableWrap}><table><thead><tr><th>Content</th><th>Type</th><th>Classroom</th><th>Teacher</th><th>Publish state</th><th>Created</th><th /></tr></thead><tbody>{content.map((item) => <tr key={item.id}><td><strong>{item.title}</strong>{item.externalUrl && <small className={styles.ellipsis}>{item.externalUrl}</small>}</td><td>{item.contentType}</td><td>{item.classroom?.className || "—"}</td><td>{item.classroom?.teacher ? `${item.classroom.teacher.firstName} ${item.classroom.teacher.lastName}` : "—"}</td><td><StatusBadge value={item.isPublished ? "published" : "draft"} /></td><td>{formatDate(item.createdAt)}</td><td><button type="button" className={styles.inspectButton} onClick={(event) => openContent(item, event.currentTarget)}><FiEye /> Inspect</button></td></tr>)}</tbody></table></div></TableState>
       <Pager page={contentPage} totalPages={contentMeta.totalPages || 1} total={contentMeta.total || 0} label="items" onChange={setContentPage} />
     </section>
   </>;
@@ -270,7 +293,7 @@ function AdminDashboardPage() {
 
   const renderStatus = () => <><PageHeading eyebrow="Operational visibility" title="System status"><button className={styles.secondaryButton} type="button" onClick={refresh}><FiRefreshCw /> Run checks</button></PageHeading><div className={styles.gridTwo}><section className={styles.card}><h3>Service checks</h3><div className={styles.healthRows}><div><span>Backend API</span><StatusBadge value={health.status === "ok" ? "online" : health.status} /></div><div><span>Database</span><StatusBadge value={health.database} /></div></div><p className={styles.privacyNote}>Only non-sensitive operational status is exposed. Credentials, environment variables, and server details are never returned.</p></section><section className={styles.card}><h3>Platform totals</h3><div className={styles.healthRows}><div><span>Total users</span><strong>{summary.totalUsers}</strong></div><div><span>Active users</span><strong>{summary.activeUsers}</strong></div><div><span>Active classrooms</span><strong>{summary.activeClassrooms}</strong></div><div><span>Archived accounts</span><strong>{summary.archivedAccounts}</strong></div></div></section></div></>;
 
-  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && <DetailPanel detail={detail} onClose={() => setDetail(null)} />}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
+  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && (detail.type === "lesson" ? <AdminLessonViewer detail={detail} onClose={closeDetail} onRetry={() => lessonViewer.retry()} onOpenAttachment={openLessonAttachment} fileError={detailFileError} fileLoading={detailFileLoading} /> : <DetailPanel detail={detail} onClose={closeDetail} />)}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
 }
 
 function PageHeading({ eyebrow, title, children }) { return <div className={styles.pageHeading}><div><p>{eyebrow}</p><h2>{title}</h2></div><div className={styles.headingActions}>{children}</div></div>; }

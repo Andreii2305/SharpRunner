@@ -28,6 +28,20 @@ test("a dialog flow captures its opener once and restores only when the whole fl
   assert.equal(reopenedFrom.focused, true);
 });
 
+test("a dialog focus session can end without restoring during navigation or unmount", () => {
+  const opener = focusable("lesson inspect button");
+  const nextOpener = focusable("next lesson inspect button");
+  const session = createDialogFocusSession();
+
+  assert.equal(session.begin(opener), true);
+  assert.equal(session.cancel(), true);
+  assert.equal(opener.focused, undefined);
+  assert.equal(session.cancel(), false);
+  assert.equal(session.begin(nextOpener), true);
+  assert.equal(session.end(), true);
+  assert.equal(nextOpener.focused, true);
+});
+
 const focusable = (name, { disabled = false, connected = true } = {}) => ({
   name,
   disabled,

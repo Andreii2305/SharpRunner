@@ -3266,6 +3266,255 @@ test("teacher lesson library is role-protected and returns reusable lesson metad
   });
 });
 
+test("lesson-library detail returns minimal owner and direct-classroom context without changing authorization", async () => {
+  const teacher = activeUser({ id: 707, role: "teacher" });
+  const foreignTeacher = activeUser({ id: 708, role: "teacher" });
+  const admin = activeUser({ id: 709, role: "admin" });
+  const owner = {
+    id: teacher.id,
+    firstName: "Ada",
+    lastName: "Owner",
+    username: "ada.owner",
+    email: "private@example.test",
+    password: "not-for-serialization",
+  };
+  const classroom = {
+    id: 81,
+    className: "C# Foundations",
+    section: "A",
+    schoolYear: "2026-2027",
+    isActive: true,
+    classCode: "SECRET-CODE",
+  };
+  const lessons = new Map([
+    [901, { id: 901, teacherId: teacher.id, classroomId: classroom.id, contentType: "lesson", title: "Direct lesson", isPublished: true, publishAt: null, archivedAt: null, owner, classroom, placements: [], topics: [], attachments: [] }],
+    [902, { id: 902, teacherId: teacher.id, classroomId: null, contentType: "lesson", title: "Reusable lesson", isPublished: false, publishAt: null, archivedAt: null, owner, classroom: null, placements: [{ id: 1 }, { id: 2 }], topics: [], attachments: [] }],
+    [903, { id: 903, teacherId: teacher.id, classroomId: classroom.id, contentType: "lesson", title: "Archived classroom lesson", isPublished: true, publishAt: null, archivedAt: null, owner, classroom: { ...classroom, isActive: false }, placements: [], topics: [], attachments: [] }],
+    [904, { id: 904, teacherId: teacher.id, classroomId: 999, contentType: "lesson", title: "Missing context", isPublished: true, publishAt: null, archivedAt: null, owner: null, classroom: null, placements: [], topics: [], attachments: [] }],
+  ]);
+  for (const lesson of lessons.values()) {
+    lesson.toJSON = function toJSON() {
+      const { toJSON: _toJSON, ...payload } = this;
+      return payload;
+    };
+  }
+
+  await withStubs([
+    [User, "findByPk", async (id) => [teacher, foreignTeacher, admin].find((user) => user.id === Number(id))],
+    [ClassroomLesson, "findOne", async ({ where, include }) => {
+      const ownerInclude = include?.find((item) => item.as === "owner");
+      const classroomInclude = include?.find((item) => item.as === "classroom");
+      assert.deepEqual(ownerInclude?.attributes, ["id", "firstName", "lastName", "username"]);
+      assert.deepEqual(classroomInclude?.attributes, ["id", "className", "section", "schoolYear", "isActive"]);
+      const lesson = lessons.get(Number(where.id));
+      if (!lesson || (where.teacherId != null && Number(where.teacherId) !== lesson.teacherId)) return null;
+      return lesson;
+    }],
+  ], async () => {
+    const direct = await apiRequest("/api/teacher/lesson-library/901", { token: authToken(teacher.id, "teacher") });
+    assert.equal(direct.response.status, 200);
+    assert.deepEqual(direct.payload.lesson.owner, { id: teacher.id, firstName: "Ada", lastName: "Owner", username: "ada.owner" });
+    assert.deepEqual(direct.payload.lesson.classroom, { id: 81, className: "C# Foundations", section: "A", schoolYear: "2026-2027", isActive: true });
+    assert.equal(direct.payload.lesson.usageCount, 0);
+    assert.equal(Object.hasOwn(direct.payload.lesson.owner, "email"), false);
+    assert.equal(Object.hasOwn(direct.payload.lesson.classroom, "classCode"), false);
+
+    const reusable = await apiRequest("/api/teacher/lesson-library/902", { token: authToken(admin.id, "admin") });
+    assert.equal(reusable.response.status, 200);
+    assert.equal(reusable.payload.lesson.classroom, null);
+    assert.equal(reusable.payload.lesson.usageCount, 2);
+
+    const inactive = await apiRequest("/api/teacher/lesson-library/903", { token: authToken(teacher.id, "teacher") });
+    assert.equal(inactive.payload.lesson.classroom.isActive, false);
+
+    const missing = await apiRequest("/api/teacher/lesson-library/904", { token: authToken(admin.id, "admin") });
+    assert.equal(missing.payload.lesson.owner, null);
+    assert.equal(missing.payload.lesson.classroom, null);
+
+    const denied = await apiRequest("/api/teacher/lesson-library/901", { token: authToken(foreignTeacher.id, "teacher") });
+    assert.equal(denied.response.status, 404);
+  });
+});
+
+test("lesson-library detail derives attachment and topic-image availability without storage access", async () => {
+  const teacher = activeUser({ id: 710, role: "teacher" });
+  const foreignTeacher = activeUser({ id: 711, role: "teacher" });
+  const admin = activeUser({ id: 712, role: "admin" });
+  const statuses = ["clean", "signature_checked", "not_configured", null, "unsafe", "future_status"];
+  const expectedOptional = [true, true, false, false, false, false];
+  const expectedRequired = [true, false, false, false, false, false];
+  const lesson = {
+    id: 910,
+    teacherId: teacher.id,
+    classroomId: null,
+    contentType: "lesson",
+    title: "Availability lesson",
+    isPublished: false,
+    publishAt: null,
+    archivedAt: null,
+    placements: [],
+    attachments: statuses.map((scanStatus, index) => ({
+      id: 1000 + index,
+      originalName: `resource-${index}.pdf`,
+      mimeType: "application/pdf",
+      sizeBytes: 100 + index,
+      displayOrder: index,
+      scanStatus,
+    })),
+    topics: [{
+      id: 920,
+      title: "Topic",
+      displayOrder: 0,
+      content: { blocks: [] },
+      images: statuses.map((scanStatus, index) => ({
+        id: 2000 + index,
+        originalName: `image-${index}.png`,
+        mimeType: "image/png",
+        sizeBytes: 200 + index,
+        displayOrder: index,
+        placement: "content",
+        altText: `Image ${index}`,
+        caption: null,
+        scanStatus,
+      })),
+    }],
+    toJSON() {
+      const { toJSON, ...payload } = this;
+      return payload;
+    },
+  };
+  let storageReads = 0;
+  let attachmentWrites = 0;
+  const previousRequirement = process.env.REQUIRE_FILE_SCANNING;
+
+  try {
+    await withStubs([
+      [User, "findByPk", async (id) => [teacher, foreignTeacher, admin].find((user) => user.id === Number(id))],
+      [ClassroomLesson, "findOne", async ({ where, include }) => {
+        const topicImages = include?.find((item) => item.as === "topics")?.include?.[0];
+        assert.ok(topicImages.attributes.includes("scanStatus"));
+        if (where.teacherId != null && Number(where.teacherId) !== teacher.id) return null;
+        return lesson;
+      }],
+      [lessonStorage, "readFile", async () => { storageReads += 1; return null; }],
+      [ClassroomLessonAttachment, "create", async () => { attachmentWrites += 1; }],
+      [ClassroomLessonAttachment, "update", async () => { attachmentWrites += 1; }],
+      [ClassroomLessonAttachment, "destroy", async () => { attachmentWrites += 1; }],
+    ], async () => {
+      process.env.REQUIRE_FILE_SCANNING = "false";
+      const optional = await apiRequest(`/api/teacher/lesson-library/${lesson.id}`, {
+        token: authToken(teacher.id, "teacher"),
+      });
+      assert.equal(optional.response.status, 200);
+      assert.deepEqual(optional.payload.lesson.attachments.map((file) => file.available), expectedOptional);
+      assert.deepEqual(optional.payload.lesson.topics[0].images.map((file) => file.available), expectedOptional);
+      assert.equal(optional.payload.lesson.attachments[0].scanStatus, "clean", "existing attachment fields remain intact");
+      for (const image of optional.payload.lesson.topics[0].images) {
+        assert.equal(Object.hasOwn(image, "scanStatus"), false, "topic-image scan status remains internal");
+      }
+
+      process.env.REQUIRE_FILE_SCANNING = "true";
+      const required = await apiRequest(`/api/teacher/lesson-library/${lesson.id}`, {
+        token: authToken(teacher.id, "teacher"),
+      });
+      assert.equal(required.response.status, 200);
+      assert.deepEqual(required.payload.lesson.attachments.map((file) => file.available), expectedRequired);
+      assert.deepEqual(required.payload.lesson.topics[0].images.map((file) => file.available), expectedRequired);
+
+      const adminResult = await apiRequest(`/api/teacher/lesson-library/${lesson.id}`, {
+        token: authToken(admin.id, "admin"),
+      });
+      assert.equal(adminResult.response.status, 200);
+
+      const foreignResult = await apiRequest(`/api/teacher/lesson-library/${lesson.id}`, {
+        token: authToken(foreignTeacher.id, "teacher"),
+      });
+      assert.equal(foreignResult.response.status, 404);
+      assert.equal(storageReads, 0);
+      assert.equal(attachmentWrites, 0);
+    });
+  } finally {
+    if (previousRequirement === undefined) delete process.env.REQUIRE_FILE_SCANNING;
+    else process.env.REQUIRE_FILE_SCANNING = previousRequirement;
+  }
+});
+
+test("topic-image upload availability matches the lesson-library detail response", async () => {
+  const teacher = activeUser({ id: 713, role: "teacher" });
+  const lesson = {
+    id: 911,
+    teacherId: teacher.id,
+    classroomId: null,
+    contentType: "lesson",
+    title: "Image upload lesson",
+    isPublished: false,
+    publishAt: null,
+    archivedAt: null,
+    version: 2,
+    contentVersion: 1,
+    placements: [],
+    attachments: [],
+    topics: [],
+    async save() {},
+    toJSON() {
+      const { save, toJSON, ...payload } = this;
+      return payload;
+    },
+  };
+  const topic = { id: 921, lessonId: lesson.id, title: "Images", displayOrder: 0, content: { blocks: [] }, images: [] };
+  lesson.topics = [topic];
+  const previousRequirement = process.env.REQUIRE_FILE_SCANNING;
+  const previousClamAvBin = process.env.CLAMAV_BIN;
+  delete process.env.CLAMAV_BIN;
+  process.env.REQUIRE_FILE_SCANNING = "false";
+
+  try {
+    await withStubs([
+      [User, "findByPk", async () => teacher],
+      [ClassroomLesson, "findOne", async () => lesson],
+      [LessonTopic, "findOne", async () => topic],
+      [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+      [customLessonLifecycle, "lockContentRevisionForEdit", async () => lesson],
+      [ClassroomLessonAttachment, "count", async () => 0],
+      [lessonStorage, "uploadFile", async () => ({
+        data: Buffer.from("stored"),
+        storageProvider: "database",
+        storageKey: null,
+        sha256: "a".repeat(64),
+        scanStatus: "signature_checked",
+      })],
+      [lessonStorage, "readFile", async () => assert.fail("serialization must not read storage")],
+      [ClassroomLessonAttachment, "create", async (values) => {
+        const image = { id: 3001, ...values };
+        topic.images.push(image);
+        return image;
+      }],
+    ], async () => {
+      const form = new FormData();
+      form.append("files", new Blob([Buffer.from([0x89, 0x50, 0x4e, 0x47])], { type: "image/png" }), "topic.png");
+      const uploadResponse = await fetch(
+        `${baseUrl}/api/teacher/lesson-library/${lesson.id}/topics/${topic.id}/images`,
+        { method: "POST", headers: { Authorization: `Bearer ${authToken(teacher.id, "teacher")}` }, body: form },
+      );
+      const uploadPayload = await uploadResponse.json();
+      assert.equal(uploadResponse.status, 201);
+      assert.equal(uploadPayload.images[0].available, true);
+      assert.equal(Object.hasOwn(uploadPayload.images[0], "scanStatus"), false);
+
+      const detail = await apiRequest(`/api/teacher/lesson-library/${lesson.id}`, {
+        token: authToken(teacher.id, "teacher"),
+      });
+      assert.equal(detail.response.status, 200);
+      assert.deepEqual(detail.payload.lesson.topics[0].images[0], uploadPayload.images[0]);
+    });
+  } finally {
+    if (previousRequirement === undefined) delete process.env.REQUIRE_FILE_SCANNING;
+    else process.env.REQUIRE_FILE_SCANNING = previousRequirement;
+    if (previousClamAvBin === undefined) delete process.env.CLAMAV_BIN;
+    else process.env.CLAMAV_BIN = previousClamAvBin;
+  }
+});
+
 test("teacher lesson endpoints reject foreign lessons and mismatched nested topics", async () => {
   const teacher = activeUser({ id: 73, role: "teacher" });
   const ownedLesson = { id: 101, teacherId: teacher.id, contentType: "lesson", version: 2 };

@@ -11,6 +11,7 @@ const ClassroomLessonAttachment = require("../models/ClassroomLessonAttachment")
 const ClassroomLessonPlacement = require("../models/ClassroomLessonPlacement");
 const ClassroomLessonVersion = require("../models/ClassroomLessonVersion");
 const LessonTopic = require("../models/LessonTopic");
+const User = require("../models/User");
 const { uploadLessonFiles, removeUploadedFiles, removeStoredFiles, lessonUploadPolicy } = require("../middleware/classroomLessonUpload");
 const lessonStorage = require("../services/lessonFileStorageService");
 const {
@@ -24,6 +25,7 @@ const {
   hasLessonContentChanged,
 } = require("../services/lessonBuilderService");
 const customLessonLifecycle = require("../services/customLessonLifecycleService");
+const { isAttachmentDeliverable } = require("../services/attachmentDeliveryPolicyService");
 
 router.use(authMiddleware, requireRole("teacher", "admin"));
 
@@ -35,7 +37,7 @@ const topicInclude = {
   include: [{
     model: ClassroomLessonAttachment,
     as: "images",
-    attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder", "placement", "altText", "caption"],
+    attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder", "placement", "altText", "caption", "scanStatus"],
     separate: true,
     order: [["displayOrder", "ASC"], ["id", "ASC"]],
   }],
@@ -59,6 +61,18 @@ const attachmentInclude = {
   attributes: ["id", "originalName", "mimeType", "sizeBytes", "displayOrder", "scanStatus"],
 };
 
+const ownerInclude = {
+  model: User,
+  as: "owner",
+  attributes: ["id", "firstName", "lastName", "username"],
+};
+
+const directClassroomInclude = {
+  model: Classroom,
+  as: "classroom",
+  attributes: ["id", "className", "section", "schoolYear", "isActive"],
+};
+
 const findOwnedLesson = async (req, lessonId, options = {}) => ClassroomLesson.findOne({
   where: {
     id: lessonId,
@@ -68,6 +82,33 @@ const findOwnedLesson = async (req, lessonId, options = {}) => ClassroomLesson.f
   ...options,
 });
 
+// `available` reflects scan policy at serialization time. It does not verify
+// storage existence or replace the delivery endpoint's authorization check.
+const serializeAttachment = (record) => {
+  const attachment = record?.toJSON ? record.toJSON() : record;
+  return { ...attachment, available: isAttachmentDeliverable(attachment?.scanStatus) };
+};
+
+const serializeTopicImage = (record) => {
+  const image = record?.toJSON ? record.toJSON() : record;
+  return {
+    id: image.id,
+    originalName: image.originalName,
+    mimeType: image.mimeType,
+    sizeBytes: Number(image.sizeBytes),
+    displayOrder: image.displayOrder,
+    placement: image.placement,
+    altText: image.altText,
+    caption: image.caption,
+    available: isAttachmentDeliverable(image.scanStatus),
+  };
+};
+
+const serializeTopic = (record) => {
+  const topic = record?.toJSON ? record.toJSON() : record;
+  return { ...topic, images: (topic.images || []).map(serializeTopicImage) };
+};
+
 const serializeLesson = (record) => {
   const lesson = record?.toJSON ? record.toJSON() : record;
   if (!lesson) return null;
@@ -75,13 +116,39 @@ const serializeLesson = (record) => {
     ...lesson,
     status: derivePublicationStatus(lesson),
     usageCount: lesson.placements?.length ?? 0,
-    topics: (lesson.topics || []).sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id),
-    attachments: (lesson.attachments || []).sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id),
+    topics: (lesson.topics || []).sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id).map(serializeTopic),
+    attachments: (lesson.attachments || []).sort((a, b) => a.displayOrder - b.displayOrder || a.id - b.id).map(serializeAttachment),
+  };
+};
+
+const serializeLessonDetail = (record) => {
+  const lesson = record?.toJSON ? record.toJSON() : record;
+  const owner = lesson?.owner;
+  const classroom = lesson?.classroom;
+  return {
+    ...serializeLesson(lesson),
+    owner: owner ? {
+      id: owner.id,
+      firstName: owner.firstName,
+      lastName: owner.lastName,
+      username: owner.username,
+    } : null,
+    classroom: classroom ? {
+      id: classroom.id,
+      className: classroom.className,
+      section: classroom.section,
+      schoolYear: classroom.schoolYear,
+      isActive: classroom.isActive,
+    } : null,
   };
 };
 
 const loadLesson = (req, lessonId) => findOwnedLesson(req, lessonId, {
   include: [topicInclude, placementInclude, attachmentInclude],
+});
+
+const loadLessonDetail = (req, lessonId) => findOwnedLesson(req, lessonId, {
+  include: [topicInclude, placementInclude, attachmentInclude, ownerInclude, directClassroomInclude],
 });
 
 const validateMetadata = (body) => {
@@ -237,9 +304,9 @@ router.post("/", async (req, res) => {
 
 router.get("/:lessonId", async (req, res) => {
   try {
-    const lesson = await loadLesson(req, Number(req.params.lessonId));
+    const lesson = await loadLessonDetail(req, Number(req.params.lessonId));
     if (!lesson) return res.status(404).json({ message: "Lesson not found" });
-    return res.json({ lesson: serializeLesson(lesson), uploadPolicy: lessonUploadPolicy });
+    return res.json({ lesson: serializeLessonDetail(lesson), uploadPolicy: lessonUploadPolicy });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Unable to load the lesson" });
@@ -422,7 +489,7 @@ router.post("/:lessonId/topics/:topicId/images", uploadLessonFiles, async (req, 
       return { images: createdImages, version: lockedLesson.version };
     });
     await removeUploadedFiles(req.files);
-    return res.status(201).json({ message: "Topic images added", images: result.images.map((image) => ({ id: image.id, originalName: image.originalName, mimeType: image.mimeType, sizeBytes: Number(image.sizeBytes), displayOrder: image.displayOrder, placement: image.placement, altText: image.altText, caption: image.caption })), version: result.version });
+    return res.status(201).json({ message: "Topic images added", images: result.images.map(serializeTopicImage), version: result.version });
   } catch (error) {
     await removeUploadedFiles(req.files);
     await Promise.all(storedFiles.map((stored) => lessonStorage.deleteFile(stored).catch(() => undefined)));

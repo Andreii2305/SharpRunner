@@ -25,7 +25,7 @@
     "test:practice-state": "node src/Components/PracticeCompiler/practiceCompilerState.test.js",
     "test:practice-content": "node scripts/audit-practice-content.mjs",
     "test:lesson-blocks": "node src/utils/lessonBlocks.test.js",
-    "test:lessons": "node src/Components/LessonSection/lessonSectionState.test.js && node src/Components/LessonSection/LessonSection.render.test.mjs",
+    "test:lessons": "node src/Components/LessonSection/lessonSectionState.test.js && node src/Components/LessonSection/LessonSection.render.test.mjs && node src/Components/LessonRenderer/LessonRenderer.render.test.mjs",
     "test:dialogs": "node src/utils/dialogFocus.test.js",
     "test:legal": "node src/pages/legal/legalPages.test.js",
     "test:teacher-classrooms": "node src/pages/teacher/teacherClassroomState.test.js && node src/pages/teacher/teacherJoinRequestState.test.js && node src/services/teacherJoinRequestService.test.mjs && node src/pages/teacher/TeacherShared.render.test.mjs && node src/pages/teacher/TeacherJoinRequests.render.test.mjs",

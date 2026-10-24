@@ -4,6 +4,7 @@ import { FiBookOpen, FiCheck, FiClipboard, FiDownload, FiList, FiX } from "react
 import PracticeCompiler from "../PracticeCompiler/PracticeCompiler.jsx";
 import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
 import { findTopicImage, getTopicBlocks } from "../../utils/lessonBlocks.js";
+import { isLessonResourceAvailable, lessonImageDeliveryPath } from "./lessonResourceAvailability.js";
 import styles from "./LessonRenderer.module.css";
 
 const safeUrl = (value) => {
@@ -65,20 +66,22 @@ function MarkdownContent({ value }) {
   })}</div>;
 }
 
-export function SecureLessonImage({ image, classroomId = null, eager = false }) {
+export function SecureLessonImage({ image, classroomId = null, eager = false, enforceAvailability = false }) {
+  const deliveryPath = lessonImageDeliveryPath(image, classroomId, enforceAvailability);
+  const permitted = Boolean(deliveryPath);
   const [src, setSrc] = useState("");
-  const [state, setState] = useState("loading");
+  const [state, setState] = useState(permitted ? "loading" : "unavailable");
   useEffect(() => {
+    if (!permitted) { setSrc(""); setState("unavailable"); return undefined; }
     let active = true;
     let objectUrl = "";
     setState("loading");
-    const query = classroomId ? `?classroomId=${encodeURIComponent(classroomId)}` : "";
-    axios.get(buildApiUrl(`/api/lesson-content/classroom-files/${image.id}${query}`), { headers: getAuthHeaders(), responseType: "blob" })
+    axios.get(buildApiUrl(deliveryPath), { headers: getAuthHeaders(), responseType: "blob" })
       .then(({ data }) => { if (active) { objectUrl = URL.createObjectURL(data); setSrc(objectUrl); setState("ready"); } })
       .catch(() => { if (active) { setSrc(""); setState("error"); } });
     return () => { active = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [classroomId, image.id]);
-  return <figure className={styles.topicImage}>{src ? <img src={src} alt={image.altText || ""} loading={eager ? "eager" : "lazy"} /> : <div className={styles.imageLoading}>{state === "error" ? "This image is unavailable." : "Loading image…"}</div>}{image.caption && <figcaption>{image.caption}</figcaption>}</figure>;
+  }, [deliveryPath, permitted]);
+  return <figure className={styles.topicImage}>{src ? <img src={src} alt={image.altText || ""} loading={eager ? "eager" : "lazy"} /> : <div className={styles.imageLoading}>{state === "error" || state === "unavailable" ? "This image is unavailable." : "Loading image…"}</div>}{image.caption && <figcaption>{image.caption}</figcaption>}</figure>;
 }
 
 const CodeExample = memo(function CodeExample({ block }) {
@@ -90,22 +93,22 @@ const CodeExample = memo(function CodeExample({ block }) {
   return <figure className={styles.codeBlock}><figcaption><span>{block.title || "C# example"}</span><button type="button" onClick={copy}><FiClipboard /> {copied ? "Copied" : "Copy code"}</button></figcaption><pre><code>{block.code}</code></pre></figure>;
 });
 
-const PracticeBlock = memo(function PracticeBlock({ block, lessonId, topicKey, blockIndex }) {
-  return <section className={styles.practice}><span>Try It Yourself</span><h3>{block.title || "Try It Yourself"}</h3>{block.prompt && <p>{block.prompt}</p>}<PracticeCompiler code={block.starterCode || ""} editable expectedOutput={block.expectedOutput} label="Run code" storageId={`lesson:${lessonId}:topic:${topicKey}:${block.id || blockIndex}`} /></section>;
+const PracticeBlock = memo(function PracticeBlock({ block, lessonId, topicKey, blockIndex, readOnly }) {
+  return <section className={styles.practice}><span>Try It Yourself</span><h3>{block.title || "Try It Yourself"}</h3>{block.prompt && <p>{block.prompt}</p>}{readOnly ? <CodeExample block={{ title: "Starter code", code: block.starterCode || "" }} /> : <PracticeCompiler code={block.starterCode || ""} editable expectedOutput={block.expectedOutput} label="Run code" storageId={`lesson:${lessonId}:topic:${topicKey}:${block.id || blockIndex}`} />}</section>;
 });
 
-const TopicBlock = memo(function TopicBlock({ block, topic, lessonId, classroomId, topicKey, blockIndex, eagerImage }) {
+const TopicBlock = memo(function TopicBlock({ block, topic, lessonId, classroomId, topicKey, blockIndex, eagerImage, readOnly, enforceAvailability }) {
   if (block.type === "content") return <MarkdownContent value={block.body} />;
   if (block.type === "code") return <CodeExample block={block} />;
-  if (block.type === "practice") return <PracticeBlock block={block} lessonId={lessonId} topicKey={topicKey} blockIndex={blockIndex} />;
+  if (block.type === "practice") return <PracticeBlock block={block} lessonId={lessonId} topicKey={topicKey} blockIndex={blockIndex} readOnly={readOnly} />;
   if (block.type === "image") {
     const image = findTopicImage(topic, block);
-    return image ? <SecureLessonImage image={image} classroomId={classroomId} eager={eagerImage} /> : null;
+    return image ? <SecureLessonImage image={image} classroomId={classroomId} eager={eagerImage} enforceAvailability={enforceAvailability} /> : null;
   }
   return null;
 });
 
-export default function LessonRenderer({ lesson, classroomId = null, onOpenAttachment, preview = false }) {
+export default function LessonRenderer({ lesson, classroomId = null, onOpenAttachment, preview = false, readOnly = false, enforceAvailability = false, renderEmptyContent = false }) {
   const topics = useMemo(() => [...(lesson?.topics || [])]
     .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0) || (a.id ?? 0) - (b.id ?? 0))
     .map((topic, index) => ({
@@ -160,24 +163,25 @@ export default function LessonRenderer({ lesson, classroomId = null, onOpenAttac
     topicRefs.current.get(topicKey)?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
   };
 
-  if (!topics.length) return null;
+  if (!topics.length && !renderEmptyContent) return null;
   const navigation = <><h2>Lesson topics</h2><ol>{topics.map((topic, index) => <li key={topic.navigationKey}><button type="button" title={topic.title} className={activeTopic === topic.navigationKey ? styles.activeTopic : ""} aria-current={activeTopic === topic.navigationKey ? "location" : undefined} onClick={() => openTopic(topic.navigationKey)}><span>{activeTopic === topic.navigationKey ? <FiCheck /> : index + 1}</span>{topic.title || `Topic ${index + 1}`}</button></li>)}</ol></>;
 
   return <div className={styles.renderer}>
-    <button type="button" className={styles.mobileTopics} onClick={() => setDrawerOpen(true)} aria-expanded={drawerOpen} aria-controls="mobile-lesson-topics"><FiList /> Topics <span>{topics.length}</span></button>
+    {topics.length > 0 && <button type="button" className={styles.mobileTopics} onClick={() => setDrawerOpen(true)} aria-expanded={drawerOpen} aria-controls="mobile-lesson-topics"><FiList /> Topics <span>{topics.length}</span></button>}
     {drawerOpen && <div className={styles.drawerBackdrop} onMouseDown={() => setDrawerOpen(false)}><nav ref={drawerRef} id="mobile-lesson-topics" className={styles.drawer} aria-label="Lesson topics" onMouseDown={(event) => event.stopPropagation()}><button ref={closeRef} type="button" className={styles.drawerClose} onClick={() => setDrawerOpen(false)} aria-label="Close lesson topics"><FiX /></button>{navigation}</nav></div>}
-    <div className={styles.layout}>
-      <nav className={styles.topicNav} aria-label="Lesson topics">{navigation}</nav>
+    <div className={`${styles.layout} ${!topics.length ? styles.layoutEmpty : ""}`}>
+      {topics.length > 0 && <nav className={styles.topicNav} aria-label="Lesson topics">{navigation}</nav>}
       <article className={styles.lessonArticle}>
         <header className={styles.lessonHeading}><span>{lesson.lessonNumber ? `Lesson ${lesson.lessonNumber}` : preview ? "Student preview" : "Classroom lesson"}</span><h1>{lesson.title}</h1>{lesson.description && <p>{lesson.description}</p>}</header>
         {topics.map((topic, index) => {
           const firstImageIndex = topic.blocks.findIndex((block) => block.type === "image");
           return <section id={topic.anchorId} data-topic-key={topic.navigationKey} ref={(element) => { if (element) topicRefs.current.set(topic.navigationKey, element); else topicRefs.current.delete(topic.navigationKey); }} className={styles.topic} key={topic.navigationKey}>
             <div className={styles.topicKicker}>Topic {index + 1}</div><h2>{topic.title || `Topic ${index + 1}`}</h2>
-            {topic.blocks.map((block, blockIndex) => <TopicBlock block={block} topic={topic} lessonId={lesson.id} classroomId={classroomId} topicKey={topic.navigationKey} blockIndex={blockIndex} eagerImage={index === 0 && blockIndex === firstImageIndex} key={block.id} />)}
+            {topic.blocks.map((block, blockIndex) => <TopicBlock block={block} topic={topic} lessonId={lesson.id} classroomId={classroomId} topicKey={topic.navigationKey} blockIndex={blockIndex} eagerImage={index === 0 && blockIndex === firstImageIndex} readOnly={readOnly} enforceAvailability={enforceAvailability} key={block.id} />)}
           </section>;
         })}
-        {lesson.attachments?.length > 0 && <section className={styles.resources}><div><FiBookOpen /><span>Additional resources</span></div><h2>Files for this lesson</h2><div>{lesson.attachments.map((file) => <button type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}><span><strong>{file.originalName}</strong><small>{Math.max(1, Math.round(Number(file.sizeBytes || 0) / 1024))} KB · Open or download</small></span><FiDownload /></button>)}</div></section>}
+        {!topics.length && <p className={styles.emptyContent}>No structured lesson content is recorded.</p>}
+        {lesson.attachments?.length > 0 && <section className={styles.resources}><div><FiBookOpen /><span>Additional resources</span></div><h2>Files for this lesson</h2><div>{lesson.attachments.map((file) => isLessonResourceAvailable(file, enforceAvailability) ? <button type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}><span><strong>{file.originalName}</strong><small>{Math.max(1, Math.round(Number(file.sizeBytes || 0) / 1024))} KB · Open or download</small></span><FiDownload /></button> : <div className={styles.unavailableResource} key={file.id}><span><strong>{file.originalName}</strong><small>File unavailable</small></span></div>)}</div></section>}
       </article>
     </div>
   </div>;

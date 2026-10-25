@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
 import {
@@ -14,11 +14,18 @@ import {
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import { buildApiUrl, getAuthHeaders, getUser, subscribeToAuthChanges } from "../../utils/auth";
+import { listTeacherAssessmentAttention } from "../../services/teacherAssessmentAttentionService.js";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherDashboardPage.module.css";
 import { getAuthoritativeClassroomId, getFiniteMetric, getRequiredCollection } from "./teacherClassroomState.js";
 import { ClassCreationDialogFlow } from "./TeacherShared.jsx";
+import { TeacherAssessmentAttentionCard } from "./TeacherAssessmentAttention.jsx";
+import {
+  chooseAttentionClassroomId,
+  createTeacherAssessmentAttentionController,
+  initialTeacherAssessmentAttentionState,
+} from "./teacherAssessmentAttentionState.js";
 
 /* ─── Shared helpers ──────────────────────────────────────────── */
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
@@ -58,6 +65,9 @@ function TeacherDashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState("");
   const [isLoadingAnn, setIsLoadingAnn] = useState(true);
+  const [attentionAccountId, setAttentionAccountId] = useState(() => `${getUser()?.id ?? ""}`);
+  const [attentionClassroomId, setAttentionClassroomId] = useState("");
+  const [attentionState, setAttentionState] = useState(initialTeacherAssessmentAttentionState);
   const [classDialogStage, setClassDialogStage] = useState("closed");
   const [createdCode, setCreatedCode] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -80,6 +90,45 @@ function TeacherDashboardPage() {
   });
   const dashboardRequestRef = useRef(0);
   const announcementRequestRef = useRef(0);
+  const attentionAccountRef = useRef(attentionAccountId);
+  const attentionClassroomRef = useRef("");
+  const attentionController = useMemo(() => createTeacherAssessmentAttentionController({
+    request: listTeacherAssessmentAttention,
+    onReset: () => setAttentionState(initialTeacherAssessmentAttentionState()),
+    onLoading: (loading) => setAttentionState((current) => loading ? {
+      ...initialTeacherAssessmentAttentionState(),
+      status: "loading",
+      loading: true,
+    } : { ...current, loading: false }),
+    onSuccess: (result) => setAttentionState({
+      status: "success",
+      loading: true,
+      students: result.students,
+      total: result.total,
+      limit: result.limit,
+      error: "",
+    }),
+    onError: (error) => setAttentionState({
+      ...initialTeacherAssessmentAttentionState(),
+      status: "error",
+      loading: true,
+      error,
+    }),
+    onFinish: () => setAttentionState((current) => ({ ...current, loading: false })),
+  }), []);
+
+  const reconcileAttentionClassrooms = useCallback((classrooms) => {
+    const nextClassroomId = chooseAttentionClassroomId(
+      classrooms,
+      attentionClassroomRef.current,
+    );
+    attentionController.setScope({
+      accountId: attentionAccountRef.current,
+      classroomId: nextClassroomId,
+    });
+    attentionClassroomRef.current = nextClassroomId ?? "";
+    setAttentionClassroomId(nextClassroomId ?? "");
+  }, [attentionController]);
 
   const handleCopyCode = (code) => {
     navigator.clipboard.writeText(code).then(() => {
@@ -127,6 +176,7 @@ function TeacherDashboardPage() {
       const announcements = getRequiredCollection(payload, "announcements");
       if (!classrooms || !announcements) throw new Error("The announcement response was incomplete.");
       const safe = { ...payload, classrooms, announcements };
+      reconcileAttentionClassrooms(classrooms);
       setAnnData(safe);
       setAnnForm((c) => ({
         ...c,
@@ -163,7 +213,24 @@ function TeacherDashboardPage() {
     } finally {
       if (requestId === announcementRequestRef.current) setIsLoadingAnn(false);
     }
-  }, []);
+  }, [reconcileAttentionClassrooms]);
+
+  useEffect(() => {
+    attentionController.activate();
+    return () => attentionController.dispose();
+  }, [attentionController]);
+
+  useEffect(() => subscribeToAuthChanges(() => {
+    const nextAccountId = `${getUser()?.id ?? ""}`;
+    attentionAccountRef.current = nextAccountId;
+    attentionClassroomRef.current = "";
+    attentionController.setScope({ accountId: nextAccountId, classroomId: null });
+    announcementRequestRef.current += 1;
+    setAttentionClassroomId("");
+    setAnnData({ classrooms: [], announcements: [] });
+    setAnnForm((current) => ({ ...current, classroomId: "" }));
+    setAttentionAccountId(nextAccountId);
+  }), [attentionController]);
 
   useEffect(() => {
     fetchDashboard();
@@ -172,7 +239,17 @@ function TeacherDashboardPage() {
       dashboardRequestRef.current += 1;
       announcementRequestRef.current += 1;
     };
-  }, [fetchAnnData, fetchDashboard]);
+  }, [attentionAccountId, fetchAnnData, fetchDashboard]);
+
+  useEffect(() => {
+    if (attentionAccountId && attentionClassroomId) attentionController.load();
+  }, [attentionAccountId, attentionClassroomId, attentionController]);
+
+  const changeAttentionClassroom = (classroomId) => {
+    attentionController.setScope({ accountId: attentionAccountRef.current, classroomId });
+    attentionClassroomRef.current = classroomId;
+    setAttentionClassroomId(classroomId);
+  };
 
   /* ── create class ── */
   const onCreateClass = async (e) => {
@@ -269,7 +346,6 @@ function TeacherDashboardPage() {
   const averageProgress = getFiniteMetric(overview.averageProgressPercent);
   const activeStudentsToday = getFiniteMetric(overview.activeStudentsToday);
   const classPerformance = dashData?.classPerformance ?? [];
-  const topStudents = (dashData?.studentPerformance ?? []).slice(0, 5);
   const preferenceCounts = dashData?.gamificationPreferenceCounts ?? {};
   const fallbackClassrooms = classPerformance.map((c) => ({
     id: c.classId,
@@ -417,55 +493,16 @@ function TeacherDashboardPage() {
               )}
             </div>
 
-            <div className={styles.card}>
-              <div className={styles.sectionHead}>
-                <div className={styles.sectionTitle}>Top students</div>
-              </div>
-              {isLoading ? (
-                <div className={styles.loadingText}>Loading...</div>
-              ) : dashboardError ? (
-                <div className={styles.emptyText}>Student performance is unavailable.</div>
-              ) : topStudents.length === 0 ? (
-                <div className={styles.emptyText}>No student data yet.</div>
-              ) : (
-                topStudents.map((s, i) => (
-                  <div key={s.userId} className={pgStyles.studentRow}>
-                    <div className={pgStyles.stuRank}>{i + 1}</div>
-                    <div
-                      className={pgStyles.stuAv}
-                      style={
-                        i === 0
-                          ? { background: "#FAEEDA", color: "#BA7517" }
-                          : { background: "#e8f0fb", color: "#26547c" }
-                      }
-                    >
-                      {(s.studentName || s.username || "?")
-                        .slice(0, 2)
-                        .toUpperCase()}
-                    </div>
-                    <div className={pgStyles.stuInfo}>
-                      <div className={pgStyles.stuName}>
-                        {s.studentName || s.username}
-                      </div>
-                      <div className={pgStyles.stuSection}>{s.section}</div>
-                    </div>
-                    <div className={pgStyles.stuRight}>
-                      <div className={pgStyles.stuPct}>
-                        {clampPercent(s.progressPercent)}%
-                      </div>
-                      <div className={pgStyles.stuBarWrap}>
-                        <div
-                          className={pgStyles.stuBar}
-                          style={{
-                            width: `${clampPercent(s.progressPercent)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            <TeacherAssessmentAttentionCard
+              classrooms={annData.classrooms}
+              classroomStatus={isLoadingAnn ? "loading" : annLoadError ? "error" : "success"}
+              classroomError={annLoadError}
+              selectedClassroomId={attentionClassroomId}
+              state={attentionState}
+              onClassroomChange={changeAttentionClassroom}
+              onRetry={() => attentionController.retry()}
+              onRetryClassrooms={fetchAnnData}
+            />
           </div>
 
           {!isLoading && !dashboardError && <div className={`${styles.card} ${pgStyles.preferenceCard}`}>

@@ -2,6 +2,7 @@ const express = require("express");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const defaultService = require("../services/teacherAssessmentService");
+const defaultAttentionService = require("../services/teacherAssessmentAttentionService");
 const { AssessmentApiError, sendAssessmentError } = require("../services/assessmentErrorService");
 const { sendCsv } = require("../services/csvService");
 
@@ -82,9 +83,38 @@ const readGrantBody = (req) => {
   return { reason: body.reason ?? null, idempotencyKey: req.get("Idempotency-Key") };
 };
 
-const createTeacherAssessmentRouter = ({ service = defaultService } = {}) => {
+const createTeacherAssessmentRouter = ({
+  service = defaultService,
+  attentionService = defaultAttentionService,
+} = {}) => {
   const router = express.Router();
   router.use(authMiddleware, requireRole("teacher", "admin"));
+
+  router.get("/classrooms/:classroomId/students-needing-attention", async (req, res) => {
+    try {
+      const queryKeys = Object.keys(req.query);
+      if (queryKeys.some((key) => key !== "limit") || queryKeys.length > 1) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const rawLimit = req.query.limit;
+      if (Array.isArray(rawLimit)
+        || (rawLimit !== undefined && !/^[1-9][0-9]*$/.test(String(rawLimit)))) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const limit = rawLimit === undefined ? 5 : Number(rawLimit);
+      if (!Number.isSafeInteger(limit) || limit > 100) {
+        throw new AssessmentApiError(400, "INVALID_REQUEST", "Invalid request");
+      }
+      const payload = await attentionService.listStudentsNeedingAttention({
+        classroomId: parsePositiveId(req.params.classroomId),
+        limit,
+        ...actor(req),
+      });
+      return res.status(200).json(payload);
+    } catch (error) {
+      return sendAssessmentError(res, error);
+    }
+  });
 
   router.get("/assessment-templates", async (req, res) => {
     try {

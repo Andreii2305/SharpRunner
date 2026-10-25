@@ -116,25 +116,57 @@
   outline-offset: 2px;
 }
 
-/* Student rows */
-.studentRow {
+/* Assessment recovery attention */
+.attentionClassroomLabel {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 0;
-  border-bottom: 1px solid #f1f5f9;
+  flex-direction: column;
+  gap: 4px;
+  color: #475569;
+  font-size: var(--teacher-text-sm);
+  font-weight: 600;
 }
-.studentRow:last-child { border-bottom: none; }
 
-.stuRank    { font-size: var(--teacher-text-xs); font-weight: 700; color: #64748b; width: 22px; text-align: center; }
-.stuAv      { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--teacher-text-xs); font-weight: 700; flex-shrink: 0; }
-.stuInfo    { flex: 1; min-width: 0; }
-.stuName    { font-size: var(--teacher-text-md); font-weight: 600; color: #1e3a5f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.stuSection { font-size: var(--teacher-text-xs); color: #94a3b8; }
-.stuRight   { text-align: right; }
-.stuPct     { font-size: var(--teacher-text-md); font-weight: 700; color: #1e3a5f; }
-.stuBarWrap { width: 56px; height: 4px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin-top: 3px; }
-.stuBar     { height: 100%; background: #1e3a5f; border-radius: 99px; }
+.attentionClassroomLabel select {
+  min-height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+  padding: 7px 10px;
+}
+
+.attentionClassroomLabel select:focus-visible {
+  border-color: #26547c;
+  outline: 3px solid rgba(38, 84, 124, 0.18);
+  outline-offset: 1px;
+}
+
+.attentionList { display: flex; flex-direction: column; }
+
+.attentionStudent {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.7fr) minmax(0, 1.3fr);
+  gap: 14px;
+  padding: 11px 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.attentionStudent:last-child { border-bottom: 0; }
+.attentionStudentIdentity { min-width: 0; }
+.attentionStudentIdentity strong,
+.attentionStudentIdentity span { display: block; overflow-wrap: anywhere; }
+.attentionStudentIdentity strong { color: #1e3a5f; font-size: var(--teacher-text-md); }
+.attentionStudentIdentity span { margin-top: 2px; color: #64748b; font-size: var(--teacher-text-xs); }
+
+.attentionReasons { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.attentionReasons li { min-width: 0; }
+.attentionReasons strong,
+.attentionReasons span { display: block; overflow-wrap: anywhere; }
+.attentionReasons strong { color: #1e293b; font-size: var(--teacher-text-sm); }
+.attentionReasons span { color: #475569; font-size: var(--teacher-text-sm); }
+.attentionReasons p { margin: 3px 0 0; color: #64748b; font-size: var(--teacher-text-xs); line-height: 1.45; }
+.attentionCount { margin: 4px 0 0; color: #64748b; font-size: var(--teacher-text-xs); }
 
 /* Bottom row */
 .bottomRow {
@@ -263,4 +295,5 @@
   .overviewSummary .overviewItem > div:last-child { grid-column: 1 / -1; margin-top: 2px; }
   .preferenceSummary { grid-template-columns: 1fr; }
   .preferenceItem { padding-right: 0; }
+  .attentionStudent { grid-template-columns: 1fr; gap: 7px; }
 }

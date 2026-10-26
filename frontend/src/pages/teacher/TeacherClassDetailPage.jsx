@@ -4,16 +4,23 @@ import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft, FiAward, FiBarChart2, FiBookOpen, FiCalendar,
-  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMoreVertical, FiMove, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX, FiClipboard,
+  FiCheckCircle, FiCopy, FiDownload, FiEdit2, FiEye, FiEyeOff, FiFile, FiLayers, FiList, FiMessageSquare, FiMoreVertical, FiMove, FiPlus, FiSettings, FiTrash2, FiTrendingUp, FiUpload, FiUsers, FiX, FiClipboard,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth.js";
+import { buildApiUrl, getAuthHeaders, getUser, subscribeToAuthChanges } from "../../utils/auth.js";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherClassesPage.module.css";
 import detailStyles from "./TeacherClassDetailPage.module.css";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherJoinRequests from "./TeacherJoinRequests.jsx";
+import { TeacherCheckInDialog } from "./TeacherCheckInDialog.jsx";
+import { closeTeacherCheckInDialog } from "./teacherCheckInDialogBehavior.js";
+import {
+  createTeacherCheckInController,
+  initialTeacherCheckInState,
+} from "./teacherCheckInState.js";
+import { sendTeacherCheckIn } from "../../services/teacherCheckInService.js";
 import { DEFAULT_UPLOAD_POLICY, normalizeUploadPolicy, validateUploadFiles } from "../../utils/uploadPolicy.js";
 import {
   createClassroomIdentityTracker,
@@ -73,6 +80,19 @@ export function ClassroomSectionPanel({ idBase, activeTab, className, children }
     >
       {children}
     </section>
+  );
+}
+
+export function RosterStudentActions({ student, onCheckIn, onRemove }) {
+  return (
+    <div className={detailStyles.rosterActions}>
+      {student.status === "active" && (
+        <button type="button" className={detailStyles.rosterCheckInButton} onClick={onCheckIn}>
+          <FiMessageSquare /> Send check-in
+        </button>
+      )}
+      <button type="button" className={detailStyles.rosterRemoveButton} onClick={onRemove}><FiX /> Remove</button>
+    </div>
   );
 }
 
@@ -196,20 +216,50 @@ function TeacherClassDetailPage() {
   const [classActionTarget, setClassActionTarget] = useState(null);
   const [classActionPending, setClassActionPending] = useState(false);
   const [sharedEditTarget, setSharedEditTarget] = useState(null);
+  const [checkInState, setCheckInState] = useState(initialTeacherCheckInState);
+  const checkInOriginRef = useRef(null);
+  const checkInClassroomRef = useRef(`${classroomId}`);
   const classroomIdentityTrackerRef = useRef(createClassroomIdentityTracker(classroomId));
   const rosterFenceRef = useRef(createExactClassroomRequestFence());
   const classworkFenceRef = useRef(createExactClassroomRequestFence());
   const managementFenceRef = useRef(createExactClassroomRequestFence());
   const studentRemovalGuardRef = useRef(createSingleFlightGuard());
+  const checkInController = useMemo(() => createTeacherCheckInController({
+    send: sendTeacherCheckIn,
+    onChange: setCheckInState,
+  }), []);
 
   useLayoutEffect(() => {
     const exactClassroomId = `${classroomId}`;
+    checkInClassroomRef.current = exactClassroomId;
+    checkInController.activate();
+    checkInOriginRef.current = null;
+    checkInController.setScope({ accountId: getUser()?.id, classroomId: exactClassroomId });
     classroomIdentityTrackerRef.current.enter(exactClassroomId);
     rosterFenceRef.current.reset(exactClassroomId);
     classworkFenceRef.current.reset(exactClassroomId);
     managementFenceRef.current.reset(exactClassroomId);
     studentRemovalGuardRef.current.reset();
-  }, [classroomId]);
+  }, [checkInController, classroomId]);
+
+  useEffect(() => {
+    const synchronizeAccount = () => {
+      checkInOriginRef.current = null;
+      checkInController.setScope({ accountId: getUser()?.id, classroomId: checkInClassroomRef.current });
+    };
+    const unsubscribe = subscribeToAuthChanges(synchronizeAccount);
+    return () => {
+      unsubscribe();
+      checkInOriginRef.current = null;
+      checkInController.dispose();
+    };
+  }, [checkInController]);
+
+  const closeCheckInDialog = () => {
+    const origin = checkInOriginRef.current;
+    checkInOriginRef.current = null;
+    closeTeacherCheckInDialog({ controller: checkInController, origin });
+  };
 
   const isActiveClassroom = useCallback(
     (classroomScope) => classroomIdentityTrackerRef.current.isCurrent(classroomScope),
@@ -834,7 +884,7 @@ function TeacherClassDetailPage() {
                   <div className={detailStyles.tableScroll} role="region" aria-label="Student roster" tabIndex={0}><table className={`${pgStyles.rosterTable} ${detailStyles.studentRosterTable}`}>
                   <thead><tr><th>#</th><th>Student</th><th>Progress</th><th>Levels Done</th><th>Avg Score</th><th>Last Active</th><th>Actions</th></tr></thead>
                   <tbody>{students.map((student, index) => { const palette = AVATAR_PALETTES[index % AVATAR_PALETTES.length]; return (
-                    <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td><td><button type="button" className={detailStyles.rosterRemoveButton} onClick={() => { setStudentRemovalError(""); setStudentRemoveTarget(student); }}><FiX /> Remove</button></td></tr>
+                    <tr key={student.userId}><td className={pgStyles.rosterRank}>{index < 3 ? RANK_MEDALS[index] : index + 1}</td><td><div className={pgStyles.rosterNameCell}><div className={pgStyles.rosterAvatar} style={{ "--av-bg": palette.bg, "--av-color": palette.color }}>{getInitials(student.studentName)}</div><div><div className={pgStyles.rosterName}>{student.studentName}</div><div className={pgStyles.rosterUsername}>@{student.username}</div></div></div></td><td><div className={pgStyles.rosterBarRow}><div className={pgStyles.rosterBarTrack}><div className={`${pgStyles.rosterBarFill} ${student.progressPercent >= 75 ? pgStyles.rosterBarFillHigh : student.progressPercent >= 40 ? pgStyles.rosterBarFillMid : pgStyles.rosterBarFillLow}`} style={{ width: `${student.progressPercent}%` }} /></div><span className={pgStyles.rosterPct}>{student.progressPercent}%</span></div></td><td>{student.completedLevels}</td><td>{student.avgScore ?? "—"}</td><td>{student.lastActiveLabel}</td><td><RosterStudentActions student={student} onCheckIn={(event) => { checkInOriginRef.current = event.currentTarget; checkInController.open({ classroom, student }); }} onRemove={() => { setStudentRemovalError(""); setStudentRemoveTarget(student); }} /></td></tr>
                   ); })}</tbody>
                   </table></div>
                 </div>
@@ -944,6 +994,13 @@ function TeacherClassDetailPage() {
         }}
       />
       <ConfirmModal open={Boolean(classActionTarget)} title={classActionTarget === "rotate" ? "Generate a new class code?" : classActionTarget === "archive" ? "Archive this classroom?" : "Reactivate this classroom?"} message={classActionTarget === "rotate" ? "The current code will stop working immediately. Existing students remain enrolled." : classActionTarget === "archive" ? "Students cannot join this classroom and new announcements are blocked until it is reactivated." : "Students can join and classroom activity can resume."} confirmLabel={classActionPending ? "Saving..." : classActionTarget === "rotate" ? "Generate new code" : classActionTarget === "archive" ? "Archive classroom" : "Reactivate classroom"} danger={classActionTarget === "archive" || classActionTarget === "rotate"} confirmDisabled={classActionPending} onConfirm={performClassAction} onCancel={() => !classActionPending && setClassActionTarget(null)} />
+      <TeacherCheckInDialog
+        state={checkInState}
+        onMessageChange={(message) => checkInController.updateMessage(message)}
+        onSend={() => checkInController.send()}
+        onRetry={() => checkInController.retry()}
+        onClose={closeCheckInDialog}
+      />
     </div>
   );
 }

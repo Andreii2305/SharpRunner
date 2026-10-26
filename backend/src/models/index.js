@@ -7,6 +7,7 @@ const ClassroomMembership = require("./ClassroomMembership");
 const ClassroomAnnouncement = require("./ClassroomAnnouncement");
 const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
 const UserNotificationView = require("./UserNotificationView");
+const TeacherStudentCheckIn = require("./TeacherStudentCheckIn");
 const LevelDeadline = require("./LevelDeadline");
 const LevelContentOverride = require("./LevelContentOverride");
 const EmailVerificationToken = require("./EmailVerificationToken");
@@ -381,6 +382,39 @@ UserNotificationView.belongsTo(User, {
   as: "user",
 });
 
+User.hasMany(TeacherStudentCheckIn, {
+  foreignKey: "senderId",
+  as: "sentStudentCheckIns",
+  onDelete: "RESTRICT",
+});
+TeacherStudentCheckIn.belongsTo(User, {
+  foreignKey: "senderId",
+  as: "sender",
+  onDelete: "RESTRICT",
+});
+
+User.hasMany(TeacherStudentCheckIn, {
+  foreignKey: "recipientStudentId",
+  as: "receivedTeacherCheckIns",
+  onDelete: "RESTRICT",
+});
+TeacherStudentCheckIn.belongsTo(User, {
+  foreignKey: "recipientStudentId",
+  as: "recipientStudent",
+  onDelete: "RESTRICT",
+});
+
+Classroom.hasMany(TeacherStudentCheckIn, {
+  foreignKey: "classroomId",
+  as: "teacherStudentCheckIns",
+  onDelete: "RESTRICT",
+});
+TeacherStudentCheckIn.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+
 Classroom.hasMany(LevelDeadline, {
   foreignKey: "classroomId",
   as: "levelDeadlines",
@@ -567,6 +601,7 @@ module.exports = {
   ClassroomAnnouncement,
   ClassroomAnnouncementView,
   UserNotificationView,
+  TeacherStudentCheckIn,
   LevelDeadline,
   LevelContentOverride,
   EmailVerificationToken,

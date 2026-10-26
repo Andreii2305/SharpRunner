@@ -23,8 +23,6 @@ test("attachment scan-status migration matches the model contract and is registe
   assert.notEqual(migrationIndex, -1, "scan-status compatibility migration must be registered");
   assert.ok(migrationIndex > legacySchemaIndex, "migration must follow legacy table creation");
   assert.ok(migrationIndex > lessonBuilderIndex, "migration must follow lesson attachment schema setup");
-  assert.equal(migrationIndex, names.length - 1, "forward migration must remain ordered last");
-
   const originalQuery = appSequelize.query;
   const queries = [];
   appSequelize.query = async (sql) => { queries.push(sql); };

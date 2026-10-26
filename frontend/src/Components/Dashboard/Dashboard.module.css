@@ -1011,6 +1011,103 @@
   font-size: 11px;
 }
 
+.checkInPanel {
+  min-width: 0;
+}
+
+.checkInSummary {
+  padding: 8px 0;
+  color: #475569;
+  font-size: 12px;
+}
+
+.checkInList {
+  display: flex;
+  flex-direction: column;
+}
+
+.checkInItem {
+  padding: 12px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.checkInHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.checkInHeader strong {
+  color: #1e3a5f;
+  font-size: 13px;
+}
+
+.checkInMessage {
+  margin: 8px 0;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.checkInMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.checkInReadButton,
+.checkInStatus button,
+.checkInPagination button {
+  min-height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #1e3a5f;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+}
+
+.checkInReadButton {
+  margin-top: 10px;
+}
+
+.checkInReadButton:disabled,
+.checkInStatus button:disabled,
+.checkInPagination button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.checkInStatus {
+  padding: 10px 0;
+  color: #7f1d1d;
+  font-size: 12px;
+}
+
+.checkInStatus p {
+  margin: 0 0 8px;
+}
+
+.checkInPagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  color: #475569;
+  font-size: 12px;
+}
+
 .announcementModalBackdrop {
   position: fixed;
   inset: 0;

@@ -91,3 +91,17 @@ test("classroom section tabs identify the selected tab and its currently rendere
   assert.match(html, /role="tabpanel"[^>]*id="classroom-sections-panel"[^>]*aria-labelledby="classroom-sections-tab-analytics"/);
   assert.match(html, /id="classroom-sections-tab-students"[^>]*aria-selected="false"[^>]*aria-controls="classroom-sections-panel"[^>]*tabindex="-1"/);
 });
+
+test("roster actions offer private check-ins only for active student accounts and preserve removal", async () => {
+  const { RosterStudentActions } = await vite.ssrLoadModule("/src/pages/teacher/TeacherClassDetailPage.jsx");
+  const active = renderToStaticMarkup(React.createElement(RosterStudentActions, {
+    student: { status: "active" }, onCheckIn() {}, onRemove() {},
+  }));
+  const inactive = renderToStaticMarkup(React.createElement(RosterStudentActions, {
+    student: { status: "inactive" }, onCheckIn() {}, onRemove() {},
+  }));
+  assert.match(active, /Send check-in/);
+  assert.match(active, /Remove/);
+  assert.doesNotMatch(inactive, /Send check-in/);
+  assert.match(inactive, /Remove/);
+});

@@ -3,6 +3,8 @@ const { Op } = require("sequelize");
 const authMiddleware = require("../middleware/authMiddleware");
 const requireRole = require("../middleware/requireRole");
 const UserNotificationView = require("../models/UserNotificationView");
+const TeacherStudentCheckIn = require("../models/TeacherStudentCheckIn");
+const privateCheckInReadService = require("../services/privateCheckInReadService");
 const ClassroomLesson = require("../models/ClassroomLesson");
 const ClassroomLessonSubmission = require("../models/ClassroomLessonSubmission");
 const ClassroomLessonPlacement = require("../models/ClassroomLessonPlacement");
@@ -24,6 +26,37 @@ const normalizeNotificationKey = (value) =>
   typeof value === "string" ? value.trim() : "";
 
 router.use(authMiddleware, requireRole("student"));
+
+const parseCheckInPagination = (query) => {
+  if (Object.keys(query).some((key) => !["page", "limit"].includes(key))) return null;
+  const parseValue = (value, fallback) => {
+    if (value === undefined) return fallback;
+    if (typeof value !== "string" || !/^[1-9][0-9]*$/.test(value)) return null;
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  };
+  const page = parseValue(query.page, 1);
+  const limit = parseValue(query.limit, 20);
+  if (page === null || limit === null || limit > 100) return null;
+  const offset = (page - 1) * limit;
+  if (!Number.isSafeInteger(offset)) return null;
+  return { page, limit, offset };
+};
+
+router.get("/check-ins", async (req, res) => {
+  const pagination = parseCheckInPagination(req.query);
+  if (!pagination) return res.status(400).json({ message: "Invalid pagination" });
+  try {
+    const result = await privateCheckInReadService.listPrivateCheckIns({
+      studentId: req.userId,
+      ...pagination,
+    });
+    return res.json(result);
+  } catch (error) {
+    console.error("Private check-in listing failed");
+    return res.status(500).json({ message: "Server error" });
+  }
+});
 
 router.get("/me", async (req, res) => {
   try {
@@ -165,9 +198,10 @@ router.get("/me", async (req, res) => {
 });
 
 router.post("/:notificationId/viewed", async (req, res) => {
+  let isPrivateCheckIn = false;
   try {
     const decodedParam = decodeURIComponent(req.params.notificationId ?? "");
-    const notificationKey = normalizeNotificationKey(decodedParam);
+    let notificationKey = normalizeNotificationKey(decodedParam);
     if (!notificationKey) {
       return res.status(400).json({ message: "Invalid notification id" });
     }
@@ -176,7 +210,20 @@ router.post("/:notificationId/viewed", async (req, res) => {
       return res.status(400).json({ message: "Invalid notification id" });
     }
 
-    if (!NOTIFICATION_KEY_PREFIX_REGEX.test(notificationKey)) {
+    if (notificationKey.startsWith("check-in")) {
+      isPrivateCheckIn = true;
+      const match = /^check-in-([1-9][0-9]*)$/.exec(notificationKey);
+      const checkInId = match ? Number(match[1]) : null;
+      if (!Number.isSafeInteger(checkInId)) {
+        return res.status(400).json({ message: "Invalid notification id" });
+      }
+      const checkIn = await TeacherStudentCheckIn.findOne({
+        where: { id: checkInId, recipientStudentId: req.userId },
+        attributes: ["id"],
+      });
+      if (!checkIn) return res.status(404).json({ message: "Notification not found" });
+      notificationKey = `check-in-${checkInId}`;
+    } else if (!NOTIFICATION_KEY_PREFIX_REGEX.test(notificationKey)) {
       return res.status(400).json({ message: "Invalid notification id" });
     }
 
@@ -200,9 +247,21 @@ router.post("/:notificationId/viewed", async (req, res) => {
       notificationId: notificationKey,
     });
   } catch (error) {
+    if (isPrivateCheckIn) {
+      console.error("Private check-in read-state update failed");
+      return res.status(500).json({ message: "Server error" });
+    }
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }
+});
+
+router.use((error, req, res, next) => {
+  if (error instanceof URIError
+    && /^\/api\/notifications\/check-in-[^?]*\/viewed(?:\?|$)/.test(req.originalUrl || "")) {
+    return res.status(400).json({ message: "Invalid notification id" });
+  }
+  return next(error);
 });
 
 module.exports = router;

@@ -4,7 +4,8 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
 import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { getProgress } from "../../services/studentAssessmentService.js";
-import { buildApiUrl, getAuthHeaders, getUser, setUser as persistUser } from "../../utils/auth";
+import { buildApiUrl, getAuthHeaders, getUser, setUser as persistUser, subscribeToAuthChanges } from "../../utils/auth";
+import { listStudentCheckIns, markStudentCheckInRead } from "../../services/studentCheckInService.js";
 import {
   normalizePreferences,
   resolvePreferenceModes,
@@ -23,6 +24,11 @@ import {
   DashboardGameProgressPanel,
 } from "./DashboardProgressDisplay.jsx";
 import { revealDashboardNotifications } from "./dashboardInteractions.js";
+import { StudentCheckIns } from "./StudentCheckIns.jsx";
+import {
+  createStudentCheckInController,
+  initialStudentCheckInState,
+} from "./studentCheckInState.js";
 import styles from "./Dashboard.module.css";
 
 const ANNOUNCEMENT_HEADER_PREFIX = "HEADER:";
@@ -265,6 +271,7 @@ function StudentDashboardPage() {
   });
   const [announcements, setAnnouncements] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [checkInState, setCheckInState] = useState(initialStudentCheckInState);
   const [activeTab, setActiveTab] = useState("announcements");
   const [preferencesExpanded, setPreferencesExpanded] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
@@ -277,6 +284,70 @@ function StudentDashboardPage() {
   const [preferenceStatus, setPreferenceStatus] = useState("");
   const [isSavingPreferences, setIsSavingPreferences] = useState(false);
   const notificationTabRef = useRef(null);
+  const checkInController = useMemo(() => createStudentCheckInController({
+    list: listStudentCheckIns,
+    mark: markStudentCheckInRead,
+    onReset: ({ page }) => setCheckInState(initialStudentCheckInState(page)),
+    onListLoading: () => setCheckInState((current) => ({
+      ...initialStudentCheckInState(current.page), status: "loading", loading: true,
+    })),
+    onListSuccess: (payload) => setCheckInState((current) => ({
+      ...current,
+      ...payload,
+      status: "success",
+      loading: false,
+      refreshing: false,
+      error: "",
+      refreshError: "",
+    })),
+    onListError: (error) => setCheckInState((current) => ({
+      ...current, status: "error", loading: false, error,
+    })),
+    onListFinish: () => setCheckInState((current) => ({ ...current, loading: false })),
+    onMarkStart: (id) => setCheckInState((current) => ({
+      ...current,
+      markInFlight: [...new Set([...current.markInFlight, id])],
+      markErrors: { ...current.markErrors, [id]: "" },
+    })),
+    onMarkSuccess: (id) => setCheckInState((current) => ({
+      ...current,
+      checkIns: current.checkIns.map((item) => item.id === id ? { ...item, isRead: true } : item),
+      unreadTotal: Number.isSafeInteger(current.unreadTotal) ? Math.max(0, current.unreadTotal - 1) : null,
+      markInFlight: current.markInFlight.filter((value) => value !== id),
+      markErrors: { ...current.markErrors, [id]: "" },
+    })),
+    onMarkError: (id, error) => setCheckInState((current) => ({
+      ...current,
+      markInFlight: current.markInFlight.filter((value) => value !== id),
+      markErrors: { ...current.markErrors, [id]: error },
+    })),
+    onRefreshStart: () => setCheckInState((current) => ({
+      ...current, refreshing: true, refreshError: "",
+    })),
+    onRefreshError: (error) => setCheckInState((current) => ({
+      ...current, refreshing: false, refreshError: error,
+    })),
+    onRefreshFinish: () => setCheckInState((current) => ({ ...current, refreshing: false })),
+  }), []);
+
+  useEffect(() => {
+    checkInController.activate();
+    const synchronizeAccount = () => {
+      const accountId = `${getUser()?.id ?? ""}`;
+      checkInController.setAccount(accountId);
+      if (accountId) checkInController.load();
+    };
+    synchronizeAccount();
+    const unsubscribe = subscribeToAuthChanges(synchronizeAccount);
+    return () => {
+      unsubscribe();
+      checkInController.dispose();
+    };
+  }, [checkInController]);
+
+  const changeCheckInPage = (nextPage) => {
+    if (checkInController.setPage(nextPage)) checkInController.load();
+  };
 
   const loadProgression = useCallback(async () => {
     const generation = progressionGenerationRef.current + 1;
@@ -870,6 +941,19 @@ function StudentDashboardPage() {
                   <span className={styles.tabBadge}>{unreadNotifCount}</span>
                 )}
               </button>
+              <button
+                type="button"
+                className={`${styles.notifTab} ${activeTab === "check-ins" ? styles.notifTabActive : ""}`}
+                onClick={() => setActiveTab("check-ins")}
+                role="tab"
+                aria-selected={activeTab === "check-ins"}
+                aria-controls="dashboard-updates-panel"
+              >
+                Check-ins
+                {Number.isSafeInteger(checkInState.unreadTotal) && checkInState.unreadTotal > 0 && (
+                  <span className={styles.tabBadge}>{checkInState.unreadTotal}</span>
+                )}
+              </button>
             </div>
 
             <div
@@ -878,7 +962,16 @@ function StudentDashboardPage() {
               role="tabpanel"
               aria-live="polite"
             >
-              {activeTab === "announcements" ? (
+              {activeTab === "check-ins" ? (
+                <StudentCheckIns
+                  state={checkInState}
+                  onRetry={() => checkInController.retry()}
+                  onRefresh={() => checkInController.refresh()}
+                  onPrevious={() => changeCheckInPage(checkInState.page - 1)}
+                  onNext={() => changeCheckInPage(checkInState.page + 1)}
+                  onMarkRead={(id) => checkInController.markAsRead(id)}
+                />
+              ) : activeTab === "announcements" ? (
                 isLoading ? (
                   <div className={styles.loadingText}>Loading...</div>
                 ) : announcements.length === 0 ? (

@@ -96,14 +96,18 @@ test("private check-in model exposes retention-safe associations and indexes", (
   )));
 });
 
-test("private check-in migration is transactional, registered last, and enforces the schema contract", async () => {
+test("private check-in migration is transactional, ordered before feedback, and enforces the schema contract", async () => {
   assert.equal(fs.existsSync(migrationPath), true, "private check-in migration SQL must exist");
   const sql = fs.readFileSync(migrationPath, "utf8");
   const names = migrations.map(([name]) => name);
   const migrationIndex = names.indexOf(migrationName);
 
   assert.notEqual(migrationIndex, -1, "private check-in migration must be registered");
-  assert.equal(migrationIndex, names.length - 1, "forward migration must remain ordered last");
+  assert.equal(
+    names[migrationIndex + 1],
+    "20261026000000_student_classroom_feedback",
+    "classroom feedback migration must follow the check-in foundation",
+  );
   assert.ok(migrationIndex > names.indexOf("000_schema_baseline"));
   assert.match(sql, /^\s*(?:--[^\n]*\n)*\s*BEGIN;/);
   assert.match(sql, /COMMIT;\s*$/);

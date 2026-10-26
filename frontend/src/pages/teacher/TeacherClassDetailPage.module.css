@@ -150,6 +150,28 @@
 .sectionState { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid #d8e3ee; border-radius: 9px; background: #f8fbff; color: #405b74; font-size: var(--teacher-text-md); }
 .sectionState[role="alert"] { border-color: #f0b8b2; background: #fff8f7; color: #8f2118; }
 .sectionState button { min-height: 40px; }
+.feedbackSection { display: grid; gap: 16px; }
+.feedbackHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.feedbackHeader h2 { margin: 0 0 4px; color: #1e3a5f; font-size: var(--teacher-text-lg); }
+.feedbackHeader p { max-width: 680px; margin: 0; color: #64748b; font-size: var(--teacher-text-sm); line-height: 1.5; }
+.feedbackHeader > strong { flex: 0 0 auto; padding: 5px 9px; border-radius: 999px; background: #eef4fb; color: #405b74; font-size: var(--teacher-text-xs); }
+.feedbackList { display: grid; gap: 10px; }
+.feedbackList article { min-width: 0; padding: 14px; border: 1px solid #dce6f1; border-radius: 10px; background: #fbfdff; }
+.feedbackList article header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.feedbackList article header > div { min-width: 0; display: grid; gap: 2px; }
+.feedbackList article strong { color: #1e3a5f; overflow-wrap: anywhere; }
+.feedbackList article span, .feedbackList article time { color: #64748b; font-size: var(--teacher-text-xs); }
+.feedbackList article time { flex: 0 0 auto; }
+.feedbackList article p { margin: 12px 0 0; color: #334155; font-size: var(--teacher-text-md); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedbackEmpty { min-height: 220px; display: grid; place-items: center; align-content: center; gap: 6px; color: #94a3b8; text-align: center; }
+.feedbackEmpty svg { font-size: 30px; color: #b8c5d5; }
+.feedbackEmpty h3 { margin: 0; color: #1e3a5f; font-size: var(--teacher-text-lg); }
+.feedbackEmpty p { margin: 0; font-size: var(--teacher-text-sm); }
+.feedbackPagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.feedbackPagination span { color: #64748b; font-size: var(--teacher-text-sm); }
+.feedbackPagination button { min-height: 38px; display: inline-flex; align-items: center; gap: 4px; padding: 6px 9px; border: 1px solid #cfdae6; border-radius: 7px; background: #fff; color: #405b74; cursor: pointer; font: inherit; font-size: var(--teacher-text-sm); font-weight: 700; }
+.feedbackPagination button:focus-visible { outline: 3px solid rgba(38,84,124,.35); outline-offset: 2px; }
+.feedbackPagination button:disabled { opacity: .45; cursor: default; }
 .textarea { min-height: 110px; resize: vertical; border: 1px solid #e2e8f0; border-radius: 8px; padding: 9px 10px; font: inherit; color: #374151; outline: none; }
 .textarea:focus { border-color: #26547c; box-shadow: 0 0 0 3px rgba(38,84,124,.1); }
 .optionRow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px; border-radius: 9px; background: #f8fafc; color: #475569; font-size: var(--teacher-text-sm); }
@@ -217,4 +239,4 @@
   .headerActions > button { flex: 1 1 140px; min-height: 44px; justify-content: center; white-space: normal; }
   .rosterScrollHint { display: block; }
 }
-@media (max-width: 600px) { .tabs { width: 100%; } .tab, .tabActive { flex: 1; justify-content: center; padding-inline: 8px; } .analyticsGrid, .managementGrid, .settingsGrid, .audienceList { grid-template-columns: 1fr; } .classSummary { padding: 13px 14px; } .summaryStats div { flex: 1 1 110px; min-width: 0; } .joinRequestRow { align-items: stretch; flex-direction: column; } .joinRequestActions { width: 100%; } .joinRequestActions button { flex: 1; } .joinRequestPagination { justify-content: space-between; } }
+@media (max-width: 600px) { .tabs { width: 100%; flex-wrap: wrap; } .tab, .tabActive { flex: 1 1 45%; justify-content: center; padding-inline: 8px; } .analyticsGrid, .managementGrid, .settingsGrid, .audienceList { grid-template-columns: 1fr; } .classSummary { padding: 13px 14px; } .summaryStats div { flex: 1 1 110px; min-width: 0; } .joinRequestRow { align-items: stretch; flex-direction: column; } .joinRequestActions { width: 100%; } .joinRequestActions button { flex: 1; } .joinRequestPagination, .feedbackPagination { justify-content: space-between; } .feedbackHeader, .feedbackList article header { flex-direction: column; } }

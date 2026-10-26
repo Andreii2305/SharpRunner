@@ -13,6 +13,7 @@ const {
   buildClassroomLeaderboard,
 } = require("../services/studentClassService");
 const classroomJoinRequestService = require("../services/classroomJoinRequestService");
+const { createStudentClassroomFeedbackRouter } = require("./studentClassroomFeedback");
 
 const normalizeString = (value) =>
   typeof value === "string" ? value.trim() : "";
@@ -30,6 +31,7 @@ const sanitizeClassroomSummary = (classroom, joinedAt = null) => ({
 });
 
 router.use(authMiddleware, requireRole("student"));
+router.use(createStudentClassroomFeedbackRouter());
 
 router.get("/me", async (req, res) => {
   try {

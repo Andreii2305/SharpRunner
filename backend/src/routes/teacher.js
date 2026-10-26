@@ -46,6 +46,7 @@ const {
 const classroomEnrollmentService = require("../services/classroomEnrollmentService");
 const classroomMembershipDecisionService = require("../services/classroomMembershipDecisionService");
 const { createPrivateCheckInRouter } = require("./privateCheckIns");
+const { createTeacherClassroomFeedbackRouter } = require("./teacherClassroomFeedback");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -687,6 +688,7 @@ const buildDashboardPayload = async (req) => {
 
 router.use(authMiddleware, requireRole("teacher", "admin"));
 router.use(createPrivateCheckInRouter());
+router.use(createTeacherClassroomFeedbackRouter());
 
 router.get("/analytics", async (req, res) => {
   try {

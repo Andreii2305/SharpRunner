@@ -8,6 +8,7 @@ const ClassroomAnnouncement = require("./ClassroomAnnouncement");
 const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
 const UserNotificationView = require("./UserNotificationView");
 const TeacherStudentCheckIn = require("./TeacherStudentCheckIn");
+const StudentClassroomFeedback = require("./StudentClassroomFeedback");
 const LevelDeadline = require("./LevelDeadline");
 const LevelContentOverride = require("./LevelContentOverride");
 const EmailVerificationToken = require("./EmailVerificationToken");
@@ -415,6 +416,28 @@ TeacherStudentCheckIn.belongsTo(Classroom, {
   onDelete: "RESTRICT",
 });
 
+User.hasMany(StudentClassroomFeedback, {
+  foreignKey: "studentId",
+  as: "submittedClassroomFeedback",
+  onDelete: "RESTRICT",
+});
+StudentClassroomFeedback.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+  onDelete: "RESTRICT",
+});
+
+Classroom.hasMany(StudentClassroomFeedback, {
+  foreignKey: "classroomId",
+  as: "studentFeedback",
+  onDelete: "RESTRICT",
+});
+StudentClassroomFeedback.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+
 Classroom.hasMany(LevelDeadline, {
   foreignKey: "classroomId",
   as: "levelDeadlines",
@@ -602,6 +625,7 @@ module.exports = {
   ClassroomAnnouncementView,
   UserNotificationView,
   TeacherStudentCheckIn,
+  StudentClassroomFeedback,
   LevelDeadline,
   LevelContentOverride,
   EmailVerificationToken,

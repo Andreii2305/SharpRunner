@@ -14,6 +14,7 @@ import pgStyles from "./TeacherClassesPage.module.css";
 import detailStyles from "./TeacherClassDetailPage.module.css";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherJoinRequests from "./TeacherJoinRequests.jsx";
+import TeacherClassroomFeedback from "./TeacherClassroomFeedback.jsx";
 import { TeacherCheckInDialog } from "./TeacherCheckInDialog.jsx";
 import { closeTeacherCheckInDialog } from "./teacherCheckInDialogBehavior.js";
 import {
@@ -34,10 +35,17 @@ import {
 
 const CLASSROOM_SECTION_KEYS = ["students", "analytics", "lessons"];
 
-export function ClassroomSectionTabs({ idBase, activeTab, onSelect, lessonCount, hasClassroomIdentity }) {
+export function ClassroomSectionTabs({ idBase, activeTab, onSelect, lessonCount, hasClassroomIdentity, showFeedback = false }) {
   const tabRefs = useRef({});
+  const tabs = [
+    ["students", <FiList key="students" />, "Students"],
+    ["analytics", <FiBarChart2 key="analytics" />, "Analytics"],
+    ["lessons", <FiBookOpen key="lessons" />, "Classwork"],
+    ...(showFeedback ? [["feedback", <FiMessageSquare key="feedback" />, "Feedback"]] : []),
+  ];
+  const tabKeys = showFeedback ? [...CLASSROOM_SECTION_KEYS, "feedback"] : CLASSROOM_SECTION_KEYS;
   const onKeyDown = (event, currentTab) => {
-    const nextTab = getNextClassroomTab(CLASSROOM_SECTION_KEYS, currentTab, event.key);
+    const nextTab = getNextClassroomTab(tabKeys, currentTab, event.key);
     if (!nextTab) return;
     event.preventDefault();
     onSelect(nextTab);
@@ -46,11 +54,7 @@ export function ClassroomSectionTabs({ idBase, activeTab, onSelect, lessonCount,
 
   return (
     <div className={detailStyles.tabs} role="tablist" aria-label="Classroom sections">
-      {[
-        ["students", <FiList key="students" />, "Students"],
-        ["analytics", <FiBarChart2 key="analytics" />, "Analytics"],
-        ["lessons", <FiBookOpen key="lessons" />, "Classwork"],
-      ].map(([key, icon, label]) => (
+      {tabs.map(([key, icon, label]) => (
         <button
           ref={(element) => { tabRefs.current[key] = element; }}
           type="button"
@@ -188,6 +192,7 @@ function TeacherClassDetailPage() {
   const [lessons, setLessons] = useState([]);
   const [uploadPolicy, setUploadPolicy] = useState(DEFAULT_UPLOAD_POLICY);
   const [activeTab, setActiveTab] = useState("students");
+  const [authenticatedUser, setAuthenticatedUser] = useState(() => getUser());
   const sectionTabsId = useId();
   const [rosterState, setRosterState] = useState({ status: "loading", error: "", hasData: false });
   const [classworkState, setClassworkState] = useState({ status: "loading", error: "", hasData: false });
@@ -217,6 +222,7 @@ function TeacherClassDetailPage() {
   const [classActionPending, setClassActionPending] = useState(false);
   const [sharedEditTarget, setSharedEditTarget] = useState(null);
   const [checkInState, setCheckInState] = useState(initialTeacherCheckInState);
+  const feedbackControllerRef = useRef(null);
   const checkInOriginRef = useRef(null);
   const checkInClassroomRef = useRef(`${classroomId}`);
   const classroomIdentityTrackerRef = useRef(createClassroomIdentityTracker(classroomId));
@@ -235,6 +241,12 @@ function TeacherClassDetailPage() {
     checkInController.activate();
     checkInOriginRef.current = null;
     checkInController.setScope({ accountId: getUser()?.id, classroomId: exactClassroomId });
+    const currentUser = getUser();
+    feedbackControllerRef.current?.setScope({
+      accountId: currentUser?.id,
+      classroomId: exactClassroomId,
+      isTeacher: `${currentUser?.role ?? ""}`.toLowerCase() === "teacher",
+    });
     classroomIdentityTrackerRef.current.enter(exactClassroomId);
     rosterFenceRef.current.reset(exactClassroomId);
     classworkFenceRef.current.reset(exactClassroomId);
@@ -244,8 +256,18 @@ function TeacherClassDetailPage() {
 
   useEffect(() => {
     const synchronizeAccount = () => {
+      const nextUser = getUser();
+      setAuthenticatedUser(nextUser);
+      if (`${nextUser?.role ?? ""}`.toLowerCase() !== "teacher") {
+        setActiveTab((current) => current === "feedback" ? "students" : current);
+      }
+      feedbackControllerRef.current?.setScope({
+        accountId: nextUser?.id,
+        classroomId: checkInClassroomRef.current,
+        isTeacher: `${nextUser?.role ?? ""}`.toLowerCase() === "teacher",
+      });
       checkInOriginRef.current = null;
-      checkInController.setScope({ accountId: getUser()?.id, classroomId: checkInClassroomRef.current });
+      checkInController.setScope({ accountId: nextUser?.id, classroomId: checkInClassroomRef.current });
     };
     const unsubscribe = subscribeToAuthChanges(synchronizeAccount);
     return () => {
@@ -804,11 +826,18 @@ function TeacherClassDetailPage() {
   };
 
   const hasClassroomIdentity = `${classroom?.id ?? ""}` === `${classroomId}`;
+  const isTeacherAccount = `${authenticatedUser?.role ?? ""}`.toLowerCase() === "teacher";
+  const selectClassroomSection = (nextTab) => {
+    feedbackControllerRef.current?.setActive(nextTab === "feedback" && isTeacherAccount);
+    setActiveTab(nextTab);
+  };
   const activeSectionState = activeTab === "students"
     ? rosterState
     : activeTab === "analytics"
       ? managementState
-      : classworkState;
+      : activeTab === "feedback"
+        ? { status: "success", error: "", hasData: false }
+        : classworkState;
   const retryActiveSection = activeTab === "students"
     ? loadRoster
     : activeTab === "analytics"
@@ -819,7 +848,7 @@ function TeacherClassDetailPage() {
     : activeTab === "analytics"
       ? "analytics"
       : "classwork";
-  const activeSectionBlocked = !hasClassroomIdentity || (!activeSectionState.hasData && activeSectionState.status !== "success");
+  const activeSectionBlocked = activeTab === "feedback" || !hasClassroomIdentity || (!activeSectionState.hasData && activeSectionState.status !== "success");
 
   return (
     <div className={styles.root}>
@@ -861,12 +890,20 @@ function TeacherClassDetailPage() {
           <ClassroomSectionTabs
             idBase={sectionTabsId}
             activeTab={activeTab}
-            onSelect={setActiveTab}
+            onSelect={selectClassroomSection}
             lessonCount={lessons.length}
             hasClassroomIdentity={hasClassroomIdentity}
+            showFeedback={isTeacherAccount}
           />
 
           <ClassroomSectionPanel idBase={sectionTabsId} activeTab={activeTab} className={detailStyles.contentCard}>
+            <TeacherClassroomFeedback
+              classroomId={classroomId}
+              accountId={authenticatedUser?.id}
+              isTeacher={isTeacherAccount}
+              isActive={activeTab === "feedback"}
+              controllerRef={feedbackControllerRef}
+            />
             {activeTab === "students" && hasClassroomIdentity && (
               <TeacherJoinRequests classroomId={classroomId} onRosterRefresh={loadRoster} />
             )}

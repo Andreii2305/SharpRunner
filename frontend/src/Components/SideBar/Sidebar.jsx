@@ -12,6 +12,7 @@ import AccountCircleOutlinedIcon from "@mui/icons-material/AccountCircleOutlined
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import PolicyOutlinedIcon from "@mui/icons-material/PolicyOutlined";
 import QuizOutlinedIcon from "@mui/icons-material/QuizOutlined";
+import RateReviewOutlinedIcon from "@mui/icons-material/RateReviewOutlined";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { clearToken, getUser } from "../../utils/auth";
 
@@ -22,6 +23,7 @@ const STUDENT_NAV = [
   { to: "/leaderboards", Icon: LeaderboardOutlinedIcon, label: "Leaderboard" },
   { to: "/Map", Icon: MapOutlinedIcon, label: "Map" },
   { to: "/join-class", Icon: ClassOutlinedIcon, label: "Class requests" },
+  { to: "/classroom-feedback", Icon: RateReviewOutlinedIcon, label: "Classroom feedback" },
 ];
 
 const TEACHER_NAV = [

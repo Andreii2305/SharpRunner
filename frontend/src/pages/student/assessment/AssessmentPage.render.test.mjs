@@ -20,6 +20,9 @@ const { default: AssessmentCodingQuestion } = await vite.ssrLoadModule(
 const { AssessmentInterruptionNotice } = await vite.ssrLoadModule(
   "/src/pages/student/assessment/AssessmentInterruptionNotice.jsx",
 );
+const { AssessmentFullscreenBoundary, AssessmentFullscreenControls } = await vite.ssrLoadModule(
+  "/src/pages/student/assessment/AssessmentFullscreenBoundary.jsx",
+);
 
 test.after(async () => { await vite.close(); });
 
@@ -330,6 +333,70 @@ test("final-question handoff renders authoritative readiness and explicit submis
   assert.doesNotMatch(html, /Correct|Incorrect|Score|Expected answer/);
 });
 
+test("fullscreen boundary keeps assessment dialogs and recovery controls in the same subtree", () => {
+  const content = React.createElement(AssessmentPageContent, {
+    outcome: { kind: "ACTIVE" },
+    assessmentState: {
+      screen: "active",
+      assessment: { id: 91, type: "PRE", title: "Arrays diagnostic" },
+      attempt: { attemptId: 301, attemptNumber: 1, status: "IN_PROGRESS" },
+      orderedQuestions: [{
+        id: 101,
+        questionText: "Which declaration creates an array?",
+        questionType: "MULTIPLE_CHOICE",
+        choices: [{ id: 1001, choiceText: "int[] values" }],
+      }],
+      currentQuestionIndex: 0,
+      selectedByQuestion: { 101: 1001 },
+      savedByQuestion: { 101: 1001 },
+      saveStateByQuestion: { 101: { status: "clean" } },
+      externalSyncRequired: false,
+      externalSyncStatus: "error",
+    },
+    reviewReady: false,
+    interruption: { reason: "visibility-return" },
+    onContinueInterruption() {}, onSelect() {}, onPrevious() {}, onNext() {},
+    onGoToQuestion() {}, onRetrySave() {}, onRecoverConflict() {},
+    onRetrySync() {}, onReadyToReview() {},
+  });
+  const html = renderToStaticMarkup(React.createElement(
+    AssessmentFullscreenBoundary,
+    { eligible: true, identity: "arrays:301", controllerRef: { current: null } },
+    content,
+  ));
+
+  assert.match(html, /data-assessment-fullscreen-boundary="true"/);
+  assert.match(html, /Fullscreen availability/);
+  assert.match(html, /Check again/);
+  assert.match(html, /Continue and check session/);
+  assert.match(
+    html,
+    /data-assessment-fullscreen-boundary="true"[\s\S]*Check again[\s\S]*Continue and check session/,
+  );
+});
+
+test("fullscreen boundary renders children unchanged when entry is ineligible", () => {
+  const html = renderToStaticMarkup(React.createElement(
+    AssessmentFullscreenBoundary,
+    { eligible: false, identity: null, controllerRef: { current: null } },
+    React.createElement("p", null, "Submitted assessment result"),
+  ));
+  assert.match(html, /data-assessment-fullscreen-boundary="true"/);
+  assert.match(html, /Submitted assessment result/);
+  assert.doesNotMatch(html, /Enter fullscreen|Exit fullscreen|Fullscreen availability/);
+});
+
+test("fullscreen controls retain an exit action when cleanup has not actually exited", () => {
+  const html = renderToStaticMarkup(React.createElement(AssessmentFullscreenControls, {
+    state: { status: "fullscreen", message: "Could not exit fullscreen." },
+    onEnter() {},
+    onExit() {},
+  }));
+  assert.match(html, /Exit fullscreen/);
+  assert.match(html, /Could not exit fullscreen/);
+  assert.doesNotMatch(html, /Enter fullscreen/);
+});
+
 test("external invalidation closes review and cannot expose a stale submission action", () => {
   const html = renderToStaticMarkup(React.createElement(AssessmentPageContent, {
     outcome: { kind: "ACTIVE" },
@@ -487,5 +554,7 @@ test("page owns abort and generation fencing and delegates policy orchestration"
   assert.match(source, /assessmentReducer/);
   assert.match(source, /buildAssessmentPageHref/);
   assert.match(source, /window\.history\.replaceState/);
+  assert.match(source, /AssessmentFullscreenBoundary/);
+  assert.match(source, /isAssessmentFullscreenEligible/);
   assert.doesNotMatch(source, /pointsEarned|percentage|passingScore|isCorrect/);
 });

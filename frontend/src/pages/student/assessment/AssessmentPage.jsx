@@ -22,6 +22,7 @@ import {
 } from "./assessmentState.js";
 import AssessmentPlayer from "./AssessmentPlayer.jsx";
 import AssessmentInterruptionNotice from "./AssessmentInterruptionNotice.jsx";
+import AssessmentFullscreenBoundary from "./AssessmentFullscreenBoundary.jsx";
 import AssessmentResult from "./AssessmentResult.jsx";
 import AssessmentStart from "./AssessmentStart.jsx";
 import AssessmentSubmitReview from "./AssessmentSubmitReview.jsx";
@@ -40,6 +41,7 @@ import {
   createAssessmentSessionGuard,
   hasUnresolvedAssessmentWork,
 } from "./assessmentSessionGuard.js";
+import { isAssessmentFullscreenEligible } from "./assessmentFullscreenController.js";
 import { createAssessmentAccountFence } from "./assessmentAccountFence.js";
 import {
   buildAssessmentHref,
@@ -319,6 +321,7 @@ function AssessmentPage() {
   const playerController = useRef(null);
   const submissionController = useRef(null);
   const sessionGuard = useRef(null);
+  const fullscreenController = useRef(null);
   const retakeInFlight = useRef(null);
   const startInFlight = useRef(null);
   const startAbortController = useRef(null);
@@ -346,6 +349,7 @@ function AssessmentPage() {
       subscribe: subscribeToAuthChanges,
       onIdentityChanged: () => {
         requestGeneration.current += 1;
+        fullscreenController.current?.invalidate();
         sessionGuard.current?.dispose();
         sessionGuard.current = null;
         startAbortController.current?.abort();
@@ -392,6 +396,7 @@ function AssessmentPage() {
   }, [assessmentState.screen, outcome?.kind, parsedRoute, syncAttemptId]);
 
   useEffect(() => {
+    fullscreenController.current?.invalidate();
     const controller = new AbortController();
     const generation = ++requestGeneration.current;
     const isCurrent = () => (
@@ -902,37 +907,46 @@ function AssessmentPage() {
     return operation;
   }, [dispatchForCurrentAttempt, orchestrator, parsedRoute, routeParams]);
 
+  const fullscreenEligible = isAssessmentFullscreenEligible({ outcome, assessmentState });
+  const fullscreenIdentity = fullscreenEligible ? syncIdentity : null;
+
   return (
-    <AssessmentPageContent
-      outcome={outcome}
-      assessmentState={assessmentState}
-      reviewReady={reviewReady}
-      onRetry={retry}
-      onSelect={selectChoice}
-      onSourceChange={updateSource}
-      onRunCode={runCode}
-      onPrevious={previousQuestion}
-      onNext={nextQuestion}
-      onGoToQuestion={goToQuestion}
-      onRetrySave={retrySave}
-      onRecoverConflict={retry}
-      onRetrySync={() => sessionGuard.current?.revalidate("manual")}
-      onReadyToReview={() => setReviewReady(true)}
-      onReturnToQuestions={() => {
-        cancelConfirmation();
-        setReviewReady(false);
-      }}
-      onOpenConfirmation={openConfirmation}
-      onCancelConfirmation={cancelConfirmation}
-      onConfirmSubmit={confirmSubmit}
-      onRetryResultRecovery={retryResultRecovery}
-      onRetryGrading={retryGrading}
-      onRetake={startRetake}
-      onRetryProgression={retryProgression}
-      onStart={startAssessment}
-      interruption={interruption?.syncIdentity === syncIdentity ? interruption : null}
-      onContinueInterruption={continueAfterInterruption}
-    />
+    <AssessmentFullscreenBoundary
+      eligible={fullscreenEligible}
+      identity={fullscreenIdentity}
+      controllerRef={fullscreenController}
+    >
+      <AssessmentPageContent
+        outcome={outcome}
+        assessmentState={assessmentState}
+        reviewReady={reviewReady}
+        onRetry={retry}
+        onSelect={selectChoice}
+        onSourceChange={updateSource}
+        onRunCode={runCode}
+        onPrevious={previousQuestion}
+        onNext={nextQuestion}
+        onGoToQuestion={goToQuestion}
+        onRetrySave={retrySave}
+        onRecoverConflict={retry}
+        onRetrySync={() => sessionGuard.current?.revalidate("manual")}
+        onReadyToReview={() => setReviewReady(true)}
+        onReturnToQuestions={() => {
+          cancelConfirmation();
+          setReviewReady(false);
+        }}
+        onOpenConfirmation={openConfirmation}
+        onCancelConfirmation={cancelConfirmation}
+        onConfirmSubmit={confirmSubmit}
+        onRetryResultRecovery={retryResultRecovery}
+        onRetryGrading={retryGrading}
+        onRetake={startRetake}
+        onRetryProgression={retryProgression}
+        onStart={startAssessment}
+        interruption={interruption?.syncIdentity === syncIdentity ? interruption : null}
+        onContinueInterruption={continueAfterInterruption}
+      />
+    </AssessmentFullscreenBoundary>
   );
 }
 

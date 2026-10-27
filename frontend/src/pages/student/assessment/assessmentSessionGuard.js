@@ -2,7 +2,7 @@ const CHANNEL_PREFIX = "sharprunner:assessment-attempt:";
 const CHANGE_EVENT = "ASSESSMENT_ATTEMPT_CHANGED";
 const SUBMIT_EVENT = "ASSESSMENT_ATTEMPT_SUBMITTED";
 
-const hasUnresolvedWork = (state) => {
+export const hasUnresolvedAssessmentWork = (state) => {
   if (state?.screen !== "active") return false;
   return (state.orderedQuestions ?? []).some(({ id }) => {
     const saveState = state.saveStateByQuestion?.[id];
@@ -17,7 +17,7 @@ const hasLocalTransition = (state) => (
 );
 
 export const shouldWarnBeforeAssessmentUnload = (state) => (
-  hasUnresolvedWork(state) || hasLocalTransition(state)
+  hasUnresolvedAssessmentWork(state) || hasLocalTransition(state)
 );
 
 export const createAssessmentSessionGuard = ({
@@ -25,6 +25,9 @@ export const createAssessmentSessionGuard = ({
   getState,
   revalidate,
   onSyncRequired,
+  onInterruption,
+  onInterruptionSettled,
+  shouldSettleInterruption,
   windowTarget = globalThis.window,
   documentTarget = globalThis.document,
   BroadcastChannelImpl = globalThis.BroadcastChannel,
@@ -32,6 +35,10 @@ export const createAssessmentSessionGuard = ({
   let disposed = false;
   let inFlight = null;
   let queuedRevalidation = null;
+  let interruptionPending = false;
+  let interruptionCheck = null;
+  let hiddenSinceVisible = false;
+  let restoreFocusTarget = null;
   let channel = null;
 
   const requireSync = (reason) => {
@@ -40,12 +47,22 @@ export const createAssessmentSessionGuard = ({
     }
   };
 
+  const settleInterruption = (reason, result) => {
+    if (!interruptionPending && !interruptionCheck) return false;
+    interruptionPending = false;
+    interruptionCheck = null;
+    restoreFocusTarget = null;
+    queuedRevalidation = null;
+    onInterruptionSettled?.({ reason, attemptId, result });
+    return true;
+  };
+
   const runRevalidation = (reason, { force = false } = {}) => {
     if (disposed) return Promise.resolve({ kind: "DISPOSED" });
     if (!force && hasLocalTransition(getState?.())) {
       return Promise.resolve({ kind: "LOCAL_TRANSITION" });
     }
-    if (!force && hasUnresolvedWork(getState?.())) {
+    if (!force && hasUnresolvedAssessmentWork(getState?.())) {
       requireSync(reason);
       return Promise.resolve({ kind: "SYNC_REQUIRED" });
     }
@@ -66,14 +83,22 @@ export const createAssessmentSessionGuard = ({
     } catch (error) {
       operation = Promise.reject(error);
     }
-    inFlight = Promise.resolve(operation).finally(() => {
-      inFlight = null;
-      const queued = queuedRevalidation;
-      queuedRevalidation = null;
-      if (queued && !disposed) {
-        runRevalidation(queued.reason, { force: queued.force });
-      }
-    });
+    inFlight = Promise.resolve(operation)
+      .then((result) => {
+        if (
+          !disposed
+          && shouldSettleInterruption?.({ reason, attemptId, result }) === true
+        ) settleInterruption(reason, result);
+        return result;
+      })
+      .finally(() => {
+        inFlight = null;
+        const queued = queuedRevalidation;
+        queuedRevalidation = null;
+        if (queued && !disposed) {
+          runRevalidation(queued.reason, { force: queued.force });
+        }
+      });
     return inFlight;
   };
 
@@ -85,14 +110,41 @@ export const createAssessmentSessionGuard = ({
       return;
     }
     if (message.type === SUBMIT_EVENT) {
-      if (hasUnresolvedWork(getState?.())) requireSync("remote-submission");
+      if (hasUnresolvedAssessmentWork(getState?.())) requireSync("remote-submission");
       runRevalidation("remote-submission", { force: true });
     }
   };
 
-  const handleFocus = () => { runRevalidation("focus"); };
+  const handleFocus = () => {
+    if (
+      hiddenSinceVisible
+      || interruptionPending
+      || interruptionCheck
+      || documentTarget?.visibilityState === "hidden"
+    ) return;
+    runRevalidation("focus");
+  };
   const handleVisibility = () => {
-    if (documentTarget?.visibilityState === "visible") runRevalidation("visibility");
+    if (documentTarget?.visibilityState === "hidden") {
+      hiddenSinceVisible = true;
+      restoreFocusTarget = documentTarget?.activeElement ?? null;
+      return;
+    }
+    if (documentTarget?.visibilityState !== "visible" || !hiddenSinceVisible) return;
+    hiddenSinceVisible = false;
+    if (interruptionPending) return;
+    if (typeof onInterruption !== "function") {
+      runRevalidation("visibility");
+      return;
+    }
+    interruptionPending = true;
+    const event = { reason: "visibility-return", attemptId };
+    if (restoreFocusTarget) event.restoreFocusTarget = restoreFocusTarget;
+    if (onInterruption(event) === false) {
+      interruptionPending = false;
+      restoreFocusTarget = null;
+      runRevalidation("visibility");
+    }
   };
   const handleBeforeUnload = (event) => {
     if (!shouldWarnBeforeAssessmentUnload(getState?.())) return;
@@ -127,6 +179,19 @@ export const createAssessmentSessionGuard = ({
     announceSaved: () => announce(CHANGE_EVENT),
     announceSubmitted: () => announce(SUBMIT_EVENT),
     revalidate: runRevalidation,
+    continueAfterInterruption() {
+      if (disposed) return Promise.resolve({ kind: "DISPOSED" });
+      if (interruptionCheck) return interruptionCheck;
+      if (!interruptionPending) return Promise.resolve({ kind: "NO_INTERRUPTION" });
+      interruptionPending = false;
+      restoreFocusTarget = null;
+      const check = runRevalidation("visibility-return");
+      const trackedCheck = check.finally(() => {
+        if (interruptionCheck === trackedCheck) interruptionCheck = null;
+      });
+      interruptionCheck = trackedCheck;
+      return trackedCheck;
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
@@ -137,6 +202,10 @@ export const createAssessmentSessionGuard = ({
       channel?.close?.();
       channel = null;
       queuedRevalidation = null;
+      interruptionPending = false;
+      interruptionCheck = null;
+      hiddenSinceVisible = false;
+      restoreFocusTarget = null;
     },
   };
 };

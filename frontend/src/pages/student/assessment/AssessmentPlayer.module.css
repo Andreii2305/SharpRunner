@@ -54,6 +54,41 @@
 }
 .statusActions button + a { border-color: #a9bac9; background: #fff; color: #31536f; }
 
+.interruptionBackdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(15 23 42 / 52%);
+}
+
+.interruptionDialog {
+  box-sizing: border-box;
+  width: min(100%, 30rem);
+  border: 1px solid #c8d6e3;
+  border-radius: 14px;
+  padding: clamp(1.25rem, 4vw, 1.75rem);
+  background: #fff;
+  box-shadow: 0 18px 48px rgb(15 23 42 / 24%);
+}
+
+.interruptionDialog h2 { margin: 0.5rem 0; color: #1e3a5f; }
+.interruptionDialog p { margin: 0; color: #52677a; line-height: 1.55; }
+.interruptionDialog button {
+  min-height: 44px;
+  margin-top: 1.2rem;
+  border: 1px solid #1e3a5f;
+  border-radius: 9px;
+  padding: 0.65rem 1rem;
+  background: #1e3a5f;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 .startPage { width: min(100% - 2rem, 46rem); }
 .startPanel {
   box-sizing: border-box;

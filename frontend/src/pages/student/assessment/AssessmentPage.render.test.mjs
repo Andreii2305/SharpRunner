@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createServer } from "vite";
 
 const vite = await createServer({
+  cacheDir: "node_modules/.vite-test-assessment-page",
   server: { middlewareMode: true },
   appType: "custom",
   optimizeDeps: { noDiscovery: true },
@@ -15,6 +16,9 @@ const { AssessmentPageContent, AssessmentStatusView } = await vite.ssrLoadModule
 );
 const { default: AssessmentCodingQuestion } = await vite.ssrLoadModule(
   "/src/pages/student/assessment/AssessmentCodingQuestion.jsx",
+);
+const { AssessmentInterruptionNotice } = await vite.ssrLoadModule(
+  "/src/pages/student/assessment/AssessmentInterruptionNotice.jsx",
 );
 
 test.after(async () => { await vite.close(); });
@@ -222,6 +226,79 @@ test("active page content renders the F-D player from hydrated reducer state", (
   assert.match(html, /Which declaration creates an array\?/);
   assert.match(html, /type="radio"/);
   assert.doesNotMatch(html, /player will appear in the next checkpoint/);
+});
+
+test("interruption notice keeps the active assessment and answer controls mounted", () => {
+  const assessmentState = {
+    screen: "active",
+    assessment: { id: 91, type: "PRE", title: "Arrays diagnostic" },
+    attempt: { attemptId: 301, attemptNumber: 1, status: "IN_PROGRESS" },
+    orderedQuestions: [{
+      id: 101,
+      questionText: "Which declaration creates an array?",
+      questionType: "MULTIPLE_CHOICE",
+      choices: [{ id: 1001, choiceText: "int[] values" }],
+    }],
+    currentQuestionIndex: 0,
+    selectedByQuestion: { 101: 1001 },
+    savedByQuestion: {},
+    saveStateByQuestion: { 101: { status: "error", error: "Save failed" } },
+    externalSyncRequired: false,
+    externalSyncStatus: "idle",
+  };
+  const html = renderToStaticMarkup(React.createElement(AssessmentPageContent, {
+    outcome: { kind: "ACTIVE" },
+    assessmentState,
+    reviewReady: false,
+    interruption: { reason: "visibility-return" },
+    onContinueInterruption() {},
+    onSelect() {}, onPrevious() {}, onNext() {}, onGoToQuestion() {},
+    onRetrySave() {}, onRecoverConflict() {}, onRetrySync() {}, onReadyToReview() {},
+  }));
+
+  assert.match(html, /Which declaration creates an array\?/);
+  assert.match(html, /type="radio"/);
+  assert.match(html, /Save failed/);
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /aria-modal="true"/);
+  assert.match(html, /You returned to this assessment\. Check your session before continuing\./);
+  assert.match(html, /Continue and check session/);
+  assert.doesNotMatch(html, /cheat|violation|penalty/i);
+});
+
+test("interruption notice has an accessible name and one deliberate continuation action", () => {
+  const html = renderToStaticMarkup(React.createElement(AssessmentInterruptionNotice, {
+    onContinue() {},
+  }));
+
+  assert.match(html, /aria-labelledby="[^"]+"/);
+  assert.match(html, /tabindex="-1"/);
+  assert.equal((html.match(/<button/g) ?? []).length, 1);
+});
+
+test("interruption notice also covers an active attempt while answers are under review", () => {
+  const html = renderToStaticMarkup(React.createElement(AssessmentPageContent, {
+    outcome: { kind: "ACTIVE" },
+    assessmentState: {
+      screen: "active",
+      orderedQuestions: [{ id: 101 }],
+      selectedByQuestion: { 101: 1001 },
+      savedByQuestion: { 101: 1001 },
+      saveStateByQuestion: { 101: { status: "clean" } },
+      submitStatus: "idle",
+      submitReviewOpen: false,
+      externalSyncRequired: false,
+      externalSyncStatus: "idle",
+    },
+    reviewReady: true,
+    interruption: { reason: "visibility-return" },
+    onContinueInterruption() {}, onReturnToQuestions() {}, onGoToQuestion() {},
+    onOpenConfirmation() {}, onCancelConfirmation() {}, onConfirmSubmit() {},
+  }));
+
+  assert.match(html, /Review your answers/);
+  assert.match(html, /role="dialog"/);
+  assert.match(html, /Continue and check session/);
 });
 
 test("final-question handoff renders authoritative readiness and explicit submission confirmation", () => {

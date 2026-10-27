@@ -21,6 +21,7 @@ import {
   isUnresolvedQuestionIndex,
 } from "./assessmentState.js";
 import AssessmentPlayer from "./AssessmentPlayer.jsx";
+import AssessmentInterruptionNotice from "./AssessmentInterruptionNotice.jsx";
 import AssessmentResult from "./AssessmentResult.jsx";
 import AssessmentStart from "./AssessmentStart.jsx";
 import AssessmentSubmitReview from "./AssessmentSubmitReview.jsx";
@@ -35,12 +36,17 @@ import {
   createAssessmentRouteOrchestrator,
   parseAssessmentPageRoute,
 } from "./assessmentRouteOrchestrator.js";
-import { createAssessmentSessionGuard } from "./assessmentSessionGuard.js";
+import {
+  createAssessmentSessionGuard,
+  hasUnresolvedAssessmentWork,
+} from "./assessmentSessionGuard.js";
+import { createAssessmentAccountFence } from "./assessmentAccountFence.js";
 import {
   buildAssessmentHref,
   buildAssessmentPageHref,
   buildCustomAssessmentHref,
 } from "../../../utils/lessonProgressionNavigation.js";
+import { getUser, subscribeToAuthChanges } from "../../../utils/auth.js";
 
 const shellCopy = {
   LOADING: {
@@ -174,6 +180,8 @@ export function AssessmentPageContent({
   onRetake,
   onRetryProgression,
   onStart,
+  interruption,
+  onContinueInterruption,
 }) {
   if (["READY", "START_ERROR"].includes(outcome?.kind)) {
     return <AssessmentStart outcome={outcome} onStart={onStart} />;
@@ -197,6 +205,17 @@ export function AssessmentPageContent({
   }
 
   if (outcome?.kind === "ACTIVE" && assessmentState?.screen === "active") {
+    const withInterruptionNotice = (content) => (
+      <>
+        {content}
+        {interruption && (
+          <AssessmentInterruptionNotice
+            onContinue={onContinueInterruption}
+            restoreFocusTarget={interruption.restoreFocusTarget}
+          />
+        )}
+      </>
+    );
     if (["recovering-result", "recovery-error"].includes(assessmentState.submitStatus)) {
       const failed = assessmentState.submitStatus === "recovery-error";
       return (
@@ -241,7 +260,7 @@ export function AssessmentPageContent({
     ) {
       const summary = getAnswerSummary(assessmentState);
       const readiness = getSubmissionReadiness(assessmentState);
-      return (
+      return withInterruptionNotice(
         <AssessmentSubmitReview
           summary={summary}
           readiness={readiness}
@@ -261,11 +280,11 @@ export function AssessmentPageContent({
           onOpenConfirmation={onOpenConfirmation}
           onCancelConfirmation={onCancelConfirmation}
           onConfirm={onConfirmSubmit}
-        />
+        />,
       );
     }
 
-    return (
+    return withInterruptionNotice(
       <AssessmentPlayer
         state={assessmentState}
         onSelect={onSelect}
@@ -278,7 +297,7 @@ export function AssessmentPageContent({
         onRecoverConflict={onRecoverConflict}
         onRetrySync={onRetrySync}
         onReadyToReview={onReadyToReview}
-      />
+      />,
     );
   }
 
@@ -295,6 +314,7 @@ function AssessmentPage() {
   const [outcome, setOutcome] = useState({ kind: "LOADING" });
   const [retryGeneration, setRetryGeneration] = useState(0);
   const [reviewReady, setReviewReady] = useState(false);
+  const [interruption, setInterruption] = useState(null);
   const requestGeneration = useRef(0);
   const playerController = useRef(null);
   const submissionController = useRef(null);
@@ -315,6 +335,27 @@ function AssessmentPage() {
     getAttemptResult,
     startOrResumeAttempt,
   }), []);
+
+  useEffect(() => {
+    const accountIdentity = () => {
+      const user = getUser();
+      return user ? `${user.role ?? ""}:${user.id ?? ""}` : null;
+    };
+    const fence = createAssessmentAccountFence({
+      getIdentity: accountIdentity,
+      subscribe: subscribeToAuthChanges,
+      onIdentityChanged: () => {
+        requestGeneration.current += 1;
+        sessionGuard.current?.dispose();
+        sessionGuard.current = null;
+        startAbortController.current?.abort();
+        setInterruption(null);
+        setReviewReady(false);
+        setRetryGeneration((value) => value + 1);
+      },
+    });
+    return () => fence.dispose();
+  }, []);
 
   const { classroomId, lessonKey, placementId, type, attemptId } = params;
   const routeParams = useMemo(
@@ -364,6 +405,7 @@ function AssessmentPage() {
       requestGeneration: generation,
     });
     setReviewReady(false);
+    setInterruption(null);
     retakeInFlight.current = null;
     startAbortController.current?.abort();
     startAbortController.current = null;
@@ -396,7 +438,10 @@ function AssessmentPage() {
     };
   }, [orchestrator, parsedRoute, retryGeneration, routeKey, routeParams]);
 
-  const revalidateAssessment = useCallback(async ({ isActive = () => true } = {}) => {
+  const revalidateAssessment = useCallback(async ({
+    isActive = () => true,
+    reason = "manual",
+  } = {}) => {
     const current = latestState.current;
     if (!parsedRoute || !current.routeKey || !syncAttemptId) return { kind: "UNAVAILABLE" };
     const generation = current.requestGeneration;
@@ -419,6 +464,20 @@ function AssessmentPage() {
       isCurrent,
     });
     if (!isCurrent() || nextOutcome.kind === "STALE") return { kind: "STALE" };
+
+    if (
+      reason === "visibility-return"
+      && nextOutcome.kind === "ACTIVE"
+      && hasUnresolvedAssessmentWork(latestState.current)
+    ) {
+      dispatch({
+        type: "SERVER_STATE_INVALIDATED",
+        reason,
+        routeKey: currentRouteKey,
+        requestGeneration: generation,
+      });
+      return { kind: "SYNC_REQUIRED" };
+    }
 
     if (["ACTIVE", "RESULT"].includes(nextOutcome.kind)) {
       for (const action of assessmentActionsForOutcome(nextOutcome, {
@@ -467,6 +526,21 @@ function AssessmentPage() {
           routeKey: current.routeKey,
           requestGeneration: current.requestGeneration,
         });
+      },
+      onInterruption: (notice) => {
+        const current = latestState.current;
+        if (current.screen !== "active" || current.attempt?.status !== "IN_PROGRESS") {
+          return false;
+        }
+        if (sessionGuard.current && sessionGuard.current !== guard) return false;
+        setInterruption({ ...notice, syncIdentity });
+        return true;
+      },
+      shouldSettleInterruption: ({ result }) => result?.kind === "RESULT",
+      onInterruptionSettled: () => {
+        setInterruption((current) => (
+          current?.syncIdentity === syncIdentity ? null : current
+        ));
       },
     });
     sessionGuard.current = guard;
@@ -585,6 +659,12 @@ function AssessmentPage() {
     setReviewReady(false);
     setRetryGeneration((value) => value + 1);
   }, [orchestrator, outcome, parsedRoute, routeKey, routeParams]);
+  const continueAfterInterruption = useCallback(() => {
+    const notice = interruption;
+    if (!notice || notice.syncIdentity !== syncIdentity) return Promise.resolve(null);
+    setInterruption(null);
+    return sessionGuard.current?.continueAfterInterruption() ?? Promise.resolve(null);
+  }, [interruption, syncIdentity]);
   const dispatchForCurrentAttempt = useCallback((action) => {
     const current = latestState.current;
     dispatch({
@@ -850,6 +930,8 @@ function AssessmentPage() {
       onRetake={startRetake}
       onRetryProgression={retryProgression}
       onStart={startAssessment}
+      interruption={interruption?.syncIdentity === syncIdentity ? interruption : null}
+      onContinueInterruption={continueAfterInterruption}
     />
   );
 }

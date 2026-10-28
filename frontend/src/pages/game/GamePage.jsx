@@ -17,7 +17,7 @@ import {
   GAME_ACCESSIBILITY_CHANGED,
   GAME_LEVEL_RESET,
 } from "./gameEvents";
-import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth";
+import { buildApiUrl, getAuthHeaders, getUser, subscribeToAuthChanges } from "../../utils/auth";
 import { buildValidatorFromConfig } from "./levels/buildValidator";
 import {
   getLevelConfigByProgressKey,
@@ -54,12 +54,22 @@ import {
   getNextGameplayTab,
   shouldAcceptEvaluationOutcome,
 } from "./gamePageInteractions.js";
+import {
+  createGameFullscreenInterruptionController,
+  initialGameFullscreenInterruptionState,
+} from "./gameFullscreenInterruptionController.js";
+import {
+  clearGameCompletionRequest,
+  disposeGameOutcomeOperationController,
+  ensureGameOutcomeOperationController,
+  getOrStartGameCompletionRequest,
+  invalidateGameOutcomeForReset,
+} from "./gameOutcomeOperationController.js";
+import { GameFullscreenGate } from "./GameFullscreenGate.jsx";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
 const MOBILE_GAME_QUERY = "(max-width: 820px) and (orientation: portrait), (max-height: 500px) and (orientation: landscape)";
-const STALE_ACCESS_HANDLED = Symbol("stale-access-handled");
-
 const createRequestId = () => window.crypto?.randomUUID?.()
   ?? `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
@@ -145,12 +155,34 @@ function GamePage({ levelConfig, classroomId }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [tutorialUserId] = useState(getTutorialUserId);
+  const [gameAccountId, setGameAccountId] = useState(getTutorialUserId);
   const [tutorialRequested, setTutorialRequested] = useState(
     () => shouldOpenTutorial(getGameStorage(), tutorialUserId),
   );
   const tutorialRequestedRef = useRef(tutorialRequested);
   tutorialRequestedRef.current = tutorialRequested;
   const gamePageRef = useRef(null);
+  const fullscreenContinueRef = useRef(null);
+  const fullscreenOpenerRef = useRef(null);
+  const fullscreenBgmOwnerRef = useRef(Symbol("game-fullscreen-gate"));
+  const fullscreenControllerRef = useRef(null);
+  const [fullscreenState, setFullscreenState] = useState(initialGameFullscreenInterruptionState);
+  const gameplayPermittedRef = useRef(false);
+  const pendingEvaluationOutcomeRef = useRef(null);
+  const outcomeHandlerRef = useRef(null);
+  const sessionPermissionSyncRef = useRef(null);
+  const gameActivityActiveRef = useRef(false);
+  gameplayPermittedRef.current = fullscreenState.gameplayPermitted;
+  useEffect(() => {
+    const controller = createGameFullscreenInterruptionController({
+      onStateChange: setFullscreenState,
+    });
+    fullscreenControllerRef.current = controller;
+    return () => {
+      controller.dispose();
+      if (fullscreenControllerRef.current === controller) fullscreenControllerRef.current = null;
+    };
+  }, []);
   const pendingDialogueRef = useRef(null);
   const deferredIntroRef = useRef(tutorialRequested && shouldStartWithDialogue(levelConfig));
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE_GAME_QUERY).matches);
@@ -216,6 +248,17 @@ function GamePage({ levelConfig, classroomId }) {
   const runLevelCheckRef = useRef(null);
   const evaluationActivityIdRef = useRef(null);
   const evaluationInFlightRef = useRef(false);
+  const outcomeOperationControllerRef = useRef(null);
+  const outcomeOperationScopeRef = useRef(null);
+  outcomeOperationScopeRef.current = {
+    accountId: gameAccountId,
+    classroomId,
+    levelIdentity: levelConfig?.progressKey,
+  };
+  ensureGameOutcomeOperationController(
+    outcomeOperationControllerRef,
+    outcomeOperationScopeRef.current,
+  );
   const [isEvaluationRunning, setIsEvaluationRunning] = useState(false);
   const evaluationLifecycleRef = useRef(null);
   if (!evaluationLifecycleRef.current) {
@@ -282,6 +325,91 @@ function GamePage({ levelConfig, classroomId }) {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
     ),
   );
+  const fullscreenGateApplicable = Boolean(
+    gameAccountId != null
+    && classroomId != null
+    && levelConfig?.progressKey
+    && !deadlineExpired
+    && !accessRevoked
+    && !gradeModal,
+  );
+
+  useEffect(() => subscribeToAuthChanges(() => {
+    outcomeOperationControllerRef.current?.invalidate();
+    setGameAccountId(getTutorialUserId());
+  }), []);
+
+  useEffect(() => {
+    const controller = ensureGameOutcomeOperationController(
+      outcomeOperationControllerRef,
+      outcomeOperationScopeRef.current,
+    );
+    return () => {
+      disposeGameOutcomeOperationController(outcomeOperationControllerRef, controller);
+    };
+  }, []);
+
+  useEffect(() => {
+    const controller = fullscreenControllerRef.current;
+    if (!fullscreenGateApplicable) {
+      controller.invalidate();
+      return undefined;
+    }
+
+    controller.setScope({
+      accountId: gameAccountId,
+      classroomId,
+      levelIdentity: levelConfig.progressKey,
+      element: gamePageRef.current,
+    });
+    return undefined;
+  }, [classroomId, fullscreenGateApplicable, gameAccountId, levelConfig?.progressKey]);
+
+  useEffect(() => {
+    const owner = fullscreenBgmOwnerRef.current;
+    if (fullscreenState.gameplayPermitted) {
+      bgmManager.resumeTemporarily(owner);
+    } else {
+      bgmManager.pauseTemporarily(owner);
+      dialogueSfxManager.stop();
+    }
+  }, [fullscreenState.gameplayPermitted]);
+
+  useEffect(() => () => {
+    bgmManager.resumeTemporarily(fullscreenBgmOwnerRef.current);
+  }, []);
+
+  useEffect(() => {
+    sessionPermissionSyncRef.current?.(fullscreenState.gameplayPermitted);
+    if (!fullscreenState.gameplayPermitted || !pendingEvaluationOutcomeRef.current) return;
+    const pendingOutcome = pendingEvaluationOutcomeRef.current;
+    pendingEvaluationOutcomeRef.current = null;
+    outcomeHandlerRef.current?.(pendingOutcome);
+  }, [fullscreenState.gameplayPermitted]);
+
+  const continueFullscreenGameplay = () => {
+    fullscreenOpenerRef.current = document.activeElement;
+    const operation = fullscreenControllerRef.current?.continueGameplay();
+    if (!operation) return;
+    void Promise.resolve(operation).then((permitted) => {
+      if (!permitted || !gameplayPermittedRef.current) return;
+      if (!restoreDialogFocus(fullscreenOpenerRef.current)) gamePageRef.current?.focus?.();
+      fullscreenOpenerRef.current = null;
+    });
+  };
+
+  useEffect(() => {
+    if (!fullscreenGateApplicable || fullscreenState.gameplayPermitted) return undefined;
+    focusDialog(gamePageRef.current?.querySelector?.(`.${styles.fullscreenGateDialog}`), fullscreenContinueRef.current);
+    const onKeyDown = (event) => handleDialogKeyDown({
+      event,
+      dialog: gamePageRef.current?.querySelector?.(`.${styles.fullscreenGateDialog}`),
+      disabled: true,
+      onDismiss: () => {},
+    });
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [fullscreenGateApplicable, fullscreenState.gameplayPermitted]);
 
   const syncHintState = useCallback((payload = {}) => {
     if (payload.hintUnlockThreshold != null) {
@@ -323,6 +451,7 @@ function GamePage({ levelConfig, classroomId }) {
   }, []);
 
   const stopForStaleAccess = useCallback(() => {
+    outcomeOperationControllerRef.current?.invalidate();
     levelSessionActiveRef.current = false;
     activeTimerAnchorRef.current = null;
     heartbeatStopRef.current?.();
@@ -416,11 +545,12 @@ function GamePage({ levelConfig, classroomId }) {
     levelSessionIdRef.current = null;
     levelSessionActiveRef.current = false;
     heartbeatStopRef.current = null;
+    pendingEvaluationOutcomeRef.current = null;
     setEffectiveDueAt(null);
     setHasDeadlineExtension(false);
     setDeadlineExpired(false);
     setAccessRevoked(null);
-  }, [clearNextLevelTimer, levelConfig]);
+  }, [classroomId, clearNextLevelTimer, gameAccountId, levelConfig]);
 
   const { bgmVolume, bgmMuted, sfxVolume, sfxMuted } = audioPreferences;
 
@@ -506,6 +636,7 @@ function GamePage({ levelConfig, classroomId }) {
     let cancelled = false;
     let heartbeatTimer = null;
     let transitionPromise = Promise.resolve();
+    let sessionStarting = false;
     const syncTimer = (activeSeconds) => {
       const seconds = Math.max(0, Number(activeSeconds) || 0);
       confirmedSecondsRef.current = seconds;
@@ -521,19 +652,21 @@ function GamePage({ levelConfig, classroomId }) {
     const handleAccessError = (error) => {
       const code = error.response?.data?.code;
       if (code === "DEADLINE_PASSED") {
+        outcomeOperationControllerRef.current?.invalidate();
         levelSessionActiveRef.current = false;
         stopHeartbeat();
         cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
         setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
         setDeadlineExpired(true);
       } else if (code === "LEVEL_SESSION_REPLACED") {
+        outcomeOperationControllerRef.current?.invalidate();
         levelSessionActiveRef.current = false;
         stopHeartbeat();
         setResult({ type: "error", message: error.response.data.message });
       }
     };
     const heartbeat = async () => {
-      if (cancelled || document.hidden || !levelSessionActiveRef.current) return;
+      if (cancelled || !gameplayPermittedRef.current || document.hidden || !levelSessionActiveRef.current) return;
       const syncId = createRequestId();
       try {
         const response = await axios.post(
@@ -553,7 +686,9 @@ function GamePage({ levelConfig, classroomId }) {
       heartbeatTimer = window.setInterval(heartbeat, Math.max(20, seconds) * 1000);
     };
     const startSession = async () => {
-      if (cancelled || document.hidden) return;
+      if (cancelled || sessionStarting || levelSessionActiveRef.current
+        || !gameplayPermittedRef.current || document.hidden) return;
+      sessionStarting = true;
       const sessionId = createRequestId();
       levelSessionIdRef.current = sessionId;
       try {
@@ -576,14 +711,19 @@ function GamePage({ levelConfig, classroomId }) {
         if (!cancelled) {
           handleStaleAccessError(error, "session-start") || handleAccessError(error);
         }
+      } finally {
+        sessionStarting = false;
       }
     };
     const endSession = async (keepalive = false) => {
       stopHeartbeat();
       levelSessionActiveRef.current = false;
+      const sessionId = levelSessionIdRef.current;
+      if (!sessionId) return;
+      levelSessionIdRef.current = null;
       const url = buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/end`, classroomId));
       const payload = {
-        sessionId: levelSessionIdRef.current,
+        sessionId,
         syncId: createRequestId(),
       };
       if (keepalive) {
@@ -603,29 +743,30 @@ function GamePage({ levelConfig, classroomId }) {
         // Heartbeat staleness still prevents indefinite accumulation for ordinary failures.
       }
     };
-    const handleVisibility = () => {
+    const syncPermission = (permitted) => {
       transitionPromise = transitionPromise.then(() => (
-        document.hidden ? endSession(true) : startSession()
+        permitted && !document.hidden ? startSession() : endSession(true)
       ));
     };
     const handlePageHide = () => void endSession(true);
 
-    void startSession();
-    document.addEventListener("visibilitychange", handleVisibility);
+    sessionPermissionSyncRef.current = syncPermission;
+    syncPermission(gameplayPermittedRef.current);
     window.addEventListener("pagehide", handlePageHide);
     return () => {
       cancelled = true;
       stopHeartbeat();
       if (heartbeatStopRef.current === stopHeartbeat) heartbeatStopRef.current = null;
-      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("pagehide", handlePageHide);
+      if (sessionPermissionSyncRef.current === syncPermission) sessionPermissionSyncRef.current = null;
       void endSession(true);
     };
-  }, [classroomId, handleStaleAccessError, levelConfig, syncHintState]);
+  }, [classroomId, gameAccountId, handleStaleAccessError, levelConfig, syncHintState]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      if (!levelSessionActiveRef.current || document.hidden || activeTimerAnchorRef.current == null) return;
+      if (!gameplayPermittedRef.current || !levelSessionActiveRef.current
+        || document.hidden || activeTimerAnchorRef.current == null) return;
       const seconds = confirmedSecondsRef.current
         + Math.max(0, Math.floor((Date.now() - activeTimerAnchorRef.current) / 1000));
       elapsedSecondsRef.current = seconds;
@@ -673,27 +814,34 @@ function GamePage({ levelConfig, classroomId }) {
       return undefined;
     }
 
-    const reportVisibility = () => reportGameActivity(!document.hidden);
-    reportVisibility();
+    const reportPermission = (active) => {
+      if (gameActivityActiveRef.current === active) return;
+      gameActivityActiveRef.current = active;
+      reportGameActivity(active);
+    };
+    reportPermission(gameplayPermittedRef.current && !document.hidden);
     const heartbeatTimer = window.setInterval(() => {
-      if (!document.hidden) reportGameActivity(true);
+      if (gameplayPermittedRef.current && !document.hidden) reportGameActivity(true);
     }, 30_000);
-    document.addEventListener("visibilitychange", reportVisibility);
 
     return () => {
       window.clearInterval(heartbeatTimer);
-      document.removeEventListener("visibilitychange", reportVisibility);
-      reportGameActivity(false);
+      reportPermission(false);
     };
-  }, [levelConfig, reportGameActivity]);
+  }, [gameAccountId, levelConfig, reportGameActivity]);
 
-  const markLevelAsCompleted = useCallback(async (activityId) => {
+  useEffect(() => {
+    if (gameActivityActiveRef.current === fullscreenState.gameplayPermitted) return;
+    gameActivityActiveRef.current = fullscreenState.gameplayPermitted;
+    reportGameActivity(fullscreenState.gameplayPermitted);
+  }, [fullscreenState.gameplayPermitted, reportGameActivity]);
+
+  const markLevelAsCompleted = useCallback((activityId) => {
     if (!levelConfig?.progressKey) {
       return null;
     }
 
-    if (!completionRequestRef.current) {
-      completionRequestRef.current = axios
+    return getOrStartGameCompletionRequest(completionRequestRef, () => axios
         .put(
           buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}`, classroomId)),
           {
@@ -704,35 +852,16 @@ function GamePage({ levelConfig, classroomId }) {
           },
           { headers: getGameAuthHeaders() },
         )
-        .then((response) => response.data)
-        .catch((error) => {
-          if (handleStaleAccessError(error, "completion-save")) {
-            completionRequestRef.current = null;
-            return STALE_ACCESS_HANDLED;
-          }
-          if (error.response?.data?.code === "DEADLINE_PASSED") {
-            levelSessionActiveRef.current = false;
-            setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
-            setDeadlineExpired(true);
-          }
-          console.error(
-            `Failed to save progress for level ${levelConfig.levelNumber}`,
-            error,
-          );
-          completionRequestRef.current = null;
-          return null;
-        });
-    }
-
-    return completionRequestRef.current;
-  }, [classroomId, code, handleStaleAccessError, levelConfig]);
+        .then((response) => response.data));
+  }, [classroomId, code, levelConfig]);
 
   useEffect(() => {
     if (!levelConfig) {
       return undefined;
     }
 
-    const handleOutcome = ({ levelNumber: outcomeLevelNumber, status, message, shouldProceed }) => {
+    const handleOutcome = (payload) => {
+      const { levelNumber: outcomeLevelNumber, status, message, shouldProceed } = payload;
       if (!shouldAcceptEvaluationOutcome({
         outcomeLevelNumber,
         currentLevelNumber: levelConfig.levelNumber,
@@ -740,6 +869,12 @@ function GamePage({ levelConfig, classroomId }) {
       })) {
         return;
       }
+      if (!gameplayPermittedRef.current) {
+        pendingEvaluationOutcomeRef.current = payload;
+        return;
+      }
+      const operation = outcomeOperationControllerRef.current?.begin();
+      if (!operation) return;
       const activityId = evaluationActivityIdRef.current ?? createRequestId();
       cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
 
@@ -752,71 +887,106 @@ function GamePage({ levelConfig, classroomId }) {
 
         if (shouldProceed) {
           void (async () => {
-            const progressPayload = await markLevelAsCompleted(activityId);
-            if (progressPayload === STALE_ACCESS_HANDLED) return;
-            if (!progressPayload) {
-              setResult({
-                type: "error",
-                message:
-                  "Level cleared, but progress could not be saved. Stay on this page and try again.",
-              });
-              return;
-            }
-            levelSessionActiveRef.current = false;
-
-            const completedLevel = getCompletedLevelResult(
-              progressPayload,
-              levelConfig.progressKey,
-            );
-            const savedScore = Number(completedLevel?.finalScore);
-
-            if (!completedLevel || !Number.isFinite(savedScore)) {
-              setResult({
-                type: "error",
-                message:
-                  "Level cleared, but the saved grade could not be loaded. Refresh the page to confirm progress.",
-              });
-              return;
-            }
-
-            const draftKey = getDraftKey(levelConfig);
-            removeGameDraft(getGameStorage(), draftKey);
-
-            setCurrentXp(
-              progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp,
-            );
-
-            const verifiedClassroomId = Number(classroomId);
-            let authoritativeProgress = progressPayload;
-            if (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0) {
-              try {
-                authoritativeProgress = await getProgress({ classroomId: verifiedClassroomId });
-              } catch {
-                authoritativeProgress = null;
+            const completionRequest = markLevelAsCompleted(activityId);
+            try {
+              const completion = await operation.wait(completionRequest);
+              if (!completion.current) return;
+              const progressPayload = completion.value;
+              if (!progressPayload) {
+                operation.apply(() => setResult({
+                  type: "error",
+                  message:
+                    "Level cleared, but progress could not be saved. Stay on this page and try again.",
+                }));
+                return;
               }
-            }
-            const lessonAction = createGameCompletionAction({
-              progress: authoritativeProgress,
-              levelConfig,
-            });
+              operation.apply(() => {
+                levelSessionActiveRef.current = false;
+              });
 
-            setGradeModal({
-              score: savedScore,
-              grade: completedLevel?.grade ?? "B",
-              attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
-              timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
-              isFinalLevel: levelConfig.levelNumber === 30,
-              nextLevelKey:
-                progressPayload.summary?.currentLevelKey === levelConfig.progressKey
-                  ? null
-                  : progressPayload.summary?.currentLevelKey ?? null,
-              xpEarned: progressPayload.xpAward?.amount ?? 0,
-              totalXp: progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? 0,
-              xpBreakdown: progressPayload.xpAward?.breakdown ?? [],
-              lessonAction,
-              classroomId: authoritativeProgress?.classroomId
-                ?? (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0 ? verifiedClassroomId : null),
-            });
+              const completedLevel = getCompletedLevelResult(
+                progressPayload,
+                levelConfig.progressKey,
+              );
+              const savedScore = Number(completedLevel?.finalScore);
+
+              if (!completedLevel || !Number.isFinite(savedScore)) {
+                operation.apply(() => setResult({
+                  type: "error",
+                  message:
+                    "Level cleared, but the saved grade could not be loaded. Refresh the page to confirm progress.",
+                }));
+                return;
+              }
+
+              operation.apply(() => {
+                const draftKey = getDraftKey(levelConfig);
+                removeGameDraft(getGameStorage(), draftKey);
+                setCurrentXp(
+                  progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp,
+                );
+              });
+
+              const verifiedClassroomId = Number(classroomId);
+              let authoritativeProgress = progressPayload;
+              if (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0) {
+                try {
+                  const progress = await operation.wait(getProgress({ classroomId: verifiedClassroomId }));
+                  if (!progress.current) return;
+                  authoritativeProgress = progress.value;
+                } catch {
+                  if (!operation.isCurrent()) return;
+                  authoritativeProgress = null;
+                }
+              }
+              if (!operation.isCurrent()) return;
+              const lessonAction = createGameCompletionAction({
+                progress: authoritativeProgress,
+                levelConfig,
+              });
+
+              operation.apply(() => setGradeModal({
+                score: savedScore,
+                grade: completedLevel?.grade ?? "B",
+                attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
+                timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
+                isFinalLevel: levelConfig.levelNumber === 30,
+                nextLevelKey:
+                  progressPayload.summary?.currentLevelKey === levelConfig.progressKey
+                    ? null
+                    : progressPayload.summary?.currentLevelKey ?? null,
+                xpEarned: progressPayload.xpAward?.amount ?? 0,
+                totalXp: progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? 0,
+                xpBreakdown: progressPayload.xpAward?.breakdown ?? [],
+                lessonAction,
+                classroomId: authoritativeProgress?.classroomId
+                  ?? (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0 ? verifiedClassroomId : null),
+              }));
+            } catch (error) {
+              if (!operation.isCurrent()) return;
+              if (handleStaleAccessError(error, "completion-save")) return;
+              if (error.response?.data?.code === "DEADLINE_PASSED") {
+                operation.apply(() => {
+                  levelSessionActiveRef.current = false;
+                  setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
+                  setDeadlineExpired(true);
+                });
+                outcomeOperationControllerRef.current?.invalidate();
+                return;
+              }
+              console.error(
+                `Failed to save progress for level ${levelConfig.levelNumber}`,
+                error,
+              );
+              operation.apply(() => setResult({
+                type: "error",
+                message: "Level cleared, but progress could not be saved. Stay on this page and try again.",
+              }));
+            } finally {
+              operation.apply(() => {
+                clearGameCompletionRequest(completionRequestRef, completionRequest);
+              });
+            }
           })();
         }
 
@@ -824,20 +994,25 @@ function GamePage({ levelConfig, classroomId }) {
       }
 
       if (levelConfig?.progressKey) {
-        axios
-          .post(
-            buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`, classroomId)),
-            { sourceCode: code ?? "", activityId },
-            { headers: getGameAuthHeaders() },
-          )
-          .then((res) => {
-            failedAttemptsRef.current = res.data.attemptCount;
-            setFailedAttempts(res.data.attemptCount);
-            syncHintState(res.data);
-          })
-          .catch((error) => {
-            handleStaleAccessError(error, "failed-attempt");
-          });
+        void (async () => {
+          try {
+            const attempt = await operation.wait(axios.post(
+              buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}/attempt`, classroomId)),
+              { sourceCode: code ?? "", activityId },
+              { headers: getGameAuthHeaders() },
+            ));
+            if (!attempt.current) return;
+            operation.apply(() => {
+              failedAttemptsRef.current = attempt.value.data.attemptCount;
+              setFailedAttempts(attempt.value.data.attemptCount);
+              syncHintState(attempt.value.data);
+            });
+          } catch (error) {
+            operation.apply(() => {
+              handleStaleAccessError(error, "failed-attempt");
+            });
+          }
+        })();
       }
 
       setResult({
@@ -846,13 +1021,16 @@ function GamePage({ levelConfig, classroomId }) {
       });
     };
 
+    outcomeHandlerRef.current = handleOutcome;
     gameEvents.on(GAME_LEVEL_OUTCOME, handleOutcome);
 
     return () => {
       gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
+      if (outcomeHandlerRef.current === handleOutcome) outcomeHandlerRef.current = null;
+      pendingEvaluationOutcomeRef.current = null;
       clearNextLevelTimer();
     };
-  }, [classroomId, clearNextLevelTimer, code, currentXp, handleStaleAccessError, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
+  }, [classroomId, clearNextLevelTimer, code, currentXp, gameAccountId, handleStaleAccessError, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -867,6 +1045,7 @@ function GamePage({ levelConfig, classroomId }) {
   }, [result.type]);
 
   const runLevelCheck = () => {
+    if (!gameplayPermittedRef.current) return;
     if (tutorialRequestedRef.current) return;
     if (evaluationInFlightRef.current) return;
     if (isCodeLocked) {
@@ -931,6 +1110,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const openBasicHint = async () => {
+    if (!gameplayPermittedRef.current) return;
     if (tutorialRequestedRef.current) return;
     if (!basicHint || !hintUnlocked || !hintsEnabledRef.current) return;
     const opener = document.activeElement;
@@ -955,6 +1135,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const openDetailedHint = () => {
+    if (!gameplayPermittedRef.current) return;
     if (tutorialRequestedRef.current) return;
     if (detailedHintUnlocked && detailedHint) {
       hintOpenerRef.current = document.activeElement;
@@ -977,6 +1158,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const purchaseDetailedHintNow = async () => {
+    if (!gameplayPermittedRef.current) return;
     if (tutorialRequestedRef.current) return;
     if (isPurchasingHint) return;
     setIsPurchasingHint(true);
@@ -1018,6 +1200,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const submitHintFeedback = async (helpful) => {
+    if (!gameplayPermittedRef.current) return;
     if (!activeHint?.personalized || hintFeedback != null) return;
     try {
       await axios.post(
@@ -1036,6 +1219,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const resetCode = () => {
+    if (!gameplayPermittedRef.current) return;
     const defaultCode = mergedLevelConfig?.defaultCode ?? levelConfig?.defaultCode ?? "";
     if (
       levelConfig?.levelNumber === 30 &&
@@ -1045,6 +1229,10 @@ function GamePage({ levelConfig, classroomId }) {
       return;
     }
     const draftKey = getDraftKey(levelConfig);
+    invalidateGameOutcomeForReset(
+      outcomeOperationControllerRef.current,
+      completionRequestRef,
+    );
     cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
     removeGameDraft(getGameStorage(), draftKey);
     setCode(defaultCode);
@@ -1054,6 +1242,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const updateCode = (nextValue) => {
+    if (!gameplayPermittedRef.current) return;
     const nextCode = nextValue ?? "";
     setCode(nextCode);
     const draftKey = getDraftKey(levelConfig);
@@ -1113,26 +1302,27 @@ function GamePage({ levelConfig, classroomId }) {
     const previous = previousTypedCharactersRef.current;
     previousTypedCharactersRef.current = typedCharacters;
 
-    if (!showStoryIntro || !activeDialogue) return;
+    if (!fullscreenState.gameplayPermitted || !showStoryIntro || !activeDialogue) return;
     if (shouldPlayDialogueBlipForProgress(activeDialogueText, previous, typedCharacters)) {
       dialogueSfxManager.playBlip();
     }
-  }, [activeDialogue, activeDialogueText, showStoryIntro, typedCharacters]);
+  }, [activeDialogue, activeDialogueText, fullscreenState.gameplayPermitted, showStoryIntro, typedCharacters]);
 
   useEffect(() => {
-    if (!showStoryIntro) dialogueSfxManager.stop();
-  }, [showStoryIntro]);
+    if (!fullscreenState.gameplayPermitted || !showStoryIntro) dialogueSfxManager.stop();
+  }, [fullscreenState.gameplayPermitted, showStoryIntro]);
 
   useEffect(() => {
     if (
-      showStoryIntro
+      fullscreenState.gameplayPermitted
+      && showStoryIntro
       && activeDialogue
       && totalStepCharacters > 0
       && typedCharacters >= totalStepCharacters
     ) {
       dialogueSfxManager.stop();
     }
-  }, [activeDialogue, showStoryIntro, totalStepCharacters, typedCharacters]);
+  }, [activeDialogue, fullscreenState.gameplayPermitted, showStoryIntro, totalStepCharacters, typedCharacters]);
 
   useEffect(() => {
     const stopWhenHidden = () => {
@@ -1143,7 +1333,7 @@ function GamePage({ levelConfig, classroomId }) {
   }, []);
 
   useEffect(() => {
-    if (!hintOpen) return undefined;
+    if (!fullscreenState.gameplayPermitted || !hintOpen) return undefined;
     const opener = hintOpenerRef.current;
     focusDialog(hintDialogRef.current, hintButtonRef.current);
     const onKeyDown = (event) => handleDialogKeyDown({
@@ -1155,16 +1345,16 @@ function GamePage({ levelConfig, classroomId }) {
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      restoreDialogFocus(opener);
+      if (gameplayPermittedRef.current) restoreDialogFocus(opener);
       hintOpenerRef.current = null;
     };
-  }, [hintOpen]);
+  }, [fullscreenState.gameplayPermitted, hintOpen]);
 
   useEffect(() => {
-    if (!showStoryIntro || !activeDialogue) return undefined;
+    if (!fullscreenState.gameplayPermitted || !showStoryIntro || !activeDialogue) return undefined;
     const focusTimer = window.setTimeout(() => dialogueButtonRef.current?.focus(), 0);
     return () => window.clearTimeout(focusTimer);
-  }, [showStoryIntro, activeDialogue, activeDialogueId, dialogueStep]);
+  }, [fullscreenState.gameplayPermitted, showStoryIntro, activeDialogue, activeDialogueId, dialogueStep]);
 
   const gradeModalOpen = Boolean(gradeModal);
   useEffect(() => {
@@ -1181,7 +1371,7 @@ function GamePage({ levelConfig, classroomId }) {
   }, [gradeModalOpen]);
 
   useEffect(() => {
-    if (!showStoryIntro || !activeDialogue) {
+    if (!fullscreenState.gameplayPermitted || !showStoryIntro || !activeDialogue) {
       return undefined;
     }
 
@@ -1196,9 +1386,10 @@ function GamePage({ levelConfig, classroomId }) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [showStoryIntro, activeDialogue, typedCharacters, totalStepCharacters]);
+  }, [fullscreenState.gameplayPermitted, showStoryIntro, activeDialogue, typedCharacters, totalStepCharacters]);
 
   const nextDialogue = () => {
+    if (!gameplayPermittedRef.current) return;
     if (!activeDialogue) {
       dialogueSfxManager.stop();
       setShowStoryIntro(false);
@@ -1248,6 +1439,7 @@ function GamePage({ levelConfig, classroomId }) {
   };
 
   const replayTutorial = () => {
+    if (!gameplayPermittedRef.current) return;
     if (showStoryIntro || activeHint || showHintPurchase || gradeModal) return;
     setShowAudioSettings(false);
     setActiveMobileTab("game");
@@ -1363,8 +1555,8 @@ function GamePage({ levelConfig, classroomId }) {
   }
 
   return (
-    <div className={styles.gameContainer} ref={gamePageRef}>
-      {isMobile && isPortrait && !orientationPromptDismissed && (
+    <div className={styles.gameContainer} ref={gamePageRef} tabIndex={-1}>
+      {fullscreenState.gameplayPermitted && isMobile && isPortrait && !orientationPromptDismissed && (
         <div className={styles.orientationOverlay} role="presentation">
           <div className={styles.orientationPrompt} role="dialog" aria-modal="true" aria-labelledby="orientation-title">
             <FiSmartphone className={styles.orientationIcon} aria-hidden="true" />
@@ -1389,6 +1581,11 @@ function GamePage({ levelConfig, classroomId }) {
         <div className={isOvertime ? styles.timerOvertime : styles.timer}>
           <span className={styles.timerLabel}>Time spent</span>
           <span className={styles.timerValue}>{timerLabel}</span>
+        </div>
+        <div className={styles.tabChangeCounter} aria-live="polite">
+          <span>Tab changes</span>
+          <strong>{fullscreenState.interruptionCount}</strong>
+          <small>Includes fullscreen exits and leaving the game tab.</small>
         </div>
         <button
           type="button"
@@ -1440,19 +1637,21 @@ function GamePage({ levelConfig, classroomId }) {
               sfxVolume={sfxVolume}
               onCameraAvailabilityChange={setCameraAvailable}
               recenterRequest={recenterRequest}
+              paused={!fullscreenState.gameplayPermitted}
             />
             {cameraAvailable && (
               <button
                 type="button"
                 className={styles.recenterCameraButton}
                 onClick={() => setRecenterRequest((request) => request + 1)}
+                disabled={!fullscreenState.gameplayPermitted}
                 aria-label="Recenter Camera"
                 title="Recenter Camera"
               >
                 <FiCrosshair aria-hidden="true" />
               </button>
             )}
-            {activeHint && (
+            {fullscreenState.gameplayPermitted && activeHint && (
               <div className={styles.hintOverlay} role="presentation">
                 <div ref={hintDialogRef} className={styles.hintBox} role="dialog" aria-modal="true" aria-labelledby="level-hint-title" tabIndex={-1}>
                   <div className={styles.hintHeader}>
@@ -1475,7 +1674,7 @@ function GamePage({ levelConfig, classroomId }) {
                 </div>
               </div>
             )}
-            {showStoryIntro && activeDialogue && (
+            {fullscreenState.gameplayPermitted && showStoryIntro && activeDialogue && (
               <div className={styles.storyOverlay} role="presentation">
                 <div className={styles.storyContainer} role="dialog" aria-modal="true" aria-label={`${activeDialogue.speaker} dialogue`}>
                   <div className={styles.storyChapter}>{chapterLabel}</div>
@@ -1657,7 +1856,7 @@ function GamePage({ levelConfig, classroomId }) {
                   automaticLayout: true,
                   scrollBeyondLastLine: false,
                   wordWrap: "off",
-                  readOnly: isCodeLocked || tutorialRequested,
+                  readOnly: isCodeLocked || tutorialRequested || !fullscreenState.gameplayPermitted,
                 }}
               />
             </div>
@@ -1668,7 +1867,7 @@ function GamePage({ levelConfig, classroomId }) {
                 variant="primary"
                 size="sm"
                 onClick={runLevelCheck}
-                disabled={isEvaluationRunning}
+                disabled={isEvaluationRunning || !fullscreenState.gameplayPermitted}
               />
               {hintsEnabledRef.current ? (
                 <div className={styles.hintAccess} data-game-tutorial-target="hints" aria-live="polite">
@@ -1678,7 +1877,7 @@ function GamePage({ levelConfig, classroomId }) {
                         type="button"
                         className={styles.hintAccessButton}
                         onClick={openBasicHint}
-                        disabled={!basicHint}
+                        disabled={!basicHint || !fullscreenState.gameplayPermitted}
                       >
                         <span className={styles.hintButtonCopy}>
                           <strong>Basic Hint</strong>
@@ -1692,6 +1891,7 @@ function GamePage({ levelConfig, classroomId }) {
                         onClick={openDetailedHint}
                         disabled={
                           isPurchasingHint ||
+                          !fullscreenState.gameplayPermitted ||
                           !detailedHintUnlocked && (
                             detailedHintXpCost == null ||
                             currentXp == null ||
@@ -1788,7 +1988,7 @@ function GamePage({ levelConfig, classroomId }) {
       </main>
 
       <ConfirmModal
-        open={showHintPurchase}
+        open={showHintPurchase && fullscreenState.gameplayPermitted}
         title={`Unlock Personalized Hint for ${detailedHintXpCost ?? "—"} XP?`}
         message={`We'll identify the part of your latest solution that may be causing the problem and guide you without revealing the full answer. It stays unlocked for this level, and stronger guidance never costs extra. Current XP: ${currentXp ?? 0}. After purchase: ${currentXp != null && detailedHintXpCost != null ? currentXp - detailedHintXpCost : "—"} XP.`}
         confirmLabel={isPurchasingHint ? "Unlocking..." : "Unlock"}
@@ -1796,6 +1996,8 @@ function GamePage({ levelConfig, classroomId }) {
         confirmDisabled={isPurchasingHint}
         onConfirm={purchaseDetailedHintNow}
         onCancel={() => !isPurchasingHint && setShowHintPurchase(false)}
+        portalTarget={gamePageRef.current}
+        restoreFocusOnClose={fullscreenState.gameplayPermitted}
       />
 
       {gradeModal && (
@@ -1913,7 +2115,7 @@ function GamePage({ levelConfig, classroomId }) {
           </div>
         </div>
       )}
-      {tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed) && (
+      {fullscreenState.gameplayPermitted && tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed) && (
         <GameTutorial
           steps={tutorialSteps}
           rootRef={gamePageRef}
@@ -1922,6 +2124,17 @@ function GamePage({ levelConfig, classroomId }) {
           onBeforeStep={prepareTutorialStep}
           onSkip={finishTutorial}
           onFinish={finishTutorial}
+          portalTarget={gamePageRef.current}
+          disableRootInert
+          restoreFocusOnClose={fullscreenState.gameplayPermitted}
+        />
+      )}
+      {fullscreenGateApplicable && !fullscreenState.gameplayPermitted && (
+        <GameFullscreenGate
+          ref={fullscreenContinueRef}
+          state={fullscreenState}
+          onContinue={continueFullscreenGameplay}
+          onLeave={exitButton}
         />
       )}
     </div>

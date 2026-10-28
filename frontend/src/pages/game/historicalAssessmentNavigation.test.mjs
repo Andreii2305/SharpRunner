@@ -96,7 +96,14 @@ test("every mounted protected GamePage request routes denials through the shared
   ]) {
     assert.match(game, new RegExp(`handleStaleAccessError\\(error, "${marker}"\\)`), marker);
   }
-  assert.match(game, /progressPayload === STALE_ACCESS_HANDLED/);
+  assert.match(
+    game,
+    /const completion = await operation\.wait\(completionRequest\);\s+if \(!completion\.current\) return;/,
+  );
+  assert.match(
+    game,
+    /catch \(error\) \{\s+if \(!operation\.isCurrent\(\)\) return;\s+if \(handleStaleAccessError\(error, "completion-save"\)\) return;/,
+  );
   assert.match(game, /if \(keepalive\)[\s\S]+fetch\([\s\S]+keepalive: true/);
   assert.match(game, /if \(!cancelled\) handleStaleAccessError\(error, "session-end"\)/);
 });

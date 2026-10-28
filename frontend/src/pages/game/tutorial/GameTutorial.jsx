@@ -51,12 +51,23 @@ export const GameTutorialCard = forwardRef(function GameTutorialCard({
 });
 
 export default function GameTutorial({
-  steps, rootRef, isMobile = false, activeMobileTab, onBeforeStep, onSkip, onFinish,
+  steps,
+  rootRef,
+  isMobile = false,
+  activeMobileTab,
+  onBeforeStep,
+  onSkip,
+  onFinish,
+  portalTarget,
+  disableRootInert = false,
+  restoreFocusOnClose = true,
 }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [geometry, setGeometry] = useState({ spotlight: null, card: { left: 16, top: 16 } });
   const cardRef = useRef(null);
   const frameRef = useRef(null);
+  const restoreFocusRef = useRef(restoreFocusOnClose);
+  restoreFocusRef.current = restoreFocusOnClose;
   const step = steps[stepIndex];
 
   const measure = useCallback(() => {
@@ -132,7 +143,7 @@ export default function GameTutorial({
     const root = rootRef.current;
     const previousFocus = document.activeElement;
     const wasInert = root?.inert ?? false;
-    if (root) root.inert = true;
+    if (root && !disableRootInert) root.inert = true;
     cardRef.current?.querySelector("h2")?.focus();
 
     const onKeyDown = (event) => {
@@ -157,10 +168,12 @@ export default function GameTutorial({
     document.addEventListener("keydown", onKeyDown, true);
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
-      if (root) root.inert = wasInert;
-      if (previousFocus instanceof HTMLElement && document.contains(previousFocus)) previousFocus.focus();
+      if (root && !disableRootInert) root.inert = wasInert;
+      if (restoreFocusRef.current
+        && previousFocus instanceof HTMLElement
+        && document.contains(previousFocus)) previousFocus.focus();
     };
-  }, [rootRef]);
+  }, [disableRootInert, rootRef]);
 
   useLayoutEffect(() => {
     cardRef.current?.querySelector("h2")?.focus();
@@ -192,6 +205,6 @@ export default function GameTutorial({
         onFinish={onFinish}
       />
     </div>,
-    document.body,
+    portalTarget ?? document.body,
   );
 }

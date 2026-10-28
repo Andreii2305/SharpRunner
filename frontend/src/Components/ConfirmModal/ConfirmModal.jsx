@@ -27,6 +27,8 @@ export default function ConfirmModal({
   cancelLabel  = "Cancel",
   danger = false,
   confirmDisabled = false,
+  portalTarget,
+  restoreFocusOnClose = true,
   onConfirm,
   onCancel,
 }) {
@@ -34,8 +36,10 @@ export default function ConfirmModal({
   const cancelRef = useRef(null);
   const onCancelRef = useRef(onCancel);
   const disabledRef = useRef(confirmDisabled);
+  const restoreFocusRef = useRef(restoreFocusOnClose);
   onCancelRef.current = onCancel;
   disabledRef.current = confirmDisabled;
+  restoreFocusRef.current = restoreFocusOnClose;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -50,7 +54,7 @@ export default function ConfirmModal({
     document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
-      restoreDialogFocus(previousFocus);
+      if (restoreFocusRef.current) restoreDialogFocus(previousFocus);
     };
   }, [open]);
 
@@ -90,6 +94,6 @@ export default function ConfirmModal({
         </div>
       </div>
     </div>,
-    document.body
+    portalTarget ?? document.body
   );
 }

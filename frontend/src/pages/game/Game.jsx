@@ -11,6 +11,8 @@ import {
 import ResponsiveCameraPlugin, {
   RESPONSIVE_CAMERA_AVAILABILITY,
 } from "./camera/ResponsiveCameraPlugin.js";
+import { createPhaserPauseBridge } from "./gamePhaserPauseBridge.js";
+import { subscribeGameOutcomeSfx } from "./gameOutcomeSfxHandler.js";
 
 const createAudioBootScene = (targetSceneKey, levelNumber) =>
   class AudioBootScene extends Phaser.Scene {
@@ -40,11 +42,16 @@ export default function Game({
   parentId = "phaser-canvas-root",
   isMuted = false,
   sfxVolume = 100,
+  paused = false,
   onCameraAvailabilityChange,
   recenterRequest = 0,
 }) {
   const gameRef = useRef(null);
   const initialAudioSettingsRef = useRef({ isMuted, sfxVolume });
+  const pausedRef = useRef(paused);
+  const pauseBridgeRef = useRef(null);
+  pausedRef.current = paused;
+  if (!pauseBridgeRef.current) pauseBridgeRef.current = createPhaserPauseBridge();
 
   useEffect(() => {
     if (!scene) {
@@ -83,6 +90,8 @@ export default function Game({
       // backgroundColor: "#e9e7e7",
     });
     gameRef.current = game;
+    pauseBridgeRef.current.setPaused(pausedRef.current);
+    pauseBridgeRef.current.attach(game);
     const handleCameraAvailability = ({ sceneKey: activeSceneKey, available }) => {
       if (activeSceneKey === sceneKey) onCameraAvailabilityChange?.(available);
     };
@@ -91,14 +100,19 @@ export default function Game({
     game.sound.volume = initialAudioSettingsRef.current.sfxVolume / 100;
 
     return () => {
-      if (gameRef.current) {
-        gameRef.current.events.off(RESPONSIVE_CAMERA_AVAILABILITY, handleCameraAvailability);
-        gameRef.current.destroy(true);
+      pauseBridgeRef.current.detach(game);
+      if (gameRef.current === game) {
+        game.events.off(RESPONSIVE_CAMERA_AVAILABILITY, handleCameraAvailability);
+        game.destroy(true);
         gameRef.current = null;
       }
       onCameraAvailabilityChange?.(false);
     };
   }, [scene, sceneKey, levelNumber, parentId, onCameraAvailabilityChange]);
+
+  useEffect(() => {
+    pauseBridgeRef.current.setPaused(paused);
+  }, [paused]);
 
   useEffect(() => {
     if (!recenterRequest) return;
@@ -113,16 +127,14 @@ export default function Game({
     }
   }, [isMuted, sfxVolume]);
 
-  useEffect(() => {
-    const handleOutcome = ({ levelNumber: outcomeLevelNumber, status }) => {
-      if (outcomeLevelNumber !== levelNumber) return;
-      const activeScene = gameRef.current?.scene?.getScene(sceneKey);
-      if (!activeScene) return;
-      playGameSfx(activeScene, status === "success" ? "successMagic" : "errorMagic");
-    };
-    gameEvents.on(GAME_LEVEL_OUTCOME, handleOutcome);
-    return () => gameEvents.off(GAME_LEVEL_OUTCOME, handleOutcome);
-  }, [levelNumber, sceneKey]);
+  useEffect(() => subscribeGameOutcomeSfx({
+    events: gameEvents,
+    eventName: GAME_LEVEL_OUTCOME,
+    levelNumber,
+    sceneKey,
+    getGame: () => gameRef.current,
+    getPaused: () => pausedRef.current,
+  }), [levelNumber, sceneKey]);
 
   return null;
 }

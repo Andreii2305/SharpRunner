@@ -66,6 +66,10 @@ const migrations = [
   ["20261023000000_attachment_scan_status_compatibility", sqlMigration("20261023000000_attachment_scan_status_compatibility.sql")],
   ["20261025000000_teacher_student_check_ins", sqlMigration("20261025000000_teacher_student_check_ins.sql")],
   ["20261026000000_student_classroom_feedback", sqlMigration("20261026000000_student_classroom_feedback.sql")],
+  ["20261029000000_game_interruption_deduction_settings", sqlMigration("20261029000000_game_interruption_deduction_settings.sql")],
+  ["20261030000000_game_interruption_history", sqlMigration("20261030000000_game_interruption_history.sql")],
+  ["20261031000000_game_interruption_completion_evidence", sqlMigration("20261031000000_game_interruption_completion_evidence.sql")],
+  ["20261031120000_game_interruption_report_index", sqlMigration("20261031120000_game_interruption_report_index.sql")],
 ];
 
 const runMigrations = async () => {

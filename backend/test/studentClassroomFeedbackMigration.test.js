@@ -95,10 +95,10 @@ test("classroom feedback migration is forward-only, registered after check-ins, 
   const sql = fs.readFileSync(migrationPath, "utf8");
   const names = migrations.map(([name]) => name);
   const migrationIndex = names.indexOf(migrationName);
+  const checkInMigrationIndex = names.indexOf("20261025000000_teacher_student_check_ins");
 
   assert.notEqual(migrationIndex, -1, "classroom feedback migration must be registered");
-  assert.equal(migrationIndex, names.length - 1, "forward migration must remain ordered last");
-  assert.ok(migrationIndex > names.indexOf("20261025000000_teacher_student_check_ins"));
+  assert.ok(migrationIndex > checkInMigrationIndex, "feedback migration must follow check-ins");
   assert.match(sql, /^\s*(?:--[^\n]*\n)*\s*BEGIN;/);
   assert.match(sql, /COMMIT;\s*$/);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS "StudentClassroomFeedbacks"/);

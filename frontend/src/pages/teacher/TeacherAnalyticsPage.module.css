@@ -196,6 +196,40 @@
 .levelList span { display: flex; flex-direction: column; }
 .levelList small { color: #64748b; font-size: var(--teacher-text-xs); line-height: 1.45; }
 .levelList b { flex: 0 0 auto; color: #26547c; font-size: var(--teacher-text-sm); }
+.levelList > .levelItem { display: grid; gap: 10px; }
+.levelItemMain { display: flex; justify-content: space-between; gap: 10px; min-width: 0; }
+.levelItemMain > span { min-width: 0; }
+.levelItemActions { display: flex; flex: 0 0 auto; flex-direction: column; align-items: flex-end; gap: 6px; }
+.interruptionDisclosureButton { min-height: 36px; border: 1px solid #b8c6d4; border-radius: 7px; background: #fff; color: #26547c; padding: 6px 9px; font: inherit; font-size: var(--teacher-text-xs); font-weight: 700; cursor: pointer; }
+.interruptionDisclosureButton:hover:not(:disabled) { border-color: #8da4b8; background: #eef4fb; }
+.interruptionDisclosureButton:disabled { color: #7b8794; cursor: not-allowed; }
+.interruptionDisclosureButton:focus-visible, .interruptionPager button:focus-visible { outline: 3px solid rgba(38,84,124,.25); outline-offset: 2px; }
+.interruptionDisclosure { min-width: 0; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+.interruptionReport { display: grid; gap: 12px; min-width: 0; background: #f8fafc; padding: 12px; }
+.interruptionHeader h4, .interruptionHistory h5, .interruptionEvidence h5 { margin: 0; color: #1e3a5f; font-size: var(--teacher-text-md); }
+.interruptionHeader p, .interruptionEvidence p { margin: 4px 0 0; color: #526174; font-size: var(--teacher-text-xs); line-height: 1.5; }
+.interruptionState { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #e7c9bd; background: #fff7f3; color: #7f351d; padding: 10px; font-size: var(--teacher-text-sm); line-height: 1.45; }
+.interruptionSummary, .interruptionEvidence dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin: 0; }
+.interruptionSummary > div, .interruptionEvidence dl > div { min-width: 0; border: 1px solid #dbe4ed; background: #fff; padding: 8px; }
+.interruptionSummary dt, .interruptionEvidence dt { color: #64748b; font-size: var(--teacher-text-xs); }
+.interruptionSummary dd, .interruptionEvidence dd { margin: 2px 0 0; color: #1e3a5f; font-weight: 700; overflow-wrap: anywhere; }
+.interruptionEvidence { display: grid; gap: 8px; }
+.interruptionHistory { display: grid; gap: 7px; min-width: 0; }
+.interruptionList { display: grid; gap: 7px; }
+.interruptionList article { min-width: 0; border: 1px solid #dbe4ed; background: #fff; padding: 9px; }
+.interruptionList header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; color: #1e3a5f; font-size: var(--teacher-text-sm); }
+.interruptionList time { color: #64748b; font-size: var(--teacher-text-xs); text-align: right; }
+.interruptionList dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 10px; margin: 8px 0 0; }
+.interruptionList dl > div { min-width: 0; }
+.interruptionList dt { color: #64748b; font-size: var(--teacher-text-xs); }
+.interruptionList dd { margin: 1px 0 0; color: #374151; font-size: var(--teacher-text-xs); font-weight: 650; overflow-wrap: anywhere; }
+.interruptionList p, .interruptionEmpty { margin: 7px 0 0; color: #526174; font-size: var(--teacher-text-xs); line-height: 1.45; overflow-wrap: anywhere; }
+.interruptionPager { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; }
+.interruptionPager button { min-height: 36px; border: 1px solid #b8c6d4; border-radius: 7px; background: #fff; color: #26547c; padding: 6px 8px; font: inherit; font-size: var(--teacher-text-xs); font-weight: 700; cursor: pointer; }
+.interruptionPager button:first-child { justify-self: start; }
+.interruptionPager button:last-child { justify-self: end; }
+.interruptionPager button:disabled { color: #94a3b8; cursor: not-allowed; }
+.interruptionPager span { color: #64748b; font-size: var(--teacher-text-xs); text-align: center; }
 .lessonDetailList { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
 .lessonDetailList > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 12px; border-bottom: 1px solid #f1f5f9; font-size: var(--teacher-text-sm); line-height: 1.45; }
 .lessonDetailList > div:last-child { border-bottom: 0; }
@@ -220,7 +254,7 @@
 @media (max-width: 1100px) { .reportMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .failureColumns, .comparison, .supportingGrid { grid-template-columns: 1fr; } .filters label { flex: 1 1 150px; } .studentHeader, .reportHeader { align-items: stretch; flex-direction: column; } .reportHeader > span { white-space: normal; } .search input { width: 100%; } .funnelStages { grid-template-columns: 1fr; } .funnelArrow { transform: rotate(90deg); min-height: 16px; } .comparison p { grid-column: auto; } .exportActions { width: 100%; margin-left: 0; } .lessonDetailMetrics, .levelEvidence { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; } .lessonDetailMetrics span:nth-child(3) { border-left: 0; padding-left: 0; } .attentionItem { grid-template-columns: auto minmax(0, 1fr); } .attentionItem button { grid-column: 2; justify-self: start; } }
 @media (max-width: 760px) { .trendsHeader { flex-direction: column; } .trendMetricPicker { justify-content: flex-start; } }
-@media (max-width: 520px) { .summaryList, .reportMetrics { grid-template-columns: 1fr; } .summaryList > div, .summaryList > div:nth-child(3) { border-left: 0; border-top: 1px solid #e2e8f0; padding: 12px 0 0; } .summaryList > div:first-child { border-top: 0; padding-top: 0; } .inlineStats, .drawerStats, .drawerLessonStats, .failureBreakdown, .reportFailureList, .lessonDetailMetrics, .levelEvidence { grid-template-columns: 1fr; } .lessonDetailMetrics span, .lessonDetailMetrics span:nth-child(3) { border-left: 0; border-top: 1px solid #e2e8f0; padding: 10px 0 0; } .lessonDetailMetrics span:first-child { border-top: 0; padding-top: 0; } .requestError { align-items: stretch; flex-direction: column; } .failureItem summary { align-items: flex-start; flex-direction: column; } .trendRow { grid-template-columns: minmax(72px, auto) minmax(72px, 1fr) minmax(48px, auto); gap: 7px; } .trendPeriod { white-space: normal; } .viewToggle { width: 100%; } .viewToggle button { flex: 1; justify-content: center; } }
+@media (max-width: 520px) { .summaryList, .reportMetrics { grid-template-columns: 1fr; } .summaryList > div, .summaryList > div:nth-child(3) { border-left: 0; border-top: 1px solid #e2e8f0; padding: 12px 0 0; } .summaryList > div:first-child { border-top: 0; padding-top: 0; } .inlineStats, .drawerStats, .drawerLessonStats, .failureBreakdown, .reportFailureList, .lessonDetailMetrics, .levelEvidence, .interruptionSummary, .interruptionEvidence dl, .interruptionList dl { grid-template-columns: 1fr; } .lessonDetailMetrics span, .lessonDetailMetrics span:nth-child(3) { border-left: 0; border-top: 1px solid #e2e8f0; padding: 10px 0 0; } .lessonDetailMetrics span:first-child { border-top: 0; padding-top: 0; } .requestError, .interruptionState, .levelItemMain { align-items: stretch; flex-direction: column; } .levelItemActions { align-items: flex-start; } .failureItem summary { align-items: flex-start; flex-direction: column; } .trendRow { grid-template-columns: minmax(72px, auto) minmax(72px, 1fr) minmax(48px, auto); gap: 7px; } .trendPeriod { white-space: normal; } .viewToggle { width: 100%; } .viewToggle button { flex: 1; justify-content: center; } .interruptionPager { grid-template-columns: 1fr 1fr; } .interruptionPager span { grid-column: 1 / -1; grid-row: 1; } }
 
 @media print {
   .analyticsRoot { position: static; display: block; height: auto; overflow: visible; background: #fff; color: #111827; }

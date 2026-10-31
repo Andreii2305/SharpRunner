@@ -1106,6 +1106,12 @@
   letter-spacing: 0.04em;
 }
 
+.gradeXpGranted {
+  color: #cbd5e1;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
 .gradeXpBreakdown {
   display: flex;
   flex-wrap: wrap;
@@ -1113,6 +1119,26 @@
   gap: 6px 12px;
   color: #cbd5e1;
   font-size: 0.76rem;
+}
+
+.completionDeductions {
+  display: grid;
+  gap: 6px;
+  width: min(100%, 420px);
+  margin: 0;
+}
+
+.completionDeductions div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: #cbd5e1;
+  font-size: 0.78rem;
+}
+
+.completionDeductions dt,
+.completionDeductions dd {
+  margin: 0;
 }
 
 .finalCompletionCopy {
@@ -1349,6 +1375,28 @@
   border-radius: 8px;
   background: #fef2f2;
   color: #991b1b !important;
+}
+
+.interruptionReportingStatus,
+.completionSaveRecovery {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.interruptionReportingStatus p,
+.completionSaveRecovery p {
+  margin: 0 0 8px;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.completionSaveRecovery div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .fullscreenGateActions {

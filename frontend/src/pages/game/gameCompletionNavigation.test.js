@@ -51,7 +51,7 @@ test("level access and gameplay mutations apply the exact-classroom URL helper",
   const gameSource = await readFile(new URL("./GamePage.jsx", import.meta.url), "utf8");
 
   assert.match(routeSource, /loadExactProgress\(\{/);
-  assert.match(routeSource, /<GamePage[^>]+classroomId=\{accessCheck\.classroomId\}/);
+  assert.match(routeSource, /<GamePage[\s\S]+classroomId=\{accessCheck\.classroomId\}[\s\S]+levelCompleted=\{accessCheck\.entry\?\.completed === true\}/);
   assert.equal(
     [...gameSource.matchAll(/buildExactClassroomProgressUrl\(`/g)].length,
     9,

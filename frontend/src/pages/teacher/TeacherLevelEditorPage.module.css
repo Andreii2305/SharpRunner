@@ -331,11 +331,22 @@
 .gradingBox h3 { margin: 0; color: #1e3a5f; font-size: var(--teacher-text-lg); }
 .gradingBox > p { margin: -7px 0 0; color: #758391; font-size: var(--teacher-text-xs); line-height: 1.45; }
 
+.interruptionSettings { display: grid; gap: 10px; border-top: 1px solid #d5e1eb; padding-top: 12px; }
+.interruptionExplanation { margin: 0; color: #526579; font-size: var(--teacher-text-xs); line-height: 1.5; }
+.deductionFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.settingField > label { color: #34495c; font-size: var(--teacher-text-md); font-weight: 700; }
+.settingField .fieldError { color: #b42318; }
+.sessionRateNote { color: #526579; font-size: var(--teacher-text-xs); line-height: 1.45; }
+
 @media (max-width: 1050px) {
   .managerGrid { grid-template-columns: 1fr; }
   .settingsPanel { position: static; }
   .managerHeader { flex-direction: column; }
   .headerActions { justify-content: flex-start; }
+}
+
+@media (max-width: 520px) {
+  .deductionFields { grid-template-columns: 1fr; }
 }
 
 /* ── Level Banner ──────────────────────────────────── */

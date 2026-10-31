@@ -11,6 +11,9 @@ const TeacherStudentCheckIn = require("./TeacherStudentCheckIn");
 const StudentClassroomFeedback = require("./StudentClassroomFeedback");
 const LevelDeadline = require("./LevelDeadline");
 const LevelContentOverride = require("./LevelContentOverride");
+const GameInterruptionSession = require("./GameInterruptionSession");
+const GameInterruptionEvent = require("./GameInterruptionEvent");
+const GameInterruptionCompletionEvidence = require("./GameInterruptionCompletionEvidence");
 const EmailVerificationToken = require("./EmailVerificationToken");
 const PasswordResetToken = require("./PasswordResetToken");
 const ClassroomLesson = require("./ClassroomLesson");
@@ -438,6 +441,88 @@ StudentClassroomFeedback.belongsTo(Classroom, {
   onDelete: "RESTRICT",
 });
 
+User.hasMany(GameInterruptionSession, {
+  foreignKey: "studentId",
+  as: "gameInterruptionSessions",
+  onDelete: "RESTRICT",
+});
+GameInterruptionSession.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+  onDelete: "RESTRICT",
+});
+Classroom.hasMany(GameInterruptionSession, {
+  foreignKey: "classroomId",
+  as: "gameInterruptionSessions",
+  onDelete: "RESTRICT",
+});
+GameInterruptionSession.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+GameInterruptionSession.hasMany(GameInterruptionEvent, {
+  foreignKey: "sessionId",
+  as: "events",
+  onDelete: "RESTRICT",
+});
+GameInterruptionEvent.belongsTo(GameInterruptionSession, {
+  foreignKey: "sessionId",
+  as: "session",
+  onDelete: "RESTRICT",
+});
+User.hasMany(GameInterruptionEvent, {
+  foreignKey: "studentId",
+  as: "gameInterruptionEvents",
+  onDelete: "RESTRICT",
+});
+GameInterruptionEvent.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+  onDelete: "RESTRICT",
+});
+
+User.hasMany(GameInterruptionCompletionEvidence, {
+  foreignKey: "studentId",
+  as: "gameInterruptionCompletionEvidence",
+  onDelete: "RESTRICT",
+});
+GameInterruptionCompletionEvidence.belongsTo(User, {
+  foreignKey: "studentId",
+  as: "student",
+  onDelete: "RESTRICT",
+});
+Classroom.hasMany(GameInterruptionCompletionEvidence, {
+  foreignKey: "classroomId",
+  as: "gameInterruptionCompletionEvidence",
+  onDelete: "RESTRICT",
+});
+GameInterruptionCompletionEvidence.belongsTo(Classroom, {
+  foreignKey: "classroomId",
+  as: "classroom",
+  onDelete: "RESTRICT",
+});
+GameInterruptionCompletionEvidence.hasMany(GameInterruptionEvent, {
+  foreignKey: "completionEvidenceId",
+  as: "appliedEvents",
+  onDelete: "RESTRICT",
+});
+GameInterruptionEvent.belongsTo(GameInterruptionCompletionEvidence, {
+  foreignKey: "completionEvidenceId",
+  as: "completionEvidence",
+  onDelete: "RESTRICT",
+});
+GameInterruptionCompletionEvidence.hasOne(XpTransaction, {
+  foreignKey: "completionEvidenceId",
+  as: "xpTransaction",
+  onDelete: "RESTRICT",
+});
+XpTransaction.belongsTo(GameInterruptionCompletionEvidence, {
+  foreignKey: "completionEvidenceId",
+  as: "completionEvidence",
+  onDelete: "RESTRICT",
+});
+
 Classroom.hasMany(LevelDeadline, {
   foreignKey: "classroomId",
   as: "levelDeadlines",
@@ -628,6 +713,9 @@ module.exports = {
   StudentClassroomFeedback,
   LevelDeadline,
   LevelContentOverride,
+  GameInterruptionSession,
+  GameInterruptionEvent,
+  GameInterruptionCompletionEvidence,
   EmailVerificationToken,
   PasswordResetToken,
   ClassroomLesson,

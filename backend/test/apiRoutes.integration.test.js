@@ -36,6 +36,9 @@ const PasswordResetToken = require("../src/models/PasswordResetToken");
 const EmailVerificationToken = require("../src/models/EmailVerificationToken");
 const HintFeedback = require("../src/models/HintFeedback");
 const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
+const GameInterruptionCompletionEvidence = require("../src/models/GameInterruptionCompletionEvidence");
+const GameInterruptionEvent = require("../src/models/GameInterruptionEvent");
+const GameInterruptionSession = require("../src/models/GameInterruptionSession");
 const LessonAssessment = require("../src/models/LessonAssessment");
 const AssessmentAttempt = require("../src/models/AssessmentAttempt");
 const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
@@ -95,6 +98,31 @@ const withStubs = async (stubs, callback) => {
   } finally {
     for (const [target, property, original] of originals) target[property] = original;
   }
+};
+
+const completionInterruptionStubs = ({ classroomId = 9 } = {}) => {
+  let nextEvidenceId = 1;
+  let evidenceRow = null;
+  return [
+    [Classroom, "findByPk", async (id) => ({ id, isActive: true })],
+    [GameInterruptionSession, "findAll", async () => []],
+    [GameInterruptionEvent, "findAll", async () => []],
+    [GameInterruptionCompletionEvidence, "findOne", async () => evidenceRow],
+    [GameInterruptionCompletionEvidence, "create", async (values) => {
+      evidenceRow = { id: nextEvidenceId++, classroomId, ...values };
+      return evidenceRow;
+    }],
+  ];
+};
+
+const transactionStub = async (optionsOrCallback, maybeCallback) => {
+  const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
+  const transaction = {
+    LOCK: { UPDATE: "UPDATE" },
+    finished: false,
+    ...(typeof optionsOrCallback === "object" ? { parent: optionsOrCallback.transaction } : {}),
+  };
+  return callback(transaction);
 };
 
 const activeUser = (overrides = {}) => ({
@@ -922,12 +950,15 @@ test("PUT /api/progress rejects forged completion with invalid source code", asy
     attemptCount: 0,
     timeSpentSeconds: 0,
     finalScore: null,
+    xpAwarded: 0,
+    xpAwardedAt: null,
     startedAt: new Date(),
     save: async () => assert.fail("invalid completion must not be saved"),
   };
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
 
   await withStubs([
+    ...completionInterruptionStubs(),
     [LessonAssessment, "findAll", async () => []],
     [User, "findByPk", async () => activeUser()],
     [ClassroomMembership, "findOne", async () => membership],
@@ -954,6 +985,50 @@ test("PUT /api/progress rejects forged completion with invalid source code", asy
   });
 });
 
+test("PUT /api/progress strictly rejects malformed or oversized interruption batches before mutation", async () => {
+  const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
+  let progressReads = 0;
+  await withStubs([
+    [User, "findByPk", async () => activeUser()],
+    [ClassroomMembership, "findOne", async () => membership],
+    [UserProgress, "findAll", async () => { progressReads += 1; return []; }],
+    [UserProgress, "bulkCreate", async () => assert.fail("invalid batches must not create progress")],
+  ], async () => {
+    const token = authToken(1, "student");
+    const cases = [
+      {},
+      [{ sessionId: 1, eventKey: "pending_event_001", eventType: "hidden", timestamp: 1 }],
+      Array.from({ length: 101 }, (_, index) => ({
+        sessionId: 1,
+        eventKey: `pending_${String(index).padStart(3, "0")}`,
+        eventType: "hidden",
+      })),
+    ];
+    for (const interruptionEvents of cases) {
+      const { response, payload } = await apiRequest(
+        "/api/progress/level/tutorial-level-1?classroomId=9",
+        {
+          method: "PUT",
+          token,
+          body: {
+            progressPercent: 100,
+            isCompleted: true,
+            sourceCode: "int steps = 3;",
+            activityId: "completion_action_123",
+            interruptionEvents,
+          },
+        },
+      );
+      assert.equal(response.status, 400);
+      assert.deepEqual(payload, {
+        code: "INVALID_PENDING_EVENTS",
+        message: "Invalid pending interruption events",
+      });
+    }
+  });
+  assert.equal(progressReads, 0);
+});
+
 test("PUT /api/progress accepts valid source and returns the backend score", async () => {
   const user = activeUser();
   const progressRow = {
@@ -968,12 +1043,15 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
     attemptCount: 1,
     timeSpentSeconds: 0,
     finalScore: null,
+    xpAwarded: 0,
+    xpAwardedAt: null,
     startedAt: new Date(Date.now() - 60_000),
     save: async () => undefined,
   };
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
 
   await withStubs([
+    ...completionInterruptionStubs(),
     [LessonAssessment, "findAll", async () => []],
     [User, "findByPk", async () => user],
     [User, "findAll", async () => []],
@@ -985,8 +1063,9 @@ test("PUT /api/progress accepts valid source and returns the backend score", asy
     [LevelContentOverride, "findAll", async () => []],
     [LevelDeadline, "findOne", async () => null],
     [LearningAnalyticsEvent, "create", async (values) => values],
-    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [sequelize, "transaction", transactionStub],
     [XpTransaction, "findOne", async () => null],
+    [XpTransaction, "findAll", async () => []],
     [XpTransaction, "create", async (value) => value],
   ], async () => {
     const { response, payload } = await apiRequest(
@@ -1025,6 +1104,8 @@ test("failed solution retries create one sanitized event and increment academic 
     attemptCount: 0,
     timeSpentSeconds: 0,
     finalScore: null,
+    xpAwarded: 0,
+    xpAwardedAt: null,
     startedAt: new Date("2026-09-21T00:00:00Z"),
     hintUsed: false,
     detailedHintUnlocked: false,
@@ -1042,6 +1123,7 @@ class Program {
 }`;
 
   await withStubs([
+    ...completionInterruptionStubs(),
     [LessonAssessment, "findAll", async () => []],
     [User, "findByPk", async () => user],
     [User, "findAll", async () => []],
@@ -1060,8 +1142,9 @@ class Program {
       events.push(event);
       return event;
     }],
-    [sequelize, "transaction", async (callback) => callback({ LOCK: { UPDATE: "UPDATE" } })],
+    [sequelize, "transaction", transactionStub],
     [XpTransaction, "findOne", async () => null],
+    [XpTransaction, "findAll", async () => []],
     [XpTransaction, "create", async (values) => values],
   ], async () => {
     const body = { sourceCode: wrongSource, activityId: "attempt_action_123" };
@@ -1118,6 +1201,7 @@ test("first-submission completion records one successful academic attempt and re
   const user = activeUser();
   const writeTransactions = {};
   let transactionSequence = 0;
+  let progressSaveCount = 0;
   user.save = async (options = {}) => { writeTransactions.user = options.transaction; };
   const progressRow = {
     id: 1,
@@ -1131,17 +1215,22 @@ test("first-submission completion records one successful academic attempt and re
     attemptCount: 0,
     timeSpentSeconds: 0,
     finalScore: null,
+    xpAwarded: 0,
+    xpAwardedAt: null,
     startedAt: new Date("2026-09-21T00:00:00Z"),
     activeSessionId: null,
     hintUsed: false,
     save: async (options = {}) => {
+      progressSaveCount += 1;
       if (progressRow.isCompleted) writeTransactions.progress = options.transaction;
     },
   };
   const membership = { id: 1, classroomId: 9, studentId: 1, status: "active" };
   const events = [];
+  const xpLedgers = [];
 
   await withStubs([
+    ...completionInterruptionStubs(),
     [LessonAssessment, "findAll", async () => []],
     [User, "findByPk", async () => user],
     [User, "findAll", async () => []],
@@ -1161,14 +1250,21 @@ test("first-submission completion records one successful academic attempt and re
       if (values.eventType === "level_completed") writeTransactions.event = options.transaction;
       return event;
     }],
-    [sequelize, "transaction", async (callback) => callback({
-      id: `transaction-${++transactionSequence}`,
-      LOCK: { UPDATE: "UPDATE" },
-    })],
+    [sequelize, "transaction", async (optionsOrCallback, maybeCallback) => {
+      const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
+      return callback({
+        id: `transaction-${++transactionSequence}`,
+        LOCK: { UPDATE: "UPDATE" },
+        ...(typeof optionsOrCallback === "object" ? { parent: optionsOrCallback.transaction } : {}),
+      });
+    }],
     [XpTransaction, "findOne", async () => null],
+    [XpTransaction, "findAll", async () => xpLedgers],
     [XpTransaction, "create", async (value, options = {}) => {
       writeTransactions.xp = options.transaction;
-      return value;
+      const ledger = { id: xpLedgers.length + 1, ...value };
+      xpLedgers.push(ledger);
+      return ledger;
     }],
   ], async () => {
     const first = await apiRequest("/api/progress/level/tutorial-level-1", {
@@ -1181,6 +1277,35 @@ test("first-submission completion records one successful academic attempt and re
         activityId: "completion_action_123",
       },
     });
+    const writesAfterFirst = {
+      progress: progressSaveCount,
+      analytics: events.length,
+      xp: xpLedgers.length,
+      totalXp: user.xpTotal,
+    };
+    progressRow.finalScore = 99;
+    const contradictoryReplay = await apiRequest("/api/progress/level/tutorial-level-1", {
+      method: "PUT",
+      token: authToken(1, "student"),
+      body: {
+        progressPercent: 100,
+        isCompleted: true,
+        sourceCode: "int steps = 3;",
+        activityId: "completion_action_conflict",
+      },
+    });
+    assert.equal(contradictoryReplay.response.status, 409);
+    assert.deepEqual(contradictoryReplay.payload, {
+      code: "COMPLETION_INTEGRITY_ERROR",
+      message: "Completion record could not be verified",
+    });
+    assert.deepEqual({
+      progress: progressSaveCount,
+      analytics: events.length,
+      xp: xpLedgers.length,
+      totalXp: user.xpTotal,
+    }, writesAfterFirst);
+    progressRow.finalScore = 100;
     const demotion = await apiRequest("/api/progress/level/tutorial-level-1", {
       method: "PUT",
       token: authToken(1, "student"),
@@ -1203,7 +1328,17 @@ test("first-submission completion records one successful academic attempt and re
     assert.equal(first.response.status, 200);
     assert.equal(demotion.response.status, 200);
     assert.equal(replay.response.status, 200);
-    assert.equal(replay.payload.xpAward, null);
+    assert.equal(replay.payload.xpAward.awarded, false);
+    assert.equal(replay.payload.xpAward.amount, 0);
+    assert.equal(replay.payload.xpAward.originalAmount, 35);
+    assert.deepEqual(replay.payload.completionDeductions, {
+      policyVersion: "game-interruption-deduction/v1",
+      classroomId: 9,
+      levelKey: "tutorial-level-1",
+      eventCount: 0,
+      score: { base: 100, deducted: 0, final: 100 },
+      xp: { gross: 35, deducted: 0, net: 35 },
+    });
     assert.equal(events.length, 1);
     assert.deepEqual({
       classroomId: events[0].classroomId,
@@ -1216,12 +1351,13 @@ test("first-submission completion records one successful academic attempt and re
       attemptNumber: 1,
       score: 100,
     });
+    assert.equal(events[0].occurredAt.getTime(), progressRow.completedAt.getTime());
     assert.equal(progressRow.isCompleted, true);
     assert.equal(progressRow.progressPercent, 100);
     assert.equal(progressRow.finalScore, 100);
     assert.ok(writeTransactions.progress, "completion progress must be transactional");
     assert.equal(writeTransactions.event, writeTransactions.progress);
-    assert.equal(writeTransactions.xp, writeTransactions.progress);
+    assert.equal(writeTransactions.xp.parent, writeTransactions.progress);
     assert.equal(writeTransactions.user, writeTransactions.progress);
   });
 });
@@ -1285,6 +1421,7 @@ test("completed Arrays work remains immutable while required PRE blocks same-les
   let assessmentAttemptCreates = 0;
 
   await withStubs([
+    ...completionInterruptionStubs(),
     [User, "findByPk", async () => user],
     [User, "findAll", async () => []],
     [ClassroomMembership, "findOne", async () => membership],
@@ -1431,6 +1568,7 @@ test("grant-authorized POST practice rechecks every gameplay path without academ
   };
 
   await withStubs([
+    ...completionInterruptionStubs(),
     [User, "findByPk", async () => user],
     [User, "findAll", async () => []],
     [ClassroomMembership, "findOne", async () => membership],

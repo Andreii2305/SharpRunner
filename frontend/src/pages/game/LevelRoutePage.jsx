@@ -149,7 +149,13 @@ function LevelRoutePage() {
   }
 
   if (Number.isInteger(parsedLevelNumber) && levelConfig && accessStatus === "allowed") {
-    return <GamePage levelConfig={levelConfig} classroomId={accessCheck.classroomId} />;
+    return (
+      <GamePage
+        levelConfig={levelConfig}
+        classroomId={accessCheck.classroomId}
+        levelCompleted={accessCheck.entry?.completed === true}
+      />
+    );
   }
 
   if (levelConfig && accessStatus === "loading") {

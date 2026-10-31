@@ -2,6 +2,7 @@ const ENTER_FAILURE = "Fullscreen could not be started. Gameplay remains paused.
 const EXIT_FAILURE = "Could not exit fullscreen. Gameplay remains in its current state.";
 const UNSUPPORTED = "Fullscreen is not available in this browser. Gameplay remains paused.";
 const NOT_VISIBLE = "Return to the game before continuing.";
+const DEFAULT_SIGNAL_CORRELATION_WINDOW_MS = 250;
 
 export const initialGameFullscreenInterruptionState = Object.freeze({
   status: "unavailable",
@@ -14,6 +15,9 @@ export const initialGameFullscreenInterruptionState = Object.freeze({
 export const createGameFullscreenInterruptionController = ({
   documentTarget = globalThis.document,
   onStateChange = () => {},
+  onInterruption = () => {},
+  now = () => Date.now(),
+  correlationWindowMs = DEFAULT_SIGNAL_CORRELATION_WINDOW_MS,
 } = {}) => {
   let disposed = false;
   let generation = 0;
@@ -24,6 +28,13 @@ export const createGameFullscreenInterruptionController = ({
   let exitOperation = null;
   let ownedSession = null;
   let lastVisibility = documentTarget?.visibilityState ?? "visible";
+  let hasEnteredGameplay = false;
+  let completionBoundaryActive = false;
+  let recentFullscreenExitAt = null;
+  const signalCorrelationWindow = Number.isFinite(correlationWindowMs)
+    && correlationWindowMs >= 0
+    ? correlationWindowMs
+    : DEFAULT_SIGNAL_CORRELATION_WINDOW_MS;
 
   const publish = (nextState) => {
     state = Object.freeze(nextState);
@@ -87,6 +98,9 @@ export const createGameFullscreenInterruptionController = ({
       };
     }
 
+    hasEnteredGameplay = true;
+    recentFullscreenExitAt = null;
+
     publish(scopedState({
       status: "permitted",
       gameplayPermitted: true,
@@ -110,15 +124,34 @@ export const createGameFullscreenInterruptionController = ({
     settleEnter(operation, true);
   };
 
-  const interrupt = (reason) => {
-    if (!state.gameplayPermitted) return false;
+  const interrupt = ({ type, reason, allowWhilePaused = false }) => {
+    if (completionBoundaryActive
+      || !hasEnteredGameplay
+      || (!allowWhilePaused && !state.gameplayPermitted)) return false;
+    const timestamp = now();
+
+    // Browsers may report one tab/app switch as both fullscreen loss and hidden.
+    // Consume a hidden signal arriving within this bounded window after a counted
+    // fullscreen exit; a later hidden transition is a separate interruption.
+    if (type === "hidden" && recentFullscreenExitAt != null) {
+      const elapsed = timestamp - recentFullscreenExitAt;
+      if (elapsed >= 0 && elapsed <= signalCorrelationWindow) {
+        recentFullscreenExitAt = null;
+        return false;
+      }
+    }
+
+    if (type === "fullscreen_exit") recentFullscreenExitAt = timestamp;
+    else recentFullscreenExitAt = null;
+    const interruptionCount = state.interruptionCount + 1;
     publish(scopedState({
       status: "interrupted",
       gameplayPermitted: false,
-      interruptionCount: state.interruptionCount + 1,
+      interruptionCount,
       interruptionReason: reason,
       error: null,
     }));
+    onInterruption({ type, count: interruptionCount });
     return true;
   };
 
@@ -133,7 +166,7 @@ export const createGameFullscreenInterruptionController = ({
 
     if (ownedSession && fullscreenElement !== ownedSession.element) ownedSession = null;
     if (state.gameplayPermitted && (!scope || fullscreenElement !== scope.element)) {
-      interrupt("fullscreen-exit");
+      interrupt({ type: "fullscreen_exit", reason: "fullscreen-exit" });
     }
   };
 
@@ -142,7 +175,10 @@ export const createGameFullscreenInterruptionController = ({
     const nextVisibility = documentTarget?.visibilityState ?? "visible";
     const becameHidden = lastVisibility === "visible" && nextVisibility === "hidden";
     lastVisibility = nextVisibility;
-    if (becameHidden) interrupt("hidden");
+    if (nextVisibility === "visible") recentFullscreenExitAt = null;
+    if (becameHidden) {
+      interrupt({ type: "hidden", reason: "hidden", allowWhilePaused: true });
+    }
   };
 
   documentTarget?.addEventListener?.("fullscreenchange", handleFullscreenChange);
@@ -216,6 +252,9 @@ export const createGameFullscreenInterruptionController = ({
     if (enterOperation) settleEnter(enterOperation, false);
     scope = { accountId, classroomId, levelIdentity, element };
     lastVisibility = documentTarget?.visibilityState ?? "visible";
+    hasEnteredGameplay = false;
+    completionBoundaryActive = false;
+    recentFullscreenExitAt = null;
     resetScopeState(hasScope());
 
     if (previousOwnedSession
@@ -233,7 +272,7 @@ export const createGameFullscreenInterruptionController = ({
   };
 
   const continueGameplay = () => {
-    if (disposed || !hasScope()) return null;
+    if (disposed || completionBoundaryActive || !hasScope()) return null;
     if (enterOperation && isCurrentEnter(enterOperation)) return enterOperation.promise;
     if (documentTarget?.visibilityState !== "visible") {
       publish(scopedState({ status: "interrupted", error: NOT_VISIBLE }));
@@ -307,6 +346,20 @@ export const createGameFullscreenInterruptionController = ({
     setScope,
     continueGameplay,
     exitFullscreen,
+    beginCompletionBoundary() {
+      if (disposed || !hasScope()) return false;
+      completionBoundaryActive = true;
+      recentFullscreenExitAt = null;
+      publish(scopedState({ status: "gated", gameplayPermitted: false }));
+      return true;
+    },
+    resetCompletionBoundary() {
+      if (disposed || !hasScope() || !completionBoundaryActive) return false;
+      completionBoundaryActive = false;
+      recentFullscreenExitAt = null;
+      publish(scopedState({ status: "gated", gameplayPermitted: false }));
+      return true;
+    },
     invalidate,
     getState: () => state,
     dispose() {

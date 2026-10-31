@@ -52,7 +52,7 @@ test("stale gameplay denials share the canonical interpreter and stop interactio
     source("./GamePage.module.css"),
   ]);
 
-  assert.match(game, /function GamePage\(\{ levelConfig, classroomId \}\)/);
+  assert.match(game, /function GamePage\(\{ levelConfig, classroomId, levelCompleted: initiallyCompleted = false \}\)/);
   assert.match(game, /resolveLevelAssessmentAction\(\{ classroomId, level: payload \}\)/);
   assert.match(game, /isLevelAssessmentRestriction\(payload\)/);
   assert.match(game, /const handleStaleAccessError = useCallback/);
@@ -98,12 +98,13 @@ test("every mounted protected GamePage request routes denials through the shared
   }
   assert.match(
     game,
-    /const completion = await operation\.wait\(completionRequest\);\s+if \(!completion\.current\) return;/,
+    /const saved = await saveOperation\.wait\([\s\S]+?\);\s+if \(!saved\.current\) return false;/,
   );
   assert.match(
     game,
-    /catch \(error\) \{\s+if \(!operation\.isCurrent\(\)\) return;\s+if \(handleStaleAccessError\(error, "completion-save"\)\) return;/,
+    /const error = completionErrorRef\.current;\s+if \(error && handleStaleAccessError\(error, "completion-save"\)\) return false;\s+if \(error\?\.response\?\.data\?\.code === "DEADLINE_PASSED"\)/,
   );
+  assert.match(game, /if \(saved\.value\) \{[\s\S]+return presentSavedCompletion\(progressPayload, saveOperation\);\s+\}/);
   assert.match(game, /if \(keepalive\)[\s\S]+fetch\([\s\S]+keepalive: true/);
   assert.match(game, /if \(!cancelled\) handleStaleAccessError\(error, "session-end"\)/);
 });

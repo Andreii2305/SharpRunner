@@ -192,6 +192,7 @@ const getStudentLevelAccess = async ({
   lessonProgressionState = null,
   levelSettings = null,
   progressRows = null,
+  transaction = null,
   now = new Date(),
 }) => {
   const activeMembership = membership ?? await findPrimaryActiveMembership(userId);
@@ -207,7 +208,10 @@ const getStudentLevelAccess = async ({
     };
   }
 
-  const settings = levelSettings ?? await getClassroomLevelSettings(activeMembership.classroomId);
+  const settings = levelSettings ?? await getClassroomLevelSettings(
+    activeMembership.classroomId,
+    { transaction },
+  );
   const targetLessonKey = lessonKeyForLevel(levelKey);
   const requiredProgressLevelKeys = Array.from(new Set([
     ...(targetLessonKey ? canonicalPrefixLevelKeys(targetLessonKey) : []),
@@ -216,12 +220,14 @@ const getStudentLevelAccess = async ({
   const resolvedProgressRows = progressRows ?? await UserProgress.findAll({
     where: { userId, levelKey: { [Op.in]: requiredProgressLevelKeys } },
     attributes: ["levelKey", "isCompleted"],
+    ...(transaction ? { transaction } : {}),
   });
   const progressByKey = new Map(resolvedProgressRows.map((row) => [row.levelKey, row]));
   const target = settings.find((setting) => setting.levelKey === levelKey);
   const extension = target?.dueAt
     ? await StudentLevelExtension.findOne({
         where: { classroomId: activeMembership.classroomId, studentId: userId, levelKey },
+          ...(transaction ? { transaction } : {}),
       })
     : null;
   const state = lessonProgressionState ?? (targetLessonKey
@@ -232,6 +238,7 @@ const getStudentLevelAccess = async ({
         authorizedMembership: activeMembership,
         progressRows: resolvedProgressRows,
         levelSettings: settings,
+        transaction,
       })
     : null);
 

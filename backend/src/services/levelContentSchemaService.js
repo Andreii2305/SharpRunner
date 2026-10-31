@@ -37,6 +37,8 @@ const ensureLevelContentOverridesTable = async () => {
       hintsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
       wrongAttemptDeduction: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 5 },
       lateDeductionPerDay: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 3 },
+      interruptionScoreDeduction: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 1 },
+      interruptionXpDeduction: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 10 },
       createdAt: { type: DataTypes.DATE, allowNull: false },
       updatedAt: { type: DataTypes.DATE, allowNull: false },
     });
@@ -57,6 +59,8 @@ const ensureLevelContentOverridesTable = async () => {
     hintsEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     wrongAttemptDeduction: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 5 },
     lateDeductionPerDay: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 3 },
+    interruptionScoreDeduction: { type: DataTypes.DECIMAL(5, 2), allowNull: false, defaultValue: 1 },
+    interruptionXpDeduction: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 10 },
   };
 
   for (const [name, definition] of Object.entries(columns)) {

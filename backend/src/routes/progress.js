@@ -7,8 +7,6 @@ const requireActiveClassMembership = require("../middleware/requireActiveClassMe
 const {
   ensureProgressRowsForUser,
   buildProgressSummary,
-  getParTimeSeconds,
-  computeFinalScore,
 } = require("../services/progressService");
 const { StudentLevelExtension } = require("../models");
 const {
@@ -30,9 +28,16 @@ const { getLessonProgressionStates } = require("../services/lessonProgressionSer
 const { validateLevelCode } = require("../services/levelCodeValidationService");
 const {
   GamificationError,
-  awardFirstCompletionXp,
   purchaseDetailedHint,
 } = require("../services/gamificationService");
+const {
+  GameInterruptionCompletionError,
+  completeLevelWithInterruptionDeductions,
+} = require("../services/gameInterruptionCompletionService");
+const {
+  GameInterruptionEventError,
+  validatePendingInterruptionEvents,
+} = require("../services/gameInterruptionEventService");
 const {
   DEFAULT_HINT_UNLOCK_THRESHOLD,
   DETAILED_HINT_XP_COST,
@@ -60,8 +65,8 @@ const {
   normalizeActionId,
   recordFailedAttempt,
   recordHintUsed,
-  recordLevelCompleted,
 } = require("../services/learningAnalyticsEventService");
+const { createGameInterruptionRouter } = require("./gameInterruptions");
 
 const LEVEL_KEYS = new Set(PLAYABLE_LEVEL_KEYS);
 
@@ -176,7 +181,17 @@ const parseOptionalClassroomId = (value) => {
   return classroomId;
 };
 
-router.use(authMiddleware, requireActiveClassMembership);
+router.use(authMiddleware);
+
+// Register before the generic level-membership resolver: these routes require
+// the exact classroom supplied in their strict bodies, and their services lock
+// and authorize that exact scope transactionally.
+router.use(createGameInterruptionRouter());
+
+// Preserve the legacy any-active-membership gate for every existing progress
+// endpoint. Interruption routes instead delegate exact-scope checks to their
+// classroom-first transactional services above.
+router.use(requireActiveClassMembership);
 
 router.use("/level/:levelKey", async (req, res, next) => {
   try {
@@ -773,6 +788,9 @@ router.put("/level/:levelKey", async (req, res) => {
     ) {
       return res.status(400).json({ message: "isCompleted must be a boolean" });
     }
+    const interruptionEvents = validatePendingInterruptionEvents(
+      body.interruptionEvents === undefined ? [] : body.interruptionEvents,
+    );
 
     await ensureProgressRowsForUser(req.userId);
     const membership = req.levelMembership;
@@ -852,15 +870,21 @@ router.put("/level/:levelKey", async (req, res) => {
     }
 
     const completionOccurredAt = new Date();
-    const mutation = await UserProgress.sequelize.transaction(async (transaction) => {
+    const mutation = requestedCompletion
+      ? await completeLevelWithInterruptionDeductions({
+          actorId: req.userId,
+          actorRole: req.userRole,
+          classroomId: membership?.classroomId,
+          classroomWasExplicit: req.query.classroomId !== undefined,
+          levelKey,
+          progressPercent: newProgress,
+          completionActionId,
+          completionOccurredAt,
+          interruptionEvents,
+        })
+      : await UserProgress.sequelize.transaction(async (transaction) => {
       // Detailed-hint purchase locks User before UserProgress. Preserve that
       // order here so concurrent completion and purchase cannot deadlock.
-      if (requestedCompletion && !initialLevelRow.isCompleted) {
-        await User.findByPk(req.userId, {
-          transaction,
-          lock: transaction.LOCK.UPDATE,
-        });
-      }
       const levelRow = await UserProgress.findOne({
         where: { userId: req.userId, levelKey },
         transaction,
@@ -877,76 +901,41 @@ router.put("/level/:levelKey", async (req, res) => {
       const isCompleted = typeof completedFromBody === "boolean"
         ? completedFromBody || progress === 100
         : levelRow.isCompleted || progress === 100;
-      const completedNow = isCompleted && !levelRow.isCompleted;
+      levelRow.progressPercent = isCompleted ? 100 : progress;
+      levelRow.isCompleted = isCompleted;
+      levelRow.completedAt = isCompleted ? levelRow.completedAt ?? completionOccurredAt : null;
+      await levelRow.save({ transaction });
 
-      if (completedNow) {
-        if (levelRow.activeSessionId) {
-          await pauseProgressSession(levelRow, {
-            analyticsContext: {
-              studentId: req.userId,
-              classroomId: membership?.classroomId ?? null,
-              syncId: completionActionId,
-            },
-            transaction,
-          });
-        }
-        const attemptCount = Math.max(0, Number(levelRow.attemptCount) || 0);
-        const timeSpentSeconds = Math.max(0, Number(levelRow.timeSpentSeconds) || 0);
-        const completedAt = levelRow.completedAt ?? completionOccurredAt;
-        const finalScore = computeFinalScore({
-          attemptCount,
-          timeSpentSeconds,
-          parTimeSeconds: getParTimeSeconds(levelRow.orderIndex),
-          deadlineAt: completionAccess?.effectiveDueAt ?? setting?.dueAt ?? null,
-          completedAt,
-          wrongAttemptDeduction: setting?.wrongAttemptDeduction ?? 5,
-          lateDeductionPerDay: setting?.lateDeductionPerDay ?? 3,
-        });
-
-        levelRow.progressPercent = 100;
-        levelRow.isCompleted = true;
-        levelRow.completedAt = completedAt;
-        levelRow.attemptCount = attemptCount;
-        levelRow.timeSpentSeconds = timeSpentSeconds;
-        levelRow.finalScore = finalScore;
-        await levelRow.save({ transaction });
-        await recordLevelCompleted({
-          studentId: req.userId,
-          classroomId: membership?.classroomId ?? null,
-          levelKey,
-          attemptNumber: attemptCount + 1,
-          score: finalScore,
-          activityId: completionActionId,
-          occurredAt: completedAt,
-        }, { transaction });
-        const xpAward = await awardFirstCompletionXp({
-          userId: req.userId,
-          levelKey,
-          attemptCount: levelRow.attemptCount,
-          hintUsed: levelRow.hintUsed,
-        }, { transaction });
-        if (xpAward.awarded) {
-          levelRow.xpAwarded = xpAward.amount;
-          levelRow.xpAwardedAt = new Date();
-          await levelRow.save({ transaction });
-        }
-        return { levelRow, completedNow, xpAward };
-      } else {
-        levelRow.progressPercent = isCompleted ? 100 : progress;
-        levelRow.isCompleted = isCompleted;
-        levelRow.completedAt = isCompleted ? levelRow.completedAt ?? completionOccurredAt : null;
-        await levelRow.save({ transaction });
-      }
-
-      return { levelRow, completedNow, xpAward: null };
+      return {
+        levelRow,
+        completedNow: false,
+        xpAward: null,
+        completionDeductions: null,
+      };
     });
     if (!mutation) return res.status(404).json({ message: "Progress row not found" });
     const { xpAward } = mutation;
 
     const payload = await buildProgressPayloadForUser(req.userId, membership);
     payload.xpAward = xpAward;
+    payload.completionDeductions = mutation.completionDeductions ?? null;
     return res.json(payload);
   } catch (error) {
+    if (error instanceof GameInterruptionCompletionError
+      || error instanceof GameInterruptionEventError) {
+      return res.status(error.status).json({
+        code: error.code,
+        message: error.message,
+        ...(error.details || {}),
+      });
+    }
+    if (error instanceof GamificationError) {
+      return res.status(error.status).json({
+        code: error.code,
+        message: error.message,
+        ...error.details,
+      });
+    }
     console.error(error);
     return res.status(500).json({ message: "Server error" });
   }

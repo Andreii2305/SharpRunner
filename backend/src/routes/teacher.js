@@ -47,6 +47,7 @@ const classroomEnrollmentService = require("../services/classroomEnrollmentServi
 const classroomMembershipDecisionService = require("../services/classroomMembershipDecisionService");
 const { createPrivateCheckInRouter } = require("./privateCheckIns");
 const { createTeacherClassroomFeedbackRouter } = require("./teacherClassroomFeedback");
+const { createTeacherGameInterruptionReportRouter } = require("./teacherGameInterruptionReports");
 
 const LEVEL_KEY_SUFFIX = "-level-";
 const DEFAULT_SECTION_NAME = "Unassigned";
@@ -689,6 +690,7 @@ const buildDashboardPayload = async (req) => {
 router.use(authMiddleware, requireRole("teacher", "admin"));
 router.use(createPrivateCheckInRouter());
 router.use(createTeacherClassroomFeedbackRouter());
+router.use(createTeacherGameInterruptionReportRouter());
 
 router.get("/analytics", async (req, res) => {
   try {
@@ -2215,6 +2217,32 @@ router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
       }
       return Math.round(number * 100) / 100;
     };
+    const parseCompatibleDeduction = (
+      value,
+      field,
+      existingValue,
+      fallback,
+      { integer = false } = {},
+    ) => {
+      const candidate = value === undefined ? existingValue ?? fallback : value;
+      let number;
+      if (typeof candidate === "number") {
+        number = candidate;
+      } else if (typeof candidate === "string") {
+        const normalized = candidate.trim();
+        if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+          throw new Error(`${field} must be between 0 and 100`);
+        }
+        number = Number(normalized);
+      } else {
+        throw new Error(`${field} must be between 0 and 100`);
+      }
+      if (!Number.isFinite(number) || number < 0 || number > 100
+        || (integer && !Number.isInteger(number))) {
+        throw new Error(`${field} must be between 0 and 100`);
+      }
+      return integer ? number : Math.round(number * 100) / 100;
+    };
     const parseHintThreshold = (value) => {
       const number = value === "" || value == null ? 3 : Number(value);
       if (!Number.isInteger(number) || number < 1 || number > 10) {
@@ -2247,6 +2275,19 @@ router.put("/classrooms/:classroomId/level-settings", async (req, res) => {
             setting.lateDeductionPerDay,
             "lateDeductionPerDay",
             3,
+          ),
+          interruptionScoreDeduction: parseCompatibleDeduction(
+            setting.interruptionScoreDeduction,
+            "interruptionScoreDeduction",
+            existingByKey.get(levelKey)?.interruptionScoreDeduction,
+            1,
+          ),
+          interruptionXpDeduction: parseCompatibleDeduction(
+            setting.interruptionXpDeduction,
+            "interruptionXpDeduction",
+            existingByKey.get(levelKey)?.interruptionXpDeduction,
+            10,
+            { integer: true },
           ),
         });
       });

@@ -18,6 +18,7 @@ const {
   AttentionSection,
   LevelPerformanceTable,
   SimplifiedAnalyticsDashboard,
+  StudentLessonProgress,
 } = await vite.ssrLoadModule("/src/pages/teacher/TeacherAnalyticsPage.jsx");
 const {
   AssessmentEvidenceSummary,
@@ -145,6 +146,47 @@ test("level table keeps concise columns and retains diagnostics in per-level det
   for (const detail of ["Average attempts", "Average failed attempts", "Total failed attempts", "Average active time", "Hint usage", "First-attempt success", "Difficulty", "Students with unresolved difficulty"]) assert.match(html, new RegExp(detail));
   assert.doesNotMatch(html, /arrays-implementation-key/);
   assert.equal((html.match(/<th scope="col"/g) || []).length, 5);
+});
+
+test("student drawer adds recorded interruptions only to built-in levels and requires an exact classroom", () => {
+  const curriculumLesson = {
+    id: "curriculum:arrays",
+    title: "Arrays",
+    source: "curriculum",
+    status: "In progress",
+    levels: [{ levelKey: "arrays-level-1", title: "Array basics", status: "In progress" }],
+  };
+  const classroomLesson = {
+    id: "lesson:91",
+    title: "Teacher lesson",
+    source: "classroom",
+    status: "Not started",
+    levels: [{ levelKey: "custom-level-1", title: "Custom level", status: "Not started" }],
+  };
+  const exact = render(React.createElement(StudentLessonProgress, {
+    lessons: [curriculumLesson, classroomLesson],
+    accountId: 7,
+    classroomId: "25",
+    studentId: 11,
+    selectedInterruptionLevelKey: null,
+    onToggleInterruptions() {},
+    interruptionControllerRef: { current: null },
+  }));
+  assert.equal((exact.match(/Recorded interruptions/g) || []).length, 1);
+  assert.match(exact, /aria-controls="recorded-interruptions-arrays-level-1"/);
+  assert.doesNotMatch(exact, /aria-controls="recorded-interruptions-custom-level-1"/);
+
+  const allClassrooms = render(React.createElement(StudentLessonProgress, {
+    lessons: [curriculumLesson],
+    accountId: 7,
+    classroomId: "all",
+    studentId: 11,
+    selectedInterruptionLevelKey: null,
+    onToggleInterruptions() {},
+    interruptionControllerRef: { current: null },
+  }));
+  assert.match(allClassrooms, /disabled/);
+  assert.match(allClassrooms, /Select one classroom/);
 });
 
 test("reduced lesson and student tables retain secondary metrics behind deliberate details", () => {

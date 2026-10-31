@@ -32,8 +32,9 @@ const createEventTarget = (initial = {}) => {
   };
 };
 
-const createHarness = ({ supported = true } = {}) => {
+const createHarness = ({ supported = true, now, correlationWindowMs } = {}) => {
   const states = [];
+  const interruptions = [];
   let exitCalls = 0;
   let exitResult = Promise.resolve();
   const documentTarget = createEventTarget({
@@ -51,12 +52,16 @@ const createHarness = ({ supported = true } = {}) => {
   const controller = createGameFullscreenInterruptionController({
     documentTarget,
     onStateChange(state) { states.push(state); },
+    onInterruption(event) { interruptions.push(event); },
+    now,
+    correlationWindowMs,
   });
 
   return {
     boundary,
     controller,
     documentTarget,
+    interruptions,
     states,
     get state() { return controller.getState(); },
     get exitCalls() { return exitCalls; },
@@ -93,6 +98,7 @@ test("a new level scope starts gated without counting an interruption", () => {
   });
   assert.equal(harness.documentTarget.listenerCount("fullscreenchange"), 1);
   assert.equal(harness.documentTarget.listenerCount("visibilitychange"), 1);
+  assert.deepEqual(harness.interruptions, []);
   harness.controller.dispose();
 });
 
@@ -159,6 +165,28 @@ test("Continue resumes directly when the exact boundary remains fullscreen", asy
   harness.controller.dispose();
 });
 
+test("a completion boundary pauses counting and Reset reuses the same fullscreen scope", async () => {
+  const harness = createHarness();
+  harness.setScope();
+  await enterFullscreen(harness);
+
+  assert.equal(harness.controller.beginCompletionBoundary(), true);
+  assert.equal(harness.state.gameplayPermitted, false);
+  harness.documentTarget.visibilityState = "hidden";
+  harness.documentTarget.emit("visibilitychange");
+  assert.equal(harness.state.interruptionCount, 0);
+  assert.deepEqual(harness.interruptions, []);
+
+  harness.documentTarget.visibilityState = "visible";
+  harness.documentTarget.emit("visibilitychange");
+  assert.equal(harness.controller.resetCompletionBoundary(), true);
+  assert.equal(harness.state.status, "gated");
+  assert.equal(await harness.controller.continueGameplay(), true);
+  assert.equal(harness.state.gameplayPermitted, true);
+  assert.equal(harness.state.interruptionCount, 0);
+  harness.controller.dispose();
+});
+
 test("unsupported and rejected fullscreen requests leave gameplay paused", async (t) => {
   await t.test("unsupported", () => {
     const harness = createHarness({ supported: false });
@@ -177,6 +205,7 @@ test("unsupported and rejected fullscreen requests leave gameplay paused", async
     assert.equal(harness.state.status, "error");
     assert.equal(harness.state.gameplayPermitted, false);
     assert.equal(harness.state.interruptionCount, 0);
+    assert.deepEqual(harness.interruptions, []);
     harness.controller.dispose();
   });
 
@@ -210,7 +239,82 @@ test("fullscreen loss and hidden events coalesce into one interruption episode",
   harness.documentTarget.emit("visibilitychange");
   assert.equal(harness.state.gameplayPermitted, false);
   assert.equal(harness.state.interruptionCount, 1);
+  assert.deepEqual(harness.interruptions, [{ type: "fullscreen_exit", count: 1 }]);
   harness.controller.dispose();
+});
+
+test("Escape followed later by a tab switch counts two logical interruptions while paused", async () => {
+  let currentTime = 1_000;
+  const harness = createHarness({ now: () => currentTime, correlationWindowMs: 250 });
+  harness.setScope();
+  await enterFullscreen(harness);
+
+  harness.documentTarget.fullscreenElement = null;
+  harness.documentTarget.emit("fullscreenchange");
+  currentTime += 500;
+  harness.documentTarget.visibilityState = "hidden";
+  harness.documentTarget.emit("visibilitychange");
+
+  assert.equal(harness.state.interruptionCount, 2);
+  assert.equal(harness.state.gameplayPermitted, false);
+  assert.deepEqual(harness.interruptions, [
+    { type: "fullscreen_exit", count: 1 },
+    { type: "hidden", count: 2 },
+  ]);
+  harness.controller.dispose();
+});
+
+test("separate visible to hidden cycles keep counting while gameplay remains paused", async () => {
+  const harness = createHarness();
+  harness.setScope();
+  await enterFullscreen(harness);
+
+  harness.documentTarget.visibilityState = "hidden";
+  harness.documentTarget.emit("visibilitychange");
+  harness.documentTarget.emit("visibilitychange");
+  harness.documentTarget.visibilityState = "visible";
+  harness.documentTarget.emit("visibilitychange");
+  harness.documentTarget.visibilityState = "hidden";
+  harness.documentTarget.emit("visibilitychange");
+
+  assert.equal(harness.state.interruptionCount, 2);
+  assert.deepEqual(harness.interruptions, [
+    { type: "hidden", count: 1 },
+    { type: "hidden", count: 2 },
+  ]);
+  harness.controller.dispose();
+});
+
+test("related fullscreen and hidden signals coalesce in either browser event order", async (t) => {
+  await t.test("fullscreen then hidden", async () => {
+    let currentTime = 1_000;
+    const harness = createHarness({ now: () => currentTime, correlationWindowMs: 250 });
+    harness.setScope();
+    await enterFullscreen(harness);
+    harness.documentTarget.fullscreenElement = null;
+    harness.documentTarget.emit("fullscreenchange");
+    currentTime += 100;
+    harness.documentTarget.visibilityState = "hidden";
+    harness.documentTarget.emit("visibilitychange");
+    assert.equal(harness.state.interruptionCount, 1);
+    assert.deepEqual(harness.interruptions, [{ type: "fullscreen_exit", count: 1 }]);
+    harness.controller.dispose();
+  });
+
+  await t.test("hidden then fullscreen", async () => {
+    let currentTime = 1_000;
+    const harness = createHarness({ now: () => currentTime, correlationWindowMs: 250 });
+    harness.setScope();
+    await enterFullscreen(harness);
+    harness.documentTarget.visibilityState = "hidden";
+    harness.documentTarget.emit("visibilitychange");
+    currentTime += 100;
+    harness.documentTarget.fullscreenElement = null;
+    harness.documentTarget.emit("fullscreenchange");
+    assert.equal(harness.state.interruptionCount, 1);
+    assert.deepEqual(harness.interruptions, [{ type: "hidden", count: 1 }]);
+    harness.controller.dispose();
+  });
 });
 
 test("a hidden transition counts once and visibility return never resumes automatically", async () => {
@@ -317,6 +421,7 @@ test("scope changes fence stale entry completion and reset the scoped count", as
   assert.deepEqual(harness.state, settledState);
   assert.equal(harness.state.interruptionCount, 0);
   assert.equal(harness.exitCalls, 0);
+  assert.deepEqual(harness.interruptions, []);
   harness.controller.dispose();
 });
 
@@ -373,6 +478,7 @@ test("intentional scope cleanup never counts its fullscreen exit as an interrupt
 
   assert.equal(harness.state.interruptionCount, 0);
   assert.equal(harness.state.gameplayPermitted, false);
+  assert.deepEqual(harness.interruptions, []);
   harness.controller.dispose();
 });
 

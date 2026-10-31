@@ -63,10 +63,53 @@ test("failure feedback remains neutral while Continue stays available", () => {
   assert.match(html, />Try fullscreen again</);
 });
 
+test("incomplete levels gate fullscreen on the authoritative reporting session and show zero rates", () => {
+  const loading = renderGate({
+    reportingRequired: true,
+    reportingState: {
+      sessionStatus: "starting", session: null, sessionError: null,
+      pendingCount: 0, deliveryStatus: "idle", deliveryError: null,
+    },
+  });
+  assert.match(loading, /Preparing the interruption reporting session/);
+  assert.match(loading, /disabled=""/);
+
+  const ready = renderGate({
+    reportingRequired: true,
+    reportingState: {
+      sessionStatus: "current",
+      session: { scoreDeductionSnapshot: 0, xpDeductionSnapshot: 0 },
+      sessionError: null,
+      pendingCount: 2,
+      deliveryStatus: "uncertain",
+      deliveryError: { message: "The request result is uncertain." },
+    },
+  });
+  assert.match(ready, /Saved rates for this session: 0 score point\(s\)/);
+  assert.match(ready, /0 XP per recorded interruption/);
+  assert.match(ready, /Pending interruption reports: 2/);
+  assert.match(ready, /Retry pending reports/);
+});
+
 test("GamePage wires the gate to every gameplay pause foundation", async () => {
   const source = await readFile(new URL("./GamePage.jsx", import.meta.url), "utf8");
 
   assert.match(source, /createGameFullscreenInterruptionController/);
+  assert.match(source, /createGameInterruptionReportingController/);
+  assert.match(source, /createGameInterruptionLifecycleController/);
+  assert.match(source, /interruptionLifecycleRef\.current\.setup/);
+  assert.match(source, /interruptionLifecycleRef\.current\.cleanup\(owned\)/);
+  assert.match(source, /reportingControllerRef\.current === owned\.reportingController/);
+  assert.match(source, /completionFlowRef\.current === owned\.completionFlow/);
+  assert.match(source, /onInterruption: \(interruption\)/);
+  assert.match(source, /completionFlowRef\.current\.begin/);
+  assert.match(source, /reportingRequired/);
+  assert.match(source, /beginCompletionBoundary/);
+  assert.match(source, /resetCompletionBoundary/);
+  assert.match(source, /interruptionEvents/);
+  assert.match(source, /reportingControllerRef\.current\?\.retrySession/);
+  assert.match(source, /reportingControllerRef\.current\?\.retryEvents/);
+  assert.match(source, /reportingState\.deliveryError[\s\S]*Retry pending reports/);
   assert.match(source, /<GameFullscreenGate/);
   assert.match(source, /paused=\{!fullscreenState\.gameplayPermitted\}/);
   assert.match(source, /const owner = fullscreenBgmOwnerRef\.current;/);

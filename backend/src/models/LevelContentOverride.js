@@ -34,6 +34,18 @@ const LevelContentOverride = sequelize.define(
       allowNull: false,
       defaultValue: 3,
     },
+    interruptionScoreDeduction: {
+      type: DataTypes.DECIMAL(5, 2),
+      allowNull: false,
+      defaultValue: 1,
+      validate: { min: 0, max: 100 },
+    },
+    interruptionXpDeduction: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 10,
+      validate: { isInt: true, min: 0, max: 100 },
+    },
   },
   {
     indexes: [{ unique: true, fields: ["classroomId", "levelKey"] }],

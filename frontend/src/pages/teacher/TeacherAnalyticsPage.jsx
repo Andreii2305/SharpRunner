@@ -6,11 +6,14 @@ import {
   FiPrinter, FiSearch, FiX,
 } from "react-icons/fi";
 import Sidebar from "../../Components/SideBar/Sidebar.jsx";
-import { buildApiUrl, getAuthHeaders } from "../../utils/auth";
+import { buildApiUrl, getAuthHeaders, getUser } from "../../utils/auth";
 import styles from "./TeacherPage.module.css";
 import pgStyles from "./TeacherAnalyticsPage.module.css";
 import TeacherAnalyticsReport from "./TeacherAnalyticsReport.jsx";
 import TeacherAssessmentAnalyticsPanel from "./assessment/TeacherAssessmentAnalyticsPanel.jsx";
+import TeacherGameInterruptionReport, {
+  RecordedInterruptionsButton,
+} from "./TeacherGameInterruptionReport.jsx";
 import {
   buildAnalyticsQuery,
   createLatestRequestGuard,
@@ -358,6 +361,51 @@ export function SimplifiedAnalyticsDashboard({
   return <AnalyticsDefaultLayout summary={<AnalyticsSummary overview={overview} />} attention={attention} lessons={lessons} students={students} assessment={<TeacherAssessmentAnalyticsPanel />} supporting={supporting} />;
 }
 
+export function StudentLessonProgress({
+  lessons,
+  accountId,
+  classroomId,
+  studentId,
+  selectedInterruptionLevelKey,
+  onToggleInterruptions,
+  interruptionControllerRef,
+}) {
+  const exactClassroom = /^[1-9][0-9]*$/.test(`${classroomId ?? ""}`);
+  return <>
+    <h3>Lesson and level progress</h3>
+    <div className={pgStyles.drawerLessons}>{lessons.map((lesson) => <details className={pgStyles.drawerLesson} key={lesson.id}>
+      <summary><span><strong>{lesson.title}</strong><small>{lesson.status}</small></span><b>{lesson.progress == null ? "N/A" : `${lesson.progress}%`}</b></summary>
+      <div className={pgStyles.drawerLessonStats}><span>Score<strong>{valueOrEmpty(lesson.score, "%")}</strong></span><span>Attempts<strong>{valueOrEmpty(lesson.attempts)}</strong></span><span>Failed<strong>{valueOrEmpty(lesson.failedAttempts)}</strong></span><span>Active time<strong>{lesson.activeTimeLabel || "N/A"}</strong></span><span>Hint use<strong>{lesson.hintUsed == null ? "N/A" : lesson.hintUsed ? "Used" : "Not used"}</strong></span><span>Latest activity<strong>{shortDate(lesson.lastActivityAt)}</strong></span></div>
+      {lesson.source === "curriculum" && lesson.levels?.length > 0 && <div className={pgStyles.levelList}>{lesson.levels.map((level) => {
+        const expanded = selectedInterruptionLevelKey === level.levelKey;
+        return <div className={pgStyles.levelItem} key={level.levelKey}>
+          <div className={pgStyles.levelItemMain}>
+            <span><strong>{level.title}</strong><small>{level.status} · {level.progress == null ? "Progress N/A" : `${level.progress}% progress`} · {level.attempts == null ? "Attempts N/A" : `${level.attempts} attempts`} · {level.failedAttempts == null ? "Failures N/A" : `${level.failedAttempts} failed`} · {level.hintUsed == null ? "Hint N/A" : level.hintUsed ? "Hint used" : "No hint"}</small></span>
+            <div className={pgStyles.levelItemActions}>
+              <b>{level.score == null ? "Score N/A" : `${level.score}%`}</b>
+              <RecordedInterruptionsButton
+                levelKey={level.levelKey}
+                expanded={expanded}
+                exactClassroom={exactClassroom}
+                onClick={() => onToggleInterruptions(level.levelKey)}
+              />
+            </div>
+          </div>
+          {expanded && <div id={`recorded-interruptions-${level.levelKey}`} className={pgStyles.interruptionDisclosure}>
+            <TeacherGameInterruptionReport
+              accountId={accountId}
+              classroomId={classroomId}
+              studentId={studentId}
+              levelKey={level.levelKey}
+              controllerRef={interruptionControllerRef}
+            />
+          </div>}
+        </div>;
+      })}</div>}
+    </details>)}</div>
+  </>;
+}
+
 function TeacherAnalyticsPage() {
   const [data, setData] = useState(() => createEmptyAnalyticsData());
   const [loadedQuery, setLoadedQuery] = useState("");
@@ -375,11 +423,13 @@ function TeacherAnalyticsPage() {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentDetail, setStudentDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedInterruptionLevelKey, setSelectedInterruptionLevelKey] = useState(null);
   const [expandedLessons, setExpandedLessons] = useState(() => new Set());
   const closeDrawerRef = useRef(null);
   const drawerRef = useRef(null);
   const drawerLauncherRef = useRef(null);
   const detailRequestControllerRef = useRef(null);
+  const interruptionReportControllerRef = useRef(null);
   const detailRequestGuardRef = useRef(null);
   const mainRequestVersionRef = useRef(0);
   if (!detailRequestGuardRef.current) {
@@ -441,6 +491,8 @@ function TeacherAnalyticsPage() {
   }, [data.studentPerformance, studentSearch, studentSort]);
 
   const openStudent = async (student, launcher = null) => {
+    interruptionReportControllerRef.current?.close();
+    setSelectedInterruptionLevelKey(null);
     detailRequestControllerRef.current?.abort();
     const controller = new AbortController();
     const requestVersion = detailRequestGuardRef.current.begin();
@@ -465,13 +517,26 @@ function TeacherAnalyticsPage() {
   };
 
   const closeStudent = useCallback(() => {
+    interruptionReportControllerRef.current?.close();
     detailRequestControllerRef.current?.abort();
     detailRequestGuardRef.current.invalidate();
     setSelectedStudent(null);
     setStudentDetail(null);
     setDetailLoading(false);
+    setSelectedInterruptionLevelKey(null);
     requestAnimationFrame(() => drawerLauncherRef.current?.focus());
   }, []);
+
+  const changeFilters = (updater) => {
+    interruptionReportControllerRef.current?.close();
+    detailRequestControllerRef.current?.abort();
+    detailRequestGuardRef.current.invalidate();
+    setSelectedInterruptionLevelKey(null);
+    setSelectedStudent(null);
+    setStudentDetail(null);
+    setDetailLoading(false);
+    setFilters(updater);
+  };
 
   useEffect(() => {
     detailRequestControllerRef.current?.abort();
@@ -479,6 +544,8 @@ function TeacherAnalyticsPage() {
     setSelectedStudent(null);
     setStudentDetail(null);
     setDetailLoading(false);
+    interruptionReportControllerRef.current?.close();
+    setSelectedInterruptionLevelKey(null);
     return () => {
       detailRequestControllerRef.current?.abort();
       detailRequestGuardRef.current.invalidate();
@@ -501,6 +568,10 @@ function TeacherAnalyticsPage() {
     if (next.has(lessonId)) next.delete(lessonId); else next.add(lessonId);
     return next;
   });
+  const toggleInterruptionReport = (levelKey) => {
+    interruptionReportControllerRef.current?.close();
+    setSelectedInterruptionLevelKey((current) => current === levelKey ? null : levelKey);
+  };
 
   const overview = data.overview || {}; const formulas = data.meta?.formulas || {};
   const heatmapLessons = data.heatmap?.lessons || [];
@@ -555,12 +626,12 @@ function TeacherAnalyticsPage() {
       </div></header>
       <div className={`${styles.body} ${pgStyles.analyticsBody}`} aria-busy={isLoading}>
         <section className={`${styles.card} ${pgStyles.filters}`} aria-label="Analytics filters">
-          <label>Classroom<select value={filters.classroomId} onChange={(event) => setFilters((current) => ({ ...current, classroomId: event.target.value, studentId: "all", lessonId: "all" }))}><option value="all">All active classrooms</option>{(data.filters?.classrooms || []).map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name} · {classroom.section}</option>)}</select></label>
-          <label>Student<select value={filters.studentId} onChange={(event) => setFilters((current) => ({ ...current, studentId: event.target.value }))}><option value="all">All students</option>{(data.filters?.students || []).map((student) => <option key={student.id} value={student.id}>{student.name} (@{student.username})</option>)}</select></label>
-          <label>Date<select value={filters.datePreset} onChange={(event) => setFilters((current) => ({ ...current, datePreset: event.target.value }))}><option value="all">All time</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="custom">Custom range</option></select></label>
-          {filters.datePreset === "custom" && <><label>From<input type="date" value={filters.startDate} onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))} /></label><label>To<input type="date" value={filters.endDate} onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))} /></label></>}
-          <label>Lesson<select value={filters.lessonId} onChange={(event) => setFilters((current) => ({ ...current, lessonId: event.target.value }))}><option value="all">All lessons</option>{(data.filters?.lessons || []).map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}</select></label>
-          <button type="button" className={styles.btnOutline} onClick={() => { setFilters(resetAnalyticsFilters()); setStudentSearch(""); }} disabled={isLoading}>Clear filters</button>
+          <label>Classroom<select value={filters.classroomId} onChange={(event) => changeFilters((current) => ({ ...current, classroomId: event.target.value, studentId: "all", lessonId: "all" }))}><option value="all">All active classrooms</option>{(data.filters?.classrooms || []).map((classroom) => <option key={classroom.id} value={classroom.id}>{classroom.name} · {classroom.section}</option>)}</select></label>
+          <label>Student<select value={filters.studentId} onChange={(event) => changeFilters((current) => ({ ...current, studentId: event.target.value }))}><option value="all">All students</option>{(data.filters?.students || []).map((student) => <option key={student.id} value={student.id}>{student.name} (@{student.username})</option>)}</select></label>
+          <label>Date<select value={filters.datePreset} onChange={(event) => changeFilters((current) => ({ ...current, datePreset: event.target.value }))}><option value="all">All time</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="custom">Custom range</option></select></label>
+          {filters.datePreset === "custom" && <><label>From<input type="date" value={filters.startDate} onChange={(event) => changeFilters((current) => ({ ...current, startDate: event.target.value }))} /></label><label>To<input type="date" value={filters.endDate} onChange={(event) => changeFilters((current) => ({ ...current, endDate: event.target.value }))} /></label></>}
+          <label>Lesson<select value={filters.lessonId} onChange={(event) => changeFilters((current) => ({ ...current, lessonId: event.target.value }))}><option value="all">All lessons</option>{(data.filters?.lessons || []).map((lesson) => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}</select></label>
+          <button type="button" className={styles.btnOutline} onClick={() => { changeFilters(resetAnalyticsFilters()); setStudentSearch(""); }} disabled={isLoading}>Clear filters</button>
           {isLoading && <span className={pgStyles.loadingBadge}>Updating…</span>}
           <div className={pgStyles.activeFilters} aria-label="Active analytics filters"><strong>Current scope</strong><span>{filterContext}</span></div>
           <div className={`${pgStyles.exportActions} ${pgStyles.interactiveOnly}`}>
@@ -581,7 +652,15 @@ function TeacherAnalyticsPage() {
       {studentDetail.student.attentionReasons?.length > 0 && <div className={pgStyles.drawerAlert}><strong>Reasons to check in</strong>{studentDetail.student.attentionReasons.map((reason) => <span key={reason}>{reason}</span>)}</div>}
       <div className={pgStyles.drawerStats}><span>Progress<strong>{valueOrEmpty(studentDetail.student.progress, "%")}</strong></span><span>Average score<strong>{valueOrEmpty(studentDetail.student.averageScore, "%")}</strong></span><span>Average attempts<strong>{valueOrEmpty(studentDetail.student.averageAttempts)}</strong></span><span>Failed attempts<strong>{valueOrEmpty(studentDetail.student.failedAttempts)}</strong></span><span>Completed lessons<strong>{studentDetail.student.completedLessons ?? 0}</strong></span><span>Active time<strong>{studentDetail.student.activeTimeLabel || "Not enough data"}</strong></span><span>Hint usage<strong>{studentDetail.student.hintUsageCount == null ? "N/A" : `${studentDetail.student.hintUsageCount} lessons`}</strong></span><span>Latest activity<strong>{shortDate(studentDetail.student.lastActivityAt)}</strong></span></div>
       <h3>Historical activity</h3>{studentDetail.historical?.hasData ? <div className={pgStyles.drawerStats}><span>Attempts<strong>{studentDetail.historical.totals?.attempts ?? 0}</strong></span><span>Completions<strong>{studentDetail.historical.totals?.completions ?? 0}</strong></span><span>Recorded failures<strong>{studentDetail.historical.totals?.failedAttempts ?? 0}</strong></span><span>Active time<strong>{formatTrendValue({ duration: true }, studentDetail.historical.totals?.activeSeconds ?? 0)}</strong></span></div> : <div className={styles.emptyText}>No historical activity has been recorded for this student and period.</div>}
-      <h3>Lesson and level progress</h3><div className={pgStyles.drawerLessons}>{(studentDetail.details?.lessons || []).map((lesson) => <details className={pgStyles.drawerLesson} key={lesson.id}><summary><span><strong>{lesson.title}</strong><small>{lesson.status}</small></span><b>{lesson.progress == null ? "N/A" : `${lesson.progress}%`}</b></summary><div className={pgStyles.drawerLessonStats}><span>Score<strong>{valueOrEmpty(lesson.score, "%")}</strong></span><span>Attempts<strong>{valueOrEmpty(lesson.attempts)}</strong></span><span>Failed<strong>{valueOrEmpty(lesson.failedAttempts)}</strong></span><span>Active time<strong>{lesson.activeTimeLabel || "N/A"}</strong></span><span>Hint use<strong>{lesson.hintUsed == null ? "N/A" : lesson.hintUsed ? "Used" : "Not used"}</strong></span><span>Latest activity<strong>{shortDate(lesson.lastActivityAt)}</strong></span></div>{lesson.levels?.length > 0 && <div className={pgStyles.levelList}>{lesson.levels.map((level) => <div key={level.levelKey}><span><strong>{level.title}</strong><small>{level.status} · {level.progress == null ? "Progress N/A" : `${level.progress}% progress`} · {level.attempts == null ? "Attempts N/A" : `${level.attempts} attempts`} · {level.failedAttempts == null ? "Failures N/A" : `${level.failedAttempts} failed`} · {level.hintUsed == null ? "Hint N/A" : level.hintUsed ? "Hint used" : "No hint"}</small></span><b>{level.score == null ? "Score N/A" : `${level.score}%`}</b></div>)}</div>}</details>)}</div>
+      <StudentLessonProgress
+        lessons={studentDetail.details?.lessons || []}
+        accountId={getUser()?.id}
+        classroomId={filters.classroomId}
+        studentId={selectedStudent.studentId}
+        selectedInterruptionLevelKey={selectedInterruptionLevelKey}
+        onToggleInterruptions={toggleInterruptionReport}
+        interruptionControllerRef={interruptionReportControllerRef}
+      />
       <h3>Recent learning activity</h3><div className={pgStyles.lessonDetailList}>{!studentDetail.recentActivity.length ? <div>No recent activity in this window.</div> : studentDetail.recentActivity.map((item) => <div key={`${item.levelKey}-${item.occurredAt}`}><span><strong>{item.lessonTitle}</strong><small>{item.type}</small></span><b>{shortDate(item.occurredAt)}</b></div>)}</div>
     </>}</aside></div>}
   </div>;

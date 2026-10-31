@@ -59,6 +59,19 @@ import {
   initialGameFullscreenInterruptionState,
 } from "./gameFullscreenInterruptionController.js";
 import {
+  createGameInterruptionKey,
+  createGameInterruptionReportingController,
+  initialGameInterruptionReportingState,
+} from "./gameInterruptionReportingController.js";
+import {
+  recordGameInterruptionEvent,
+  startGameInterruptionSession,
+} from "../../services/gameInterruptionReportingService.js";
+import {
+  createGameInterruptionCompletionFlow,
+  createGameInterruptionLifecycleController,
+} from "./gameInterruptionCompletionFlow.js";
+import {
   clearGameCompletionRequest,
   disposeGameOutcomeOperationController,
   ensureGameOutcomeOperationController,
@@ -66,6 +79,7 @@ import {
   invalidateGameOutcomeForReset,
 } from "./gameOutcomeOperationController.js";
 import { GameFullscreenGate } from "./GameFullscreenGate.jsx";
+import { GameCompletionRewards } from "./GameCompletionRewards.jsx";
 
 const DIALOGUE_TYPING_SPEED_MS = 24;
 const MOTION_PREFERENCE_KEY = "sharprunner:game-reduced-motion";
@@ -151,7 +165,7 @@ const formatPhilippineDeadline = (value) => value
     }).format(new Date(value))
   : "";
 
-function GamePage({ levelConfig, classroomId }) {
+function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted = false }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [tutorialUserId] = useState(getTutorialUserId);
@@ -167,6 +181,27 @@ function GamePage({ levelConfig, classroomId }) {
   const fullscreenBgmOwnerRef = useRef(Symbol("game-fullscreen-gate"));
   const fullscreenControllerRef = useRef(null);
   const [fullscreenState, setFullscreenState] = useState(initialGameFullscreenInterruptionState);
+  const [reportingState, setReportingState] = useState(initialGameInterruptionReportingState);
+  const reportingControllerRef = useRef(null);
+  const completionTransportRef = useRef(null);
+  const completionResponseRef = useRef(null);
+  const completionErrorRef = useRef(null);
+  const completionRetryRef = useRef(null);
+  const [completionSaveState, setCompletionSaveState] = useState({
+    status: "idle", error: null, pendingCount: 0,
+  });
+  const completionFlowRef = useRef(null);
+  const interruptionLifecycleRef = useRef(null);
+  if (!interruptionLifecycleRef.current) {
+    interruptionLifecycleRef.current = createGameInterruptionLifecycleController({
+      createReportingController: createGameInterruptionReportingController,
+      createCompletionFlow: createGameInterruptionCompletionFlow,
+      createKey: createGameInterruptionKey,
+    });
+  }
+  const [levelCompleted, setLevelCompleted] = useState(initiallyCompleted);
+  const reportingEnabledRef = useRef(!initiallyCompleted);
+  reportingEnabledRef.current = !levelCompleted;
   const gameplayPermittedRef = useRef(false);
   const pendingEvaluationOutcomeRef = useRef(null);
   const outcomeHandlerRef = useRef(null);
@@ -176,6 +211,11 @@ function GamePage({ levelConfig, classroomId }) {
   useEffect(() => {
     const controller = createGameFullscreenInterruptionController({
       onStateChange: setFullscreenState,
+      onInterruption: (interruption) => {
+        if (reportingEnabledRef.current) {
+          reportingControllerRef.current?.acceptInterruption(interruption);
+        }
+      },
     });
     fullscreenControllerRef.current = controller;
     return () => {
@@ -325,19 +365,65 @@ function GamePage({ levelConfig, classroomId }) {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
     ),
   );
-  const fullscreenGateApplicable = Boolean(
+  const fullscreenScopeApplicable = Boolean(
     gameAccountId != null
     && classroomId != null
     && levelConfig?.progressKey
     && !deadlineExpired
     && !accessRevoked
-    && !gradeModal,
+    && !gradeModal
   );
+  const fullscreenGateApplicable = fullscreenScopeApplicable
+    && !["draining", "saving", "uncertain", "error"].includes(completionSaveState.status);
+  const reportingRequired = !levelCompleted;
 
   useEffect(() => subscribeToAuthChanges(() => {
     outcomeOperationControllerRef.current?.invalidate();
     setGameAccountId(getTutorialUserId());
   }), []);
+
+  useEffect(() => {
+    setLevelCompleted(initiallyCompleted);
+  }, [classroomId, gameAccountId, initiallyCompleted, levelConfig?.progressKey]);
+
+  useEffect(() => {
+    const scope = {
+      accountId: gameAccountId,
+      classroomId,
+      levelKey: levelConfig?.progressKey,
+    };
+    if (gameAccountId == null || classroomId == null || !levelConfig?.progressKey) return undefined;
+    const owned = interruptionLifecycleRef.current.setup({
+      scope,
+      reportingOptions: {
+        startSession: startGameInterruptionSession,
+        recordEvent: recordGameInterruptionEvent,
+        onChange: setReportingState,
+      },
+      completionOptions: {
+        sendCompletion: (payload) => completionTransportRef.current(payload),
+        validateResponse: (payload, requestedScope) => {
+          const completed = getCompletedLevelResult(payload, requestedScope.levelKey);
+          return completed?.isCompleted === true && Number.isFinite(Number(completed.finalScore));
+        },
+        onSuccess: (payload) => { completionResponseRef.current = payload; },
+        onError: (error) => { completionErrorRef.current = error; },
+        onChange: setCompletionSaveState,
+      },
+    });
+    reportingControllerRef.current = owned.reportingController;
+    completionFlowRef.current = owned.completionFlow;
+    completionResponseRef.current = null;
+    completionErrorRef.current = null;
+    if (!levelCompleted) {
+      void owned.reportingController.startSession();
+    }
+    return () => {
+      interruptionLifecycleRef.current.cleanup(owned);
+      if (reportingControllerRef.current === owned.reportingController) reportingControllerRef.current = null;
+      if (completionFlowRef.current === owned.completionFlow) completionFlowRef.current = null;
+    };
+  }, [classroomId, gameAccountId, levelCompleted, levelConfig?.progressKey]);
 
   useEffect(() => {
     const controller = ensureGameOutcomeOperationController(
@@ -351,7 +437,7 @@ function GamePage({ levelConfig, classroomId }) {
 
   useEffect(() => {
     const controller = fullscreenControllerRef.current;
-    if (!fullscreenGateApplicable) {
+    if (!fullscreenScopeApplicable) {
       controller.invalidate();
       return undefined;
     }
@@ -363,7 +449,7 @@ function GamePage({ levelConfig, classroomId }) {
       element: gamePageRef.current,
     });
     return undefined;
-  }, [classroomId, fullscreenGateApplicable, gameAccountId, levelConfig?.progressKey]);
+  }, [classroomId, fullscreenScopeApplicable, gameAccountId, levelConfig?.progressKey]);
 
   useEffect(() => {
     const owner = fullscreenBgmOwnerRef.current;
@@ -388,6 +474,7 @@ function GamePage({ levelConfig, classroomId }) {
   }, [fullscreenState.gameplayPermitted]);
 
   const continueFullscreenGameplay = () => {
+    if (reportingRequired && reportingState.sessionStatus !== "current") return;
     fullscreenOpenerRef.current = document.activeElement;
     const operation = fullscreenControllerRef.current?.continueGameplay();
     if (!operation) return;
@@ -836,24 +923,84 @@ function GamePage({ levelConfig, classroomId }) {
     reportGameActivity(fullscreenState.gameplayPermitted);
   }, [fullscreenState.gameplayPermitted, reportGameActivity]);
 
-  const markLevelAsCompleted = useCallback((activityId) => {
-    if (!levelConfig?.progressKey) {
-      return null;
+  completionTransportRef.current = ({
+    activityId,
+    sourceCode,
+    interruptionEvents,
+    signal,
+  }) => {
+    if (!levelConfig?.progressKey) return Promise.resolve(null);
+    const request = getOrStartGameCompletionRequest(completionRequestRef, () => axios
+      .put(
+        buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}`, classroomId)),
+        {
+          progressPercent: 100,
+          isCompleted: true,
+          sourceCode,
+          activityId,
+          interruptionEvents,
+        },
+        { headers: getGameAuthHeaders(), signal },
+      )
+      .then((response) => response.data));
+    void request.finally(() => {
+      clearGameCompletionRequest(completionRequestRef, request);
+    }).catch(() => {});
+    return request;
+  };
+
+  const presentSavedCompletion = useCallback(async (progressPayload, operation) => {
+    const completedLevel = getCompletedLevelResult(progressPayload, levelConfig.progressKey);
+    const savedScore = Number(completedLevel?.finalScore);
+    if (!completedLevel || !Number.isFinite(savedScore)) {
+      operation.apply(() => setResult({
+        type: "error",
+        message: "Level cleared, but the saved grade could not be loaded. Refresh the page to confirm progress.",
+      }));
+      return false;
     }
 
-    return getOrStartGameCompletionRequest(completionRequestRef, () => axios
-        .put(
-          buildApiUrl(buildExactClassroomProgressUrl(`/api/progress/level/${levelConfig.progressKey}`, classroomId)),
-          {
-            progressPercent: 100,
-            isCompleted: true,
-            sourceCode: code ?? "",
-            activityId,
-          },
-          { headers: getGameAuthHeaders() },
-        )
-        .then((response) => response.data));
-  }, [classroomId, code, levelConfig]);
+    operation.apply(() => {
+      levelSessionActiveRef.current = false;
+      setLevelCompleted(true);
+      const draftKey = getDraftKey(levelConfig);
+      removeGameDraft(getGameStorage(), draftKey);
+      setCurrentXp(progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp);
+    });
+
+    const verifiedClassroomId = Number(classroomId);
+    let authoritativeProgress = progressPayload;
+    if (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0) {
+      try {
+        const progress = await operation.wait(getProgress({ classroomId: verifiedClassroomId }));
+        if (!progress.current) return false;
+        authoritativeProgress = progress.value;
+      } catch {
+        if (!operation.isCurrent()) return false;
+        authoritativeProgress = null;
+      }
+    }
+    if (!operation.isCurrent()) return false;
+    const lessonAction = createGameCompletionAction({ progress: authoritativeProgress, levelConfig });
+    operation.apply(() => setGradeModal({
+      score: savedScore,
+      grade: completedLevel?.grade ?? "B",
+      attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
+      timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
+      isFinalLevel: levelConfig.levelNumber === 30,
+      nextLevelKey: progressPayload.summary?.currentLevelKey === levelConfig.progressKey
+        ? null
+        : progressPayload.summary?.currentLevelKey ?? null,
+      xpAward: progressPayload.xpAward,
+      totalXp: progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? 0,
+      completionDeductions: progressPayload.completionDeductions ?? null,
+      lessonAction,
+      classroomId: authoritativeProgress?.classroomId
+        ?? (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0 ? verifiedClassroomId : null),
+    }));
+    completionRetryRef.current = null;
+    return true;
+  }, [classroomId, currentXp, levelConfig]);
 
   useEffect(() => {
     if (!levelConfig) {
@@ -886,108 +1033,54 @@ function GamePage({ levelConfig, classroomId }) {
         });
 
         if (shouldProceed) {
-          void (async () => {
-            const completionRequest = markLevelAsCompleted(activityId);
-            try {
-              const completion = await operation.wait(completionRequest);
-              if (!completion.current) return;
-              const progressPayload = completion.value;
-              if (!progressPayload) {
-                operation.apply(() => setResult({
-                  type: "error",
-                  message:
-                    "Level cleared, but progress could not be saved. Stay on this page and try again.",
-                }));
-                return;
-              }
-              operation.apply(() => {
-                levelSessionActiveRef.current = false;
-              });
-
-              const completedLevel = getCompletedLevelResult(
-                progressPayload,
-                levelConfig.progressKey,
-              );
-              const savedScore = Number(completedLevel?.finalScore);
-
-              if (!completedLevel || !Number.isFinite(savedScore)) {
-                operation.apply(() => setResult({
-                  type: "error",
-                  message:
-                    "Level cleared, but the saved grade could not be loaded. Refresh the page to confirm progress.",
-                }));
-                return;
-              }
-
-              operation.apply(() => {
-                const draftKey = getDraftKey(levelConfig);
-                removeGameDraft(getGameStorage(), draftKey);
-                setCurrentXp(
-                  progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? currentXp,
-                );
-              });
-
-              const verifiedClassroomId = Number(classroomId);
-              let authoritativeProgress = progressPayload;
-              if (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0) {
-                try {
-                  const progress = await operation.wait(getProgress({ classroomId: verifiedClassroomId }));
-                  if (!progress.current) return;
-                  authoritativeProgress = progress.value;
-                } catch {
-                  if (!operation.isCurrent()) return;
-                  authoritativeProgress = null;
-                }
-              }
-              if (!operation.isCurrent()) return;
-              const lessonAction = createGameCompletionAction({
-                progress: authoritativeProgress,
-                levelConfig,
-              });
-
-              operation.apply(() => setGradeModal({
-                score: savedScore,
-                grade: completedLevel?.grade ?? "B",
-                attempts: completedLevel?.attemptCount ?? failedAttemptsRef.current,
-                timeSeconds: completedLevel?.timeSpentSeconds ?? elapsedSecondsRef.current,
-                isFinalLevel: levelConfig.levelNumber === 30,
-                nextLevelKey:
-                  progressPayload.summary?.currentLevelKey === levelConfig.progressKey
-                    ? null
-                    : progressPayload.summary?.currentLevelKey ?? null,
-                xpEarned: progressPayload.xpAward?.amount ?? 0,
-                totalXp: progressPayload.xpAward?.totalXp ?? progressPayload.summary?.xp ?? 0,
-                xpBreakdown: progressPayload.xpAward?.breakdown ?? [],
-                lessonAction,
-                classroomId: authoritativeProgress?.classroomId
-                  ?? (Number.isSafeInteger(verifiedClassroomId) && verifiedClassroomId > 0 ? verifiedClassroomId : null),
-              }));
-            } catch (error) {
-              if (!operation.isCurrent()) return;
-              if (handleStaleAccessError(error, "completion-save")) return;
-              if (error.response?.data?.code === "DEADLINE_PASSED") {
-                operation.apply(() => {
-                  levelSessionActiveRef.current = false;
-                  setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
-                  setDeadlineExpired(true);
-                });
-                outcomeOperationControllerRef.current?.invalidate();
-                return;
-              }
-              console.error(
-                `Failed to save progress for level ${levelConfig.levelNumber}`,
-                error,
-              );
-              operation.apply(() => setResult({
-                type: "error",
-                message: "Level cleared, but progress could not be saved. Stay on this page and try again.",
-              }));
-            } finally {
-              operation.apply(() => {
-                clearGameCompletionRequest(completionRequestRef, completionRequest);
-              });
+          const runCompletionSave = async (saveOperation, retry = false) => {
+            completionErrorRef.current = null;
+            const saved = await saveOperation.wait(
+              retry
+                ? completionFlowRef.current.retry()
+                : completionFlowRef.current.begin({
+                  activityId,
+                  sourceCode: code ?? "",
+                  reportingRequired,
+                }),
+            );
+            if (!saved.current) return false;
+            if (saved.value) {
+              const progressPayload = completionResponseRef.current;
+              return presentSavedCompletion(progressPayload, saveOperation);
             }
-          })();
+
+            const error = completionErrorRef.current;
+            if (error && handleStaleAccessError(error, "completion-save")) return false;
+            if (error?.response?.data?.code === "DEADLINE_PASSED") {
+              saveOperation.apply(() => {
+                levelSessionActiveRef.current = false;
+                setEffectiveDueAt(error.response.data.effectiveDueAt ?? null);
+                setDeadlineExpired(true);
+              });
+              outcomeOperationControllerRef.current?.invalidate();
+              return false;
+            }
+            const saveState = completionFlowRef.current.getState();
+            saveOperation.apply(() => setResult({
+              type: "error",
+              message: saveState.status === "draining"
+                ? "Level cleared. Finish saving pending interruption reports, then retry completion without running the code again."
+                : saveState.error?.message
+                  ?? "Level cleared, but progress could not be saved. Retry this completion without running the code again.",
+            }));
+            completionRetryRef.current = () => {
+              const retryOperation = outcomeOperationControllerRef.current?.begin();
+              return retryOperation ? runCompletionSave(retryOperation, true) : Promise.resolve(false);
+            };
+            return false;
+          };
+
+          // The completion boundary closes reporting intake and fullscreen
+          // synchronously. Later browser signals cannot fall outside the batch.
+          gameplayPermittedRef.current = false;
+          fullscreenControllerRef.current?.beginCompletionBoundary();
+          void runCompletionSave(operation);
         }
 
         return;
@@ -1030,7 +1123,7 @@ function GamePage({ levelConfig, classroomId }) {
       pendingEvaluationOutcomeRef.current = null;
       clearNextLevelTimer();
     };
-  }, [classroomId, clearNextLevelTimer, code, currentXp, gameAccountId, handleStaleAccessError, levelConfig, markLevelAsCompleted, mergedLevelConfig, syncHintState]);
+  }, [classroomId, clearNextLevelTimer, code, gameAccountId, handleStaleAccessError, levelConfig, mergedLevelConfig, presentSavedCompletion, reportingRequired, syncHintState]);
 
   const resultClassName = useMemo(() => {
     if (result.type === "success") {
@@ -1233,6 +1326,11 @@ function GamePage({ levelConfig, classroomId }) {
       outcomeOperationControllerRef.current,
       completionRequestRef,
     );
+    completionFlowRef.current?.reset();
+    fullscreenControllerRef.current?.resetCompletionBoundary();
+    completionRetryRef.current = null;
+    completionResponseRef.current = null;
+    completionErrorRef.current = null;
     cancelEvaluation(evaluationLifecycleRef.current, evaluationActivityIdRef);
     removeGameDraft(getGameStorage(), draftKey);
     setCode(defaultCode);
@@ -1930,6 +2028,37 @@ function GamePage({ levelConfig, classroomId }) {
               )}
             </div>
             <div className={resultClassName} data-game-tutorial-target="feedback" role="status" aria-live="polite">{result.message}</div>
+            {["draining", "uncertain", "error"].includes(completionSaveState.status) && (
+              <section className={styles.completionSaveRecovery} aria-label="Completion save recovery">
+                <p>
+                  {completionSaveState.status === "draining"
+                    ? `Pending interruption reports must drain before completion (${reportingState.pendingCount} remaining).`
+                    : completionSaveState.error?.message ?? "The completion has not been confirmed."}
+                </p>
+                <p>Your successful code result is preserved. Retrying does not run the level again.</p>
+                <div>
+                  {reportingState.deliveryError ? (
+                    <button
+                      type="button"
+                      className={styles.fullscreenGateContinue}
+                      onClick={() => { void reportingControllerRef.current?.retryEvents(); }}
+                    >
+                      Retry pending reports
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className={styles.fullscreenGateContinue}
+                    onClick={() => { void completionRetryRef.current?.(); }}
+                  >
+                    Retry saving completion
+                  </button>
+                  <button type="button" className={styles.fullscreenGateLeave} onClick={exitButton}>
+                    Leave level
+                  </button>
+                </div>
+              </section>
+            )}
           </div>
         </div>
 
@@ -2045,16 +2174,11 @@ function GamePage({ levelConfig, classroomId }) {
               <div className={styles.gradeScoreLabel}>/ 100</div>
             </div>
 
-            <div className={styles.gradeXp}>
-              &#10022; +{gradeModal.xpEarned} XP earned · {gradeModal.totalXp} total XP
-            </div>
-            {gradeModal.xpBreakdown?.length > 0 && (
-              <div className={styles.gradeXpBreakdown}>
-                {gradeModal.xpBreakdown.map((item) => (
-                  <span key={item.key}>+{item.amount} {item.label}</span>
-                ))}
-              </div>
-            )}
+            <GameCompletionRewards
+              xpAward={gradeModal.xpAward}
+              completionDeductions={gradeModal.completionDeductions}
+              totalXp={gradeModal.totalXp}
+            />
 
             <div className={styles.gradeStats}>
               <div className={styles.gradeStat}>
@@ -2133,8 +2257,12 @@ function GamePage({ levelConfig, classroomId }) {
         <GameFullscreenGate
           ref={fullscreenContinueRef}
           state={fullscreenState}
+          reportingState={reportingState}
+          reportingRequired={reportingRequired}
           onContinue={continueFullscreenGameplay}
           onLeave={exitButton}
+          onRetrySession={() => { void reportingControllerRef.current?.retrySession(); }}
+          onRetryEvents={() => { void reportingControllerRef.current?.retryEvents(); }}
         />
       )}
     </div>

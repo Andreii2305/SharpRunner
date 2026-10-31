@@ -3,6 +3,8 @@ const { PLAYABLE_LEVEL_KEYS } = require("../constants/progressDefaults");
 
 const DEFAULT_WRONG_ATTEMPT_DEDUCTION = 5;
 const DEFAULT_LATE_DEDUCTION_PER_DAY = 3;
+const DEFAULT_INTERRUPTION_SCORE_DEDUCTION = 1;
+const DEFAULT_INTERRUPTION_XP_DEDUCTION = 10;
 const { DEFAULT_HINT_UNLOCK_THRESHOLD } = require("../constants/gamificationConfig");
 
 const toNumber = (value, fallback) => {
@@ -42,6 +44,14 @@ const getClassroomLevelSettings = async (classroomId, { transaction } = {}) => {
         row?.lateDeductionPerDay,
         DEFAULT_LATE_DEDUCTION_PER_DAY,
       ),
+      interruptionScoreDeduction: toNumber(
+        row?.interruptionScoreDeduction,
+        DEFAULT_INTERRUPTION_SCORE_DEDUCTION,
+      ),
+      interruptionXpDeduction: toNumber(
+        row?.interruptionXpDeduction,
+        DEFAULT_INTERRUPTION_XP_DEDUCTION,
+      ),
       validatorConfig: row?.validatorConfig ?? null,
     };
   }).sort((a, b) => a.displayOrder - b.displayOrder);
@@ -50,5 +60,7 @@ const getClassroomLevelSettings = async (classroomId, { transaction } = {}) => {
 module.exports = {
   DEFAULT_WRONG_ATTEMPT_DEDUCTION,
   DEFAULT_LATE_DEDUCTION_PER_DAY,
+  DEFAULT_INTERRUPTION_SCORE_DEDUCTION,
+  DEFAULT_INTERRUPTION_XP_DEDUCTION,
   getClassroomLevelSettings,
 };

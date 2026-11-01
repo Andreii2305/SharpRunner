@@ -370,6 +370,18 @@ const createGameInterruptionCompletionService = ({
         transaction,
         lock,
       });
+      const settlementNow = timestampMilliseconds(now());
+      const currentSessionStartedAt = sessions
+        .filter((session) => session.lifecycleStatus === GAME_INTERRUPTION_SESSION_STATUS.CURRENT)
+        .map((session) => timestampMilliseconds(session.startedAt));
+      if (settlementNow == null || currentSessionStartedAt.some((value) => value == null)) {
+        fail(500, "SERVER_ERROR", "Server error");
+      }
+      const completionSettledAt = new Date(Math.max(
+        completionOccurredAt.getTime(),
+        settlementNow,
+        ...currentSessionStartedAt,
+      ));
       const sessionById = new Map(exactSessions.map((session) => [Number(session.id), session]));
       const attemptCount = Math.max(0, Number(progress.attemptCount) || 0);
       const timeSpentSeconds = Math.max(0, Number(progress.timeSpentSeconds) || 0);
@@ -401,7 +413,7 @@ const createGameInterruptionCompletionService = ({
           };
         }),
       });
-      const completedAt = progress.completedAt ?? completionOccurredAt;
+      const completedAt = completionSettledAt;
       const evidenceRecord = await models.GameInterruptionCompletionEvidence.create({
         studentId: actorId,
         classroomId,
@@ -420,11 +432,10 @@ const createGameInterruptionCompletionService = ({
       const applicationById = new Map(
         calculation.eventApplications.map((item) => [Number(item.eventId), item]),
       );
-      const appliedAt = now();
       for (const eventRecord of events) {
         const application = applicationById.get(Number(eventRecord.id));
         if (!application) fail(409, "COMPLETION_INTEGRITY_ERROR", "Completion record could not be verified");
-        eventRecord.appliedAt = appliedAt;
+        eventRecord.appliedAt = completionSettledAt;
         eventRecord.appliedScoreDeduction = application.appliedScoreDeduction;
         eventRecord.appliedXpDeduction = application.appliedXpDeduction;
         eventRecord.completionEvidenceId = evidenceRecord.id;

@@ -6,9 +6,85 @@ const { DataTypes, Sequelize } = require("sequelize");
 const {
   createGameInterruptionCompletionService,
 } = require("../src/services/gameInterruptionCompletionService");
+const {
+  buildEventDedupeKey,
+} = require("../src/services/learningAnalyticsEventService");
 
 const databaseUrl = process.env.GAME_INTERRUPTION_COMPLETION_DATABASE_URL;
 const postgresTest = databaseUrl ? test : test.skip;
+
+const createTestAnalyticsCallbacks = (LearningAnalyticsEvent) => ({
+  completionAnalyticsRecorder: (input, { transaction } = {}) => (
+    LearningAnalyticsEvent.create({
+      studentId: input.studentId,
+      classroomId: input.classroomId,
+      levelKey: input.levelKey,
+      lessonKey: input.levelKey.replace(/-level-\d+$/, ""),
+      eventType: "level_completed",
+      occurredAt: input.occurredAt,
+      attemptNumber: input.attemptNumber,
+      score: input.score,
+      dedupeKey: buildEventDedupeKey("level-completed", [
+        input.studentId,
+        input.levelKey,
+      ]),
+    }, { transaction })
+  ),
+  completionAnalyticsFinder: (dedupeKey, { transaction } = {}) => (
+    LearningAnalyticsEvent.findOne({ where: { dedupeKey }, transaction })
+  ),
+});
+
+test("focused completion analytics callbacks persist and find the production dedupe identity transactionally", async () => {
+  const transaction = { id: "completion-analytics-transaction" };
+  const created = [];
+  const finds = [];
+  const LearningAnalyticsEvent = {
+    create: async (values, options) => {
+      created.push({ values, options });
+      return values;
+    },
+    findOne: async (options) => {
+      finds.push(options);
+      return created.find(
+        ({ values }) => values.dedupeKey === options.where.dedupeKey,
+      )?.values ?? null;
+    },
+  };
+  const callbacks = createTestAnalyticsCallbacks(LearningAnalyticsEvent);
+  const occurredAt = new Date("2026-10-30T08:15:30.123Z");
+
+  await callbacks.completionAnalyticsRecorder({
+    studentId: 720011,
+    classroomId: 720025,
+    levelKey: "tutorial-level-1",
+    attemptNumber: 3,
+    score: "94.00",
+    occurredAt,
+  }, { transaction });
+  const dedupeKey = buildEventDedupeKey("level-completed", [
+    720011,
+    "tutorial-level-1",
+  ]);
+  const found = await callbacks.completionAnalyticsFinder(dedupeKey, { transaction });
+
+  assert.deepEqual(created, [{
+    values: {
+      studentId: 720011,
+      classroomId: 720025,
+      levelKey: "tutorial-level-1",
+      lessonKey: "tutorial",
+      eventType: "level_completed",
+      occurredAt,
+      attemptNumber: 3,
+      score: "94.00",
+      dedupeKey,
+    },
+    options: { transaction },
+  }]);
+  assert.deepEqual(finds, [{ where: { dedupeKey }, transaction }]);
+  assert.equal(found, created[0].values);
+});
 
 postgresTest("cross-classroom first completions serialize to one immutable PostgreSQL result", async () => {
   const parsed = new URL(databaseUrl);
@@ -107,6 +183,26 @@ postgresTest("cross-classroom first completions serialize to one immutable Postg
     appliedScoreDeduction: DataTypes.DECIMAL(5, 2),
     appliedXpDeduction: DataTypes.INTEGER,
   });
+  const LearningAnalyticsEvent = define("LearningAnalyticsEvents", {
+    id: {
+      type: DataTypes.BIGINT,
+      allowNull: false,
+      autoIncrement: true,
+      primaryKey: true,
+    },
+    studentId: { type: DataTypes.INTEGER, allowNull: false },
+    classroomId: { type: DataTypes.INTEGER, allowNull: true },
+    levelKey: { type: DataTypes.STRING(255), allowNull: false },
+    lessonKey: { type: DataTypes.STRING(120), allowNull: false },
+    eventType: { type: DataTypes.STRING(40), allowNull: false },
+    occurredAt: { type: DataTypes.DATE, allowNull: false },
+    attemptNumber: { type: DataTypes.INTEGER, allowNull: true },
+    score: { type: DataTypes.FLOAT, allowNull: true },
+    dedupeKey: { type: DataTypes.STRING(96), allowNull: false },
+  }, {
+    updatedAt: false,
+    indexes: [{ unique: true, fields: ["dedupeKey"] }],
+  });
   const models = {
     Classroom,
     ClassroomMembership,
@@ -181,6 +277,8 @@ postgresTest("cross-classroom first completions serialize to one immutable Postg
         completionAward: { netAmount: evidence.netCompletionXp, breakdown: [] },
       };
     };
+    const analyticsCallbacks = createTestAnalyticsCallbacks(LearningAnalyticsEvent);
+    let analyticsFindCount = 0;
     const service = createGameInterruptionCompletionService({
       database,
       models,
@@ -190,7 +288,11 @@ postgresTest("cross-classroom first completions serialize to one immutable Postg
       completionXpBuilder: () => ({ total: 25 }),
       xpAwarder,
       progressSessionPauser: async () => undefined,
-      completionAnalyticsRecorder: async () => undefined,
+      completionAnalyticsRecorder: analyticsCallbacks.completionAnalyticsRecorder,
+      completionAnalyticsFinder: (...args) => {
+        analyticsFindCount += 1;
+        return analyticsCallbacks.completionAnalyticsFinder(...args);
+      },
       scoreCalculator: () => 95,
       parTimeLoader: () => 60,
     });
@@ -209,8 +311,37 @@ postgresTest("cross-classroom first completions serialize to one immutable Postg
       service.completeLevel(input(720026)),
     ]);
     assert.equal(results.filter((result) => result.completedNow).length, 1);
+    assert.equal(results.filter((result) => !result.completedNow).length, 1);
+    assert.equal(analyticsFindCount, 1);
     assert.equal(new Set(results.map((result) => result.completionDeductions.classroomId)).size, 1);
-    assert.equal(await GameInterruptionCompletionEvidence.count(), 1);
+    const evidenceRows = await GameInterruptionCompletionEvidence.findAll();
+    assert.equal(evidenceRows.length, 1);
+    const evidence = evidenceRows[0].get({ plain: true });
+    const analyticsRows = await LearningAnalyticsEvent.findAll();
+    assert.equal(analyticsRows.length, 1);
+    const analytics = analyticsRows[0].get({ plain: true });
+    assert.equal(Number(analytics.studentId), Number(evidence.studentId));
+    assert.equal(Number(analytics.classroomId), Number(evidence.classroomId));
+    assert.equal(analytics.levelKey, evidence.levelKey);
+    assert.equal(analytics.lessonKey, "tutorial");
+    assert.equal(analytics.eventType, "level_completed");
+    assert.equal(analytics.attemptNumber, 1);
+    assert.equal(Number(analytics.score), Number(evidence.finalScore));
+    assert.equal(analytics.occurredAt.getTime(), evidence.completedAt.getTime());
+    assert.equal(
+      analytics.dedupeKey,
+      buildEventDedupeKey("level-completed", [720011, "tutorial-level-1"]),
+    );
+    const persistedProgress = await UserProgress.findOne({
+      where: { userId: 720011, levelKey: "tutorial-level-1" },
+    });
+    assert.equal(persistedProgress.isCompleted, true);
+    assert.equal(Number(persistedProgress.finalScore), Number(evidence.finalScore));
+    assert.equal(persistedProgress.completedAt.getTime(), evidence.completedAt.getTime());
+    assert.equal(persistedProgress.xpAwarded, evidence.netCompletionXp);
+    assert.ok(persistedProgress.xpAwardedAt instanceof Date);
+    const persistedStudent = await User.findByPk(720011);
+    assert.equal(persistedStudent.xpTotal, evidence.netCompletionXp);
     assert.equal(await GameInterruptionSession.count({ where: { lifecycleStatus: "CURRENT" } }), 0);
   } finally {
     await database.dropSchema(schema, { cascade: true });

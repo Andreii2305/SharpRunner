@@ -10,6 +10,12 @@ const {
 const LEVEL_KEY = "tutorial-level-1";
 const COMPLETED_AT = new Date("2026-10-29T08:00:00.000Z");
 
+const deferred = () => {
+  let resolve;
+  const promise = new Promise((onResolve) => { resolve = onResolve; });
+  return { promise, resolve };
+};
+
 const row = (values, state, kind) => ({
   ...values,
   get() {
@@ -37,10 +43,12 @@ const createHarness = ({
   events = [], sessions = [], evidence = null, progressValues = {}, userValues = {},
   classroomValues = {}, membershipValues = {}, access = { allowed: true, effectiveDueAt: null },
   analyticsRecord: analyticsRecordInput = undefined, failAt = null,
+  settlementAt = COMPLETED_AT, beforeSessionRead = null,
 } = {}) => {
   const state = {
     writes: [], transactionCount: 0, analyticsWrites: 0, xpCalls: 0,
     pendingCalls: 0, pendingEntries: [], evidenceRows: [], reads: [], failAt,
+    accessNow: null, scoreInput: null,
   };
   const classroom = row({ id: 25, isActive: true, ...classroomValues }, state, "classroom");
   const membership = row({ id: 7, classroomId: 25, studentId: 11, status: "active", ...membershipValues }, state, "membership");
@@ -51,7 +59,10 @@ const createHarness = ({
     hintUsed: false, activeSessionId: null, finalScore: null, xpAwarded: 0,
     xpAwardedAt: null, ...progressValues,
   }, state, "progress");
-  const sessionRows = sessions.map((values) => row(values, state, "session"));
+  const sessionRows = sessions.map((values) => row({
+    startedAt: new Date(COMPLETED_AT.getTime() - 1000),
+    ...values,
+  }, state, "session"));
   const eventRows = events.map((values) => row({
     appliedAt: null, appliedScoreDeduction: null, appliedXpDeduction: null,
     completionEvidenceId: null, ...values,
@@ -112,6 +123,13 @@ const createHarness = ({
     GameInterruptionSession: {
       findAll: async () => {
         state.reads.push("sessions");
+        if (beforeSessionRead) {
+          await beforeSessionRead({
+            addSession(values) {
+              sessionRows.push(row(values, state, "session"));
+            },
+          });
+        }
         return sessionRows.slice().sort((left, right) => left.id - right.id);
       },
     },
@@ -204,7 +222,10 @@ const createHarness = ({
     settingsLoader: async () => [{
       levelKey: LEVEL_KEY, isEnabled: true, wrongAttemptDeduction: 5, lateDeductionPerDay: 3,
     }],
-    accessLoader: async () => access,
+    accessLoader: async (input) => {
+      state.accessNow = input.now;
+      return access;
+    },
     pendingEventRecorder,
     completionXpBuilder: () => ({ total: 25 }),
     completionAnalyticsFinder: async () => state.analyticsRecord ?? null,
@@ -221,10 +242,13 @@ const createHarness = ({
         occurredAt: values.occurredAt,
       };
     },
-    scoreCalculator: () => 95,
+    scoreCalculator: (input) => {
+      state.scoreInput = input;
+      return 95;
+    },
     parTimeLoader: () => 60,
     xpAwarder,
-    now: () => COMPLETED_AT,
+    now: () => settlementAt,
   });
   const complete = (overrides = {}) => service.completeLevel({
     actorId: 11, actorRole: "student", classroomId: 25,
@@ -271,6 +295,53 @@ test("pending events are inserted then applied in the same completion transactio
   assert.equal(harness.eventRows.length, 1);
   assert.equal(harness.eventRows[0].completionEvidenceId, 40);
   assert.equal(harness.state.pendingCalls, 1);
+});
+
+test("completion separates request-time deadline evaluation from lock-safe settlement time", async () => {
+  const sessionStartedAt = new Date(COMPLETED_AT.getTime() + 5000);
+  const settlementAt = new Date(COMPLETED_AT.getTime() + 10000);
+  const sessionReadEntered = deferred();
+  const releaseSessionRead = deferred();
+  const harness = createHarness({
+    settlementAt,
+    beforeSessionRead: async ({ addSession }) => {
+      sessionReadEntered.resolve();
+      await releaseSessionRead.promise;
+      addSession({
+        id: 2,
+        studentId: 11,
+        classroomId: 25,
+        levelKey: LEVEL_KEY,
+        lifecycleStatus: "CURRENT",
+        scoreDeductionSnapshot: "1.00",
+        xpDeductionSnapshot: 10,
+        startedAt: sessionStartedAt,
+        supersededAt: null,
+        completedAt: null,
+      });
+    },
+  });
+
+  const completion = harness.complete({
+    classroomWasExplicit: true,
+    interruptionEvents: [{
+      sessionId: 2,
+      eventKey: "settlement_race_event",
+      eventType: "hidden",
+    }],
+  });
+  await sessionReadEntered.promise;
+  releaseSessionRead.resolve();
+  await completion;
+
+  assert.equal(harness.state.accessNow.getTime(), COMPLETED_AT.getTime());
+  assert.equal(harness.state.scoreInput.completedAt.getTime(), COMPLETED_AT.getTime());
+  assert.equal(harness.state.evidenceRows[0].completedAt.getTime(), settlementAt.getTime());
+  assert.equal(harness.progress.completedAt.getTime(), settlementAt.getTime());
+  assert.equal(harness.state.analyticsRecord.occurredAt.getTime(), settlementAt.getTime());
+  assert.equal(harness.sessionRows[0].completedAt.getTime(), settlementAt.getTime());
+  assert.equal(harness.eventRows[0].appliedAt.getTime(), settlementAt.getTime());
+  assert.ok(harness.sessionRows[0].completedAt >= sessionStartedAt);
 });
 
 test("all exact-classroom current and superseded events use snapshotted mixed rates", async () => {

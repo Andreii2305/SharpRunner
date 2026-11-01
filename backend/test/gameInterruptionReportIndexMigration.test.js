@@ -11,6 +11,49 @@ const { migrations } = require("../src/services/migrationService");
 const migrationName = "20261031120000_game_interruption_report_index";
 const migrationPath = path.resolve(__dirname, `../../supabase/migrations/${migrationName}.sql`);
 
+const assertReportIndexTargetIdentity = (identity, expectedDatabase) => {
+  assert.deepEqual(identity, {
+    database: expectedDatabase,
+    address: identity.address,
+  });
+  assert.ok(["127.0.0.1", "::1"].includes(identity.address));
+};
+
+test("report-index PostgreSQL identity accepts only normalized loopback results", () => {
+  const identity = {
+    database: "sharprunner_game_interruption_full_rehearsal_test",
+    address: "127.0.0.1",
+  };
+
+  assert.doesNotThrow(() => assertReportIndexTargetIdentity(identity, identity.database));
+  assert.doesNotThrow(() => assertReportIndexTargetIdentity(
+    { ...identity, address: "::1" },
+    identity.database,
+  ));
+
+  for (const address of [
+    "10.0.0.4",
+    null,
+    undefined,
+    "",
+    "127.0.0.1/32",
+    "::1/128",
+    "localhost",
+  ]) {
+    assert.throws(() => assertReportIndexTargetIdentity(
+      { ...identity, address },
+      identity.database,
+    ));
+  }
+  for (const malformed of [null, undefined, {}, []]) {
+    assert.throws(() => assertReportIndexTargetIdentity(malformed, identity.database));
+  }
+  assert.throws(() => assertReportIndexTargetIdentity(
+    { ...identity, database: "sharprunner_browser_test" },
+    identity.database,
+  ));
+});
+
 test("report history index is forward-only registered after interruption evidence and matches the model", async () => {
   assert.equal(fs.existsSync(migrationPath), true);
   const sql = fs.readFileSync(migrationPath, "utf8");
@@ -64,14 +107,14 @@ postgresTest("report history index is rerunnable against the registered schema o
   await client.connect();
   try {
     const identity = await client.query(
-      "SELECT current_database() AS database, inet_server_addr()::text AS address",
+      "SELECT current_database() AS database, host(inet_server_addr()) AS address",
     );
-    assert.equal(identity.rows[0].database, databaseName);
-    assert.ok(["127.0.0.1", "::1"].includes(identity.rows[0].address));
+    assertReportIndexTargetIdentity(identity.rows[0], databaseName);
     const prerequisite = await client.query(`
-      SELECT to_regclass('public."GameInterruptionEvents"') AS events_table
+      SELECT to_regclass('public."GameInterruptionEvents"') IS NOT NULL
+        AS table_exists
     `);
-    assert.equal(prerequisite.rows[0].events_table, "GameInterruptionEvents");
+    assert.equal(prerequisite.rows[0].table_exists, true);
 
     const sql = fs.readFileSync(migrationPath, "utf8");
     await client.query(sql);

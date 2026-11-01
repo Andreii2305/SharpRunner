@@ -14,6 +14,29 @@ const migrationPath = path.resolve(
   __dirname,
   `../../supabase/migrations/${migrationName}.sql`,
 );
+const IMMUTABLE_XP_TRANSACTION_MESSAGE = "Evidence-linked XP transaction is immutable";
+
+const isRetainedUserDeleteError = (error) => error?.code === "23503"
+  || (error?.code === "P0001" && error?.message === IMMUTABLE_XP_TRANSACTION_MESSAGE);
+
+test("retained-user deletion accepts only the intended PostgreSQL errors", () => {
+  assert.equal(isRetainedUserDeleteError({ code: "23503", message: "foreign key violation" }), true);
+  assert.equal(isRetainedUserDeleteError({
+    code: "P0001",
+    message: "Evidence-linked XP transaction is immutable",
+  }), true);
+
+  for (const error of [
+    { code: "P0001", message: "Another trigger rejected the delete" },
+    { code: "23505", message: "Evidence-linked XP transaction is immutable" },
+    { code: "23503x", message: "foreign key violation" },
+    { message: "Evidence-linked XP transaction is immutable" },
+    null,
+    undefined,
+  ]) {
+    assert.equal(isRetainedUserDeleteError(error), false);
+  }
+});
 
 const evidenceInput = (extra = {}) => ({
   studentId: 11,
@@ -381,7 +404,28 @@ postgresTest("completion evidence migration is rerunnable and enforces cross-tab
       'UPDATE "XpTransactions" SET "completionEvidenceId" = NULL WHERE "completionEvidenceId" = $1',
       [evidenceId],
     ), /immutable/i);
-    await assert.rejects(client.query('DELETE FROM "Users" WHERE "id" = 1'), /foreign key/i);
+    await assert.rejects(
+      client.query('DELETE FROM "Users" WHERE "id" = 1'),
+      isRetainedUserDeleteError,
+    );
+    const retainedHistory = await client.query(`
+      SELECT
+        EXISTS(SELECT 1 FROM "Users" WHERE "id" = 1) AS "userExists",
+        (SELECT COUNT(*)::int FROM "GameInterruptionSessions" WHERE "id" = $1) AS "sessionCount",
+        (SELECT COUNT(*)::int FROM "GameInterruptionEvents" WHERE "id" = $2
+          AND "completionEvidenceId" = $3) AS "eventCount",
+        (SELECT COUNT(*)::int FROM "GameInterruptionCompletionEvidence" WHERE "id" = $3
+          AND "studentId" = 1) AS "evidenceCount",
+        (SELECT COUNT(*)::int FROM "XpTransactions" WHERE "completionEvidenceId" = $3
+          AND "userId" = 1) AS "xpTransactionCount"
+    `, [session.rows[0].id, event.rows[0].id, evidenceId]);
+    assert.deepEqual(retainedHistory.rows[0], {
+      userExists: true,
+      sessionCount: 1,
+      eventCount: 1,
+      evidenceCount: 1,
+      xpTransactionCount: 1,
+    });
     await assert.rejects(client.query('DELETE FROM "Classrooms" WHERE "id" = 10'), /foreign key/i);
   } finally {
     await client.end();

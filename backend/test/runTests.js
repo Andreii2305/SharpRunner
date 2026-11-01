@@ -46,6 +46,8 @@ require("./gameInterruptionCompletionXp.test");
 require("./gameInterruptionCompletionService.test");
 require("./gameInterruptionCompletionService.postgres.test");
 require("./gameInterruptionFullStack.postgres.test");
+require("./gameInterruptionUpgradePath.postgres.test");
+require("./gameInterruptionPrivileges.postgres.test");
 require("./postgresWorkerHarness.test");
 require("./gameInterruptionSessionService.test");
 require("./gameInterruptionSessionService.postgres.test");

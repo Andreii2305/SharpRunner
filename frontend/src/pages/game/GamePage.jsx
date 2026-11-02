@@ -49,6 +49,7 @@ import { focusDialog, handleDialogKeyDown, restoreDialogFocus } from "../../util
 import {
   GAMEPLAY_TABS,
   cancelEvaluation,
+  commitIntentionalGameExit,
   createEvaluationLifecycle,
   dispatchEvaluation,
   getNextGameplayTab,
@@ -1199,7 +1200,10 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
   }, []);
 
   const exitButton = () => {
-    navigate("/dashboard");
+    commitIntentionalGameExit({
+      fullscreenController: fullscreenControllerRef.current,
+      navigate,
+    });
   };
 
   const openBasicHint = async () => {

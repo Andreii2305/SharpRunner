@@ -45,6 +45,17 @@ export const cancelEvaluation = (lifecycle, activityRef) => {
   lifecycle.finish();
 };
 
+export const commitIntentionalGameExit = ({
+  fullscreenController,
+  navigate,
+  destination = "/dashboard",
+} = {}) => {
+  if (typeof navigate !== "function") return false;
+  fullscreenController?.invalidate?.();
+  navigate(destination);
+  return true;
+};
+
 export const shouldAcceptEvaluationOutcome = ({
   outcomeLevelNumber,
   currentLevelNumber,

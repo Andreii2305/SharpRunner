@@ -263,9 +263,11 @@ PostgreSQL database. It does not need a Supabase API key.
    - `DATABASE_URL`: the Supabase Session pooler URI.
    - `FRONTEND_URL`: the exact deployed frontend origin, without a trailing slash
      (for example, `https://your-app.vercel.app`).
-   The Blueprint keeps the database connection encrypted but disables Node's CA
-   chain verification because the Supabase pooler presents a certificate chain
-   that Render's Node runtime does not trust by default.
+   The Blueprint requires TLS certificate and hostname verification. Provision
+   the authentic Supabase CA as the Render secret file `supabase-ca.pem` before
+   starting the service; `NODE_EXTRA_CA_CERTS=/etc/secrets/supabase-ca.pem` adds
+   it to Node's trust store. Keep `DB_SSL=true` and
+   `DB_SSL_REJECT_UNAUTHORIZED=true`; do not add conflicting SSL URL options.
 4. After deployment, verify
    `https://sharprunner-api-andreii2305.onrender.com/api/health`. It should return
    `{"status":"ok","database":"connected"}`. The first startup creates the
@@ -282,6 +284,40 @@ https://YOUR-RENDER-SERVICE.onrender.com/api/auth/google/callback
 
 `BACKEND_URL` is optional on Render because the app uses Render's built-in
 `RENDER_EXTERNAL_URL`. Set it explicitly only when using a custom backend domain.
+
+### Public testimonial configuration and controlled releases
+
+Configure these backend-only variables in Render before releasing testimonial
+authoring (safe placeholders are documented in `backend/.env.example`):
+
+- `PUBLIC_TESTIMONIAL_CONSENT_VERSION`: approved identifier, 1-64 characters.
+- `PUBLIC_TESTIMONIAL_CONSENT_TEXT`: approved publication disclosure, 1-2000
+  Unicode characters, without leading/trailing whitespace or NUL characters.
+- `PUBLIC_TESTIMONIAL_NAME_PREVIEW_SECRET`: independent cryptographically random
+  256-bit secret, generated securely in a password manager or secret-management
+  system. Never commit it or put it in frontend `VITE_*` variables.
+
+All three are required for consent options and testimonial create/edit requests;
+missing or invalid configuration fails closed with
+`503 TESTIMONIAL_CONSENT_UNAVAILABLE`, without preventing backend startup.
+Change the consent version whenever disclosure text changes. Keep the secret
+stable across deployments; rotation invalidates outstanding consent/name previews.
+
+For the existing production services, do not recreate the Blueprint. The API
+declares `autoDeployTrigger: off` for the controlled release. Blueprint Auto Sync
+is a separate dashboard control and must remain disabled until explicitly
+approved. A manual Blueprint sync can change configuration or trigger deployment;
+it is not a required step merely to deploy a selected commit. Existing secrets
+and the CA secret file remain dashboard-managed; `DB_SSL_CA` is not supported.
+Uploading/changing a Render secret file can itself trigger a deployment.
+
+Require an accepted encrypted production backup before starting pending
+migrations. Deploy the backend once with a single migration runner, verify the
+exact expected migration registry as well as API readiness, and only then promote
+the frontend in Vercel. Keep production-domain auto-assignment disabled until that
+gate passes. A Git push can still build a staged Vercel deployment; it must not
+automatically release the frontend. Startup migrations may commit before a later
+failure, so never assume rolling back application code rolls back the database.
 
 ### Moving existing Railway data
 

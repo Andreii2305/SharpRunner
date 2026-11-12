@@ -29,6 +29,7 @@ const {
   getPolicyStatus,
 } = require("../constants/policyVersions");
 const { logAdminActivity } = require("../services/adminActivityLogService");
+const { transition: transitionAccountStatus } = require("../services/accountStatusTransitionService");
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -100,6 +101,78 @@ const verifyCodeRateLimit = createRateLimit({
   message: "Too many code attempts. Please wait before trying again.",
 });
 
+const authenticateGoogleProfile = async (profile, done, {
+  UserModel = User,
+  transitionStatus = transitionAccountStatus,
+  ensureProgress = ensureProgressRowsForUser,
+  now = () => new Date(),
+} = {}) => {
+  try {
+    const googleId = profile.id;
+    const email = profile.emails?.[0]?.value ?? null;
+    const isEmailVerified = profile.emails?.[0]?.verified === true
+      || profile._json?.email_verified === true;
+    const firstName = profile.name?.givenName || profile.displayName?.split(" ")[0] || "User";
+    const lastName = profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || "";
+
+    if (!email || !isEmailVerified) return done(null, false);
+
+    let user = await UserModel.findOne({ where: { googleId } });
+    if (!user) {
+      user = await UserModel.findOne({
+        where: where(fn("lower", col("email")), email.toLowerCase()),
+      });
+    }
+
+    if (!user) {
+      const base = email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "") || `user${Date.now()}`;
+      let username = base;
+      let counter = 1;
+      while (await UserModel.findOne({ where: { username } })) username = `${base}${counter++}`;
+      user = await UserModel.create({
+        firstName,
+        lastName,
+        username,
+        email: email.toLowerCase(),
+        googleId,
+        password: null,
+        emailVerifiedAt: now(),
+        authProvider: "google",
+        role: "student",
+        status: "active",
+      });
+      await ensureProgress(user.id);
+    }
+
+    if (["inactive", "archived"].includes(user.status)) return done(null, false);
+
+    const loginAt = now();
+    const transition = await transitionStatus({
+      userId: user.id,
+      resolveNextStatus: (lockedUser) => lockedUser.status === "pending"
+        ? "active"
+        : lockedUser.status,
+      validateLockedUser: (lockedUser) => {
+        if (["inactive", "archived"].includes(lockedUser.status)) {
+          const error = new Error("Google account is unavailable");
+          error.code = "GOOGLE_ACCOUNT_UNAVAILABLE";
+          throw error;
+        }
+      },
+      mutateLockedUser: (lockedUser) => {
+        lockedUser.googleId = googleId;
+        if (!lockedUser.emailVerifiedAt) lockedUser.emailVerifiedAt = loginAt;
+        lockedUser.lastLoginAt = loginAt;
+        return true;
+      },
+    });
+    return done(null, transition.user);
+  } catch (error) {
+    if (error.code === "GOOGLE_ACCOUNT_UNAVAILABLE") return done(null, false);
+    return done(error);
+  }
+};
+
 if (isGoogleAuthConfigured) {
   passport.use(new GoogleStrategy(
     {
@@ -107,63 +180,7 @@ if (isGoogleAuthConfigured) {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: `${BACKEND_URL}/api/auth/google/callback`,
     },
-    async (accessToken, refreshToken, profile, done) => {
-      try {
-        const googleId = profile.id;
-        const email = profile.emails?.[0]?.value ?? null;
-        const isEmailVerified = profile.emails?.[0]?.verified === true ||
-          profile._json?.email_verified === true;
-        const firstName = profile.name?.givenName || profile.displayName?.split(" ")[0] || "User";
-        const lastName = profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || "";
-
-        if (!email || !isEmailVerified) {
-          return done(null, false);
-        }
-
-        let user = await User.findOne({ where: { googleId } });
-
-        if (!user && email) {
-          user = await User.findOne({
-            where: where(fn("lower", col("email")), email.toLowerCase()),
-          });
-          if (user) {
-            user.googleId = googleId;
-          }
-        }
-
-        if (!user) {
-          const base = email ? email.split("@")[0].replace(/[^a-zA-Z0-9]/g, "") : `user${Date.now()}`;
-          let username = base;
-          let counter = 1;
-          while (await User.findOne({ where: { username } })) {
-            username = `${base}${counter++}`;
-          }
-          user = await User.create({
-            firstName,
-            lastName,
-            username,
-            email: email.toLowerCase(),
-            googleId,
-            password: null,
-            emailVerifiedAt: new Date(),
-            authProvider: "google",
-            role: "student",
-            status: "active",
-          });
-          await ensureProgressRowsForUser(user.id);
-        }
-
-        if (!user.emailVerifiedAt) user.emailVerifiedAt = new Date();
-        if (user.status === "pending") user.status = "active";
-        if (["inactive", "archived"].includes(user.status)) return done(null, false);
-
-        user.lastLoginAt = new Date();
-        await user.save();
-        return done(null, user);
-      } catch (err) {
-        return done(err);
-      }
-    }
+    (_accessToken, _refreshToken, profile, done) => authenticateGoogleProfile(profile, done)
   ));
 }
 
@@ -238,22 +255,35 @@ const logPolicyAcceptance = async (user, { includeResearch = false } = {}) => {
 };
 
 const completeEmailVerification = async (result, res) => {
-  const user = await User.findByPk(result.tokenRecord.userId);
-  if (!user) {
-    return res.status(400).json({
-      message: "This verification code or link is invalid or has expired.",
+  const verifiedAt = new Date();
+  let transition;
+  try {
+    transition = await transitionAccountStatus({
+      userId: result.tokenRecord.userId,
+      resolveNextStatus: (user) => user.status === "pending" ? "active" : user.status,
+      mutateLockedUser: (user) => {
+        const changed = !user.emailVerifiedAt;
+        user.emailVerifiedAt = user.emailVerifiedAt || verifiedAt;
+        return changed;
+      },
+      afterUserSave: async (user, { transaction }) => {
+        result.tokenRecord.usedAt = verifiedAt;
+        await result.tokenRecord.save({ transaction });
+        await EmailVerificationToken.update(
+          { usedAt: verifiedAt },
+          { where: { userId: user.id, usedAt: null }, transaction },
+        );
+      },
     });
+  } catch (error) {
+    if (error.code === "USER_NOT_FOUND") {
+      return res.status(400).json({
+        message: "This verification code or link is invalid or has expired.",
+      });
+    }
+    throw error;
   }
-
-  user.emailVerifiedAt = user.emailVerifiedAt || new Date();
-  if (user.status === "pending") user.status = "active";
-  result.tokenRecord.usedAt = new Date();
-  await user.save();
-  await result.tokenRecord.save();
-  await EmailVerificationToken.update(
-    { usedAt: new Date() },
-    { where: { userId: user.id, usedAt: null } },
-  );
+  const { user } = transition;
 
   if (user.role === "student") {
     await ensureProgressRowsForUser(user.id);
@@ -1093,3 +1123,4 @@ router.put("/me/password", authMiddleware, passwordChangeRateLimit, async (req, 
 });
 
 module.exports = router;
+module.exports.authenticateGoogleProfile = authenticateGoogleProfile;

@@ -3,6 +3,7 @@ import HeroSection from "../HeroSection/HeroSection.jsx";
 import FeaturesSection from "../FeatureSection/FeatureSection.jsx";
 import ProductShowcase from "../ProductShowcase/ProductShowcase.jsx";
 import HowItWorks from "../HowItWorks/HowItWorks.jsx";
+import PublicTestimonials from "./PublicTestimonials.jsx";
 import Footer from "../Footer/Footer.jsx";
 import { Link } from "react-router-dom";
 import { getHomeRouteForCurrentUser, isAuthenticated } from "../../utils/auth.js";
@@ -65,6 +66,7 @@ function LandingPage() {
         <FeaturesSection />
         <ProductShowcase />
         <HowItWorks />
+        <PublicTestimonials />
 
         <section className={styles.finalCta} aria-labelledby="final-cta-title">
           <div className={styles.finalCtaInner}>

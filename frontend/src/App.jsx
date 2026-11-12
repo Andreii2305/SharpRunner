@@ -17,6 +17,7 @@ const TeacherAnnouncementsPage = lazy(() => import("./pages/teacher/TeacherAnnou
 const TeacherClassDetailPage = lazy(() => import("./pages/teacher/TeacherClassDetailPage.jsx"));
 const JoinClassPage = lazy(() => import("./pages/student/JoinClassPage.jsx"));
 const StudentClassroomFeedbackPage = lazy(() => import("./pages/student/StudentClassroomFeedbackPage.jsx"));
+const AuthorFeedbackPage = lazy(() => import("./pages/feedback/AuthorFeedbackPage.jsx"));
 const StudentLeaderboardPage = lazy(() => import("./pages/student/StudentLeaderboardPage.jsx"));
 const ClassroomLessonPage = lazy(() => import("./pages/student/ClassroomLessonPage.jsx"));
 const StudentDashboardPage = lazy(() => import("./Components/Dashboard/Dashboard.jsx"));
@@ -84,6 +85,14 @@ function App() {
           element={
             <ProtectedRoute allowedRoles={["student"]}>
               <StudentClassroomFeedbackPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/feedback"
+          element={
+            <ProtectedRoute allowedRoles={["student", "teacher"]}>
+              <AuthorFeedbackPage />
             </ProtectedRoute>
           }
         />

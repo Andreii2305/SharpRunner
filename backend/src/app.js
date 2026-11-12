@@ -2,6 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const passport = require("passport");
 const sequelize = require("./config/database");
+const authMiddleware = require("./middleware/authMiddleware");
+const requireRole = require("./middleware/requireRole");
+const { createPlatformFeedbackRouter } = require("./routes/platformFeedback");
+const { createPublicTestimonialAuthorRouter } = require("./routes/publicTestimonialAuthor");
+const { createPublicTestimonialRouter } = require("./routes/publicTestimonials");
 
 require("./models");
 
@@ -49,6 +54,19 @@ app.use((_req, res, next) => {
   });
   next();
 });
+app.use((req, res, next) => {
+  const requestPath = req.path;
+  const privateFeedbackRoots = ["/api/feedback", "/api/admin/feedback"];
+  if (privateFeedbackRoots.some((root) => (
+    requestPath === root || requestPath.startsWith(`${root}/`)
+  ))) {
+    res.set("Cache-Control", "private, no-store, max-age=0");
+  } else if (requestPath === "/api/public/testimonials"
+    || requestPath === "/api/public/testimonials/") {
+    res.set("Cache-Control", "no-store");
+  }
+  next();
+});
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", async (_req, res) => {
@@ -61,7 +79,16 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+app.use("/api/public", createPublicTestimonialRouter());
+
 app.use("/api/auth", require("./routes/auth"));
+app.use(
+  "/api/feedback",
+  authMiddleware,
+  requireRole("student", "teacher"),
+  createPlatformFeedbackRouter(),
+  createPublicTestimonialAuthorRouter(),
+);
 app.use("/api/progress", require("./routes/progress"));
 app.use("/api/assessments", require("./routes/assessments"));
 app.use("/api/lesson-content", require("./routes/lessonContent"));

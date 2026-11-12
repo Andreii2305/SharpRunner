@@ -62,7 +62,11 @@ const PHASE_7G_MIGRATIONS = Object.freeze([
   "20261031000000_game_interruption_completion_evidence",
   "20261031120000_game_interruption_report_index",
 ]);
-const CURRENT_MIGRATIONS = Object.freeze([...HISTORICAL_MIGRATIONS, ...PHASE_7G_MIGRATIONS]);
+const CURRENT_MIGRATIONS = Object.freeze([
+  ...HISTORICAL_MIGRATIONS,
+  ...PHASE_7G_MIGRATIONS,
+  "20261103000000_platform_feedback_testimonials",
+]);
 const FIXTURE = Object.freeze({
   teacherUsername: "phase7g_upgrade_teacher",
   teacherEmail: "phase7g_upgrade_teacher@invalid.example",

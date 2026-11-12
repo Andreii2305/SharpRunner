@@ -23,6 +23,7 @@ const STUDENT_NAV = [
   { to: "/leaderboards", Icon: LeaderboardOutlinedIcon, label: "Leaderboard" },
   { to: "/Map", Icon: MapOutlinedIcon, label: "Map" },
   { to: "/join-class", Icon: ClassOutlinedIcon, label: "Class requests" },
+  { to: "/feedback", Icon: RateReviewOutlinedIcon, label: "Feedback" },
   { to: "/classroom-feedback", Icon: RateReviewOutlinedIcon, label: "Classroom feedback" },
 ];
 
@@ -33,6 +34,7 @@ const TEACHER_NAV = [
   { to: "/teacher/assessments", Icon: QuizOutlinedIcon, label: "Assessments" },
   { to: "/teacher/students", Icon: PeopleOutlinedIcon, label: "Students" },
   { to: "/teacher/analytics", Icon: BarChartOutlinedIcon, label: "Analytics" },
+  { to: "/feedback", Icon: RateReviewOutlinedIcon, label: "Feedback" },
   {
     to: "/teacher/announcements",
     Icon: CampaignOutlinedIcon,
@@ -58,8 +60,13 @@ function Sidebar() {
 
   const role = user?.role ?? "student";
   const isTeacher = role === "teacher" || role === "admin";
+  const roleNavItems = role === "teacher"
+    ? TEACHER_NAV
+    : role === "admin"
+      ? TEACHER_NAV.filter((item) => item.to !== "/feedback")
+      : STUDENT_NAV;
   const navItems = [
-    ...(isTeacher ? TEACHER_NAV : STUDENT_NAV),
+    ...roleNavItems,
     { to: "/legal", Icon: PolicyOutlinedIcon, label: "Legal" },
   ];
 

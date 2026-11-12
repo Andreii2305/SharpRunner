@@ -9,6 +9,9 @@ const ClassroomAnnouncementView = require("./ClassroomAnnouncementView");
 const UserNotificationView = require("./UserNotificationView");
 const TeacherStudentCheckIn = require("./TeacherStudentCheckIn");
 const StudentClassroomFeedback = require("./StudentClassroomFeedback");
+const PlatformFeedbackSubmission = require("./PlatformFeedbackSubmission");
+const PublicTestimonialSubmission = require("./PublicTestimonialSubmission");
+const PublicTestimonialRevision = require("./PublicTestimonialRevision");
 const LevelDeadline = require("./LevelDeadline");
 const LevelContentOverride = require("./LevelContentOverride");
 const GameInterruptionSession = require("./GameInterruptionSession");
@@ -441,6 +444,64 @@ StudentClassroomFeedback.belongsTo(Classroom, {
   onDelete: "RESTRICT",
 });
 
+User.hasMany(PlatformFeedbackSubmission, {
+  foreignKey: "authorUserId",
+  as: "platformFeedbackSubmissions",
+  onDelete: "RESTRICT",
+});
+PlatformFeedbackSubmission.belongsTo(User, {
+  foreignKey: "authorUserId",
+  as: "author",
+  onDelete: "RESTRICT",
+});
+
+User.hasMany(PublicTestimonialSubmission, {
+  foreignKey: "authorUserId",
+  as: "publicTestimonialSubmissions",
+  onDelete: "RESTRICT",
+});
+PublicTestimonialSubmission.belongsTo(User, {
+  foreignKey: "authorUserId",
+  as: "author",
+  onDelete: "RESTRICT",
+});
+PublicTestimonialSubmission.hasMany(PublicTestimonialRevision, {
+  foreignKey: "submissionId",
+  as: "revisions",
+  onDelete: "RESTRICT",
+});
+PublicTestimonialRevision.belongsTo(PublicTestimonialSubmission, {
+  foreignKey: "submissionId",
+  as: "submission",
+  onDelete: "RESTRICT",
+});
+User.hasMany(PublicTestimonialRevision, {
+  foreignKey: "authorUserId",
+  as: "testimonialRevisions",
+  onDelete: "RESTRICT",
+});
+PublicTestimonialRevision.belongsTo(User, {
+  foreignKey: "authorUserId",
+  as: "author",
+  onDelete: "RESTRICT",
+});
+for (const [foreignKey, userAlias, revisionAlias] of [
+  ["approvedByUserId", "approvedTestimonialRevisions", "approvedBy"],
+  ["rejectedByUserId", "rejectedTestimonialRevisions", "rejectedBy"],
+  ["revokedByUserId", "revokedTestimonialRevisions", "revokedBy"],
+]) {
+  User.hasMany(PublicTestimonialRevision, {
+    foreignKey,
+    as: userAlias,
+    onDelete: "RESTRICT",
+  });
+  PublicTestimonialRevision.belongsTo(User, {
+    foreignKey,
+    as: revisionAlias,
+    onDelete: "RESTRICT",
+  });
+}
+
 User.hasMany(GameInterruptionSession, {
   foreignKey: "studentId",
   as: "gameInterruptionSessions",
@@ -711,6 +772,9 @@ module.exports = {
   UserNotificationView,
   TeacherStudentCheckIn,
   StudentClassroomFeedback,
+  PlatformFeedbackSubmission,
+  PublicTestimonialSubmission,
+  PublicTestimonialRevision,
   LevelDeadline,
   LevelContentOverride,
   GameInterruptionSession,

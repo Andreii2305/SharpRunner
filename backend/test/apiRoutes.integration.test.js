@@ -39,6 +39,7 @@ const LearningAnalyticsEvent = require("../src/models/LearningAnalyticsEvent");
 const GameInterruptionCompletionEvidence = require("../src/models/GameInterruptionCompletionEvidence");
 const GameInterruptionEvent = require("../src/models/GameInterruptionEvent");
 const GameInterruptionSession = require("../src/models/GameInterruptionSession");
+const PublicTestimonialSubmission = require("../src/models/PublicTestimonialSubmission");
 const LessonAssessment = require("../src/models/LessonAssessment");
 const AssessmentAttempt = require("../src/models/AssessmentAttempt");
 const AssessmentAttemptGrant = require("../src/models/AssessmentAttemptGrant");
@@ -167,6 +168,66 @@ test("POST /api/auth/login authenticates a verified account and issues a JWT", a
     assert.equal(payload.user.policyStatus.requiresAcceptance, false);
     assert.equal(jwt.verify(payload.token, process.env.JWT_SECRET).id, 11);
   });
+});
+
+test("email token and code verification activate through the locked status transition", async () => {
+  const user = activeUser({
+    id: 61,
+    role: "teacher",
+    status: "pending",
+    emailVerifiedAt: null,
+    email: "pending-teacher@example.com",
+  });
+  const tokenRecord = {
+    id: 501,
+    userId: user.id,
+    usedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+    async save(options) {
+      assert.equal(options.transaction.LOCK.UPDATE, "UPDATE");
+    },
+  };
+  let tokenUpdates = 0;
+
+  await withStubs([
+    [sequelize, "transaction", transactionStub],
+    [User, "findByPk", async (id, options) => {
+      assert.equal(id, user.id);
+      assert.equal(options.lock, "UPDATE");
+      return user;
+    }],
+    [User, "findOne", async () => user],
+    [PublicTestimonialSubmission, "findAll", async () => {
+      throw new Error("activation must not load testimonial submissions");
+    }],
+    [EmailVerificationToken, "findOne", async () => tokenRecord],
+    [EmailVerificationToken, "update", async (_values, options) => {
+      assert.equal(options.transaction.LOCK.UPDATE, "UPDATE");
+      tokenUpdates += 1;
+      return [1];
+    }],
+  ], async () => {
+    const tokenResult = await apiRequest("/api/auth/verify-email", {
+      method: "POST",
+      body: { token: "a".repeat(64) },
+    });
+    assert.equal(tokenResult.response.status, 200);
+    assert.equal(user.status, "active");
+    assert.ok(user.emailVerifiedAt instanceof Date);
+
+    user.status = "pending";
+    user.emailVerifiedAt = null;
+    tokenRecord.usedAt = null;
+    const codeResult = await apiRequest("/api/auth/verify-email-code", {
+      method: "POST",
+      body: { email: user.email, code: "123456" },
+    });
+    assert.equal(codeResult.response.status, 200);
+    assert.equal(user.status, "active");
+    assert.ok(user.emailVerifiedAt instanceof Date);
+  });
+
+  assert.equal(tokenUpdates, 2);
 });
 
 test("registration requires Terms agreement and Privacy acknowledgement before account creation", async () => {
@@ -4603,6 +4664,8 @@ test("admin status route updates a verified non-admin account and writes an audi
   let auditEntry;
 
   await withStubs([
+    [sequelize, "transaction", transactionStub],
+    [PublicTestimonialSubmission, "findAll", async () => []],
     [User, "findByPk", async (id, options) => {
       if (id === 7) return options?.attributes?.length === 1 ? { username: admin.username } : admin;
       return target;
@@ -4621,6 +4684,52 @@ test("admin status route updates a verified non-admin account and writes an audi
     assert.equal(payload.user.status, "active");
     assert.equal(auditEntry.activity, "Updated user status");
     assert.equal(auditEntry.targetUserId, 8);
+  });
+});
+
+test("admin status deactivation suspends testimonials and reactivation preserves suspension", async () => {
+  const admin = activeUser({ id: 17, username: "admin-seventeen", role: "admin" });
+  const target = activeUser({ id: 18, username: "student-eighteen" });
+  const submission = {
+    id: 188,
+    publicationSuspendedAt: null,
+    publicationSuspensionReason: null,
+    async update(values) { Object.assign(this, values); return this; },
+  };
+  let testimonialLocks = 0;
+
+  await withStubs([
+    [sequelize, "transaction", transactionStub],
+    [PublicTestimonialSubmission, "findAll", async () => {
+      testimonialLocks += 1;
+      return [submission];
+    }],
+    [User, "findByPk", async (id, options) => {
+      if (id === admin.id) return options?.attributes?.length === 1 ? { username: admin.username } : admin;
+      return target;
+    }],
+    [AdminActivityLog, "create", async (values) => values],
+  ], async () => {
+    const deactivated = await apiRequest("/api/admin/users/18/status", {
+      method: "PATCH",
+      token: authToken(admin.id, "admin"),
+      body: { status: "inactive" },
+    });
+    assert.equal(deactivated.response.status, 200);
+    assert.equal(target.status, "inactive");
+    assert.ok(submission.publicationSuspendedAt instanceof Date);
+    assert.equal(submission.publicationSuspensionReason, "account_deactivated");
+    const suspendedAt = submission.publicationSuspendedAt;
+
+    const reactivated = await apiRequest("/api/admin/users/18/status", {
+      method: "PATCH",
+      token: authToken(admin.id, "admin"),
+      body: { status: "active" },
+    });
+    assert.equal(reactivated.response.status, 200);
+    assert.equal(target.status, "active");
+    assert.equal(submission.publicationSuspendedAt, suspendedAt);
+    assert.equal(testimonialLocks, 1);
   });
 });
 
@@ -5201,7 +5310,19 @@ test("admin archive, restore, and force logout preserve accounts and rotate toke
   const admin = activeUser({ id: 7, username: "admin", role: "admin", tokenVersion: 0 });
   const target = activeUser({ id: 8, username: "student-eight", role: "student", tokenVersion: 2 });
   const auditRows = [];
+  const submission = {
+    id: 91,
+    publicationSuspendedAt: null,
+    publicationSuspensionReason: null,
+    async update(values) { Object.assign(this, values); return this; },
+  };
   await withStubs([
+    [sequelize, "transaction", transactionStub],
+    [PublicTestimonialSubmission, "findAll", async (options) => {
+      assert.equal(options.where.authorUserId, target.id);
+      assert.equal(options.where.withdrawnAt, null);
+      return [submission];
+    }],
     [User, "findByPk", async (id, options) => id === 7 ? (options?.attributes?.length === 1 ? { username: admin.username } : admin) : target],
     [AdminActivityLog, "create", async (values) => { auditRows.push(values); return values; }],
   ], async () => {
@@ -5209,12 +5330,16 @@ test("admin archive, restore, and force logout preserve accounts and rotate toke
     assert.equal(archived.response.status, 200);
     assert.equal(target.status, "archived");
     assert.equal(target.tokenVersion, 3);
+    assert.ok(submission.publicationSuspendedAt instanceof Date);
+    assert.equal(submission.publicationSuspensionReason, "account_deactivated");
     assert.equal(auditRows.at(-1).activity, "USER_ARCHIVED");
 
     const restored = await apiRequest("/api/admin/users/8/restore", { method: "POST", token: authToken(7, "admin"), body: {} });
     assert.equal(restored.response.status, 200);
     assert.equal(target.status, "active");
     assert.equal(target.tokenVersion, 4);
+    assert.ok(submission.publicationSuspendedAt instanceof Date);
+    assert.equal(submission.publicationSuspensionReason, "account_deactivated");
     assert.equal(auditRows.at(-1).activity, "USER_RESTORED");
 
     const revoked = await apiRequest("/api/admin/users/8/force-logout", { method: "POST", token: authToken(7, "admin"), body: {} });

@@ -3,6 +3,7 @@ services:
     name: sharprunner-api-andreii2305
     runtime: node
     plan: free
+    autoDeployTrigger: off
     rootDir: .
     buildCommand: cd backend && npm ci
     startCommand: node backend/src/server.js
@@ -15,7 +16,9 @@ services:
       - key: DB_SSL
         value: "true"
       - key: DB_SSL_REJECT_UNAUTHORIZED
-        value: "false"
+        value: "true"
+      - key: NODE_EXTRA_CA_CERTS
+        value: /etc/secrets/supabase-ca.pem
       - key: DB_POOL_MAX
         value: "5"
       - key: JWT_SECRET

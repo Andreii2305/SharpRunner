@@ -2,7 +2,7 @@ import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { FiActivity, FiArchive, FiBookOpen, FiDownload, FiEye, FiGrid, FiKey, FiLogOut, FiMenu, FiMoreVertical, FiPlus, FiRefreshCw, FiSearch, FiShield, FiTrash2, FiUserCheck, FiUsers, FiX } from "react-icons/fi";
+import { FiActivity, FiArchive, FiBookOpen, FiDownload, FiEye, FiGrid, FiKey, FiLogOut, FiMenu, FiMessageSquare, FiMoreVertical, FiPlus, FiRefreshCw, FiSearch, FiShield, FiTrash2, FiUserCheck, FiUsers, FiX } from "react-icons/fi";
 import { buildApiUrl, clearToken, getAuthHeaders, getUser } from "../../utils/auth";
 import ConfirmModal from "../../Components/ConfirmModal/ConfirmModal.jsx";
 import TeacherInviteModal from "../../Components/TeacherInviteModal/TeacherInviteModal.jsx";
@@ -10,6 +10,7 @@ import { useToast } from "../../Components/Toast/ToastProvider.jsx";
 import { AdminStudentClassroomFilterView } from "./AdminStudentClassroomFilter.jsx";
 import AdminLessonViewer from "./AdminLessonViewer.jsx";
 import AdminBuiltInLessonViewer from "./AdminBuiltInLessonViewer.jsx";
+import AdminFeedbackView from "./AdminFeedbackView.jsx";
 import { createAdminLessonDownloadController, createAdminLessonViewerController } from "./adminLessonViewerState.js";
 import { createAdminBuiltInLessonDetailController } from "./adminBuiltInLessonDetailState.js";
 import {
@@ -33,7 +34,7 @@ import {
 } from "./adminStudentClassroomFilterState.js";
 import styles from "./AdminDashboardPage.module.css";
 
-const NAV_ITEMS = [["dashboard", "Dashboard", FiGrid], ["users", "Users", FiUsers], ["teachers", "Teachers", FiUserCheck], ["students", "Students", FiUsers], ["classrooms", "Classrooms", FiBookOpen], ["content", "Content", FiShield], ["audit", "Audit Logs", FiActivity], ["status", "System Status", FiActivity], ["legal", "Legal & Privacy", FiShield]];
+const NAV_ITEMS = [["dashboard", "Dashboard", FiGrid], ["users", "Users", FiUsers], ["teachers", "Teachers", FiUserCheck], ["students", "Students", FiUsers], ["classrooms", "Classrooms", FiBookOpen], ["content", "Content", FiShield], ["feedback", "Feedback", FiMessageSquare], ["audit", "Audit Logs", FiActivity], ["status", "System Status", FiActivity], ["legal", "Legal & Privacy", FiShield]];
 const EMPTY_SUMMARY = { totalUsers: 0, activeUsers: 0, activeTeachers: 0, activeStudents: 0, activeClassrooms: 0, archivedAccounts: 0 };
 const formatDate = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
 const api = () => ({ headers: getAuthHeaders() });
@@ -73,6 +74,7 @@ function AdminDashboardPage() {
   const [logs, setLogs] = useState([]); const [logPage, setLogPage] = useState(1); const [logMeta, setLogMeta] = useState({ total: 0, totalPages: 1 });
   const [logFilters, setLogFilters] = useState({ actor: "", target: "", action: "", from: "", to: "" });
   const [confirmAction, setConfirmAction] = useState(null); const [deleteTarget, setDeleteTarget] = useState(null); const [deleteText, setDeleteText] = useState("");
+  const [feedbackNavigationLocked, setFeedbackNavigationLocked] = useState(false);
   const [detail, setDetail] = useState(null); const [detailFileError, setDetailFileError] = useState(""); const [detailFileLoading, setDetailFileLoading] = useState(false); const [showInvite, setShowInvite] = useState(false); const [inviteBusy, setInviteBusy] = useState(false); const [inviteError, setInviteError] = useState(""); const [actionBusy, setActionBusy] = useState(false);
   const lessonViewer = useMemo(() => createAdminLessonViewerController({
     request: async (path, options) => (await axios.get(buildApiUrl(path), { ...api(), ...options })).data,
@@ -175,6 +177,7 @@ function AdminDashboardPage() {
     mapError: (requestError) => requestError.response?.data?.message || "Unable to load content.",
   }), [contentFilters, contentPage, contentRequests]);
   const refresh = useCallback(async () => {
+    if (activeView === "feedback") return undefined;
     if (activeView === "content") {
       return contentSourceRef.current === "built-in"
         ? builtInCatalogueRequests.loadIfNeeded()
@@ -321,6 +324,10 @@ function AdminDashboardPage() {
   const exportCsv = async (path, filename) => { try { const r = await axios.get(buildApiUrl(path), { headers: getAuthHeaders(), responseType: "blob" }); const url = URL.createObjectURL(r.data); const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); URL.revokeObjectURL(url); } catch { setError("CSV export failed."); } };
   const createTeacher = async (form) => { setInviteBusy(true); setInviteError(""); try { const r = await axios.post(buildApiUrl("/api/admin/users/teacher"), form, api()); toast.success(r.data.message); setShowInvite(false); await refresh(); } catch (requestError) { setInviteError(requestError.response?.data?.message || "Unable to invite teacher."); } finally { setInviteBusy(false); } };
   const selectView = (view) => {
+    if (feedbackNavigationLocked && activeView === "feedback" && view !== "feedback") {
+      setError("Resolve the pending moderation decision before leaving Feedback.");
+      return;
+    }
     lessonDownloads.invalidate();
     setDetailFileError("");
     if (contentSourceRef.current === "built-in") {
@@ -384,11 +391,11 @@ function AdminDashboardPage() {
 
   const renderStatus = () => <><PageHeading eyebrow="Operational visibility" title="System status"><button className={styles.secondaryButton} type="button" onClick={refresh}><FiRefreshCw /> Run checks</button></PageHeading><div className={styles.gridTwo}><section className={styles.card}><h3>Service checks</h3><div className={styles.healthRows}><div><span>Backend API</span><StatusBadge value={health.status === "ok" ? "online" : health.status} /></div><div><span>Database</span><StatusBadge value={health.database} /></div></div><p className={styles.privacyNote}>Only non-sensitive operational status is exposed. Credentials, environment variables, and server details are never returned.</p></section><section className={styles.card}><h3>Platform totals</h3><div className={styles.healthRows}><div><span>Total users</span><strong>{summary.totalUsers}</strong></div><div><span>Active users</span><strong>{summary.activeUsers}</strong></div><div><span>Active classrooms</span><strong>{summary.activeClassrooms}</strong></div><div><span>Archived accounts</span><strong>{summary.archivedAccounts}</strong></div></div></section></div></>;
 
-  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && (detail.type === "lesson" ? <AdminLessonViewer detail={detail} onClose={closeDetail} onRetry={() => lessonViewer.retry()} onOpenAttachment={openLessonAttachment} fileError={detailFileError} fileLoading={detailFileLoading} /> : <DetailPanel detail={detail} onClose={closeDetail} />)}{builtInDetail && <AdminBuiltInLessonViewer detail={builtInDetail} onClose={closeBuiltInLesson} onRetry={() => builtInLessonDetail.retry()} />}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
+  return <div className={styles.page}><button className={styles.mobileMenu} type="button" onClick={() => setDrawerOpen(true)} aria-label="Open admin navigation"><FiMenu /></button>{drawerOpen && <button className={styles.drawerBackdrop} type="button" aria-label="Close admin navigation" onClick={() => setDrawerOpen(false)} />}<Sidebar open={drawerOpen} activeView={activeView} selectView={selectView} adminUser={adminUser} navigationLocked={feedbackNavigationLocked && activeView === "feedback"} close={() => setDrawerOpen(false)} signOut={signOut} /><main className={styles.main}>{error && !["users", "teachers", "students", "classrooms", "content", "audit"].includes(activeView) && <p className={styles.errorBanner}>{error}</p>}{activeView === "dashboard" && renderDashboard()}{["users", "teachers", "students"].includes(activeView) && renderUsers()}{activeView === "classrooms" && renderClassrooms()}{activeView === "content" && renderContent()}<AdminFeedbackView active={activeView === "feedback"} onMutationLockChange={setFeedbackNavigationLocked} />{activeView === "audit" && renderAudit()}{activeView === "status" && renderStatus()}</main><ConfirmModal open={Boolean(confirmAction)} title={confirmAction?.title} message={confirmAction?.message} confirmLabel={actionBusy ? "Working…" : confirmAction?.label} danger={confirmAction?.danger} confirmDisabled={actionBusy} onConfirm={runAction} onCancel={() => !actionBusy && setConfirmAction(null)} />{deleteTarget && <TypedDelete target={deleteTarget} text={deleteText} setText={setDeleteText} busy={actionBusy} onCancel={() => setDeleteTarget(null)} onDelete={permanentDelete} />}{detail && (detail.type === "lesson" ? <AdminLessonViewer detail={detail} onClose={closeDetail} onRetry={() => lessonViewer.retry()} onOpenAttachment={openLessonAttachment} fileError={detailFileError} fileLoading={detailFileLoading} /> : <DetailPanel detail={detail} onClose={closeDetail} />)}{builtInDetail && <AdminBuiltInLessonViewer detail={builtInDetail} onClose={closeBuiltInLesson} onRetry={() => builtInLessonDetail.retry()} />}{showInvite && <TeacherInviteModal isSubmitting={inviteBusy} errorMessage={inviteError} onInvite={createTeacher} onClose={() => !inviteBusy && setShowInvite(false)} />}</div>;
 }
 
 function PageHeading({ eyebrow, title, children }) { return <div className={styles.pageHeading}><div><p>{eyebrow}</p><h2>{title}</h2></div><div className={styles.headingActions}>{children}</div></div>; }
-function Sidebar({ open, activeView, selectView, adminUser, close, signOut }) { return <aside className={`${styles.sidebar} ${open ? styles.sidebarOpen : ""}`}><div className={styles.brand}><div>SR</div><span><strong>SharpRunner</strong><small>Administration</small></span><button type="button" onClick={close} aria-label="Close navigation"><FiX /></button></div><nav>{NAV_ITEMS.map(([key, label, icon]) => <button type="button" className={activeView === key ? styles.navActive : ""} key={key} onClick={() => selectView(key)}>{createElement(icon)}<span>{label}</span></button>)}</nav><div className={styles.adminIdentity}><div>{(adminUser?.firstName?.[0] || adminUser?.username?.[0] || "A").toUpperCase()}</div><span><strong>{adminUser?.firstName || adminUser?.username || "Admin"}</strong><small>Administrator</small></span></div><button className={styles.logoutButton} type="button" onClick={signOut}><FiLogOut /> Sign out</button></aside>; }
+function Sidebar({ open, activeView, selectView, adminUser, navigationLocked, close, signOut }) { return <aside className={`${styles.sidebar} ${open ? styles.sidebarOpen : ""}`}><div className={styles.brand}><div>SR</div><span><strong>SharpRunner</strong><small>Administration</small></span><button type="button" onClick={close} aria-label="Close navigation"><FiX /></button></div><nav>{NAV_ITEMS.map(([key, label, icon]) => <button type="button" className={activeView === key ? styles.navActive : ""} key={key} disabled={navigationLocked && key !== "feedback"} onClick={() => selectView(key)}>{createElement(icon)}<span>{label}</span></button>)}</nav><div className={styles.adminIdentity}><div>{(adminUser?.firstName?.[0] || adminUser?.username?.[0] || "A").toUpperCase()}</div><span><strong>{adminUser?.firstName || adminUser?.username || "Admin"}</strong><small>Administrator</small></span></div><button className={styles.logoutButton} type="button" onClick={signOut}><FiLogOut /> Sign out</button></aside>; }
 function RowActionMenu({ label, children }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });

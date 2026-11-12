@@ -9,8 +9,14 @@ const {
 
 const FIXTURE_ENV = "PHASE7G_POSTGRES_HARNESS_FIXTURE";
 const MODE_ENV = "PHASE7G_POSTGRES_HARNESS_MODE";
+const SINGLE_SCENARIO_ENV = "PHASE7G_POSTGRES_HARNESS_SINGLE_SCENARIO";
 const SUITE_ID = "phase7g-harness-fixture";
 const EXPECTED_SCENARIOS = Object.freeze(["first-scenario", "second-scenario"]);
+const STORAGE_SCENARIOS = Object.freeze([
+  "fresh-schema-migration",
+  "sync-created-schema-migration",
+  "incompatible-schema-rollback",
+]);
 
 if (process.env[FIXTURE_ENV] === "1") {
   test("database-free PostgreSQL worker fixture", () => {
@@ -33,6 +39,15 @@ if (process.env[FIXTURE_ENV] === "1") {
           { id: EXPECTED_SCENARIOS[0], status: "passed" },
           { id: EXPECTED_SCENARIOS[1], status: "skipped" },
         ],
+      });
+      return;
+    }
+    if (mode === "single-scenario-success") {
+      const scenarioId = process.env[SINGLE_SCENARIO_ENV];
+      assert.ok(STORAGE_SCENARIOS.includes(scenarioId), "single scenario must be allowlisted");
+      emitWorkerCompletionAcknowledgement({
+        suiteId: SUITE_ID,
+        scenarios: [{ id: scenarioId, status: "passed" }],
       });
       return;
     }
@@ -61,6 +76,25 @@ if (process.env[FIXTURE_ENV] === "1") {
       result.acknowledgement.scenarios,
       EXPECTED_SCENARIOS.map((id) => ({ id, status: "passed" })),
     );
+  });
+
+  test("worker launch validates each selected storage path as one exact scenario", async () => {
+    for (const scenarioId of STORAGE_SCENARIOS) {
+      const result = await runPostgresWorker({
+        scriptPath: __filename,
+        suiteId: SUITE_ID,
+        expectedScenarioIds: [scenarioId],
+        environment: {
+          [FIXTURE_ENV]: "1",
+          [MODE_ENV]: "single-scenario-success",
+          [SINGLE_SCENARIO_ENV]: scenarioId,
+        },
+        redactDiagnostics: (value) => value,
+      });
+      assert.deepEqual(result.acknowledgement.scenarios, [
+        { id: scenarioId, status: "passed" },
+      ]);
+    }
   });
 
   test("worker launch rejects exit zero without a completion acknowledgement", async () => {

@@ -70,6 +70,7 @@ const migrations = [
   ["20261030000000_game_interruption_history", sqlMigration("20261030000000_game_interruption_history.sql")],
   ["20261031000000_game_interruption_completion_evidence", sqlMigration("20261031000000_game_interruption_completion_evidence.sql")],
   ["20261031120000_game_interruption_report_index", sqlMigration("20261031120000_game_interruption_report_index.sql")],
+  ["20261103000000_platform_feedback_testimonials", sqlMigration("20261103000000_platform_feedback_testimonials.sql")],
 ];
 
 const runMigrations = async () => {

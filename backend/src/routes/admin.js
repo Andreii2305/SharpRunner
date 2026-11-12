@@ -19,6 +19,9 @@ const { getPolicyStatus } = require("../constants/policyVersions");
 const { sendCsv } = require("../services/csvService");
 const { derivePublicationStatus } = require("../services/lessonBuilderService");
 const builtInLessonContentService = require("../services/builtInLessonContentService");
+const { createAdminPlatformFeedbackRouter } = require("./platformFeedback");
+const { createPublicTestimonialAdminRouter } = require("./publicTestimonialAdmin");
+const { transition: transitionAccountStatus } = require("../services/accountStatusTransitionService");
 
 const ALLOWED_ROLES = new Set(["student", "teacher", "admin"]);
 const ALLOWED_STATUSES = new Set(["active", "inactive", "pending", "archived"]);
@@ -52,6 +55,9 @@ const normalizeString = (value) =>
 
 const normalizeEmail = (value) =>
   normalizeString(value).toLowerCase();
+
+const accountStatusRouteError = (statusCode, message) =>
+  Object.assign(new Error(message), { statusCode });
 
 const serializeAdminContent = (record, now) => {
   const content = record?.toJSON ? record.toJSON() : record;
@@ -180,6 +186,8 @@ const buildUserQueryScope = async (query) => {
 };
 
 router.use(authMiddleware, requireRole("admin"));
+router.use("/feedback", createAdminPlatformFeedbackRouter());
+router.use("/feedback", createPublicTestimonialAdminRouter());
 
 router.get("/users", async (req, res) => {
   try {
@@ -298,19 +306,26 @@ router.post("/users/:id/archive", adminMutationRateLimit, async (req, res) => {
     const userId = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ message: "Invalid user id" });
     if (userId === req.userId) return res.status(403).json({ message: "You cannot archive your own account" });
-    const user = await User.findByPk(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.role === "admin") return res.status(403).json({ message: "Admin accounts cannot be archived from the dashboard" });
-    if (user.status === "archived") return res.json({ message: "User is already archived", user: sanitizeUser(user) });
-    const previousStatus = user.status;
-    user.status = "archived";
-    user.tokenVersion = Number(user.tokenVersion ?? 0) + 1;
-    await user.save();
+    const result = await transitionAccountStatus({
+      userId,
+      nextStatus: "archived",
+      validateLockedUser: (user) => {
+        if (user.role === "admin") {
+          throw accountStatusRouteError(403, "Admin accounts cannot be archived from the dashboard");
+        }
+      },
+      mutateLockedUser: (user, { changed }) => {
+        if (changed) user.tokenVersion = Number(user.tokenVersion ?? 0) + 1;
+        return changed;
+      },
+    });
+    const { user, previousStatus } = result;
+    if (!result.changed) return res.json({ message: "User is already archived", user: sanitizeUser(user) });
     await logAdminActivity({ actorUserId: req.userId, actorUsername: await getActorUsername(req.userId), role: req.userRole, targetUserId: user.id, targetUsername: user.username, activity: "USER_ARCHIVED", details: `Previous status: ${previousStatus}` });
     return res.json({ message: "Account archived. Historical data was preserved.", user: sanitizeUser(user) });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Failed to archive user" });
+    return res.status(error.statusCode || 500).json({ message: error.statusCode ? error.message : "Failed to archive user" });
   }
 });
 
@@ -318,18 +333,28 @@ router.post("/users/:id/restore", adminMutationRateLimit, async (req, res) => {
   try {
     const userId = Number.parseInt(req.params.id, 10);
     if (!Number.isInteger(userId) || userId <= 0) return res.status(400).json({ message: "Invalid user id" });
-    const user = await User.findByPk(userId);
-    if (!user) return res.status(404).json({ message: "User not found" });
-    if (user.status !== "archived") return res.status(409).json({ message: "Only archived accounts can be restored" });
-    if (!user.emailVerifiedAt) return res.status(400).json({ message: "The user must verify their email before restoration" });
-    user.status = "active";
-    user.tokenVersion = Number(user.tokenVersion ?? 0) + 1;
-    await user.save();
+    const result = await transitionAccountStatus({
+      userId,
+      nextStatus: "active",
+      validateLockedUser: (user) => {
+        if (user.status !== "archived") {
+          throw accountStatusRouteError(409, "Only archived accounts can be restored");
+        }
+        if (!user.emailVerifiedAt) {
+          throw accountStatusRouteError(400, "The user must verify their email before restoration");
+        }
+      },
+      mutateLockedUser: (user, { changed }) => {
+        if (changed) user.tokenVersion = Number(user.tokenVersion ?? 0) + 1;
+        return changed;
+      },
+    });
+    const { user } = result;
     await logAdminActivity({ actorUserId: req.userId, actorUsername: await getActorUsername(req.userId), role: req.userRole, targetUserId: user.id, targetUsername: user.username, activity: "USER_RESTORED", details: "Restored to active" });
     return res.json({ message: "Account restored", user: sanitizeUser(user) });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Failed to restore user" });
+    return res.status(error.statusCode || 500).json({ message: error.statusCode ? error.message : "Failed to restore user" });
   }
 });
 
@@ -363,40 +388,31 @@ router.patch("/users/:id/status", adminMutationRateLimit, async (req, res) => {
       return res.status(400).json({ message: "Invalid status" });
     }
 
-    const user = await User.findByPk(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    if (user.role === "admin" && nextStatus === "inactive") {
-      return res.status(400).json({
-        message: "Admin accounts cannot be set to inactive",
-      });
-    }
-
     if (nextStatus === "archived") {
       return res.status(400).json({ message: "Use the archive action to archive an account" });
     }
-    if (user.status === "archived") {
-      return res.status(409).json({ message: "Restore this archived account before changing its status" });
-    }
-
-    if (nextStatus === "active" && !user.emailVerifiedAt) {
-      return res.status(400).json({
-        message: "The user must verify their email before activation",
-      });
-    }
-
-    if (user.status === nextStatus) {
+    const result = await transitionAccountStatus({
+      userId,
+      nextStatus,
+      validateLockedUser: (user) => {
+        if (user.role === "admin" && nextStatus === "inactive") {
+          throw accountStatusRouteError(400, "Admin accounts cannot be set to inactive");
+        }
+        if (user.status === "archived") {
+          throw accountStatusRouteError(409, "Restore this archived account before changing its status");
+        }
+        if (nextStatus === "active" && !user.emailVerifiedAt) {
+          throw accountStatusRouteError(400, "The user must verify their email before activation");
+        }
+      },
+    });
+    const { user, previousStatus } = result;
+    if (!result.changed) {
       return res.json({
         message: `User is already ${nextStatus}`,
         user: sanitizeUser(user),
       });
     }
-
-    const previousStatus = user.status;
-    user.status = nextStatus;
-    await user.save();
 
     const actorUsername = await getActorUsername(req.userId);
 
@@ -421,7 +437,9 @@ router.patch("/users/:id/status", adminMutationRateLimit, async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(error.statusCode || 500).json({
+      message: error.statusCode ? error.message : "Server error",
+    });
   }
 });
 

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import styles from "./login.module.css";
-import { FaGoogle, FaFacebookF } from "react-icons/fa";
+import { FaGoogle } from "react-icons/fa";
 import { FiEye, FiEyeOff } from "react-icons/fi";
 import { Link } from "react-router-dom";
 
@@ -78,11 +78,9 @@ function LoginComp({ user, formData, handleChange, handleSubmit, onGoogleLogin }
             type="button"
             className={`${styles.socialBtn} ${styles.google}`}
             onClick={onGoogleLogin}
+            aria-label="Sign in with Google"
           >
             <FaGoogle />
-          </button>
-          <button className={`${styles.socialBtn} ${styles.facebook}`}>
-            <FaFacebookF />
           </button>
         </div>
       </div>

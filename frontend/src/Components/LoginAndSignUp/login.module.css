@@ -256,10 +256,6 @@
   background-color: #26547c; /* Google red */
 }
 
-.facebook {
-  background-color: #26547c; /* Facebook blue */
-}
-
 /* Mobile Responsiveness */
 @media (max-width: 600px) {
   .brandLogo {

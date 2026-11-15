@@ -194,6 +194,7 @@ function SignUpComp({
             className={`${styles.socialBtn} ${styles.google}`}
             onClick={onGoogleLogin}
             disabled={isSubmitting}
+            aria-label="Sign up with Google"
           >
             <FaGoogle />
           </button>

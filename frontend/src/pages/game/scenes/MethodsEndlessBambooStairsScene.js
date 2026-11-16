@@ -71,7 +71,7 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: MAP_KEY });
-    this.offsetY = this.scale.height - map.heightInPixels;
+    this.offsetY = 0;
     this.sequenceMode = "idle";
     this.sequenceTimers = [];
     this.temporaryEffects = [];
@@ -498,9 +498,13 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
     if (Number(levelNumber) !== LEVEL_NUMBER || this.previewPlayed) return;
     this.previewPlayed = true;
     this.sequenceMode = "preview";
-    this.panTo((this.stairPoints[2]?.x ?? 640) + 80, 620);
-    this.schedule(820, () => this.panTo(this.shrinePoint.x, 540));
-    this.schedule(1550, () => this.panTo(this.spawnPoint.x + 280, 640));
+    this.panTo(
+      (this.stairPoints[2]?.x ?? 640) + 80,
+      620,
+      this.stairPoints[2]?.y ?? this.spawnPoint.y,
+    );
+    this.schedule(820, () => this.panTo(this.shrinePoint.x, 540, this.shrinePoint.y));
+    this.schedule(1550, () => this.panTo(this.spawnPoint.x + 280, 640, this.spawnPoint.y));
     this.schedule(2250, () => {
       this.sequenceMode = "idle";
     });
@@ -516,7 +520,11 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
 
   runRecursion() {
     this.sequenceMode = "building";
-    this.panTo((this.stairPoints[2]?.x ?? 640) + 80, 600);
+    this.panTo(
+      (this.stairPoints[2]?.x ?? 640) + 80,
+      600,
+      this.stairPoints[2]?.y ?? this.spawnPoint.y,
+    );
     this.phaseText.setText("calling deeper").setColor("#9cecff");
     this.stackValues = [];
     this.sequencePaused = false;
@@ -1477,12 +1485,12 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
   }
 
   setupCamera(map) {
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, this.scale.height);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setZoom(1);
     this.panTo(this.spawnPoint.x + 280, 0);
   }
 
-  panTo(x, duration = 600) {
+  panTo(x, duration = 600, worldY = this.spawnPoint.y) {
     const halfWidth = this.scale.width / 2;
     const boundsWidth = this.cameras.main.getBounds().width;
     const clampedX = Phaser.Math.Clamp(x, halfWidth, Math.max(halfWidth, boundsWidth - halfWidth));
@@ -1490,7 +1498,7 @@ export default class MethodsEndlessBambooStairsScene extends Phaser.Scene {
       this.cameras.main.scrollX = clampedX - halfWidth;
       return;
     }
-    this.cameras.main.pan(clampedX, this.scale.height / 2, duration, "Sine.easeInOut");
+    this.cameras.main.pan(clampedX, worldY, duration, "Sine.easeInOut");
   }
 
   resolveMapObjects(map) {

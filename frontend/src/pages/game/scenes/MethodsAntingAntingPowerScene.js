@@ -80,7 +80,7 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: MAP_KEY });
-    this.offsetY = this.scale.height - map.heightInPixels;
+    this.offsetY = 0;
     this.sequenceMode = "idle";
     this.sequenceTimers = [];
     this.temporaryEffects = [];
@@ -822,12 +822,12 @@ export default class MethodsAntingAntingPowerScene extends Phaser.Scene {
   }
 
   setupCamera(map) {
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, this.scale.height);
-    this.cameras.main.centerOn(this.spawnPoint.x + 210, this.scale.height / 2);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+    this.cameras.main.centerOn(this.spawnPoint.x + 210, this.spawnPoint.y);
   }
 
   panTo(x, duration = 520) {
-    this.cameras.main.pan(x, this.scale.height / 2, duration, "Sine.easeInOut");
+    this.cameras.main.pan(x, this.spawnPoint.y, duration, "Sine.easeInOut");
   }
 
   schedule(delay, callback) {

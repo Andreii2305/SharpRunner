@@ -56,9 +56,9 @@
   z-index: 200;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: rgba(8, 17, 40, 0.84);
-  backdrop-filter: blur(4px);
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: rgba(8, 17, 40, 0.94);
+  touch-action: none;
 }
 
 .orientationPrompt {
@@ -70,28 +70,15 @@
   box-sizing: border-box;
   padding: 28px 24px calc(24px + env(safe-area-inset-bottom));
   border: 1px solid #334155;
-  border-radius: 18px;
+  border-radius: 10px;
   background: #0f172a;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
   text-align: center;
 }
 
 .orientationIcon { color: #60a5fa; font-size: 3.5rem; transform: rotate(90deg); }
 .orientationPrompt h2 { margin: 0; color: #f1f5f9; font-size: 1.4rem; }
 .orientationPrompt p { margin: 0; color: #94a3b8; font-size: 0.9rem; line-height: 1.6; }
-.orientationPrompt button {
-  width: 100%;
-  min-height: 44px;
-  margin-top: 8px;
-  border: 0;
-  border-radius: 10px;
-  background: #2563eb;
-  color: #fff;
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-.orientationPrompt button:hover { background: #1d4ed8; }
+.orientationPrompt:focus-visible { outline: 3px solid #60a5fa; outline-offset: 4px; }
 
 .header {
   display: flex;

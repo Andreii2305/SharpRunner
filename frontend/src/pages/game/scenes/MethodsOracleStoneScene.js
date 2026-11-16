@@ -74,7 +74,7 @@ export default class MethodsOracleStoneScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: MAP_KEY });
-    this.offsetY = this.scale.height - map.heightInPixels;
+    this.offsetY = 0;
     this.sequenceMode = "idle";
     this.sequenceTimers = [];
     this.temporaryEffects = [];

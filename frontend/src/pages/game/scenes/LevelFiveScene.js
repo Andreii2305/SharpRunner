@@ -116,7 +116,7 @@ export default class LevelFiveScene extends Phaser.Scene {
     const tsHouse     = map.addTilesetImage("House_Tiles",                       "l5_house");
     const allTilesets = [tsCastle, tsFloor2, tsOther2, tsDirt2, tsDecor, tsWillow, tsPine, tsLargePine, tsWater, tsHouse].filter(Boolean);
 
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
 
     const platformLayer = map.createLayer("Platform", allTilesets, 0, offsetY);
     if (platformLayer) {

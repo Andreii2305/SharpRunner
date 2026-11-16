@@ -115,7 +115,7 @@ export default class LevelFourScene extends Phaser.Scene {
     const tsWater     = map.addTilesetImage("GandalfHardcore_Water_Tiles_sheet", "l4_water");
     const allTilesets = [tsCastle, tsFloor2, tsOther2, tsDirt2, tsDecor, tsWillow, tsPine, tsLargePine, tsWater].filter(Boolean);
 
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
     const floorSurfaceY = offsetY + 14 * (map.tileHeight || 32);
 
     const platformBackLayer = map.createLayer("Platform_back", allTilesets, 0, offsetY);

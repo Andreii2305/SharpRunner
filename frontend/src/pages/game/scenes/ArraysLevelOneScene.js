@@ -59,7 +59,7 @@ export default class ArraysLevelOneScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: "arrays_level_1" });
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
 
     this.createParallaxBackgrounds(map);
     this.createPlayerAnimations();

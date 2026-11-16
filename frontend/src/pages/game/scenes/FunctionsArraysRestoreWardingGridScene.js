@@ -68,7 +68,7 @@ export default class FunctionsArraysRestoreWardingGridScene extends Phaser.Scene
 
   create() {
     this.map = this.make.tilemap({ key: MAP_KEY });
-    this.offsetY = this.scale.height - this.map.heightInPixels;
+    this.offsetY = 0;
     this.mode = "idle";
     this.failureCount = 0;
     this.timers = [];
@@ -903,7 +903,7 @@ export default class FunctionsArraysRestoreWardingGridScene extends Phaser.Scene
   }
 
   setupCamera() {
-    this.cameras.main.setBounds(0, 0, this.map.widthInPixels, this.scale.height);
+    this.cameras.main.setBounds(0, 0, this.map.widthInPixels, this.map.heightInPixels);
     this.cameras.main.scrollX = 0;
   }
 

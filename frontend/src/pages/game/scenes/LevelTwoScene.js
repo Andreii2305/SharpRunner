@@ -131,7 +131,7 @@ export default class LevelTwoScene extends Phaser.Scene {
       "castle_tiles_grey"
     );
     const validTilesets = [greenzoneTileset, decorTileset, castleTileset].filter(Boolean);
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
     const layersByName = {};
 
     const tileLayerNames = map.layers.map((layerData) => layerData.name);

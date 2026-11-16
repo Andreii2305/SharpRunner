@@ -1,8 +1,10 @@
 import Phaser from "phaser";
 import {
   CAMERA_DRAG_THRESHOLD,
-  CAMERA_ZOOM,
+  getAnchoredVerticalScroll,
   getHorizontalScrollRange,
+  getResponsiveCameraZoom,
+  getVerticalScrollRange,
 } from "./cameraMath.js";
 
 export const RESPONSIVE_CAMERA_AVAILABILITY = "responsive-camera-availability";
@@ -34,8 +36,12 @@ export default class ResponsiveCameraPlugin extends Phaser.Plugins.ScenePlugin {
     this.camera = this.scene.cameras?.main ?? null;
     if (!this.camera || this.scene.scene.key.startsWith("AudioBootScene:")) return;
 
-    this.camera.setZoom(CAMERA_ZOOM);
+    this.camera.setZoom(getResponsiveCameraZoom({
+      viewportWidth: this.camera.width,
+      viewportHeight: this.camera.height,
+    }));
     this.camera.roundPixels = true;
+    this.frameGameplayAnchor();
     this.scene.layoutCameraUi?.(this.camera.width, this.camera.height);
     this.updateDeadzone();
     this.updateAvailability();
@@ -61,6 +67,36 @@ export default class ResponsiveCameraPlugin extends Phaser.Plugins.ScenePlugin {
       viewportWidth: this.camera.width,
       zoom: this.camera.zoom,
     });
+  }
+
+  getGameplayAnchor() {
+    return this.scene.getResponsiveCameraAnchor?.()
+      ?? this.camera?.followTarget
+      ?? this.scene.player
+      ?? this.scene.spawnPoint
+      ?? null;
+  }
+
+  frameGameplayAnchor() {
+    const bounds = this.getBounds();
+    if (!bounds || !this.camera) return;
+    const anchor = this.getGameplayAnchor();
+    const anchorY = Number(anchor?.y);
+    if (!Number.isFinite(anchorY)) return;
+    this.camera.scrollY = getAnchoredVerticalScroll({
+      anchorY,
+      boundsY: bounds.y,
+      boundsHeight: bounds.height,
+      viewportHeight: this.camera.height,
+      zoom: this.camera.zoom,
+    });
+  }
+
+  isVerticalFramingLocked() {
+    return Boolean(
+      this.camera?.panEffect?.isRunning
+      || this.scene.isResponsiveCameraFramingLocked?.(),
+    );
   }
 
   updateAvailability() {
@@ -172,7 +208,24 @@ export default class ResponsiveCameraPlugin extends Phaser.Plugins.ScenePlugin {
 
   onResize(gameSize) {
     if (!this.camera || gameSize.width < 2 || gameSize.height < 2) return;
-    this.camera.setZoom(CAMERA_ZOOM);
+    this.camera.setZoom(getResponsiveCameraZoom({
+      viewportWidth: gameSize.width,
+      viewportHeight: gameSize.height,
+    }));
+    if (!this.isVerticalFramingLocked()) {
+      this.frameGameplayAnchor();
+    } else {
+      const bounds = this.getBounds();
+      if (bounds) {
+        const range = getVerticalScrollRange({
+          boundsY: bounds.y,
+          boundsHeight: bounds.height,
+          viewportHeight: gameSize.height,
+          zoom: this.camera.zoom,
+        });
+        this.camera.scrollY = Phaser.Math.Clamp(this.camera.scrollY, range.min, range.max);
+      }
+    }
     this.scene.layoutCameraUi?.(gameSize.width, gameSize.height);
     this.updateDeadzone();
     const range = this.getScrollRange();

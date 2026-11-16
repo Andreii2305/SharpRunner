@@ -188,7 +188,7 @@ export default class LevelThreeScene extends Phaser.Scene {
       pineTileset,
     ].filter(Boolean);
 
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
 
     const layerDepths = {
       Ground: -1,

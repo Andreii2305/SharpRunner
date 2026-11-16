@@ -35,7 +35,7 @@ import {
 import GameTutorial from "./tutorial/GameTutorial.jsx";
 import { getGameTutorialSteps } from "./tutorial/gameTutorialSteps.js";
 import { shouldOpenTutorial } from "./tutorial/gameTutorialState.js";
-import { finishGameTutorialSession, shouldDismissPortraitPrompt } from "./tutorial/gameTutorialFlow.js";
+import { finishGameTutorialSession } from "./tutorial/gameTutorialFlow.js";
 import { readGameAuthHeaders, readGameDraft, removeGameDraft } from "./gamePageStorage.js";
 import { getProgress } from "../../services/studentAssessmentService.js";
 import {
@@ -230,12 +230,12 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
   const [isPortrait, setIsPortrait] = useState(() =>
     window.matchMedia?.("(orientation: portrait)").matches ?? false,
   );
+  const orientationDialogRef = useRef(null);
+  const isPortraitGameBlocked = isMobile && isPortrait;
   const [activeMobileTab, setActiveMobileTab] = useState("game");
   const mobileTabRefs = useRef({});
   const [cameraAvailable, setCameraAvailable] = useState(false);
   const [recenterRequest, setRecenterRequest] = useState(0);
-  const [orientationPromptDismissed, setOrientationPromptDismissed] = useState(false);
-  const tutorialWasVisibleRef = useRef(false);
 
   useEffect(() => {
     const mobileQuery = window.matchMedia(MOBILE_GAME_QUERY);
@@ -256,25 +256,6 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
   }, []);
 
   useEffect(() => {
-    if (!isMobile) setOrientationPromptDismissed(false);
-  }, [isMobile]);
-
-  useEffect(() => {
-    // Keep the first portrait prompt; suppress it only after the tutorial has appeared.
-    if (shouldDismissPortraitPrompt({
-      tutorialRequested,
-      tutorialWasVisible: tutorialWasVisibleRef.current,
-      isMobile,
-      isPortrait,
-      orientationPromptDismissed,
-    })) {
-      setOrientationPromptDismissed(true);
-    } else if (tutorialRequested && (!isMobile || !isPortrait || orientationPromptDismissed)) {
-      tutorialWasVisibleRef.current = true;
-    }
-  }, [isMobile, isPortrait, orientationPromptDismissed, tutorialRequested]);
-
-  useEffect(() => {
     setCameraAvailable(false);
     setRecenterRequest(0);
   }, [levelConfig]);
@@ -283,6 +264,18 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
     const resizeTimer = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 0);
     return () => window.clearTimeout(resizeTimer);
   }, [activeMobileTab, isMobile, isPortrait]);
+
+  useEffect(() => {
+    if (!isPortraitGameBlocked) return undefined;
+    const keepFocusOnOrientationMessage = (event) => {
+      if (event.key !== "Tab") return;
+      event.preventDefault();
+      orientationDialogRef.current?.focus();
+    };
+    orientationDialogRef.current?.focus();
+    document.addEventListener("keydown", keepFocusOnOrientationMessage, true);
+    return () => document.removeEventListener("keydown", keepFocusOnOrientationMessage, true);
+  }, [isPortraitGameBlocked]);
 
   const nextLevelTimerRef = useRef(null);
   const completionRequestRef = useRef(null);
@@ -487,7 +480,7 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
   };
 
   useEffect(() => {
-    if (!fullscreenGateApplicable || fullscreenState.gameplayPermitted) return undefined;
+    if (!fullscreenGateApplicable || fullscreenState.gameplayPermitted || isPortraitGameBlocked) return undefined;
     focusDialog(gamePageRef.current?.querySelector?.(`.${styles.fullscreenGateDialog}`), fullscreenContinueRef.current);
     const onKeyDown = (event) => handleDialogKeyDown({
       event,
@@ -497,7 +490,7 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
     });
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [fullscreenGateApplicable, fullscreenState.gameplayPermitted]);
+  }, [fullscreenGateApplicable, fullscreenState.gameplayPermitted, isPortraitGameBlocked]);
 
   const syncHintState = useCallback((payload = {}) => {
     if (payload.hintUnlockThreshold != null) {
@@ -1658,15 +1651,20 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
 
   return (
     <div className={styles.gameContainer} ref={gamePageRef} tabIndex={-1}>
-      {fullscreenState.gameplayPermitted && isMobile && isPortrait && !orientationPromptDismissed && (
+      {isPortraitGameBlocked && (
         <div className={styles.orientationOverlay} role="presentation">
-          <div className={styles.orientationPrompt} role="dialog" aria-modal="true" aria-labelledby="orientation-title">
+          <div
+            ref={orientationDialogRef}
+            className={styles.orientationPrompt}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="orientation-title"
+            aria-describedby="orientation-description"
+            tabIndex={-1}
+          >
             <FiSmartphone className={styles.orientationIcon} aria-hidden="true" />
             <h2 id="orientation-title">Rotate your device</h2>
-            <p>SharpRunner gameplay works best in landscape mode.</p>
-            <button type="button" onClick={() => setOrientationPromptDismissed(true)}>
-              Continue Anyway
-            </button>
+            <p id="orientation-description">Gameplay is paused in portrait. Rotate to landscape to continue this level.</p>
           </div>
         </div>
       )}
@@ -1693,7 +1691,7 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
           type="button"
           className={styles.tutorialReplayButton}
           onClick={replayTutorial}
-          disabled={showStoryIntro || Boolean(activeHint) || showHintPurchase || Boolean(gradeModal) || (isMobile && isPortrait && !orientationPromptDismissed)}
+          disabled={showStoryIntro || Boolean(activeHint) || showHintPurchase || Boolean(gradeModal) || isPortraitGameBlocked}
           aria-label="Replay game tutorial"
           title="Replay game tutorial"
         >
@@ -1739,7 +1737,7 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
               sfxVolume={sfxVolume}
               onCameraAvailabilityChange={setCameraAvailable}
               recenterRequest={recenterRequest}
-              paused={!fullscreenState.gameplayPermitted}
+              paused={!fullscreenState.gameplayPermitted || isPortraitGameBlocked}
             />
             {cameraAvailable && (
               <button
@@ -2243,7 +2241,7 @@ function GamePage({ levelConfig, classroomId, levelCompleted: initiallyCompleted
           </div>
         </div>
       )}
-      {fullscreenState.gameplayPermitted && tutorialRequested && !(isMobile && isPortrait && !orientationPromptDismissed) && (
+      {fullscreenState.gameplayPermitted && tutorialRequested && !isPortraitGameBlocked && (
         <GameTutorial
           steps={tutorialSteps}
           rootRef={gamePageRef}

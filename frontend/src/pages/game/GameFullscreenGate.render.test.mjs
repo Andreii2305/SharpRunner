@@ -111,7 +111,12 @@ test("GamePage wires the gate to every gameplay pause foundation", async () => {
   assert.match(source, /reportingControllerRef\.current\?\.retryEvents/);
   assert.match(source, /reportingState\.deliveryError[\s\S]*Retry pending reports/);
   assert.match(source, /<GameFullscreenGate/);
-  assert.match(source, /paused=\{!fullscreenState\.gameplayPermitted\}/);
+  assert.match(source, /const isPortraitGameBlocked = isMobile && isPortrait/);
+  assert.match(source, /role="alertdialog"/);
+  assert.match(source, /aria-describedby="orientation-description"/);
+  assert.match(source, /Gameplay is paused in portrait/);
+  assert.doesNotMatch(source, /Continue Anyway/);
+  assert.match(source, /paused=\{!fullscreenState\.gameplayPermitted \|\| isPortraitGameBlocked\}/);
   assert.match(source, /const owner = fullscreenBgmOwnerRef\.current;/);
   assert.match(source, /bgmManager\.pauseTemporarily\(owner\)/);
   assert.match(source, /dialogueSfxManager\.stop\(\)/);

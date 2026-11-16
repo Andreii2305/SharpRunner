@@ -78,7 +78,7 @@ export default class LevelOneScene extends Phaser.Scene {
     );
     const decorTileset = map.addTilesetImage("Objects", "decor_tiles");
 
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
     const layersByName = {};
 
     map.layers.forEach((layerData) => {

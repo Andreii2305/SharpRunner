@@ -72,7 +72,7 @@ export default class ArraysLevelThreeScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: "arrays_level_3_base" });
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
 
     this.createParallaxBackgrounds(map);
     this.createPlayerAnimations();

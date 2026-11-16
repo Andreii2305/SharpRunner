@@ -96,7 +96,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: LEVEL_MAP_KEY });
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
 
     this.createParallaxBackgrounds(map);
     this.createAnimations();
@@ -123,7 +123,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
     this.createWaterGlints();
 
     this.cameras.main.setBounds(0, offsetY, map.widthInPixels, map.heightInPixels);
-    this.cameras.main.centerOn(this.spawnPoint.x + 300, this.scale.height / 2);
+    this.cameras.main.centerOn(this.spawnPoint.x + 300, this.spawnPoint.y);
     this.cameras.main.setBackgroundColor("#050916");
     this.setupManualCameraControls(map, offsetY);
     this.startOpeningCameraPreview();
@@ -312,7 +312,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
       this.cameraBounds?.minX ?? 0,
       this.cameraBounds?.maxX ?? 0,
     );
-    this.cameras.main.setScroll(clamped, this.cameraBounds?.minY ?? this.cameras.main.scrollY);
+    this.cameras.main.scrollX = clamped;
   }
 
   enableManualCamera() {
@@ -343,7 +343,7 @@ export default class ArraysLevelSixScene extends Phaser.Scene {
       this.cameraBounds.minX,
       this.cameraBounds.maxX,
     );
-    this.cameras.main.setScroll(startX, this.cameraBounds.minY);
+    this.cameras.main.scrollX = startX;
 
     this.previewTween = this.tweens.add({
       targets: this.cameras.main,

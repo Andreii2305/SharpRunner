@@ -70,7 +70,7 @@ export default class ArraysLevelSevenScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: LEVEL_MAP_KEY });
-    const offsetY = this.scale.height - map.heightInPixels;
+    const offsetY = 0;
 
     this.sequenceTimers = [];
     this.sequenceMode = "idle";

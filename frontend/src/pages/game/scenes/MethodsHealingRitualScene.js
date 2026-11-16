@@ -82,7 +82,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
 
   create() {
     const map = this.make.tilemap({ key: MAP_KEY });
-    this.offsetY = this.scale.height - map.heightInPixels;
+    this.offsetY = 0;
     this.sequenceMode = "idle";
     this.sequenceTimers = [];
     this.temporaryEffects = [];
@@ -1089,7 +1089,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
   }
 
   setupCamera(map) {
-    this.cameras.main.setBounds(0, 0, map.widthInPixels, this.scale.height);
+    this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
     this.cameras.main.setZoom(1);
     this.panTo(this.spawnPoint.x + 300, 0);
   }
@@ -1101,7 +1101,7 @@ export default class MethodsHealingRitualScene extends Phaser.Scene {
       this.cameras.main.scrollX = clampedX - halfWidth;
       return;
     }
-    this.cameras.main.pan(clampedX, this.scale.height / 2, duration, "Sine.easeInOut");
+    this.cameras.main.pan(clampedX, this.spawnPoint.y, duration, "Sine.easeInOut");
   }
 
   resolveMapPoints(map) {
